@@ -15,12 +15,21 @@ Forward Proxy
   Need some kind of mechanism that clients can use to specify their end
   targets.
 
+  Keep this restricted, as it can be used to "hide" the origin of attacks,
+  using your proxy as the jumping off point.  Think of open email relays.
+
 Reverse Proxy
   Terminates any SSL session (backend connection to use SSL or not?)
   What credentials to use for authenticating to backend server for a reverse
   proxy connection?  Modifying of directory listing results as necessary
 
 Any caching of proxied results, files, directory transfers, etc?
+
+Authentication:
+
+  USER user@remote.site, proxy-user@remote-user@remote.site and other
+  variations.  (No "CNCT" FTP command; should there be one, e.g. HTTP CONNECT?
+  Probably not, given the easy abuse of such things.)
 
 Data Transfers:
 
@@ -38,3 +47,36 @@ HTTP CONNECT
 
   * Can this be used to proxy/hide the origin of an SSH connection as well?
     I think so...
+
+Other Proxy Implementations
+
+  http://aggemam.dk/ftpproxy
+    Forward FTP proxy, written in Java
+  http://www.glub.com/
+    Secure FTP Wrapper; see their "Login" article
+  http://frox.sourceforge.net/
+  http://www.ftpproxy.org/
+  http://freecode.com/projects/suseproxy-suite
+    http://www.linuxjournal.com/magazine/configuring-and-using-ftp-proxy
+  httpd.apache.org/docs/2.2/mod/mod_proxy.html
+    http://forums.devshed.com/ftp-help-113/apache-ftp-reverse-proxy-78960.html
+    http://www.apachelounge.com/viewtopic.php?t=3677
+
+  http://www.faqs.org/rfcs/rfc1919.html ("Classical Vs Transparent IP Proxies")
+
+  http://www.faqs.org/rfcs/rfc1579.html ("Firewall-Friendly FTP")
+
+  https://calomel.org/ftp_proxy.html
+    ftp-proxy started off as pftpx?
+    https://calomel.org/
+
+  http://www.codeproject.com/KB/IP/ProxyFtp.aspx
+
+Goals
+
+  Contrast with Squid, Apache mod_proxy, others
+
+Testing
+
+  Net::FTP in Perl; use Firewall, FirewallType constructor args.  See
+  Net::Config perldocs (quite interesting, actually).
