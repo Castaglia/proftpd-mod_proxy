@@ -1,0 +1,40 @@
+
+mod_proxy
+
+  ProxyEngine
+  ProxyLog
+
+What would a proxy module for proftpd look like?
+
+  client <-------> mod_proxy <--------> FTP server
+
+So we'd be proxying FTP connections to other FTP servers, including data
+transfers.  Would we support both forward and reverse proxy configurations?
+
+Forward Proxy
+  Need some kind of mechanism that clients can use to specify their end
+  targets.
+
+Reverse Proxy
+  Terminates any SSL session (backend connection to use SSL or not?)
+  What credentials to use for authenticating to backend server for a reverse
+  proxy connection?  Modifying of directory listing results as necessary
+
+Any caching of proxied results, files, directory transfers, etc?
+
+Data Transfers:
+
+  Client requests active transfer; does proxy request active transfer, too?
+
+  SSL/TLS data transfers on frontend, backend?
+  MODE Z on frontend, backend?
+
+Load balancing
+
+HTTP CONNECT
+
+  Client sends CONNECT to proxy, then proceeds to do an _FTP_ control channel
+  through the established TCP connection.
+
+  * Can this be used to proxy/hide the origin of an SSH connection as well?
+    I think so...
