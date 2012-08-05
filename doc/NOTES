@@ -3,6 +3,14 @@ mod_proxy
 
   ProxyEngine
   ProxyLog
+  ProxyMode forward|reverse
+
+Why?
+  Have mod_netsieve here, for sieving the inbound commands and outbound files
+  (have netsieve rules for common cases like scanning for SSNs/credit card
+  numbers in outbound data)
+
+  Single SSL cert (on the proxy) for several different backend servers
 
 What would a proxy module for proftpd look like?
 
@@ -10,6 +18,10 @@ What would a proxy module for proftpd look like?
 
 So we'd be proxying FTP connections to other FTP servers, including data
 transfers.  Would we support both forward and reverse proxy configurations?
+
+  * Set DefaultServer on in the <VirtualHost> section using mod_proxy (or
+    don't set it all).  That way, on a proxy server, only connections to
+    vhosts configured for proxying are handled; others are rejected.
 
 Forward Proxy
   Need some kind of mechanism that clients can use to specify their end
@@ -23,7 +35,62 @@ Reverse Proxy
   What credentials to use for authenticating to backend server for a reverse
   proxy connection?  Modifying of directory listing results as necessary
 
+  How to map clients to origin servers?  By user name, by client IP, or...?
+  Re-use proxy USER/PASS with origin server, or override with shared/common
+  origin server USER/PASS?  Round-robin, consistent hashing, load balance?
+  *Do it based on USER: that's the one feature that mod_proxy can do (i.e.
+   it's protocol-aware); the other implementations are TCP-specific, and
+   can be done by nginx, haproxy, etc.
+
+    { remote_user, remote_passwd, remote_host, remote_port } = lookup_remote_info(user)
+
+  If map/lookup is done based on client IP, then it can be done at connect
+  time, and thus mod_proxy can relay the connection to the remote host, and
+  let all authentication be handled by the remote/target host.
+
+  Scenarios:
+
+    Simplest:
+      mod_proxy configured to always use the SAME backend server.  In this
+      case, proxying the control connection is trivial; the backend server does
+      all of the protocol work.  The control connection from proxy to backend
+      server is opened when client connects to proxy.  However, mod_proxy DOES
+      need to watch for EPRT/EPSV/PASV/PORT commands, rewrite the responses
+      from the backend server to use the proxy's IP address/port.
+
+    Next simplest:
+      Just as above, except that there is a list of backend servers, and
+      some selection mechanism (roundrobin [weighted or not],
+      consistent hashing based on client IP, etc).  Selection mechanism
+      should be pluggable.
+
+    Complex:
+      backend server selection based on USER; this means mod_proxy needs to
+      handle login, _then_ select backend and create control connection to
+      selected backend.
+
 Any caching of proxied results, files, directory transfers, etc?
+
+Use of DNAT/SNAT, so the remote/target server sees real IP of connecting
+client, rather than that of the proxy?  Or how else to inform the
+backend/origin of the connecting client info?  Keep in mind this possibility:
+
+  client -> proxy -> proxy -> proxy -> proxy -> server
+
+
+FTP to SFTP proxying:
+
+  http://superuser.com/questions/422348/ftp-to-sftp-scp-proxy
+
+for securing outbound connections (in a forward proxy mode), as well as SFTP
+to FTP proxying (e.g. for SFTP for external clients, FTP for internal/legacy
+servers) for reverse proxying.
+
+  * Use URIs for specifying protocol proxying; means needing a URI parser
+    good enough to extract scheme, host, port, and perhaps authority.
+
+Health checks
+  TCP
 
 Authentication:
 
@@ -40,6 +107,14 @@ Data Transfers:
 
 Load balancing
 
+Failover
+
+Timeouts
+  ProxyConnectTimeout
+
+Reverse connectivity feature?  (Requires that the backend server know to
+connect to proxy for "listening" connection, so custom work.)
+
 HTTP CONNECT
 
   Client sends CONNECT to proxy, then proceeds to do an _FTP_ control channel
@@ -48,8 +123,12 @@ HTTP CONNECT
   * Can this be used to proxy/hide the origin of an SSH connection as well?
     I think so...
 
+client --> (sftp) --> proxy --> (ftp) --> origin
+client --> (ftp) --> proxy --> (sftp) --> origin
+
 Other Proxy Implementations
 
+  http://www.mcknight.de/jftpgw/features.html
   http://aggemam.dk/ftpproxy
     Forward FTP proxy, written in Java
   http://www.glub.com/
@@ -72,6 +151,21 @@ Other Proxy Implementations
 
   http://www.codeproject.com/KB/IP/ProxyFtp.aspx
 
+  http://www.chilkatsoft.com/refdoc/xChilkatFtp2Ref.html
+    See ProxyMethod for various FTP proxy approaches
+
+  http://linux.die.net/man/1/lftp
+    ftp:proxy
+    ftp:proxy-auth-type
+
+  http://www.apsis.ch/pound/index_html
+
+  http://haproxy.1wt.eu/
+
+Links/Articles:
+
+  http://blog.cryptographyengineering.com/2012/03/how-do-interception-proxies-fail.html
+
 Goals
 
   Contrast with Squid, Apache mod_proxy, others
@@ -80,3 +174,9 @@ Testing
 
   Net::FTP in Perl; use Firewall, FirewallType constructor args.  See
   Net::Config perldocs (quite interesting, actually).
+
+  Net::SOCKS
+  IO::Socket::SOCKS
+  IO::Socket::SecureSocks
+  URI::Socks
+  Net::Proxy::Type
