@@ -1,5 +1,5 @@
 /*
- * ProFTPD - mod_proxy client API
+ * ProFTPD - mod_proxy conn API
  * Copyright (c) 2012 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
@@ -24,13 +24,11 @@
 
 #include "mod_proxy.h"
 
-#ifndef MOD_PROXY_CLIENT_H
-#define MOD_PROXY_CLIENT_H
+#ifndef MOD_PROXY_CONN_H
+#define MOD_PROXY_CONN_H
 
 struct proxy_conn;
 
-struct proxy_conn *proxy_client_connect(pool *p, const char *proto,
-  pr_netaddr_t *remote_addr);
-int proxy_client_disconnect(struct proxy_conn *conn);
+struct proxy_conn *proxy_conn_create(pool *p, const char *uri);
 
-#endif /* MOD_PROXY_CLIENT_H */
+#endif /* MOD_PROXY_CONN_H */

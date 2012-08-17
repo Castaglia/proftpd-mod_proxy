@@ -69,6 +69,24 @@ Reverse Proxy
       handle login, _then_ select backend and create control connection to
       selected backend.
 
+      *NB: Actually, the selection of the backend user *can* happen based
+       on just the USER command, no PASS; this assumes that the auth will
+       either succeed using the given USER, or it won't (and the connection
+       will be closed).  This distinction means that the proxy does not
+       necessarily have to handle authentication itself.
+
+    Balancing (or: selection of backend server)
+      ProxyReverseConnect
+        roundrobin [options]
+        hashing (?) [options]
+        userbased [options]
+
+      ProxyReverseServers ftp://localhost:20741 ftp://localhost:20743 
+
+      ProxyReverseServers file://path/to/servers.txt
+                          sql://SQLNamedQuery/...
+                          ldap://...?
+
 Any caching of proxied results, files, directory transfers, etc?
 
 Use of DNAT/SNAT, so the remote/target server sees real IP of connecting

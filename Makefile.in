@@ -11,8 +11,9 @@ SHARED_LDFLAGS=-avoid-version -export-dynamic -module
 VPATH=@srcdir@
 
 MODULE_NAME=mod_proxy
-MODULE_OBJS=mod_proxy.o stacktrace.o client.o uri.o
-SHARED_MODULE_OBJS=mod_proxy.lo stacktrace.lo client.lo uri.lo
+MODULE_OBJS=mod_proxy.o stacktrace.o conn.o uri.o forward.o reverse.o
+SHARED_MODULE_OBJS=mod_proxy.lo stacktrace.lo conn.lo uri.lo forward.lo \
+  reverse.lo
 
 # Necessary redefinitions
 INCLUDES=-I. -I../.. -I../../include @INCLUDES@

@@ -31,6 +31,8 @@
  *  RFC 3986: Uniform Resource Identifier - Generic Syntax
  */
 
+static const char *trace_channel = "proxy.uri";
+
 int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
     unsigned int *port) {
   char *ptr, *ptr2;
@@ -47,8 +49,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
   /* First, look for a ':' */
   ptr = strchr(uri, ':');
   if (ptr == NULL) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "missing colon in URI '%.100s'", uri);
+    pr_trace_msg(trace_channel, 4, "missing colon in URI '%.100s'", uri);
     errno = EINVAL;
     return -1;
   }
@@ -58,7 +59,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
   res = strspn("abcdefghijklmnopqrstuvwxyz+.-");
   if (*scheme[res] != '\0') {
     /* Invalid character in the scheme string, according to RFC 1738 rules. */
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+    pr_trace_msg(trace_channel, 4,
       "invalid character (%c) at index %d in scheme '%.100s'", *scheme[res],
       res, *scheme);
     errno EINVAL;
@@ -68,7 +69,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
   /* The double-slashes must immediately follow the colon. */
   if (*(ptr + 1) != '/' ||
       *(ptr + 2) != '/') {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+    pr_trace_msg(trace_channel, 4,
       "missing required '//' following colon in URI '%.100s'", uri);
     errno = EINVAL;
     return -1;
@@ -98,7 +99,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
    */
   ptr2 = strchr(ptr, '%');
   if (ptr2 != NULL) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+    pr_trace_msg(trace_channel, 4,
       "invalid character (%%) at index %d in scheme-specific info '%.100s'",
       ptr2 - ptr, ptr);
     errno = EINVAL;
@@ -119,7 +120,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
       *port = 22;
 
     } else {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      pr_trace_msg(trace_channel, 4,
         "unable to determine port for scheme '%.100s'", *scheme);
       errno = EINVAL;
       return -1;
@@ -146,7 +147,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
     /* Ensure that only numeric characters appear in the portspec. */
     for (i = 0; i < portspeclen; i++) {
       if (isdigit((int) portspec[i]) == 0) {
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        pr_trace_msg(trace_channel, 4,
           "invalid character (%c) at index %d in port specifiction '%.100s'",
           portspec[i], i, portspec);
         errno = EINVAL;
@@ -161,7 +162,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
     *port = atoi(portspec);
     if (*port == 0 ||
         *port >= 65536) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      pr_trace_msg(trace_channel, 4,
         "port specification '%.100s' yields invalid port number %d",
         portspec, *port);
       errno = EINVAL;

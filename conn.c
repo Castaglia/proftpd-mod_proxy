@@ -1,5 +1,5 @@
 /*
- * ProFTPD - mod_proxy client implementation
+ * ProFTPD - mod_proxy conn implementation
  * Copyright (c) 2012 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
@@ -23,23 +23,93 @@
  */
 
 #include "mod_proxy.h"
-#include "client.h"
+#include "conn.h"
+#include "uri.h"
 
 struct proxy_conn {
-  pool *conn_pool;
-  const char *conn_proto;
-  int conn_fd;
+  pool *pconn_pool;
 
-  pr_netaddr_t *remote_addr;
+  const char *pconn_uri;
+  const char *pconn_proto;
+
+  pr_netaddr_t *client_addr;
+  int client_fd;
+
+  pr_netaddr_t *server_addr;
+  int server_fd;
 };
 
-struct proxy_conn *proxy_client_connect(pool *p, const char *proto,
-    pr_netaddr_t *remote_addr) {
-  errno = ENOSYS;
-  return NULL;
+static const char *supported_protocols[] = {
+  "ftp",
+  "ftps",
+  "sftp",
+
+  NULL
+};
+
+static const char *trace_channel = "proxy.conn";
+
+static int supported_protocol(const char *proto) {
+  register unsigned int i;
+
+  for (i = 0; supported_protocols[i] != NULL; i++) {
+    if (strcmp(proto, supported_protocols[i]) == 0) {
+      return 0;
+    }
+  }
+
+  errno = ENOENT;
+  return -1;
 }
 
-int proxy_client_disconnect(struct proxy_conn *conn) {
-  errno = ENOSYS;
-  return -1;
+struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
+  int res;
+  char *proto, *remote_host;
+  unsigned int remote_port;
+  struct proxy_conn *pconn;
+  pool *pconn_pool;
+
+  res = proxy_uri_parse(p, uri, &proto, &remote_host, &remote_port);
+  if (res < 0) {
+    return NULL;
+  }
+
+  if (supported_protocol(proto) < 0) {
+    pr_trace_msg(trace_channel, 4, "unsupported protocol '%s' in URI '%.100s'",
+      proto, uri);
+    errno = EINVAL;
+    return NULL;
+  }
+
+  pconn_pool = make_sub_pool(p); 
+  pr_pool_tag(pconn_pool, "proxy connection pool");
+
+  pconn = pcalloc(pconn_pool, sizeof(struct proxy_conn));
+  pconn->pconn_pool = pconn_pool;
+  pconn->pconn_uri = pstrdup(pconn_pool, uri);
+  pconn->pconn_proto = pstrdup(pconn_pool, proto);
+
+  pconn->client_fd = session.c->rfd;
+  pconn->client_addr = session.c->remote_addr;
+
+  pconn->server_fd = -1;
+  pconn->server_addr = pr_netaddr_get_addr(pconn_pool, remote_host, NULL);
+  if (pconn->server_addr == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to resolve '%s' from URI '%s'", remote_host, uri);
+    destroy_pool(pconn_pool);
+    errno = EINVAL;
+    return NULL;
+  }
+
+  if (pr_netaddr_set_port2(pconn->server_addr, remote_port) < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to set port %d from URI '%s': %s", remote_port, uri,
+      strerror(errno));
+    destroy_pool(pconn_pool);
+    errno = EINVAL;
+    return NULL;
+  }
+ 
+  return pconn;
 }

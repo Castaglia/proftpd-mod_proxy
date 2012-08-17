@@ -31,6 +31,7 @@ static const char *trace_channel = "proxy.reverse";
 int proxy_reverse_init(pool *p) {
   config_rec *c;
   array_header *backend_servers;
+  struct proxy_conn *pconn, **pconns;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseServers",
     FALSE);
@@ -54,6 +55,13 @@ int proxy_reverse_init(pool *p) {
      * backend server. 
      */
   }
+
+  /* XXX For now, only use the first backend server. */
+  pconns = backend_server->elts;
+  pconn = pconns[0];
+
+  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+    "connecting to backend server '%s'", pconn->pconn_uri);
 
   return 0;
 }

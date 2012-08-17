@@ -26,6 +26,9 @@
  */
 
 #include "mod_proxy.h"
+#include "conn.h"
+#include "forward.h"
+#include "reverse.h"
 
 /* Proxy mode/type */
 #define PROXY_MODE_REVERSE		1
@@ -90,7 +93,7 @@ MODRET set_proxyengine(cmd_rec *cmd) {
   config_rec *c;
 
   CHECK_ARGS(cmd, 1);
-  CHECK_CONF(cmd, CONF_ROOT);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
   bool = get_boolean(cmd, 1);
   if (bool == -1) {
@@ -142,7 +145,97 @@ MODRET set_proxymode(cmd_rec *cmd) {
 
 /* usage: ProxyOptions opt1 ... optN */
 MODRET set_proxyoptions(cmd_rec *cmd) {
-  CHECK_CONF(cmd, CONF_ROOT);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxyReverseConnect [selection-mechanism] */
+MODRET set_proxyreverseconnect(cmd_rec *cmd) {
+
+  /* CHECK_ARGS(cmd, 1) */
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxyReverseServers server1 ... server N
+ *                            file://path/to/server/list.txt
+ *                            sql://SQLNamedQuery
+ */
+MODRET set_proxyreverseservers(cmd_rec *cmd) {
+  config_rec *c;
+  array_header *backend_servers;
+
+  if (cmd->argc-1 < 1) {
+    CONF_ERROR(cmd, "wrong number of parameters");
+  }
+
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  backend_servers = make_array(c->pool, 1, sizeof(struct proxy_conn *));
+
+  if (cmd->argc-1 == 1) {
+    char *ptr;
+
+    /* We are dealing with one of the following possibilities:
+     *
+     *  file:/path/to/file.txt
+     *  sql://SQLNamedQuery/...
+     *  <server>
+     */
+
+    if (strncmp(cmd->argv[1], "file:", 5) == 0) {
+      char *path;
+
+      path = cmd->argv[1] + 5;
+    
+      /* Make sure the path is an absolute path.
+       *
+       * XXX For now, load the list of servers at sess init time.  In
+       * the future, we will want to load it at postparse time, mapped
+       * to the appropriate server_rec, and clear/reload on 'core.restart'.
+       */
+
+    } else if (strncmp(cmd->argv[1], "sql:/", 5) == 0) {
+      /* XXX Implement */
+
+      CONF_ERROR(cmd, "not yet implemented");
+
+    } else {
+      /* Treat it as a server-spec (i.e. a URI) */
+      struct proxy_conn *pconn;
+
+      pconn = proxy_conn_create(c->pool, cmd->argv[1]);
+      if (pconn == NULL) {
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing '", cmd->argv[1],
+          "': ", pstrerror(errno), NULL));
+      }
+
+      *((struct proxy_conn **) push_array(backend_servers)) = pconn;
+    }
+
+  } else {
+    register unsigned int i;
+
+    /* More than one parameter, which means they are all URIs. */
+
+    for (i = 1; i < cmd->argc; i++) {
+      struct proxy_conn *pconn;
+
+      pconn = proxy_conn_create(c->pool, cmd->argv[i]);
+      if (pconn == NULL) {
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing '", cmd->argv[i],
+          "': ", pstrerror(errno), NULL));
+      }
+
+      *((struct proxy_conn **) push_array(backend_servers)) = pconn;
+    }
+  }
+
+  c->argv[0] = palloc(c->pool, sizeof(array_header **));
+  *((array_header **) c->argv[0]) = backend_servers;
 
   return PR_HANDLED(cmd);
 }
@@ -229,7 +322,7 @@ static int proxy_sess_init(void) {
   int res;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyEngine", FALSE);
-  if (c) {
+  if (c != NULL) {
     proxy_engine = *((int *) c->argv[0]);
   }
 
@@ -238,7 +331,7 @@ static int proxy_sess_init(void) {
   }
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyLog", FALSE);
-  if (c) {
+  if (c != NULL) {
     char *logname;
 
     logname = c->argv[0];
@@ -273,6 +366,11 @@ static int proxy_sess_init(void) {
     }
   }
 
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyMode", FALSE);
+  if (c != NULL) {
+    proxy_mode = *((int *) c->argv[0]);
+  }
+
   /* XXX Install event handlers for timeouts, so that we can properly close
    * the connections on either side.
    */
@@ -282,6 +380,19 @@ static int proxy_sess_init(void) {
    * mechanism...)
    */
 
+  if (proxy_mode == PROXY_MODE_REVERSE) {
+    if (proxy_reverse_init() < 0) {
+      proxy_engine = FALSE;
+      return -1;
+    }
+
+  } else if (proxy_mode == PROXY_MODE_FORWARD) {
+    if (proxy_forward_init() < 0) {
+      proxy_engine = FALSE;
+      return -1; 
+    }
+  }
+
   return 0;
 }
 
@@ -289,10 +400,16 @@ static int proxy_sess_init(void) {
  */
 
 static conftable proxy_conftab[] = {
-  { "ProxyEngine",	set_proxyengine,	NULL },
-  { "ProxyMode",	set_proxymode,		NULL },
-  { "ProxyLog",		set_proxylog,		NULL },
-  { "ProxyOptions",	set_proxyoptions,	NULL },
+  { "ProxyEngine",		set_proxyengine,	NULL },
+  { "ProxyMode",		set_proxymode,		NULL },
+  { "ProxyLog",			set_proxylog,		NULL },
+  { "ProxyOptions",		set_proxyoptions,	NULL },
+
+  /* Forward proxy directives */
+
+  /* Reverse proxy directives */
+  { "ProxyReverseConnect",	set_proxyreverseconnect,	NULL },
+  { "ProxyReverseServers",	set_proxyreverseservers,	NULL },
 
   { NULL }
 };
