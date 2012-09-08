@@ -33,17 +33,17 @@ module *loaded_modules = NULL;
 volatile unsigned int recvd_signal_flags = 0;
 
 static int connect_timeout_reached = FALSE;
-static pr_netio_stream_t *connect_timeout_strm = NULL;
+static conn_t *connect_timeout_conn = NULL;
 
 static int connect_timeout_cb(CALLBACK_FRAME) {
   connect_timeout_reached = TRUE;
 
-fprintf(stderr, "connect_timeout_cb: fired, setting the abort flag on the stream\n");
+fprintf(stderr, "connect_timeout_cb: fired\n");
 
-  if (connect_timeout_strm != NULL) {
-    /* Abort the stream. */
-    pr_netio_abort(connect_timeout_strm);
-    connect_timeout_strm->strm_errno = ETIMEDOUT;
+  if (connect_timeout_conn != NULL) {
+fprintf(stderr, "connect_timeout_cb: fired, setting the ERROR flag on the conn\n");
+    connect_timeout_conn->mode = CM_ERROR;
+    connect_timeout_conn->xerrno = ETIMEDOUT;
   }
 
   return 0;
@@ -143,9 +143,10 @@ int main(int argc, char *argv[]) {
 
   /* XXX And now I have an easy way to reproduce Bug#3802! */
 
-  res = pr_inet_connect_nowait(p, client_conn, remote_addr, remote_port);
+  connect_timeout_conn = client_conn;
+  res = pr_inet_connect(p, client_conn, remote_addr, remote_port);
   if (res < 0) {
-    fprintf(stderr, "Error starting connect to %s:%d: %s\n", remote_name,
+    fprintf(stderr, "Error connecting to %s:%d: %s\n", remote_name,
       remote_port, strerror(errno));
 
     pr_timer_remove(timerno, NULL);
@@ -155,76 +156,6 @@ int main(int argc, char *argv[]) {
   }
 
   /* XXX Need to test what happens when connect to same machine */
-
-  if (res == 0) {
-    /* Not yet connected. */
-
-    connect_timeout_strm = pr_netio_open(p, PR_NETIO_STRM_OTHR,
-      client_conn->listen_fd, PR_NETIO_IO_RD);
-    if (connect_timeout_strm == NULL) {
-      fprintf(stderr, "Error opening stream to %s:%d: %s\n", remote_name,
-        remote_port, strerror(errno));
-
-      pr_timer_remove(timerno, NULL);
-      pr_inet_close(p, client_conn);
-      destroy_pool(p);
-      return 1;
-    }
-
-    pr_netio_set_poll_interval(connect_timeout_strm, 1);
-
-    switch (pr_netio_poll(connect_timeout_strm)) {
-      case 1: {
-        /* Aborted, timed out */
-        if (connect_timeout_reached) {
-          errno = ETIMEDOUT;
-
-          fprintf(stderr, "Connecting to %s:%d timed out after %d secs: %s\n",
-            remote_name, remote_port, 5, strerror(errno));
-          pr_netio_close(connect_timeout_strm);
-          connect_timeout_strm = NULL;
-
-          pr_timer_remove(timerno, NULL);
-          pr_inet_close(p, client_conn);
-          destroy_pool(p);
-          return 1;
-        }
-
-        break;
-      }
-
-      case -1: {
-        /* Error */
-        int xerrno = errno;
-
-        fprintf(stderr, "Error connecting to %s:%d: %s\n", remote_name,
-          remote_port, strerror(xerrno));
-        pr_netio_close(connect_timeout_strm);
-        connect_timeout_strm = NULL;
-
-        pr_timer_remove(timerno, NULL);
-        pr_inet_close(p, client_conn);
-        return 1;
-      }
-
-      default: {
-        /* Connected */
-        client_conn->mode = CM_OPEN;
-        pr_timer_remove(timerno, NULL);
-
-        if (pr_inet_get_conn_info(client_conn, client_conn->listen_fd) < 0) {
-          fprintf(stderr, "Error obtaining local socket info on fd %d: %s\n",
-            client_conn->listen_fd, strerror(errno));
-
-          pr_inet_close(p, client_conn);
-          destroy_pool(p);
-          return 1;
-        }
-
-        break;
-      }
-    }
-  }
 
   fprintf(stdout, "Successfully connected to %s:%d from %s:%d\n", remote_name,
     remote_port, pr_netaddr_get_ipstr(client_conn->local_addr),
