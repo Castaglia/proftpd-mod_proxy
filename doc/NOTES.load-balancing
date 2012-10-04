@@ -1,0 +1,15 @@
+Simple balancing:
+
+  round robin
+  least conns
+  equal distribution (all servers have same number of conns)
+  staticly configured affinities
+
+Complex/adaptive balancing:
+
+  Client IP address/class
+  FTP USER (i.e. user affinity to specific server(s))
+  SSL/TLS protocol version
+  SSL/TLS ciphersuite
+  Backend response time
+  Backend connection count

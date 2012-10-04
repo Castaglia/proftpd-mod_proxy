@@ -1,0 +1,39 @@
+
+Health check metrics:
+
+  TCP connect to port
+    conect timeout
+    number of retries
+    retry interval
+
+  FTP connect to port
+    require 220 response code, or any?
+    require specific response string?
+    connect timeout
+    number of retries
+    retry interval
+
+  FTP USER
+    require prompt for PASS, or any?
+    require specific response string?
+    timeout
+    number of retries
+    retry interval
+
+  FTP login
+    require succesful login (usually via anonymous login)
+    require specific response string?
+    timeout
+    number of retries
+    retry interval
+
+  SSH key exchange
+
+  SSH login
+
+  SFTP
+
+All of the metrics for a given health check strategy/type are summed up.
+But is it a simple sum (all metrics are equal), or do some metrics have
+more weight?  If weighted, how are weights calculated?
+
