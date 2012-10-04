@@ -37,12 +37,14 @@ CLIENT_DEPS=\
   $(top_srcdir)/src/regexp.o \
   $(top_srcdir)/src/class.o \
   $(top_srcdir)/src/cmd.o \
+  $(top_srcdir)/src/data.o \
   $(top_srcdir)/src/response.o \
   $(top_srcdir)/src/stash.o \
   $(top_srcdir)/src/modules.o \
   $(top_srcdir)/src/trace.o
 
-CLIENT_OBJS=ftp.o
+CLIENT_OBJS=ftp.o stubs.o
+BLOCKING_CLIENT_OBJS=ftp-blocking.o stubs.o
 
 # Necessary redefinitions
 INCLUDES=-I. -I../.. -I$(top_srcdir) -I$(top_srcdir)/include
@@ -52,10 +54,11 @@ LDFLAGS=-L$(top_srcdir)/lib
 .c.o:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $<
 
-check: $(CLIENT_OBJS)
+check: $(CLIENT_OBJS) $(BLOCKING_CLIENT_OBJS)
 	$(LIBTOOL) --mode=link --tag=CC $(CC) $(LDFLAGS) -o ftp $(CLIENT_DEPS) $(CLIENT_OBJS) $(LIBS)
+	$(LIBTOOL) --mode=link --tag=CC $(CC) $(LDFLAGS) -o ftp-blocking $(CLIENT_DEPS) $(BLOCKING_CLIENT_OBJS) $(LIBS)
 
 clean:
-	$(RM) $(CLIENT_NAME).a *.o *.la *.lo
+	$(RM) $(CLIENT_NAME) $(CLIENT_NAME).a *.o *.la *.lo
 	$(LIBTOOL) --mode=clean $(RM) "$(CLIENT_NAME).o"
 	$(LIBTOOL) --mode=clean $(RM) `echo "$(CLIENT_NAME).la" | sed 's/\.la$\/.lo/g'`

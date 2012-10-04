@@ -24,21 +24,11 @@
 
 #include "ftp.h"
 
-unsigned char is_master = TRUE;
-pid_t mpid = 0;
-session_t session;
-module *static_modules[] = { NULL };
-module *loaded_modules = NULL;
-
-volatile unsigned int recvd_signal_flags = 0;
-
 static int connect_timeout_reached = FALSE;
 static pr_netio_stream_t *connect_timeout_strm = NULL;
 
 static int connect_timeout_cb(CALLBACK_FRAME) {
   connect_timeout_reached = TRUE;
-
-fprintf(stderr, "connect_timeout_cb: fired, setting the abort flag on the stream\n");
 
   if (connect_timeout_strm != NULL) {
     /* Abort the stream. */
@@ -49,37 +39,14 @@ fprintf(stderr, "connect_timeout_cb: fired, setting the abort flag on the stream
   return 0;
 }
 
-void pr_signals_handle(void) {
-  table_handling_signal(TRUE);
-
-  if (errno == EINTR &&
-      PR_TUNABLE_EINTR_RETRY_INTERVAL > 0) {
-    struct timeval tv;
-    unsigned long interval_usecs = PR_TUNABLE_EINTR_RETRY_INTERVAL * 1000000;
-
-    tv.tv_sec = (interval_usecs / 1000000);
-    tv.tv_usec = (interval_usecs - (tv.tv_sec * 1000000));
-
-    pr_timer_usleep(interval_usecs);
-  }
-
-  while (recvd_signal_flags & RECEIVED_SIG_ALRM) {
-    if (recvd_signal_flags & RECEIVED_SIG_ALRM) {
-      recvd_signal_flags &= ~RECEIVED_SIG_ALRM;
-      pr_trace_msg("signal", 9, "handling SIGALRM (signal %d)", SIGALRM);
-      handle_alarm();
-    }
-  }
-
-  table_handling_signal(FALSE);
-}
-
 int main(int argc, char *argv[]) {
   pool *p;
   const char *remote_name;
   pr_netaddr_t *remote_addr;
   conn_t *client_conn, *ctrl_conn, *data_conn;
-  int remote_port, res, timerno;
+  unsigned int connect_timeout, remote_port;
+  struct proxy_ftp_client *ftp;
+  int res, timerno;
   char buf[1024];
 
   /* Seed the random number generator. */
@@ -97,8 +64,6 @@ int main(int argc, char *argv[]) {
   init_class();
   init_config();
   init_stash();
-
-  pr_netaddr_disable_ipv6();
 
   pr_log_setdebuglevel(10);
   log_stderr(TRUE);
@@ -118,117 +83,29 @@ int main(int argc, char *argv[]) {
     return 1;
   } 
 
-  remote_port = 23;
- 
   fprintf(stdout, "Resolved name '%s' to IP address '%s'\n", remote_name,
     pr_netaddr_get_ipstr(remote_addr));
 
-  timerno = pr_timer_add(5, -1, NULL, connect_timeout_cb,
-    "FTP client connect timeout");
-  if (timerno <= 0) {
-    fprintf(stderr, "Error register connect timer: %s\n", strerror(errno));
+  remote_port = 21;
+  connect_timeout = 5;
+  ftp = proxy_ftp_connect(p, remote_addr, remote_port, connect_timeout, NULL);
+  if (ftp == NULL) {
+    fprintf(stderr, "Error connecting to FTP server: %s\n", strerror(errno));
     destroy_pool(p);
     return 1;
-  }
-
-  /* Connect to the addr */
-  client_conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
-  if (client_conn == NULL) {
-    fprintf(stderr, "Error creating connection: %s\n", strerror(errno));
-
-    pr_timer_remove(timerno, NULL);
-    destroy_pool(p);
-    return 1;
-  }
-
-  /* XXX And now I have an easy way to reproduce Bug#3802! */
-
-  res = pr_inet_connect_nowait(p, client_conn, remote_addr, remote_port);
-  if (res < 0) {
-    fprintf(stderr, "Error starting connect to %s:%d: %s\n", remote_name,
-      remote_port, strerror(errno));
-
-    pr_timer_remove(timerno, NULL);
-    pr_inet_close(p, client_conn);
-    destroy_pool(p);
-    return 1;
-  }
-
-  /* XXX Need to test what happens when connect to same machine */
-
-  if (res == 0) {
-    /* Not yet connected. */
-
-    connect_timeout_strm = pr_netio_open(p, PR_NETIO_STRM_OTHR,
-      client_conn->listen_fd, PR_NETIO_IO_RD);
-    if (connect_timeout_strm == NULL) {
-      fprintf(stderr, "Error opening stream to %s:%d: %s\n", remote_name,
-        remote_port, strerror(errno));
-
-      pr_timer_remove(timerno, NULL);
-      pr_inet_close(p, client_conn);
-      destroy_pool(p);
-      return 1;
-    }
-
-    pr_netio_set_poll_interval(connect_timeout_strm, 1);
-
-    switch (pr_netio_poll(connect_timeout_strm)) {
-      case 1: {
-        /* Aborted, timed out */
-        if (connect_timeout_reached) {
-          errno = ETIMEDOUT;
-
-          fprintf(stderr, "Connecting to %s:%d timed out after %d secs: %s\n",
-            remote_name, remote_port, 5, strerror(errno));
-          pr_netio_close(connect_timeout_strm);
-          connect_timeout_strm = NULL;
-
-          pr_timer_remove(timerno, NULL);
-          pr_inet_close(p, client_conn);
-          destroy_pool(p);
-          return 1;
-        }
-
-        break;
-      }
-
-      case -1: {
-        /* Error */
-        int xerrno = errno;
-
-        fprintf(stderr, "Error connecting to %s:%d: %s\n", remote_name,
-          remote_port, strerror(xerrno));
-        pr_netio_close(connect_timeout_strm);
-        connect_timeout_strm = NULL;
-
-        pr_timer_remove(timerno, NULL);
-        pr_inet_close(p, client_conn);
-        return 1;
-      }
-
-      default: {
-        /* Connected */
-        client_conn->mode = CM_OPEN;
-        pr_timer_remove(timerno, NULL);
-
-        if (pr_inet_get_conn_info(client_conn, client_conn->listen_fd) < 0) {
-          fprintf(stderr, "Error obtaining local socket info on fd %d: %s\n",
-            client_conn->listen_fd, strerror(errno));
-
-          pr_inet_close(p, client_conn);
-          destroy_pool(p);
-          return 1;
-        }
-
-        break;
-      }
-    }
   }
 
   fprintf(stdout, "Successfully connected to %s:%d from %s:%d\n", remote_name,
     remote_port, pr_netaddr_get_ipstr(client_conn->local_addr),
     ntohs(pr_netaddr_get_port(client_conn->local_addr)));
+
+  res = proxy_ftp_disconnect(ftp);
+  if (res < 0) {
+    fprintf(stderr, "Error disconnecting from FTP server: %s\n",
+      strerror(errno));
+    destroy_pool(p);
+    return 1;
+  }
 
   ctrl_conn = pr_inet_openrw(p, client_conn, NULL, PR_NETIO_STRM_OTHR,
     -1, -1, -1, FALSE);
