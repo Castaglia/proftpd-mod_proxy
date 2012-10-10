@@ -41,6 +41,7 @@ CLIENT_DEPS=\
   $(top_srcdir)/src/response.o \
   $(top_srcdir)/src/stash.o \
   $(top_srcdir)/src/modules.o \
+  $(top_srcdir)/src/ctrls.o \
   $(top_srcdir)/src/trace.o
 
 CLIENT_OBJS=ftp.o stubs.o

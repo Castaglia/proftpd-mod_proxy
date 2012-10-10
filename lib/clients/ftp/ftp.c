@@ -38,8 +38,6 @@ static pr_netio_stream_t *connect_timeout_strm = NULL;
 static int connect_timeout_cb(CALLBACK_FRAME) {
   connect_timeout_reached = TRUE;
 
-fprintf(stderr, "connect_timeout_cb: fired, setting the abort flag on the stream\n");
-
   if (connect_timeout_strm != NULL) {
     /* Abort the stream. */
     pr_netio_abort(connect_timeout_strm);
@@ -47,6 +45,222 @@ fprintf(stderr, "connect_timeout_cb: fired, setting the abort flag on the stream
   }
 
   return 0;
+}
+
+static pr_buffer_t *netio_buffer_alloc(pr_netio_stream_t *nstrm) {
+  size_t bufsz;
+  pr_buffer_t *pbuf = NULL;
+
+  pbuf = pcalloc(nstrm->strm_pool, sizeof(pr_buffer_t));
+
+  /* Allocate a buffer. */
+  bufsz = pr_config_get_server_xfer_bufsz(nstrm->strm_mode);
+  pbuf->buf = pcalloc(nstrm->strm_pool, bufsz);
+  pbuf->buflen = bufsz;
+
+  /* Position the offset at the start of the buffer, and set the
+   * remaining bytes value accordingly.
+   */
+  pbuf->current = pbuf->buf;
+  pbuf->remaining = bufsz;
+
+  /* Add this buffer to the given stream. */
+  nstrm->strm_buf = pbuf;
+
+  return pbuf;
+}
+
+static char *proxy_ftp_telnet_gets(char *buf, size_t buflen,
+    pr_netio_stream_t *nstrm) {
+  char *buf_ptr = buf;
+  unsigned char cp;
+  int nread, saw_newline = FALSE;
+  pr_buffer_t *pbuf = NULL;
+
+  if (buflen == 0) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  buflen--;
+
+  if (nstrm->strm_buf != NULL) {
+    pbuf = nstrm->strm_buf;
+
+  } else {
+    pbuf = netio_buffer_alloc(nstrm);
+  }
+
+  while (buflen > 0) {
+    /* Is the buffer empty? */
+    if (pbuf->current == NULL ||
+        pbuf->remaining == pbuf->buflen) {
+
+      nread = pr_netio_read(nstrm, pbuf->buf,
+        (buflen < pbuf->buflen ? buflen : pbuf->buflen), 4);
+      if (nread <= 0) {
+        if (buf_ptr != buf) {
+          *buf_ptr = '\0';
+          return buf;
+        }
+
+        return NULL;
+      }
+
+      pbuf->remaining = pbuf->buflen - nread;
+      pbuf->current = pbuf->buf;
+
+      pr_event_generate("mod_proxy.ctrl-read", pbuf);
+    }
+
+    nread = pbuf->buflen - pbuf->remaining;
+
+    /* Expensive copying of bytes while we look for the trailing LF. */
+    while (buflen > 0 &&
+           nread > 0 &&
+           *pbuf->current != '\n' &&
+           nread--) {
+      pr_signals_handle();
+
+      cp = *pbuf->current++;
+      pbuf->remaining++;
+      *buf_ptr++ = cp;
+      buflen--;
+    }
+
+    if (buflen > 0 &&
+        nread > 0 &&
+        *pbuf->current == '\n') {
+      buflen--;
+      nread--;
+      *buf_ptr++ = *pbuf->current++;
+      pbuf->remaining++;
+
+      saw_newline = TRUE;
+      break;
+    }
+
+    if (nread == 0) {
+      pbuf->current = NULL;
+    }
+  }
+
+  if (saw_newline == FALSE) {
+    /* If we haven't seen a newline, then assume the server is deliberately
+     * sending a too-long response, trying to exploit buffer sizes and make
+     * the proxy make some possibly bad assumptions.
+     */
+
+    errno = E2BIG;
+    return NULL;
+  }
+
+  *buf_ptr = '\0';
+  return buf;
+}
+
+/* XXX Need to handle multline responses here! */
+static pr_response_t *proxy_ftp_get_response(pool *p, char *buf,
+    size_t buflen) {
+  char *ptr;
+  pr_response_t *resp;
+  int resp_code;
+
+  /* Remove any trailing CRs, LFs. */
+  while (buflen > 0 &&
+         (buf[buflen-1] == '\r' || buf[buflen-1] == '\n')) {
+    pr_signals_handle();
+
+    buf[buflen-1] = '\0';
+    buflen--;
+  }
+
+  if (buflen < 4) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  /* The first three characters MUST be numeric, followed by a space.  Anything
+   * else is nonconformant with RFC 959.
+   */
+  if (isdigit((int) buf[0]) == 0 ||
+      isdigit((int) buf[1]) == 0 ||
+      isdigit((int) buf[2]) == 0 ||
+      isspace((int) buf[3]) == 0) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  resp = (pr_response_t *) pcalloc(p, sizeof(pr_response_t));
+
+  ptr = &(buf[3]);
+  *ptr = '\0';
+  resp_code = atoi(buf);
+  if (resp_code < 100 ||
+      resp_code >= 700) {
+    /* Outside of the expected/defined FTP response code range. */
+    pr_log_pri(PR_LOG_NOTICE, "invalid FTP response code %d received",
+      resp_code);
+    errno = EINVAL;
+    return NULL;
+  }
+
+  resp->num = pstrdup(p, buf);
+  *ptr = ' ';
+
+  if (buflen > 4) {
+    resp->msg = pstrdup(p, ptr + 1);
+
+  } else {
+    resp->msg = "";
+  }
+
+  return resp;
+}
+
+struct proxy_ftp_client *proxy_ftp_open(pool *p, pr_netaddr_t *remote_addr,
+    unsigned int remote_port) {
+  struct proxy_ftp_client *ftp = NULL;
+  pool *sub_pool;
+
+  if (p == NULL ||
+      remote_addr == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  sub_pool = make_sub_pool(p);
+  pr_pool_tag(sub_pool, "FTP client pool");
+
+  ftp = pcalloc(sub_pool, sizeof(struct proxy_ftp_client));
+  ftp->client_pool = sub_pool;
+  ftp->protocol = "ftp";
+  ftp->remote_addr = remote_addr;
+  ftp->remote_port = remote_port;
+
+  return ftp;
+}
+
+void proxy_ftp_close(struct proxy_ftp_client **ftp) {
+  if (ftp == NULL ||
+      *ftp == NULL) {
+    return;
+  }
+
+  if ((*ftp)->ctrl_conn != NULL) {
+    pr_inet_close((*ftp)->client_pool, (*ftp)->ctrl_conn);
+    (*ftp)->ctrl_conn = NULL;
+  }
+
+  if ((*ftp)->data_conn != NULL) {
+    pr_inet_close((*ftp)->client_pool, (*ftp)->data_conn);
+    (*ftp)->data_conn = NULL;
+  }
+
+  /* XXX How to close the ftp->proxy_client member? */
+
+  destroy_pool((*ftp)->client_pool);
+  *ftp = NULL;
 }
 
 void pr_signals_handle(void) {
@@ -61,6 +275,11 @@ void pr_signals_handle(void) {
     tv.tv_usec = (interval_usecs - (tv.tv_sec * 1000000));
 
     pr_timer_usleep(interval_usecs);
+  }
+
+  if (recvd_signal_flags == 0) {
+    table_handling_signal(FALSE);
+    return;
   }
 
   while (recvd_signal_flags & RECEIVED_SIG_ALRM) {
@@ -78,7 +297,7 @@ int main(int argc, char *argv[]) {
   pool *p;
   const char *remote_name;
   pr_netaddr_t *remote_addr;
-  conn_t *client_conn, *ctrl_conn, *data_conn;
+  conn_t *client_conn, *ctrl_conn;
   int remote_port, res, timerno;
   char buf[1024];
 
@@ -118,7 +337,7 @@ int main(int argc, char *argv[]) {
     return 1;
   } 
 
-  remote_port = 23;
+  remote_port = 21;
  
   fprintf(stdout, "Resolved name '%s' to IP address '%s'\n", remote_name,
     pr_netaddr_get_ipstr(remote_addr));
@@ -230,7 +449,7 @@ int main(int argc, char *argv[]) {
     remote_port, pr_netaddr_get_ipstr(client_conn->local_addr),
     ntohs(pr_netaddr_get_port(client_conn->local_addr)));
 
-  ctrl_conn = pr_inet_openrw(p, client_conn, NULL, PR_NETIO_STRM_OTHR,
+  ctrl_conn = pr_inet_openrw(p, client_conn, NULL, PR_NETIO_STRM_CTRL,
     -1, -1, -1, FALSE);
   if (ctrl_conn == NULL) {
     fprintf(stderr, "Error opening control connection: %s\n", strerror(errno));
@@ -242,30 +461,131 @@ int main(int argc, char *argv[]) {
 
   fprintf(stdout, "Reading response from %s:%d\n", remote_name, remote_port);
 
-  /* Read the response */
-  memset(buf, '\0', sizeof(buf));
-
-  /* XXX We need to write our own version of netio_telnet_gets(), with
-   * the buffering to handle reassembly of a full FTP response out of
-   * multiple TCP packets.  Not sure why the existing netio_telnet_gets()
-   * is not sufficient.  But we don't need the handling of Telnet codes
-   * in our reading.  But DO generate the 'core.ctrl-read' event, so that
-   * any event listeners get a chance to process the data we've received.
-   * (Or maybe use 'mod_proxy.server-read', and differentiate between
-   * client and server reads/writes?)
+  /* We have our own version of netio_telnet_gets(), with the buffering to
+   * handle reassembly of a full FTP response out of multiple TCP packets,
+   * and without the handling of Telnet codes.
    */
-  if (pr_netio_read(ctrl_conn->instrm, buf, sizeof(buf)-1, 5) < 0) {
+
+  /* Read the initial banner/response. */
+  memset(buf, '\0', sizeof(buf));
+  if (proxy_ftp_telnet_gets(buf, sizeof(buf)-1, ctrl_conn->instrm) == NULL) {
     fprintf(stderr, "Error reading response from server: %s\n",
       strerror(errno));
 
   } else {
-    fprintf(stdout, "Response: \"%s\"\n", buf);
+    pr_response_t *resp;
+    size_t buflen;
+
+    buflen = strlen(buf);
+    resp = proxy_ftp_get_response(p, buf, buflen);
+    if (resp == NULL) {
+      fprintf(stderr, "Error parsing response from server: %s\n",
+        strerror(errno));
+    }
+
+    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
   }
+
+  /* SYST */
+  res = pr_netio_printf(ctrl_conn->outstrm, "%s\r\n", C_SYST);
+  if (res < 0) {
+    fprintf(stderr, "Error writing command to server: %s", strerror(errno));
+  }
+
+  memset(buf, '\0', sizeof(buf));
+  if (proxy_ftp_telnet_gets(buf, sizeof(buf)-1, ctrl_conn->instrm) == NULL) {
+    fprintf(stderr, "Error reading response from server: %s\n",
+      strerror(errno));
+
+  } else {
+    pr_response_t *resp;
+    size_t buflen;
+
+    buflen = strlen(buf);
+    resp = proxy_ftp_get_response(p, buf, buflen);
+    if (resp == NULL) {
+      fprintf(stderr, "Error parsing response from server: %s\n",
+        strerror(errno));
+    }
+
+    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
+  }
+
+  /* PWD */
+  res = pr_netio_printf(ctrl_conn->outstrm, "%s\r\n", C_PWD);
+  if (res < 0) {
+    fprintf(stderr, "Error writing command to server: %s", strerror(errno));
+  }
+
+  memset(buf, '\0', sizeof(buf));
+  if (proxy_ftp_telnet_gets(buf, sizeof(buf)-1, ctrl_conn->instrm) == NULL) {
+    fprintf(stderr, "Error reading response from server: %s\n",
+      strerror(errno));
+
+  } else {
+    pr_response_t *resp;
+    size_t buflen;
+
+    buflen = strlen(buf);
+    resp = proxy_ftp_get_response(p, buf, buflen);
+    if (resp == NULL) {
+      fprintf(stderr, "Error parsing response from server: %s\n",
+        strerror(errno));
+    }
+
+    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
+  }
+
+#if 0
+  /* FEAT */
+  res = pr_netio_printf(ctrl_conn->outstrm, "%s\r\n", C_FEAT);
+  if (res < 0) {
+    fprintf(stderr, "Error writing command to server: %s", strerror(errno));
+  }
+
+  memset(buf, '\0', sizeof(buf));
+  if (proxy_ftp_telnet_gets(buf, sizeof(buf)-1, ctrl_conn->instrm) == NULL) {
+    fprintf(stderr, "Error reading response from server: %s\n",
+      strerror(errno));
+
+  } else {
+    pr_response_t *resp;
+    size_t buflen;
+
+    buflen = strlen(buf);
+    resp = proxy_ftp_get_response(p, buf, buflen);
+    if (resp == NULL) {
+      fprintf(stderr, "Error parsing response from server: %s\n",
+        strerror(errno));
+    }
+
+    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
+  }
+#endif
 
   /* Disconnect */
   res = pr_netio_printf(ctrl_conn->outstrm, "%s\r\n", C_QUIT);
   if (res < 0) {
     fprintf(stderr, "Error writing command to server: %s", strerror(errno));
+  }
+
+  memset(buf, '\0', sizeof(buf));
+  if (proxy_ftp_telnet_gets(buf, sizeof(buf)-1, ctrl_conn->instrm) == NULL) {
+    fprintf(stderr, "Error reading response from server: %s\n",
+      strerror(errno));
+
+  } else {
+    pr_response_t *resp;
+    size_t buflen;
+
+    buflen = strlen(buf);
+    resp = proxy_ftp_get_response(p, buf, buflen);
+    if (resp == NULL) {
+      fprintf(stderr, "Error parsing response from server: %s\n",
+        strerror(errno));
+    }
+
+    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
   }
 
   pr_inet_close(p, ctrl_conn);
