@@ -184,6 +184,10 @@ Links/Articles:
 
   http://blog.cryptographyengineering.com/2012/03/how-do-interception-proxies-fail.html
 
+  ftpcluster:
+    http://www.awk-scripting.de/cluster/
+      Uses different cluster server addresses in PORT/PASV, and FXP among
+      cluster nodes.  Interesting idea.
 Goals
 
   Contrast with Squid, Apache mod_proxy, others
