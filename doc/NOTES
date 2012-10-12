@@ -202,3 +202,10 @@ Testing
   IO::Socket::SecureSocks
   URI::Socks
   Net::Proxy::Type
+
+Need handle cases like:
+
+  client --> proxy <--> SOCKS/HTTP proxy <--> server
+
+i.e. where the proxy needs to be able to tunnel its connections through
+SOCKS/HTTP proxies.
