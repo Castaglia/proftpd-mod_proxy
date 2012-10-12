@@ -159,14 +159,16 @@ static char *proxy_ftp_telnet_gets(char *buf, size_t buflen,
   return buf;
 }
 
-/* XXX Now I need matching proxy_ftp_send_data/proxy_ftp_recv_data functions,
+/* XXX Now I need matching proxy_ftp_data_send/proxy_ftp_data_recv functions,
  * for data transfers.
  *
  * To multiplex betwen calling recv_resp and recv_data, would need a select(2)
  * on the fds (ctrl and data) for readability...
+ *
+ * Eventually need proxy_ftp_ctrl_recv_cmd/proxy_ftp_ctrl_send_resp, too.
  */
 
-static int proxy_ftp_send_cmd(pool *p, conn_t *ctrl_conn, const char *fmt,
+static int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *ctrl_conn, const char *fmt,
     ...) {
   va_list msg;
   int res;
@@ -178,7 +180,7 @@ static int proxy_ftp_send_cmd(pool *p, conn_t *ctrl_conn, const char *fmt,
   return res;
 }
 
-static pr_response_t *proxy_ftp_recv_resp(pool *p, conn_t *ctrl_conn) {
+static pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn) {
   char buf[PR_TUNABLE_BUFFER_SIZE];
   pr_response_t *resp = NULL;
 
@@ -337,6 +339,81 @@ static pr_response_t *proxy_ftp_recv_resp(pool *p, conn_t *ctrl_conn) {
   return resp;
 }
 
+static int proxy_ftp_data_recv(pool *p, conn_t *ctrl_conn, conn_t *data_conn) {
+  int res = 0;
+  conn_t *server_conn;
+
+  server_conn = pr_inet_accept(p, data_conn, ctrl_conn, -1, -1, FALSE);
+  if (server_conn != NULL) {
+    int nread;
+    pr_buffer_t *pbuf = NULL;
+
+    if (data_conn->instrm->strm_buf != NULL) {
+      pbuf = data_conn->instrm->strm_buf;
+
+    } else {
+      pbuf = netio_buffer_alloc(data_conn->instrm);
+    }
+
+    pr_inet_set_nonblock(p, server_conn);
+
+    pr_log_debug(DEBUG0, "active data connection opened - local  : %s:%d",
+      pr_netaddr_get_ipstr(server_conn->local_addr), server_conn->local_port);
+    pr_log_debug(DEBUG0, "active data connection opened - remote : %s:%d",
+      pr_netaddr_get_ipstr(server_conn->remote_addr), server_conn->remote_port);
+
+    nread = pr_netio_read(server_conn->instrm, pbuf->buf, pbuf->buflen, 1);
+    if (nread == 0) {
+      /* EOF */
+      return 0;
+    }
+
+    if (nread < 0) {
+      return -1;
+    }
+
+    while (nread > 0 ||
+           errno == EAGAIN) {
+
+      if (nread > 0) {
+fprintf(stderr, "received %d bytes of data...\n", nread);
+        res += nread;
+
+        pr_signals_handle();
+        pr_event_generate("mod_proxy.data-read", pbuf);
+
+        fprintf(stdout, "%.*s\n", nread, pbuf->buf);
+      }
+
+fprintf(stderr, "waiting for more data...\n");
+/*
+      nread = pr_netio_read(data_conn->instrm, pbuf->buf, pbuf->buflen, 1);
+*/
+      break; 
+    }
+
+    if (nread == 0) {
+      /* EOF */
+      return 0;
+    }
+
+    if (nread < 0) {
+      return -1;
+    }
+
+  } else {
+    int xerrno = errno;
+
+    pr_trace_msg("proxy", 3,
+      "error accepting remote connection for data transfer: %s",
+      strerror(xerrno));
+    errno = xerrno;
+    res = -1;
+  }
+
+  return res;
+}
+
 struct proxy_ftp_client *proxy_ftp_open(pool *p, pr_netaddr_t *remote_addr,
     unsigned int remote_port) {
   struct proxy_ftp_client *ftp = NULL;
@@ -354,6 +431,11 @@ struct proxy_ftp_client *proxy_ftp_open(pool *p, pr_netaddr_t *remote_addr,
   ftp = pcalloc(sub_pool, sizeof(struct proxy_ftp_client));
   ftp->client_pool = sub_pool;
   ftp->protocol = "ftp";
+
+  /* XXX */
+#if 0
+  ftp->local_addr = local_addr;
+#endif
   ftp->remote_addr = remote_addr;
   ftp->remote_port = remote_port;
 
@@ -414,9 +496,11 @@ void pr_signals_handle(void) {
 
 int main(int argc, char *argv[]) {
   pool *p;
-  const char *remote_name;
-  pr_netaddr_t *remote_addr;
-  conn_t *client_conn, *ctrl_conn;
+  const char *remote_name, *local_name;
+  char *data_addr, *ptr;
+  size_t data_addrlen;
+  pr_netaddr_t *remote_addr, *local_addr;
+  conn_t *client_conn, *ctrl_conn, *data_conn;
   int remote_port, res, timerno;
   pr_response_t *resp;
 
@@ -446,8 +530,19 @@ int main(int argc, char *argv[]) {
   p = make_sub_pool(permanent_pool);
   pr_pool_tag(p, "FTP Client Pool");
 
-  remote_name = "ftp.proftpd.org";
+  local_name = pr_netaddr_get_localaddr_str(p);
+  local_addr = pr_netaddr_get_addr(p, local_name, NULL);
+  if (local_addr == NULL) {
+    fprintf(stderr, "Failed to get addr for '%s': %s\n", local_name,
+      strerror(errno));
+    destroy_pool(p);
+    return 1;
+  }
 
+  fprintf(stdout, "Resolved local name '%s' to IP address '%s'\n", local_name,
+    pr_netaddr_get_ipstr(local_addr));
+
+  remote_name = "ftp.proftpd.org";
   remote_addr = pr_netaddr_get_addr(p, remote_name, NULL);
   if (remote_addr == NULL) {
     fprintf(stderr, "Failed to get addr for '%s': %s\n", remote_name,
@@ -458,7 +553,7 @@ int main(int argc, char *argv[]) {
 
   remote_port = 21;
  
-  fprintf(stdout, "Resolved name '%s' to IP address '%s'\n", remote_name,
+  fprintf(stdout, "Resolved remote name '%s' to IP address '%s'\n", remote_name,
     pr_netaddr_get_ipstr(remote_addr));
 
   timerno = pr_timer_add(5, -1, NULL, connect_timeout_cb,
@@ -586,7 +681,7 @@ int main(int argc, char *argv[]) {
    */
 
   /* Read the initial banner/response. */
-  resp = proxy_ftp_recv_resp(p, ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
   if (resp == NULL) {
     fprintf(stderr, "Error getting response from server: %s\n",
       strerror(errno));
@@ -597,12 +692,12 @@ int main(int argc, char *argv[]) {
 
   /* SYST */
   fprintf(stdout, "Command: \"%s\"\n", C_SYST);
-  res = proxy_ftp_send_cmd(p, ctrl_conn, "%s\r\n", C_SYST);
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s\r\n", C_SYST);
   if (res < 0) {
     fprintf(stderr, "Error sending command to server: %s", strerror(errno));
   }
 
-  resp = proxy_ftp_recv_resp(p, ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
   if (resp == NULL) {
     fprintf(stderr, "Error getting response from server: %s\n",
       strerror(errno));
@@ -613,12 +708,12 @@ int main(int argc, char *argv[]) {
 
   /* PWD */
   fprintf(stdout, "Command: \"%s\"\n", C_PWD);
-  res = proxy_ftp_send_cmd(p, ctrl_conn, "%s\r\n", C_PWD);
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s\r\n", C_PWD);
   if (res < 0) {
     fprintf(stderr, "Error sending command to server: %s", strerror(errno));
   }
 
-  resp = proxy_ftp_recv_resp(p, ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
   if (resp == NULL) {
     fprintf(stderr, "Error getting response from server: %s\n",
       strerror(errno));
@@ -629,12 +724,12 @@ int main(int argc, char *argv[]) {
 
   /* FEAT */
   fprintf(stdout, "Command: \"%s\"\n", C_FEAT);
-  res = proxy_ftp_send_cmd(p, ctrl_conn, "%s\r\n", C_FEAT);
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s\r\n", C_FEAT);
   if (res < 0) {
     fprintf(stderr, "Error sending command to server: %s", strerror(errno));
   }
 
-  resp = proxy_ftp_recv_resp(p, ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
   if (resp == NULL) {
     fprintf(stderr, "Error getting response from server: %s\n",
       strerror(errno));
@@ -645,12 +740,12 @@ int main(int argc, char *argv[]) {
 
   /* LANG */
   fprintf(stdout, "Command: \"%s\"\n", C_LANG);
-  res = proxy_ftp_send_cmd(p, ctrl_conn, "%s\r\n", C_LANG);
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s\r\n", C_LANG);
   if (res < 0) {
     fprintf(stderr, "Error sending command to server: %s", strerror(errno));
   }
 
-  resp = proxy_ftp_recv_resp(p, ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
   if (resp == NULL) {
     fprintf(stderr, "Error getting response from server: %s\n",
       strerror(errno));
@@ -661,12 +756,12 @@ int main(int argc, char *argv[]) {
 
   /* USER */
   fprintf(stdout, "Command: \"%s\"\n", C_USER);
-  res = proxy_ftp_send_cmd(p, ctrl_conn, "%s %s\r\n", C_USER, "ftp");
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s %s\r\n", C_USER, "ftp");
   if (res < 0) {
     fprintf(stderr, "Error sending command to server: %s", strerror(errno));
   }
 
-  resp = proxy_ftp_recv_resp(p, ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
   if (resp == NULL) {
     fprintf(stderr, "Error getting response from server: %s\n",
       strerror(errno));
@@ -677,12 +772,106 @@ int main(int argc, char *argv[]) {
 
   /* PASS */
   fprintf(stdout, "Command: \"%s\"\n", C_PASS);
-  res = proxy_ftp_send_cmd(p, ctrl_conn, "%s %s\r\n", C_PASS, "ftp@nospam.org");
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s %s\r\n", C_PASS,
+    "ftp@nospam.org");
   if (res < 0) {
     fprintf(stderr, "Error sending command to server: %s", strerror(errno));
   } 
   
-  resp = proxy_ftp_recv_resp(p, ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
+  if (resp == NULL) {
+    fprintf(stderr, "Error getting response from server: %s\n",
+      strerror(errno));
+
+  } else {
+    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
+  }
+
+  /* PORT */
+  data_conn = pr_inet_create_conn(p, -1, local_addr, INPORT_ANY, FALSE);
+  if (data_conn == NULL) {
+    fprintf(stderr, "Error opening data connection: %s\n", strerror(errno));
+
+    pr_inet_close(p, client_conn);
+    destroy_pool(p);
+    return 1;
+  }
+
+  /* "aaa,bbb,ccc,ddd,xxx,yyy", plus NUL. */
+  data_addrlen = (4 * 3) + (3 * 1) + (2 * 3) + 1 + 1;
+  data_addr = pcalloc(p, data_addrlen);
+  snprintf(data_addr, data_addrlen-1, "%s,%u,%u",
+    pr_netaddr_get_ipstr(data_conn->local_addr),
+    (data_conn->local_port >> 8) & 255, data_conn->local_port & 255);
+
+  /* Change '.' to ',', for sending to the server, per RFC 959 spec. */
+  for (ptr = data_addr; *ptr; ptr++) {
+    if (*ptr == '.') {
+      *ptr = ',';
+    }
+  }
+
+  /* XXX Need to set socket options on data conn */
+
+  pr_inet_set_block(p, data_conn);
+  if (pr_inet_listen(p, data_conn, 1, 0) < 0) {
+    fprintf(stderr, "Error listening to %s: %s\n", data_addr, strerror(errno));
+
+    pr_inet_close(p, client_conn);
+    destroy_pool(p);
+    return 1;
+  }
+
+  data_conn->instrm = pr_netio_open(p, PR_NETIO_STRM_DATA, data_conn->listen_fd,
+    PR_NETIO_IO_RD);
+
+  fprintf(stdout, "Command: \"%s\"\n", C_PORT);
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s %s\r\n", C_PORT, data_addr);
+  if (res < 0) {
+    fprintf(stderr, "Error sending command to server: %s", strerror(errno));
+  } 
+
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
+  if (resp == NULL) {
+    fprintf(stderr, "Error getting response from server: %s\n",
+      strerror(errno));
+
+  } else {
+    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
+  }
+
+  /* LIST */
+  fprintf(stdout, "Command: \"%s\"\n", C_LIST);
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s\r\n", C_LIST);
+  if (res < 0) {
+    fprintf(stderr, "Error sending command to server: %s", strerror(errno));
+  } 
+
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
+  if (resp == NULL) {
+    fprintf(stderr, "Error getting response from server: %s\n",
+      strerror(errno));
+
+  } else {
+    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
+  }
+
+  /* XXX Here is where we need to do a select() for readability, on both
+   * the ctrl and data conn fds.
+   */
+
+  res = proxy_ftp_data_recv(p, ctrl_conn, data_conn);
+  if (res < 0) {
+    fprintf(stderr, "Error receiving data from server: %s\n", strerror(errno));
+
+  } else {
+    fprintf(stdout, "Received %d bytes of data\n", res);
+  }
+
+  pr_inet_close(p, data_conn);
+  data_conn = NULL;
+
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
   if (resp == NULL) {
     fprintf(stderr, "Error getting response from server: %s\n",
       strerror(errno));
@@ -693,12 +882,12 @@ int main(int argc, char *argv[]) {
 
   /* Disconnect */
   fprintf(stdout, "Command: \"%s\"\n", C_QUIT);
-  res = proxy_ftp_send_cmd(p, ctrl_conn, "%s\r\n", C_QUIT);
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s\r\n", C_QUIT);
   if (res < 0) {
     fprintf(stderr, "Error sending command to server: %s", strerror(errno));
   }
 
-  resp = proxy_ftp_recv_resp(p, ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
   if (resp == NULL) {
     fprintf(stderr, "Error getting response from server: %s\n",
       strerror(errno));
