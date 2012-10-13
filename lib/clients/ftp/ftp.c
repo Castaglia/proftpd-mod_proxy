@@ -162,9 +162,6 @@ static char *proxy_ftp_telnet_gets(char *buf, size_t buflen,
 /* XXX Now I need matching proxy_ftp_data_send/proxy_ftp_data_recv functions,
  * for data transfers.
  *
- * To multiplex betwen calling recv_resp and recv_data, would need a select(2)
- * on the fds (ctrl and data) for readability...
- *
  * Eventually need proxy_ftp_ctrl_recv_cmd/proxy_ftp_ctrl_send_resp, too.
  */
 
@@ -339,78 +336,29 @@ static pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn) {
   return resp;
 }
 
-static int proxy_ftp_data_recv(pool *p, conn_t *ctrl_conn, conn_t *data_conn) {
-  int res = 0;
-  conn_t *server_conn;
+static int proxy_ftp_data_recv(pool *p, conn_t *data_conn) {
+  int res = -1;
+  int nread;
+  pr_buffer_t *pbuf = NULL;
 
-  server_conn = pr_inet_accept(p, data_conn, ctrl_conn, -1, -1, FALSE);
-  if (server_conn != NULL) {
-    int nread;
-    pr_buffer_t *pbuf = NULL;
-
-    if (data_conn->instrm->strm_buf != NULL) {
-      pbuf = data_conn->instrm->strm_buf;
-
-    } else {
-      pbuf = netio_buffer_alloc(data_conn->instrm);
-    }
-
-    pr_inet_set_nonblock(p, server_conn);
-
-    pr_log_debug(DEBUG0, "active data connection opened - local  : %s:%d",
-      pr_netaddr_get_ipstr(server_conn->local_addr), server_conn->local_port);
-    pr_log_debug(DEBUG0, "active data connection opened - remote : %s:%d",
-      pr_netaddr_get_ipstr(server_conn->remote_addr), server_conn->remote_port);
-
-    nread = pr_netio_read(server_conn->instrm, pbuf->buf, pbuf->buflen, 1);
-    if (nread == 0) {
-      /* EOF */
-      return 0;
-    }
-
-    if (nread < 0) {
-      return -1;
-    }
-
-    while (nread > 0 ||
-           errno == EAGAIN) {
-
-      if (nread > 0) {
-fprintf(stderr, "received %d bytes of data...\n", nread);
-        res += nread;
-
-        pr_signals_handle();
-        pr_event_generate("mod_proxy.data-read", pbuf);
-
-        fprintf(stdout, "%.*s\n", nread, pbuf->buf);
-      }
-
-fprintf(stderr, "waiting for more data...\n");
-/*
-      nread = pr_netio_read(data_conn->instrm, pbuf->buf, pbuf->buflen, 1);
-*/
-      break; 
-    }
-
-    if (nread == 0) {
-      /* EOF */
-      return 0;
-    }
-
-    if (nread < 0) {
-      return -1;
-    }
+  if (data_conn->instrm->strm_buf != NULL) {
+    pbuf = data_conn->instrm->strm_buf;
 
   } else {
-    int xerrno = errno;
-
-    pr_trace_msg("proxy", 3,
-      "error accepting remote connection for data transfer: %s",
-      strerror(xerrno));
-    errno = xerrno;
-    res = -1;
+    pbuf = netio_buffer_alloc(data_conn->instrm);
   }
 
+  nread = pr_netio_read(data_conn->instrm, pbuf->buf, pbuf->buflen, 1);
+  if (nread <= 0) {
+    return nread;
+  }
+
+  res = nread;
+
+  pr_signals_handle();
+  pr_event_generate("mod_proxy.data-read", pbuf);
+
+  fprintf(stdout, "%.*s\n", nread, pbuf->buf);
   return res;
 }
 
@@ -500,7 +448,7 @@ int main(int argc, char *argv[]) {
   char *data_addr, *ptr;
   size_t data_addrlen;
   pr_netaddr_t *remote_addr, *local_addr;
-  conn_t *client_conn, *ctrl_conn, *data_conn;
+  conn_t *client_conn, *ctrl_conn, *data_conn, *xfer_conn;
   int remote_port, res, timerno;
   pr_response_t *resp;
 
@@ -852,32 +800,124 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "Error getting response from server: %s\n",
       strerror(errno));
 
+    /* XXX Note that if the server said 4xx/5xx here, we would NOT
+     * be accepting a data connection.
+     */
+
   } else {
     fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
   }
 
-  /* XXX Here is where we need to do a select() for readability, on both
-   * the ctrl and data conn fds.
-   */
+  xfer_conn = pr_inet_accept(p, data_conn, ctrl_conn, -1, -1, FALSE);
 
-  res = proxy_ftp_data_recv(p, ctrl_conn, data_conn);
-  if (res < 0) {
-    fprintf(stderr, "Error receiving data from server: %s\n", strerror(errno));
-
-  } else {
-    fprintf(stdout, "Received %d bytes of data\n", res);
-  }
-
+  /* Now we can close our listening socket. */
   pr_inet_close(p, data_conn);
-  data_conn = NULL;
+  data_conn = xfer_conn;
+  xfer_conn = NULL;
 
-  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
-  if (resp == NULL) {
-    fprintf(stderr, "Error getting response from server: %s\n",
-      strerror(errno));
+  pr_inet_set_nonblock(p, data_conn);
 
-  } else {
-    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
+  pr_log_debug(DEBUG0, "active data connection opened - local  : %s:%d",
+    pr_netaddr_get_ipstr(data_conn->local_addr), data_conn->local_port);
+  pr_log_debug(DEBUG0, "active data connection opened - remote : %s:%d",
+    pr_netaddr_get_ipstr(data_conn->remote_addr), data_conn->remote_port);
+
+  /* We won't be writing to this connection, so shutdown that write half.
+   *
+   * Although in practice, we may NOT want to do this, e.g. to send the
+   * TCP URG signal out-of-band, to indicate a failed/aborted transfer.
+   */
+  if (shutdown(PR_NETIO_FD(data_conn->instrm), SHUT_WR) < 0) {
+    fprintf(stderr, "error calling shutdown(WR) on fd %d: %s\n",
+      PR_NETIO_FD(data_conn->instrm), strerror(errno));
+  }
+
+  while (TRUE) {
+    fd_set rfds;
+    struct timeval tv;
+    int maxfd = -1, timeout = 15;
+
+    tv.tv_sec = timeout;
+    tv.tv_usec = 0;
+
+    pr_signals_handle();
+
+    FD_ZERO(&rfds);
+    FD_SET(PR_NETIO_FD(ctrl_conn->instrm), &rfds);
+    if (PR_NETIO_FD(ctrl_conn->instrm) > maxfd) {
+      maxfd = PR_NETIO_FD(ctrl_conn->instrm);
+    }
+
+    if (data_conn != NULL) {
+      FD_SET(PR_NETIO_FD(data_conn->instrm), &rfds);
+      if (PR_NETIO_FD(data_conn->instrm) > maxfd) {
+        maxfd = PR_NETIO_FD(data_conn->instrm);
+      }
+    }
+
+    res = select(maxfd + 1, &rfds, NULL, NULL, &tv);
+    if (res < 0) {
+      if (errno == EINTR) {
+        pr_signals_handle();
+        continue;
+      }
+
+      fprintf(stderr, "error calling select(2): %s", strerror(errno));
+      break;
+    }
+
+    if (res == 0) {
+      fprintf(stderr, "timed out waiting for readability on ctrl/data conns, trying again\n");
+      continue;
+    }
+
+    if (data_conn != NULL) {
+      if (FD_ISSET(PR_NETIO_FD(data_conn->instrm), &rfds)) {
+        /* Some data arrived on the data connection... */
+
+        res = proxy_ftp_data_recv(p, data_conn);
+        if (res < 0) {
+          fprintf(stderr, "Error receiving data from server: %s\n",
+            strerror(errno));
+
+        } else {
+          if (res == 0) {
+            /* EOF on the data connection; close it. */
+            pr_inet_close(p, data_conn);
+            data_conn = NULL;
+
+          } else {
+            fprintf(stdout, "Received %d bytes of data\n", res);
+          }
+        }
+      }
+    }
+
+    if (FD_ISSET(PR_NETIO_FD(ctrl_conn->instrm), &rfds)) {
+      /* Some data arrived on the ctrl connection... */
+
+      resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
+      if (resp == NULL) {
+        fprintf(stderr, "Error getting response from server: %s\n",
+          strerror(errno));
+
+      } else {
+        fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
+
+        /* If we get a 1xx response here, keep going.  Otherwise, we're
+         * done with this data transfer.
+         */
+        if (data_conn == NULL ||
+            (resp->num)[0] != '1') {
+          break;
+        }
+      }
+    }
+  }
+
+  if (data_conn != NULL) {
+    pr_inet_close(p, data_conn);
+    data_conn = NULL;
   }
 
   /* Disconnect */
