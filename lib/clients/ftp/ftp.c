@@ -30,6 +30,11 @@ session_t session;
 module *static_modules[] = { NULL };
 module *loaded_modules = NULL;
 
+#define USE_PORT	1
+#define USE_PASV	2
+#define USE_EPRT	3
+#define USE_EPSV	4
+
 volatile unsigned int recvd_signal_flags = 0;
 
 static int connect_timeout_reached = FALSE;
@@ -362,6 +367,520 @@ static int proxy_ftp_data_recv(pool *p, conn_t *data_conn) {
   return res;
 }
 
+static conn_t *proxy_ftp_eprt(pool *p, conn_t *ctrl_conn,
+    pr_netaddr_t *local_addr) {
+  conn_t *data_conn;
+  char *data_addr;
+  size_t data_addrlen;
+  int res;
+  pr_response_t *resp;
+
+  /* EPRT */
+  data_conn = pr_inet_create_conn(p, -1, local_addr, INPORT_ANY, FALSE);
+  if (data_conn == NULL) {
+    fprintf(stderr, "Error opening data connection: %s\n", strerror(errno));
+    return NULL;
+  }
+
+  /* For IPv4:
+   *
+   * "|1|<dotted-quad>|<port>|"
+   *
+   * XXX Need to add support for IPv6.
+   */
+
+  data_addrlen = (4 + 1) + 1 + (4 * 3) + (3 * 1) + 5 + 1;
+  data_addr = pcalloc(p, data_addrlen);
+  snprintf(data_addr, data_addrlen-1, "|1|%s|%u|",
+    pr_netaddr_get_ipstr(data_conn->local_addr), data_conn->local_port);
+
+  /* XXX Need to set socket options on data conn */
+
+  pr_inet_set_block(p, data_conn);
+  if (pr_inet_listen(p, data_conn, 1, 0) < 0) {
+    fprintf(stderr, "Error listening to %s: %s\n", data_addr, strerror(errno));
+    return NULL;
+  }
+
+  data_conn->instrm = pr_netio_open(p, PR_NETIO_STRM_DATA, data_conn->listen_fd,
+    PR_NETIO_IO_RD);
+
+  fprintf(stdout, "Command: \"%s %s\"\n", C_EPRT, data_addr);
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s %s\r\n", C_EPRT, data_addr);
+  if (res < 0) {
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
+  } 
+
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
+  if (resp == NULL) {
+    fprintf(stderr, "Error getting response from server: %s\n",
+      strerror(errno));
+
+  } else {
+    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
+  }
+
+  return data_conn;
+}
+
+static conn_t *proxy_ftp_epsv(pool *p, conn_t *ctrl_conn,
+    pr_netaddr_t *local_addr) {
+  conn_t *data_conn;
+  char *ptr;
+  pr_netaddr_t *remote_addr;
+  int valid_response = FALSE, res;
+  pr_response_t *resp;
+  char delims[4];
+  unsigned int remote_port;
+
+  /* EPSV */
+  fprintf(stdout, "Command: \"%s\"\n", C_EPSV);
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s\r\n", C_EPSV);
+  if (res < 0) {
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
+  }
+
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
+  if (resp == NULL) {
+    fprintf(stderr, "Error getting response from server: %s\n",
+      strerror(errno));
+
+  } else {
+    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
+  }
+
+  /* Have to scan the response message for the encoded address/port to
+   * which we are to connect.  Note that we may see some strange formats
+   * for EPSV responses from FTP servers here.
+   *
+   * We can't predict where the expected address/port numbers start in the
+   * string, so start from the beginning.
+   *
+   * XXX Note that we SHOULD be able to handle:
+   *
+   *  |||port|
+   *  |1||port|
+   *  |1|<remote-address|<port>|
+   */
+  for (ptr = resp->msg; *ptr; ptr++) { 
+    if (sscanf(ptr, "%c%c%c%u%c",
+        &delims[0], &delims[1], &delims[2], &remote_port, &delims[3]) == 5) {
+      valid_response = TRUE;
+      break;
+    }
+  }
+
+  if (valid_response == FALSE) {
+    pr_trace_msg("proxy", 2, "unknown EPSV response format '%s'", resp->msg);
+    errno = EINVAL;
+    return NULL;
+  }
+
+  if (remote_port < 1024) {
+    pr_trace_msg("proxy", 1, "Refused EPSV port %u (below 1024)",
+      remote_port);
+    errno = EPERM;
+    return NULL;
+  }
+
+  remote_addr = pr_netaddr_dup(p, ctrl_conn->remote_addr);
+  pr_netaddr_set_port2(remote_addr, remote_port);
+
+  data_conn = pr_inet_create_conn(p, -1, local_addr, INPORT_ANY, TRUE);
+
+  /* XXX Need to set socket options on data conn */
+
+  pr_inet_set_block(p, data_conn);
+  if (pr_inet_connect(p, data_conn, remote_addr,
+      ntohs(pr_netaddr_get_port(remote_addr))) < 0) {
+    fprintf(stderr, "Unable to connect to %s:%u: %s\n",
+      pr_netaddr_get_ipstr(remote_addr),
+      ntohs(pr_netaddr_get_port(remote_addr)),
+      strerror(errno));
+    pr_inet_close(p, data_conn);
+    return NULL;
+  }
+
+  data_conn->instrm = pr_netio_open(p, PR_NETIO_STRM_DATA, data_conn->listen_fd,
+    PR_NETIO_IO_RD);
+  return data_conn;
+}
+
+static conn_t *proxy_ftp_pasv(pool *p, conn_t *ctrl_conn,
+    pr_netaddr_t *local_addr) {
+  conn_t *data_conn;
+  char *data_addr, *ptr;
+  size_t data_addrlen;
+  pr_netaddr_t *remote_addr;
+  int valid_response = FALSE, res;
+  pr_response_t *resp;
+  unsigned int addr_vals[4];
+  unsigned short port_vals[2];
+  unsigned short remote_port;
+
+  /* PASV */
+  fprintf(stdout, "Command: \"%s\"\n", C_PASV);
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s\r\n", C_PASV);
+  if (res < 0) {
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
+  }
+
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
+  if (resp == NULL) {
+    fprintf(stderr, "Error getting response from server: %s\n",
+      strerror(errno));
+
+  } else {
+    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
+  }
+
+  /* Have to scan the response message for the encoded address/port to
+   * which we are to connect.  Note that we may see some strange formats
+   * for PASV responses from FTP servers here.
+   *
+   * We can't predict where the expected address/port numbers start in the
+   * string, so start from the beginning.
+   */
+  for (ptr = resp->msg; *ptr; ptr++) { 
+    if (sscanf(ptr, "%u,%u,%u,%u,%hu,%hu",
+        &addr_vals[0], &addr_vals[1], &addr_vals[2], &addr_vals[3],
+        &port_vals[0], &port_vals[1]) == 6) {
+      valid_response = TRUE;
+      break;
+    }
+  }
+
+  if (valid_response == FALSE) {
+    pr_trace_msg("proxy", 2, "unknown PASV response format '%s'", resp->msg);
+    errno = EINVAL;
+    return NULL;
+  }
+
+  if (addr_vals[0] > 255 ||
+      addr_vals[1] > 255 ||
+      addr_vals[2] > 255 ||
+      addr_vals[3] > 255 ||
+      port_vals[0] > 255 ||
+      port_vals[1] > 255 ||
+      (addr_vals[0]|addr_vals[1]|addr_vals[2]|addr_vals[3]) == 0 ||
+      (port_vals[0]|port_vals[1]) == 0) {
+    pr_trace_msg("proxy", 1, "PASV response '%s' has invalid value(s)",
+      resp->msg);
+    errno = EPERM;
+    return NULL;
+  }
+
+  data_addrlen = (4 * 3) + (3 * 1) + 1;
+  data_addr = pcalloc(p, data_addrlen);
+  snprintf(data_addr, data_addrlen-1, "%u.%u.%u.%u", addr_vals[0], addr_vals[1],
+    addr_vals[2], addr_vals[3]);
+  remote_addr = pr_netaddr_get_addr(p, data_addr, NULL);
+  if (remote_addr == NULL) {
+    pr_trace_msg("proxy", 2, "unable to resolve '%s': %s", data_addr,
+      strerror(errno));
+    errno = EINVAL;
+    return NULL;
+  }
+
+  remote_port = ((port_vals[0] << 8) + port_vals[1]);
+  pr_netaddr_set_port2(remote_addr, remote_port);
+
+  /* Make sure that the given address matches the address to which we
+   * originally connected.
+   */
+
+#ifdef PR_USE_IPV6
+  if (pr_netaddr_use_ipv6()) {
+    /* XXX Add appropriate check here */
+  }
+#endif /* PR_USE_IPV6 */
+
+  if (pr_netaddr_cmp(remote_addr, ctrl_conn->remote_addr) != 0) {
+    pr_trace_msg("proxy", 1,
+      "Refused PASV address %s (address mismatch with %s)",
+      pr_netaddr_get_ipstr(remote_addr),
+      pr_netaddr_get_ipstr(ctrl_conn->remote_addr));
+    errno = EPERM;
+    return NULL;
+  }
+
+  if (remote_port < 1024) {
+    pr_trace_msg("proxy", 1, "Refused PASV port %hu (below 1024)",
+      remote_port);
+    errno = EPERM;
+    return NULL;
+  }
+
+  data_conn = pr_inet_create_conn(p, -1, local_addr, INPORT_ANY, TRUE);
+
+  /* XXX Need to set socket options on data conn */
+
+  pr_inet_set_block(p, data_conn);
+  if (pr_inet_connect(p, data_conn, remote_addr,
+      ntohs(pr_netaddr_get_port(remote_addr))) < 0) {
+    fprintf(stderr, "Unable to connect to %s:%u: %s\n",
+      pr_netaddr_get_ipstr(remote_addr),
+      ntohs(pr_netaddr_get_port(remote_addr)),
+      strerror(errno));
+    pr_inet_close(p, data_conn);
+    return NULL;
+  }
+
+  data_conn->instrm = pr_netio_open(p, PR_NETIO_STRM_DATA, data_conn->listen_fd,
+    PR_NETIO_IO_RD);
+  return data_conn;
+}
+
+static conn_t *proxy_ftp_port(pool *p, conn_t *ctrl_conn,
+    pr_netaddr_t *local_addr) {
+  conn_t *data_conn;
+  char *data_addr, *ptr;
+  size_t data_addrlen;
+  int res;
+  pr_response_t *resp;
+
+  /* PORT */
+  data_conn = pr_inet_create_conn(p, -1, local_addr, INPORT_ANY, FALSE);
+  if (data_conn == NULL) {
+    fprintf(stderr, "Error opening data connection: %s\n", strerror(errno));
+    return NULL;
+  }
+
+  /* "aaa,bbb,ccc,ddd,xxx,yyy", plus NUL. */
+  data_addrlen = (4 * 3) + (3 * 1) + (2 * 3) + 1 + 1;
+  data_addr = pcalloc(p, data_addrlen);
+  snprintf(data_addr, data_addrlen-1, "%s,%u,%u",
+    pr_netaddr_get_ipstr(data_conn->local_addr),
+    (data_conn->local_port >> 8) & 255, data_conn->local_port & 255);
+
+  /* Change '.' to ',', for sending to the server, per RFC 959 spec. */
+  for (ptr = data_addr; *ptr; ptr++) {
+    if (*ptr == '.') {
+      *ptr = ',';
+    }
+  }
+
+  /* XXX Need to set socket options on data conn */
+
+  pr_inet_set_block(p, data_conn);
+  if (pr_inet_listen(p, data_conn, 1, 0) < 0) {
+    fprintf(stderr, "Error listening to %s: %s\n", data_addr, strerror(errno));
+    return NULL;
+  }
+
+  data_conn->instrm = pr_netio_open(p, PR_NETIO_STRM_DATA, data_conn->listen_fd,
+    PR_NETIO_IO_RD);
+
+  fprintf(stdout, "Command: \"%s %s\"\n", C_PORT, data_addr);
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s %s\r\n", C_PORT, data_addr);
+  if (res < 0) {
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
+  } 
+
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
+  if (resp == NULL) {
+    fprintf(stderr, "Error getting response from server: %s\n",
+      strerror(errno));
+
+  } else {
+    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
+  }
+
+  return data_conn;
+}
+
+static int proxy_ftp_list(pool *p, conn_t *ctrl_conn, pr_netaddr_t *local_addr,
+    int xfer_type) {
+  conn_t *data_conn = NULL;
+  int res;
+  pr_response_t *resp;
+  const char *xfer_typestr;
+
+  switch (xfer_type) {
+    case USE_PORT:
+      data_conn = proxy_ftp_port(p, ctrl_conn, local_addr);
+      break;
+
+    case USE_PASV:
+      data_conn = proxy_ftp_pasv(p, ctrl_conn, local_addr);
+      break;
+
+    case USE_EPRT:
+      data_conn = proxy_ftp_eprt(p, ctrl_conn, local_addr);
+      break;
+
+    case USE_EPSV:
+      data_conn = proxy_ftp_epsv(p, ctrl_conn, local_addr);
+      break;
+
+    default:
+      errno = EINVAL;
+      return -1;
+  }
+
+  if (data_conn == NULL) {
+    return -1;
+  }
+
+  /* LIST */
+  fprintf(stdout, "Command: \"%s\"\n", C_LIST);
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s\r\n", C_LIST);
+  if (res < 0) {
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
+  } 
+
+  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
+  if (resp == NULL) {
+    fprintf(stderr, "Error getting response from server: %s\n",
+      strerror(errno));
+
+    pr_inet_close(p, data_conn);
+    return -1;
+
+  } else {
+    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
+
+    /* Note that if the server said 4xx/5xx here, we would NOT be accepting a
+     * data connection.
+     */
+    if (resp->num[0] == '4' ||
+        resp->num[0] == '5') {
+      pr_inet_close(p, data_conn);
+      errno = EPERM;
+      return -1;
+    }
+  }
+
+  switch (xfer_type) {
+    case USE_PORT:
+    case USE_EPRT: {
+      conn_t *xfer_conn;
+
+      xfer_typestr = "active";
+      xfer_conn = pr_inet_accept(p, data_conn, ctrl_conn, -1, -1, FALSE);
+
+      /* Now we can close our listening socket. */
+      pr_inet_close(p, data_conn);
+      data_conn = xfer_conn;
+      break;
+    }
+
+    case USE_PASV:
+    case USE_EPSV:
+      xfer_typestr = "passive";
+      break;
+  }
+
+  pr_inet_set_nonblock(p, data_conn);
+
+  pr_log_debug(DEBUG0, "%s data connection opened - local  : %s:%d",
+    xfer_typestr,
+    pr_netaddr_get_ipstr(data_conn->local_addr), data_conn->local_port);
+  pr_log_debug(DEBUG0, "%s data connection opened - remote : %s:%d",
+    xfer_typestr,
+    pr_netaddr_get_ipstr(data_conn->remote_addr), data_conn->remote_port);
+
+  /* We won't be writing to this connection, so shutdown that write half.
+   *
+   * Although in practice, we may NOT want to do this, e.g. to send the
+   * TCP URG signal out-of-band, to indicate a failed/aborted transfer.
+   */
+  if (shutdown(PR_NETIO_FD(data_conn->instrm), SHUT_WR) < 0) {
+    fprintf(stderr, "error calling shutdown(WR) on fd %d: %s\n",
+      PR_NETIO_FD(data_conn->instrm), strerror(errno));
+  }
+
+  while (TRUE) {
+    fd_set rfds;
+    struct timeval tv;
+    int maxfd = -1, timeout = 15;
+
+    tv.tv_sec = timeout;
+    tv.tv_usec = 0;
+
+    pr_signals_handle();
+
+    FD_ZERO(&rfds);
+    FD_SET(PR_NETIO_FD(ctrl_conn->instrm), &rfds);
+    if (PR_NETIO_FD(ctrl_conn->instrm) > maxfd) {
+      maxfd = PR_NETIO_FD(ctrl_conn->instrm);
+    }
+
+    if (data_conn != NULL) {
+      FD_SET(PR_NETIO_FD(data_conn->instrm), &rfds);
+      if (PR_NETIO_FD(data_conn->instrm) > maxfd) {
+        maxfd = PR_NETIO_FD(data_conn->instrm);
+      }
+    }
+
+    res = select(maxfd + 1, &rfds, NULL, NULL, &tv);
+    if (res < 0) {
+      if (errno == EINTR) {
+        pr_signals_handle();
+        continue;
+      }
+
+      fprintf(stderr, "error calling select(2): %s", strerror(errno));
+      break;
+    }
+
+    if (res == 0) {
+      fprintf(stderr, "timed out waiting for readability on ctrl/data conns, trying again\n");
+      continue;
+    }
+
+    if (data_conn != NULL) {
+      if (FD_ISSET(PR_NETIO_FD(data_conn->instrm), &rfds)) {
+        /* Some data arrived on the data connection... */
+
+        res = proxy_ftp_data_recv(p, data_conn);
+        if (res < 0) {
+          fprintf(stderr, "Error receiving data from server: %s\n",
+            strerror(errno));
+
+        } else {
+          if (res == 0) {
+            /* EOF on the data connection; close it. */
+            pr_inet_close(p, data_conn);
+            data_conn = NULL;
+
+          } else {
+            fprintf(stdout, "Received %d bytes of data\n", res);
+          }
+        }
+      }
+    }
+
+    if (FD_ISSET(PR_NETIO_FD(ctrl_conn->instrm), &rfds)) {
+      /* Some data arrived on the ctrl connection... */
+
+      resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
+      if (resp == NULL) {
+        fprintf(stderr, "Error getting response from server: %s\n",
+          strerror(errno));
+
+      } else {
+        fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
+
+        /* If we get a 1xx response here, keep going.  Otherwise, we're
+         * done with this data transfer.
+         */
+        if (data_conn == NULL ||
+            (resp->num)[0] != '1') {
+          break;
+        }
+      }
+    }
+  }
+
+  if (data_conn != NULL) {
+    pr_inet_close(p, data_conn);
+    data_conn = NULL;
+  }
+
+  return 0;
+}
+
 struct proxy_ftp_client *proxy_ftp_open(pool *p, pr_netaddr_t *remote_addr,
     unsigned int remote_port) {
   struct proxy_ftp_client *ftp = NULL;
@@ -445,10 +964,8 @@ void pr_signals_handle(void) {
 int main(int argc, char *argv[]) {
   pool *p;
   const char *remote_name, *local_name;
-  char *data_addr, *ptr;
-  size_t data_addrlen;
   pr_netaddr_t *remote_addr, *local_addr;
-  conn_t *client_conn, *ctrl_conn, *data_conn, *xfer_conn;
+  conn_t *client_conn, *ctrl_conn;
   int remote_port, res, timerno;
   pr_response_t *resp;
 
@@ -474,6 +991,7 @@ int main(int argc, char *argv[]) {
   log_stderr(TRUE);
   pr_trace_use_stderr(TRUE);
   pr_trace_set_levels("DEFAULT", 1, 20);
+  pr_trace_set_levels("proxy", 1, 20);
 
   p = make_sub_pool(permanent_pool);
   pr_pool_tag(p, "FTP Client Pool");
@@ -642,7 +1160,7 @@ int main(int argc, char *argv[]) {
   fprintf(stdout, "Command: \"%s\"\n", C_SYST);
   res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s\r\n", C_SYST);
   if (res < 0) {
-    fprintf(stderr, "Error sending command to server: %s", strerror(errno));
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
   }
 
   resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
@@ -658,7 +1176,7 @@ int main(int argc, char *argv[]) {
   fprintf(stdout, "Command: \"%s\"\n", C_PWD);
   res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s\r\n", C_PWD);
   if (res < 0) {
-    fprintf(stderr, "Error sending command to server: %s", strerror(errno));
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
   }
 
   resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
@@ -674,7 +1192,7 @@ int main(int argc, char *argv[]) {
   fprintf(stdout, "Command: \"%s\"\n", C_FEAT);
   res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s\r\n", C_FEAT);
   if (res < 0) {
-    fprintf(stderr, "Error sending command to server: %s", strerror(errno));
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
   }
 
   resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
@@ -690,7 +1208,7 @@ int main(int argc, char *argv[]) {
   fprintf(stdout, "Command: \"%s\"\n", C_LANG);
   res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s\r\n", C_LANG);
   if (res < 0) {
-    fprintf(stderr, "Error sending command to server: %s", strerror(errno));
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
   }
 
   resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
@@ -706,7 +1224,7 @@ int main(int argc, char *argv[]) {
   fprintf(stdout, "Command: \"%s\"\n", C_USER);
   res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s %s\r\n", C_USER, "ftp");
   if (res < 0) {
-    fprintf(stderr, "Error sending command to server: %s", strerror(errno));
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
   }
 
   resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
@@ -723,7 +1241,7 @@ int main(int argc, char *argv[]) {
   res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s %s\r\n", C_PASS,
     "ftp@nospam.org");
   if (res < 0) {
-    fprintf(stderr, "Error sending command to server: %s", strerror(errno));
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
   } 
   
   resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
@@ -735,196 +1253,37 @@ int main(int argc, char *argv[]) {
     fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
   }
 
-  /* PORT */
-  data_conn = pr_inet_create_conn(p, -1, local_addr, INPORT_ANY, FALSE);
-  if (data_conn == NULL) {
-    fprintf(stderr, "Error opening data connection: %s\n", strerror(errno));
-
-    pr_inet_close(p, client_conn);
-    destroy_pool(p);
-    return 1;
-  }
-
-  /* "aaa,bbb,ccc,ddd,xxx,yyy", plus NUL. */
-  data_addrlen = (4 * 3) + (3 * 1) + (2 * 3) + 1 + 1;
-  data_addr = pcalloc(p, data_addrlen);
-  snprintf(data_addr, data_addrlen-1, "%s,%u,%u",
-    pr_netaddr_get_ipstr(data_conn->local_addr),
-    (data_conn->local_port >> 8) & 255, data_conn->local_port & 255);
-
-  /* Change '.' to ',', for sending to the server, per RFC 959 spec. */
-  for (ptr = data_addr; *ptr; ptr++) {
-    if (*ptr == '.') {
-      *ptr = ',';
-    }
-  }
-
-  /* XXX Need to set socket options on data conn */
-
-  pr_inet_set_block(p, data_conn);
-  if (pr_inet_listen(p, data_conn, 1, 0) < 0) {
-    fprintf(stderr, "Error listening to %s: %s\n", data_addr, strerror(errno));
-
-    pr_inet_close(p, client_conn);
-    destroy_pool(p);
-    return 1;
-  }
-
-  data_conn->instrm = pr_netio_open(p, PR_NETIO_STRM_DATA, data_conn->listen_fd,
-    PR_NETIO_IO_RD);
-
-  fprintf(stdout, "Command: \"%s\"\n", C_PORT);
-  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s %s\r\n", C_PORT, data_addr);
+#if 0
+  /* LIST, active transfer via PORT */
+  res = proxy_ftp_list(p, ctrl_conn, local_addr, USE_PORT);
   if (res < 0) {
-    fprintf(stderr, "Error sending command to server: %s", strerror(errno));
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
   } 
 
-  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
-  if (resp == NULL) {
-    fprintf(stderr, "Error getting response from server: %s\n",
-      strerror(errno));
-
-  } else {
-    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
-  }
-
-  /* LIST */
-  fprintf(stdout, "Command: \"%s\"\n", C_LIST);
-  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s\r\n", C_LIST);
+  /* LIST, active transfer via EPRT */
+  res = proxy_ftp_list(p, ctrl_conn, local_addr, USE_EPRT);
   if (res < 0) {
-    fprintf(stderr, "Error sending command to server: %s", strerror(errno));
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
   } 
 
-  resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
-  if (resp == NULL) {
-    fprintf(stderr, "Error getting response from server: %s\n",
-      strerror(errno));
+  /* LIST, passive transfer via PASV */
+  res = proxy_ftp_list(p, ctrl_conn, local_addr, USE_PASV);
+  if (res < 0) {
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
+  } 
+#endif
 
-    /* XXX Note that if the server said 4xx/5xx here, we would NOT
-     * be accepting a data connection.
-     */
-
-  } else {
-    fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
-  }
-
-  xfer_conn = pr_inet_accept(p, data_conn, ctrl_conn, -1, -1, FALSE);
-
-  /* Now we can close our listening socket. */
-  pr_inet_close(p, data_conn);
-  data_conn = xfer_conn;
-  xfer_conn = NULL;
-
-  pr_inet_set_nonblock(p, data_conn);
-
-  pr_log_debug(DEBUG0, "active data connection opened - local  : %s:%d",
-    pr_netaddr_get_ipstr(data_conn->local_addr), data_conn->local_port);
-  pr_log_debug(DEBUG0, "active data connection opened - remote : %s:%d",
-    pr_netaddr_get_ipstr(data_conn->remote_addr), data_conn->remote_port);
-
-  /* We won't be writing to this connection, so shutdown that write half.
-   *
-   * Although in practice, we may NOT want to do this, e.g. to send the
-   * TCP URG signal out-of-band, to indicate a failed/aborted transfer.
-   */
-  if (shutdown(PR_NETIO_FD(data_conn->instrm), SHUT_WR) < 0) {
-    fprintf(stderr, "error calling shutdown(WR) on fd %d: %s\n",
-      PR_NETIO_FD(data_conn->instrm), strerror(errno));
-  }
-
-  while (TRUE) {
-    fd_set rfds;
-    struct timeval tv;
-    int maxfd = -1, timeout = 15;
-
-    tv.tv_sec = timeout;
-    tv.tv_usec = 0;
-
-    pr_signals_handle();
-
-    FD_ZERO(&rfds);
-    FD_SET(PR_NETIO_FD(ctrl_conn->instrm), &rfds);
-    if (PR_NETIO_FD(ctrl_conn->instrm) > maxfd) {
-      maxfd = PR_NETIO_FD(ctrl_conn->instrm);
-    }
-
-    if (data_conn != NULL) {
-      FD_SET(PR_NETIO_FD(data_conn->instrm), &rfds);
-      if (PR_NETIO_FD(data_conn->instrm) > maxfd) {
-        maxfd = PR_NETIO_FD(data_conn->instrm);
-      }
-    }
-
-    res = select(maxfd + 1, &rfds, NULL, NULL, &tv);
-    if (res < 0) {
-      if (errno == EINTR) {
-        pr_signals_handle();
-        continue;
-      }
-
-      fprintf(stderr, "error calling select(2): %s", strerror(errno));
-      break;
-    }
-
-    if (res == 0) {
-      fprintf(stderr, "timed out waiting for readability on ctrl/data conns, trying again\n");
-      continue;
-    }
-
-    if (data_conn != NULL) {
-      if (FD_ISSET(PR_NETIO_FD(data_conn->instrm), &rfds)) {
-        /* Some data arrived on the data connection... */
-
-        res = proxy_ftp_data_recv(p, data_conn);
-        if (res < 0) {
-          fprintf(stderr, "Error receiving data from server: %s\n",
-            strerror(errno));
-
-        } else {
-          if (res == 0) {
-            /* EOF on the data connection; close it. */
-            pr_inet_close(p, data_conn);
-            data_conn = NULL;
-
-          } else {
-            fprintf(stdout, "Received %d bytes of data\n", res);
-          }
-        }
-      }
-    }
-
-    if (FD_ISSET(PR_NETIO_FD(ctrl_conn->instrm), &rfds)) {
-      /* Some data arrived on the ctrl connection... */
-
-      resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
-      if (resp == NULL) {
-        fprintf(stderr, "Error getting response from server: %s\n",
-          strerror(errno));
-
-      } else {
-        fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
-
-        /* If we get a 1xx response here, keep going.  Otherwise, we're
-         * done with this data transfer.
-         */
-        if (data_conn == NULL ||
-            (resp->num)[0] != '1') {
-          break;
-        }
-      }
-    }
-  }
-
-  if (data_conn != NULL) {
-    pr_inet_close(p, data_conn);
-    data_conn = NULL;
-  }
+  /* LIST, passive transfer via EPSV */
+  res = proxy_ftp_list(p, ctrl_conn, local_addr, USE_EPSV);
+  if (res < 0) {
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
+  } 
 
   /* Disconnect */
   fprintf(stdout, "Command: \"%s\"\n", C_QUIT);
   res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, "%s\r\n", C_QUIT);
   if (res < 0) {
-    fprintf(stderr, "Error sending command to server: %s", strerror(errno));
+    fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
   }
 
   resp = proxy_ftp_ctrl_recv_resp(p, ctrl_conn);
