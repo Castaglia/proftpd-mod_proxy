@@ -23,7 +23,7 @@
  */
 
 #include "mod_proxy.h"
-#include "stacktrace.h"
+#include "proxy/stacktrace.h"
 
 #ifdef HAVE_EXECINFO_H
 # include <execinfo.h>

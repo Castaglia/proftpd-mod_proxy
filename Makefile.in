@@ -11,12 +11,30 @@ SHARED_LDFLAGS=-avoid-version -export-dynamic -module
 VPATH=@srcdir@
 
 MODULE_NAME=mod_proxy
-MODULE_OBJS=mod_proxy.o stacktrace.o conn.o uri.o forward.o reverse.o
-SHARED_MODULE_OBJS=mod_proxy.lo stacktrace.lo conn.lo uri.lo forward.lo \
-  reverse.lo
+MODULE_OBJS=mod_proxy.o \
+  lib/proxy/stacktrace.o \
+  lib/proxy/session.o \
+  lib/proxy/conn.o \
+  lib/proxy/uri.o \
+  lib/proxy/forward.o \
+  lib/proxy/reverse.o \
+  lib/proxy/ftp/buffer.o \
+  lib/proxy/ftp/ctrl.o \
+  lib/proxy/ftp/data.o
+
+SHARED_MODULE_OBJS=mod_proxy.lo \
+  lib/proxy/stacktrace.lo \
+  lib/proxy/session.lo \
+  lib/proxy/conn.lo \
+  lib/proxy/uri.lo \
+  lib/proxy/forward.lo \
+  lib/proxy/reverse.lo \
+  lib/proxy/ftp/buffer.lo \
+  lib/proxy/ftp/ctrl.lo \
+  lib/proxy/ftp/data.lo
 
 # Necessary redefinitions
-INCLUDES=-I. -I../.. -I../../include @INCLUDES@
+INCLUDES=-I. -I./include -I../.. -I../../include @INCLUDES@
 CPPFLAGS= $(ADDL_CPPFLAGS) -DHAVE_CONFIG_H $(DEFAULT_PATHS) $(PLATFORM) $(INCLUDES)
 LDFLAGS=-L../../lib @LIBDIRS@
 

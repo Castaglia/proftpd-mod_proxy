@@ -23,7 +23,7 @@
  */
 
 #include "mod_proxy.h"
-#include "uri.h"
+#include "proxy/uri.h"
 
 /* Relevant RFCs:
  *
@@ -170,6 +170,5 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
     }
   }
 
-  errno = ENOSYS;
-  return -1;
+  return 0;
 }

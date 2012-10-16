@@ -23,8 +23,8 @@
  */
 
 #include "mod_proxy.h"
-#include "conn.h"
-#include "reverse.h"
+#include "proxy/conn.h"
+#include "proxy/reverse.h"
 
 static const char *trace_channel = "proxy.reverse";
 

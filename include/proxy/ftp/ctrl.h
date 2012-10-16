@@ -1,5 +1,5 @@
 /*
- * ProFTPD - mod_proxy conn API
+ * ProFTPD - mod_proxy FTP control conn API
  * Copyright (c) 2012 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
@@ -24,11 +24,12 @@
 
 #include "mod_proxy.h"
 
-#ifndef MOD_PROXY_CONN_H
-#define MOD_PROXY_CONN_H
+#ifndef MOD_PROXY_FTP_CTRL_H
+#define MOD_PROXY_FTP_CTRL_H
 
-struct proxy_conn;
+cmd_rec *proxy_ftp_ctrl_recv_cmd(pool *, conn_t *);
+pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *);
+int proxy_ftp_ctrl_send_cmd(pool *, conn_t *, cmd_rec *);
+int proxy_ftp_ctrl_send_resp(pool *, conn_t *, pr_response_t *);
 
-struct proxy_conn *proxy_conn_create(pool *p, const char *uri);
-
-#endif /* MOD_PROXY_CONN_H */
+#endif /* MOD_PROXY_FTP_CTRL_H */

@@ -23,8 +23,8 @@
  */
 
 #include "mod_proxy.h"
-#include "conn.h"
-#include "uri.h"
+#include "proxy/conn.h"
+#include "proxy/uri.h"
 
 struct proxy_conn {
   pool *pconn_pool;
@@ -32,11 +32,7 @@ struct proxy_conn {
   const char *pconn_uri;
   const char *pconn_proto;
 
-  pr_netaddr_t *client_addr;
-  int client_fd;
-
-  pr_netaddr_t *server_addr;
-  int server_fd;
+  pr_netaddr_t *pconn_addr;
 };
 
 static const char *supported_protocols[] = {
@@ -81,7 +77,7 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
     return NULL;
   }
 
-  pconn_pool = make_sub_pool(p); 
+  pconn_pool = pr_pool_create_sz(p, 128); 
   pr_pool_tag(pconn_pool, "proxy connection pool");
 
   pconn = pcalloc(pconn_pool, sizeof(struct proxy_conn));
@@ -89,12 +85,8 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
   pconn->pconn_uri = pstrdup(pconn_pool, uri);
   pconn->pconn_proto = pstrdup(pconn_pool, proto);
 
-  pconn->client_fd = session.c->rfd;
-  pconn->client_addr = session.c->remote_addr;
-
-  pconn->server_fd = -1;
-  pconn->server_addr = pr_netaddr_get_addr(pconn_pool, remote_host, NULL);
-  if (pconn->server_addr == NULL) {
+  pconn->pconn_addr = pr_netaddr_get_addr(pconn_pool, remote_host, NULL);
+  if (pconn->pconn_addr == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "unable to resolve '%s' from URI '%s'", remote_host, uri);
     destroy_pool(pconn_pool);
@@ -102,7 +94,7 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
     return NULL;
   }
 
-  if (pr_netaddr_set_port2(pconn->server_addr, remote_port) < 0) {
+  if (pr_netaddr_set_port2(pconn->pconn_addr, remote_port) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "unable to set port %d from URI '%s': %s", remote_port, uri,
       strerror(errno));
@@ -112,4 +104,13 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
   }
  
   return pconn;
+}
+
+pr_netaddr_t *proxy_conn_get_addr(struct proxy_conn *pconn) {
+  if (pconn == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  return pconn->pconn_addr;
 }

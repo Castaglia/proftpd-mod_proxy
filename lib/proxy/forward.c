@@ -23,8 +23,8 @@
  */
 
 #include "mod_proxy.h"
-#include "conn.h"
-#include "forward.h"
+#include "proxy/conn.h"
+#include "proxy/forward.h"
 
 static const char *trace_channel = "proxy.forward";
 
