@@ -30,11 +30,6 @@ session_t session;
 module *static_modules[] = { NULL };
 module *loaded_modules = NULL;
 
-#define USE_PORT	1
-#define USE_PASV	2
-#define USE_EPRT	3
-#define USE_EPSV	4
-
 volatile unsigned int recvd_signal_flags = 0;
 
 static int connect_timeout_reached = FALSE;
@@ -690,26 +685,26 @@ static conn_t *proxy_ftp_port(pool *p, conn_t *ctrl_conn,
 }
 
 static int proxy_ftp_list(pool *p, conn_t *ctrl_conn, pr_netaddr_t *local_addr,
-    int xfer_type) {
+    int cmd_id) {
   conn_t *data_conn = NULL;
   int res;
   pr_response_t *resp;
   const char *xfer_typestr;
 
-  switch (xfer_type) {
-    case USE_PORT:
+  switch (cmd_id) {
+    case PR_CMD_PORT_ID:
       data_conn = proxy_ftp_port(p, ctrl_conn, local_addr);
       break;
 
-    case USE_PASV:
+    case PR_CMD_PASV_ID:
       data_conn = proxy_ftp_pasv(p, ctrl_conn, local_addr);
       break;
 
-    case USE_EPRT:
+    case PR_CMD_EPRT_ID:
       data_conn = proxy_ftp_eprt(p, ctrl_conn, local_addr);
       break;
 
-    case USE_EPSV:
+    case PR_CMD_EPSV_ID:
       data_conn = proxy_ftp_epsv(p, ctrl_conn, local_addr);
       break;
 
@@ -751,9 +746,9 @@ static int proxy_ftp_list(pool *p, conn_t *ctrl_conn, pr_netaddr_t *local_addr,
     }
   }
 
-  switch (xfer_type) {
-    case USE_PORT:
-    case USE_EPRT: {
+  switch (cmd_id) {
+    case PR_CMD_PORT_ID:
+    case PR_CMD_EPRT_ID: {
       conn_t *xfer_conn;
 
       xfer_typestr = "active";
@@ -765,8 +760,8 @@ static int proxy_ftp_list(pool *p, conn_t *ctrl_conn, pr_netaddr_t *local_addr,
       break;
     }
 
-    case USE_PASV:
-    case USE_EPSV:
+    case PR_CMD_PASV_ID:
+    case PR_CMD_EPSV_ID:
       xfer_typestr = "passive";
       break;
   }
@@ -1253,21 +1248,21 @@ int main(int argc, char *argv[]) {
     fprintf(stdout, "Response: \"%s\" (%s)\n", resp->msg, resp->num);
   }
 
-#if 0
   /* LIST, active transfer via PORT */
-  res = proxy_ftp_list(p, ctrl_conn, local_addr, USE_PORT);
+  res = proxy_ftp_list(p, ctrl_conn, local_addr, PR_CMD_PORT_ID);
   if (res < 0) {
     fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
   } 
 
+#if 0
   /* LIST, active transfer via EPRT */
-  res = proxy_ftp_list(p, ctrl_conn, local_addr, USE_EPRT);
+  res = proxy_ftp_list(p, ctrl_conn, local_addr, PR_CMD_EPRT_ID);
   if (res < 0) {
     fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
   } 
 
   /* LIST, passive transfer via PASV */
-  res = proxy_ftp_list(p, ctrl_conn, local_addr, USE_PASV);
+  res = proxy_ftp_list(p, ctrl_conn, local_addr, PR_CMD_PASV_ID);
   if (res < 0) {
     fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
   } 

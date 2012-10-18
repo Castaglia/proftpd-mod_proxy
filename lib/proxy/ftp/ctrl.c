@@ -316,15 +316,67 @@ int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *ctrl_conn, cmd_rec *cmd) {
 }
 
 int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp) {
+  char *ptr;
+  int use_err = FALSE;
+
+  (void) ctrl_conn;
 
   /* Due to historical reasons, there are two different response chains, and
    * we need to make sure we add this response to the correct chain, then
    * flush that chain.
    */
+  if (resp->num[0] == '4' ||
+      resp->num[0] == '5') {
+    use_err = TRUE;
+  }
 
   pr_trace_msg(trace_channel, 9,
-    "proxied response from backend to client: %s %s", resp->num, resp->msg);
-  errno = ENOSYS;
-  return -1;
+    "server->client response: %s %s", resp->num, resp->msg);
+
+  /* We also need to deal with multiline responses. */
+  ptr = strchr(resp->msg, '\n');
+  if (ptr == NULL) {
+    if (use_err) {
+      pr_response_add_err(resp->num, resp->msg);
+
+    } else {
+      pr_response_add(resp->num, resp->msg);
+    }
+
+  } else {
+    char *line, *resp_code;
+
+    resp_code = resp->num;
+    line = resp->msg;
+
+    /* ...now send the following lines. */
+    while (ptr != NULL) {
+      char *ptr2;
+
+      pr_signals_handle();
+
+      *ptr = '\0';
+      if (use_err) {
+        pr_response_add_err(resp_code, line);
+
+      } else {
+        pr_response_add(resp_code, line);
+      }
+
+      *ptr = '\n';
+      ptr2 = strchr(line, '\n');
+      if (ptr2 != NULL) {
+        ptr = ptr2;
+        line = ptr2 + 1;
+        resp_code = R_DUP;
+      }
+    }
+  }
+
+  if (use_err) {
+    return -1;
+  }
+
+  return 0;
 }
 

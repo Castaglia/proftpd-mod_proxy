@@ -225,6 +225,15 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
   return server_ctrl_conn;
 }
 
+static int proxy_have_authenticated(cmd_rec *cmd) {
+  /* XXX Use a state variable here, which returns true when we have seen
+   * a successful response to the PASS command...but only if we do NOT connect
+   * to the backend at connect time (for then we are handling all FTP
+   * commands, until the client sends USER.
+   */
+  return TRUE;
+}
+
 static void proxy_cmd_loop(server_rec *s, conn_t *client_conn) {
   struct proxy_session *proxy_sess;
   conn_t *server_conn;
@@ -252,10 +261,6 @@ static void proxy_cmd_loop(server_rec *s, conn_t *client_conn) {
 
   /* Read the response from the backend server and send it to the connected
    * client.
-   */
-
-  /* XXX Note that for multiline responses, we will need to re-format
-   * it, sending it line by line, out to the client.
    */
 }
 
@@ -427,7 +432,8 @@ MODRET set_proxymode(cmd_rec *cmd) {
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
-  if (strcasecmp(cmd->argv[1], "forward") == 0) {
+  if (strcasecmp(cmd->argv[1], "forward") == 0 ||
+      strcasecmp(cmd->argv[1], "proxy") == 0) {
     mode = PROXY_MODE_FORWARD;
 
   } else if (strcasecmp(cmd->argv[1], "reverse") == 0 ||
@@ -448,16 +454,21 @@ MODRET set_proxymode(cmd_rec *cmd) {
 
 /* usage: ProxyOptions opt1 ... optN */
 MODRET set_proxyoptions(cmd_rec *cmd) {
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxyTimeoutConnect secs */
+MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
   int timeout = -1;
-  char *ptr = NULL;
+  char *tmp = NULL;
   config_rec *c = NULL;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
-  timeout = (int) strtol(cmd->argv[1], &ptr, 10);
+  timeout = (int) strtol(cmd->argv[1], &tmp, 10);
 
-  if ((ptr && *ptr) ||
+  if ((tmp && *tmp) ||
       timeout < 0 ||
       timeout > 65535) {
     CONF_ERROR(cmd, "timeout values must be between 0 and 65535");
@@ -470,20 +481,87 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
-/* usage: ProxyTimeoutConnect secs */
-MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
-}
-
 /* Command handlers
  */
 
-MODRET proxy_feat(cmd_rec *cmd) {
+MODRET proxy_eprt(cmd_rec *cmd) {
   int res;
   struct proxy_session *proxy_sess;
   pr_response_t *resp;
 
   if (proxy_engine == FALSE) {
     return PR_DECLINED(cmd);
+  }
+
+  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+  return PR_HANDLED(cmd);
+}
+
+MODRET proxy_epsv(cmd_rec *cmd) {
+  int res;
+  struct proxy_session *proxy_sess;
+  pr_response_t *resp;
+
+  if (proxy_engine == FALSE) {
+    return PR_DECLINED(cmd);
+  }
+
+  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+  return PR_HANDLED(cmd);
+}
+
+MODRET proxy_pasv(cmd_rec *cmd) {
+  int res;
+  struct proxy_session *proxy_sess;
+  pr_response_t *resp;
+
+  if (proxy_engine == FALSE) {
+    return PR_DECLINED(cmd);
+  }
+
+  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+  return PR_HANDLED(cmd);
+}
+
+MODRET proxy_port(cmd_rec *cmd) {
+  int res;
+  struct proxy_session *proxy_sess;
+  pr_response_t *resp;
+
+  if (proxy_engine == FALSE) {
+    return PR_DECLINED(cmd);
+  }
+
+  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+  return PR_HANDLED(cmd);
+}
+
+MODRET proxy_any(cmd_rec *cmd) {
+  int res;
+  struct proxy_session *proxy_sess;
+  pr_response_t *resp;
+
+  if (proxy_engine == FALSE) {
+    return PR_DECLINED(cmd);
+  }
+
+  /* Commands related to data transfers are handled separately */
+  switch (cmd->cmd_id) {
+    case PR_CMD_EPRT_ID:
+      return proxy_eprt(cmd);
+      break;
+
+    case PR_CMD_EPSV_ID:
+      return proxy_epsv(cmd);
+      break;
+
+    case PR_CMD_PASV_ID:
+      return proxy_pasv(cmd);
+      break;
+
+    case PR_CMD_PORT_ID:
+      return proxy_port(cmd);
+      break;
   }
 
   proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
@@ -509,15 +587,11 @@ MODRET proxy_feat(cmd_rec *cmd) {
     errno = xerrno;
     return PR_ERROR(cmd);
   }
- 
-  return PR_HANDLED(cmd);
-}
 
-MODRET proxy_syst(cmd_rec *cmd) {
-  int res;
-
-  if (proxy_engine == FALSE) {
-    return PR_DECLINED(cmd);
+  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->client_ctrl_conn,
+    resp);
+  if (res < 0) {
+    return PR_ERROR(cmd);
   }
 
   return PR_HANDLED(cmd);
@@ -680,7 +754,8 @@ static int proxy_sess_init(void) {
    * or immediately upon connect?  Depends on the backend selection
    * mechanism...)
    *
-   * All proxied connections immediately have root privs dropped.
+   * All proxied connections immediately have root privs dropped.  (Act as
+   * if the RootRevoke option was programmatically set?)
    */
 
   if (proxy_mode == PROXY_MODE_REVERSE) {
@@ -698,18 +773,32 @@ static int proxy_sess_init(void) {
 
   /* XXX DisplayLogin? Only if we do the gateway selection at USER time... */
 
-  /* XXX block responses? */
+  /* XXX block responses?
+   *
+   * If we are to connect to the backend right now, then yes, block responses:
+   * we will proxy the connect banner back to the client.  Otherwise, no, do
+   * not block responses.  By using:
+   *
+   *  pr_response_block(TRUE);
+   *
+   * here, as mod_sftp does, we can prevent the client from receiving
+   * the normal FTP banner later.
+   */
 
   /* XXX set protocol?  What about ssh2 proxying?  How to interact
    * with mod_sftp, which doesn't have the same pipeline of request
-   * handling?
+   * handling? (Need to add PRE_REQ handling in mod_sftp, to support proxying.)
+   *
+   * pr_session_set_protocol("proxy"); ?
    */
 
-  pr_cmd_set_handler(proxy_cmd_loop);
+  /* Use our own "authenticated yet?" check. */
+  set_auth_check(proxy_have_authenticated);
 
   /* Allocate our own session structure, for tracking proxy-specific
    * fields.  Use the session.notes table for stashing/retrieving it as
    * needed.
+   */
   proxy_sess = pcalloc(proxy_pool, sizeof(struct proxy_session));
   if (pr_table_set(session.notes, "mod_proxy.proxy-session", proxy_sess,
       sizeof(struct proxy_session)) < 0) {
@@ -748,8 +837,8 @@ static conftable proxy_conftab[] = {
 };
 
 static cmdtable proxy_cmdtab[] = {
-  { CMD,	C_FEAT,	G_NONE,	proxy_feat,	FALSE, FALSE,	CL_MISC },
-  { CMD,	C_SYST,	G_NONE,	proxy_syst,	FALSE, FALSE,	CL_MISC },
+  /* XXX Should this be marked with a CL_ value, for logging? */
+  { CMD,	C_ANY,	G_NONE,	proxy_any,	FALSE, FALSE },
 
   { 0, NULL }
 };
