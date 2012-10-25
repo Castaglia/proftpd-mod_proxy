@@ -73,7 +73,7 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
   if (supported_protocol(proto) < 0) {
     pr_trace_msg(trace_channel, 4, "unsupported protocol '%s' in URI '%.100s'",
       proto, uri);
-    errno = EINVAL;
+    errno = EPERM;
     return NULL;
   }
 

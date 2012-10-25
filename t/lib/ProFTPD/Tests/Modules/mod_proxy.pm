@@ -16,12 +16,23 @@ $| = 1;
 my $order = 0;
 
 my $TESTS = {
-  proxy_reverse_login => {
+  proxy_gateway_connect => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  # proxy_reverse_list_pasv
+  # proxy_gateway_login
+  # proxy_gateway_list_pasv
+  # proxy_gateway_list_port
+  # proxy_gateway_list_epsv
+  # proxy_gateway_list_eprt
+
+  # proxy_proxy_connect
+  # proxy_proxy_login
+  # proxy_proxy_list_pasv
+  # proxy_proxy_list_port
+  # proxy_proxy_list_epsv
+  # proxy_proxy_list_eprt
 
 };
 
@@ -33,7 +44,7 @@ sub list_tests {
   return testsuite_get_runnable_tests($TESTS);
 }
 
-sub proxy_reverse_login {
+sub proxy_gateway_connect {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -69,33 +80,25 @@ sub proxy_reverse_login {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $test_file = File::Spec->rel2abs("$home_dir/test.txt");
-  if (open(my $fh, "> $test_file")) {
-    print $fh "Hello, World!\n";
-    unless (close($fh)) {
-      die("Can't write $test_file: $!");
-    }
-
-  } else {
-    die("Can't open $test_file: $!");
-  }
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
 
   my $config = {
     PidFile => $pid_file,
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'proxy:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
-
-    AllowOverwrite => 'on',
-    AllowStoreRestart => 'on',
 
     IfModules => {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyMode => 'reverse',
+        ProxyMode => 'gateway',
+
+        ProxyGatewayServers => "ftp://127.0.0.1:$vhost_port",
       },
 
       'mod_delay.c' => {
@@ -105,6 +108,21 @@ sub proxy_reverse_login {
   };
 
   my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real FTP Server"
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
 
   # Open pipes, for use between the parent and child processes.  Specifically,
   # the child will indicate when it's done with its test by writing a message
@@ -136,16 +154,9 @@ sub proxy_reverse_login {
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
 
-      my $expected;
-
-      $expected = 226;
-      $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
-
-      $expected = 'Transfer complete';
-      $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+      $client->quit();
     };
 
     if ($@) {

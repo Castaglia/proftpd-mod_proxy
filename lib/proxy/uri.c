@@ -136,8 +136,8 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
     /* Look for any possible trailing '/'. */
     ptr3 = strchr(ptr2, '/');
     if (ptr3 == NULL) {
-      portspec = ptr2;
-      portspeclen = strlen(ptr2);
+      portspec = ptr2 + 1;
+      portspeclen = strlen(portspec);
 
     } else {
       portspeclen = ptr3 - ptr2;
@@ -148,7 +148,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
     for (i = 0; i < portspeclen; i++) {
       if (isdigit((int) portspec[i]) == 0) {
         pr_trace_msg(trace_channel, 4,
-          "invalid character (%c) at index %d in port specifiction '%.100s'",
+          "invalid character (%c) at index %d in port specification '%.100s'",
           portspec[i], i, portspec);
         errno = EINVAL;
         return -1;

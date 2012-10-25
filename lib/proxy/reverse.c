@@ -33,18 +33,18 @@ int proxy_reverse_init(pool *p) {
   array_header *backend_servers;
   struct proxy_conn *pconn, **pconns;
 
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseServers",
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyGatewayServers",
     FALSE);
   if (c == NULL) {
     pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
-      ": reverse proxy mode enabled, but no ProxyReverseServers configured");
+      ": gateway mode enabled, but no ProxyGatewayServers configured");
     return -1;
   }
 
-  backend_servers = *(array_header **) c->argv[0]);
+  backend_servers = *((array_header **) c->argv[0]);
 
-  /* XXX ProxyReverseBalancing? */
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseConnect",
+  /* XXX ProxyGatewayBalancing? */
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyGatewayConnect",
     FALSE);
   if (c != NULL) {
     /* Handle the particular connect/balancing/selection method configured.
@@ -57,11 +57,11 @@ int proxy_reverse_init(pool *p) {
   }
 
   /* XXX For now, only use the first backend server. */
-  pconns = backend_server->elts;
+  pconns = backend_servers->elts;
   pconn = pconns[0];
 
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-    "connecting to backend server '%s'", pconn->pconn_uri);
+    "connecting to backend server '%s'", proxy_conn_get_uri(pconn));
 
   return 0;
 }

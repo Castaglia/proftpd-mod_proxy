@@ -79,14 +79,22 @@ static pr_netaddr_t *proxy_gateway_get_server(struct proxy_session *proxy_sess) 
   config_rec *c;
   array_header *backend_servers;
   struct proxy_conn **conns;
+  pr_netaddr_t *addr;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyGatewayServers", FALSE);
+  if (c == NULL) {
+    /* XXX This shouldn't happen; should be checked by proxy_reverse_init(). */
+    errno = ENOENT;
+    return NULL;
+  }
+
   backend_servers = c->argv[0];
   conns = backend_servers->elts;
 
   /* XXX Insert selection criteria here */
 
-  return proxy_conn_get_addr(conns[0]);
+  addr = proxy_conn_get_addr(conns[0]);
+  return addr;
 }
 
 static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
@@ -181,8 +189,6 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
 
       default: {
         /* Connected */
-        pr_netio_close(nstrm);
-
         server_conn->mode = CM_OPEN;
         pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
 
@@ -193,6 +199,7 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
             "error obtaining local socket info on fd %d: %s\n",
             server_conn->listen_fd, strerror(xerrno));
 
+          pr_netio_close(nstrm);
           pr_inet_close(proxy_pool, server_conn);
           errno = xerrno;
           return NULL;
@@ -370,8 +377,7 @@ MODRET set_proxygatewayservers(cmd_rec *cmd) {
     }
   }
 
-  c->argv[0] = palloc(c->pool, sizeof(array_header **));
-  *((array_header **) c->argv[0]) = backend_servers;
+  c->argv[0] = backend_servers;
 
   return PR_HANDLED(cmd);
 }
@@ -730,14 +736,14 @@ static int proxy_sess_init(void) {
 
   switch (proxy_mode) {
     case PROXY_MODE_GATEWAY:
-      if (proxy_reverse_init() < 0) {
+      if (proxy_reverse_init(proxy_pool) < 0) {
         proxy_engine = FALSE;
         return -1;
       }
       break;
 
     case PROXY_MODE_PROXY:
-      if (proxy_forward_init() < 0) {
+      if (proxy_forward_init(proxy_pool) < 0) {
         proxy_engine = FALSE;
         return -1; 
       }
@@ -775,7 +781,7 @@ static int proxy_sess_init(void) {
    * needed.
    */
   proxy_sess = pcalloc(proxy_pool, sizeof(struct proxy_session));
-  if (pr_table_set(session.notes, "mod_proxy.proxy-session", proxy_sess,
+  if (pr_table_add(session.notes, "mod_proxy.proxy-session", proxy_sess,
       sizeof(struct proxy_session)) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error stashing proxy session note: %s", strerror(errno));
