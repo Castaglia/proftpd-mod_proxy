@@ -24,6 +24,7 @@
 
 #include "mod_proxy.h"
 #include "proxy/ftp/buffer.h"
+#include "proxy/ftp/data.h"
 
 static const char *trace_channel = "proxy.ftp.data";
 

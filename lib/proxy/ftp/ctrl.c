@@ -24,6 +24,7 @@
 
 #include "mod_proxy.h"
 #include "proxy/ftp/buffer.h"
+#include "proxy/ftp/ctrl.h"
 
 static const char *trace_channel = "proxy.ftp.ctrl";
 
@@ -337,10 +338,10 @@ int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp) {
   ptr = strchr(resp->msg, '\n');
   if (ptr == NULL) {
     if (use_err) {
-      pr_response_add_err(resp->num, resp->msg);
+      pr_response_add_err(resp->num, "%s", resp->msg);
 
     } else {
-      pr_response_add(resp->num, resp->msg);
+      pr_response_add(resp->num, "%s", resp->msg);
     }
 
   } else {
@@ -357,10 +358,10 @@ int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp) {
 
       *ptr = '\0';
       if (use_err) {
-        pr_response_add_err(resp_code, line);
+        pr_response_add_err(resp_code, "%s", line);
 
       } else {
-        pr_response_add(resp_code, line);
+        pr_response_add(resp_code, "%s", line);
       }
 
       *ptr = '\n';

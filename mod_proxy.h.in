@@ -45,6 +45,7 @@
 
 /* Miscellaneous */
 extern int proxy_logfd;
+extern module proxy_module;
 extern pool *proxy_pool;
 
 #endif /* MOD_PROXY_H */

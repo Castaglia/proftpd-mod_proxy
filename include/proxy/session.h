@@ -38,8 +38,8 @@ struct proxy_session {
 
   conn_t *server_ctrl_conn;
   conn_t *server_data_conn;
-}
+};
 
-struct proxy_session proxy_session_alloc(pool *p);
+struct proxy_session *proxy_session_alloc(pool *p);
 
 #endif /* MOD_PROXY_SESSION_H */

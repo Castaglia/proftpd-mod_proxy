@@ -27,6 +27,6 @@
 #ifndef MOD_PROXY_REVERSE_H
 #define MOD_PROXY_REVERSE_H
 
-int proxy_reverse_init_conn(pool *p);
+int proxy_reverse_init(pool *p);
 
 #endif /* MOD_PROXY_FORWARD_H */

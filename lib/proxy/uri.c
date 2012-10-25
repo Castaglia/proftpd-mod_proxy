@@ -56,13 +56,13 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
 
   *scheme = pstrndup(p, uri, ptr - uri);
 
-  res = strspn("abcdefghijklmnopqrstuvwxyz+.-");
+  res = strspn(*scheme, "abcdefghijklmnopqrstuvwxyz+.-");
   if (*scheme[res] != '\0') {
     /* Invalid character in the scheme string, according to RFC 1738 rules. */
     pr_trace_msg(trace_channel, 4,
       "invalid character (%c) at index %d in scheme '%.100s'", *scheme[res],
       res, *scheme);
-    errno EINVAL;
+    errno = EINVAL;
     return -1;
   }
 
@@ -100,8 +100,8 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
   ptr2 = strchr(ptr, '%');
   if (ptr2 != NULL) {
     pr_trace_msg(trace_channel, 4,
-      "invalid character (%%) at index %d in scheme-specific info '%.100s'",
-      ptr2 - ptr, ptr);
+      "invalid character (%%) at index %ld in scheme-specific info '%.100s'",
+      (long) (ptr2 - ptr), ptr);
     errno = EINVAL;
     return -1;
   }
@@ -116,7 +116,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
         strncmp(*scheme, "ftps", 5) == 0) {
       *port = 21;
 
-    } else if (strnmpc(*scheme, "sftp", 5) == 0) {
+    } else if (strncmp(*scheme, "sftp", 5) == 0) {
       *port = 22;
 
     } else {
@@ -131,7 +131,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
     char *ptr3, *portspec;
     size_t portspeclen;
 
-    *host = pstrndup(p, ptr2 - ptr);
+    *host = pstrndup(p, ptr, ptr2 - ptr);
 
     /* Look for any possible trailing '/'. */
     ptr3 = strchr(ptr2, '/');
@@ -141,7 +141,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
 
     } else {
       portspeclen = ptr3 - ptr2;
-      portspec = pstrndup(p, ptr3 - ptr2);
+      portspec = pstrndup(p, ptr2, ptr3 - ptr2);
     }
 
     /* Ensure that only numeric characters appear in the portspec. */

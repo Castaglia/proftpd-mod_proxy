@@ -34,8 +34,11 @@
 #include "proxy/ftp/data.h"
 
 /* Proxy mode/type */
-#define PROXY_MODE_REVERSE		1
-#define PROXY_MODE_FORWARD		2
+#define PROXY_MODE_GATEWAY		1
+#define PROXY_MODE_PROXY		2
+
+/* How long (in secs) to wait to connect to real server? */
+#define PROXY_CONNECT_DEFAULT_TIMEOUT	60
 
 extern xaset_t *server_list;
 
@@ -45,9 +48,7 @@ int proxy_logfd = -1;
 pool *proxy_pool = NULL;
 
 static int proxy_engine = FALSE;
-static int proxy_mode = PROXY_MODE_REVERSE;
-
-static pr_netio_stream_t *connect_timeout_strm = NULL;
+static int proxy_mode = PROXY_MODE_GATEWAY;
 
 static const char *trace_channel = "proxy";
 
@@ -56,7 +57,7 @@ static int proxy_connect_timeout_cb(CALLBACK_FRAME) {
   pr_netaddr_t *server_addr;
 
   proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
-  server_addr = proxy_sess->server_conn->remote_addr;
+  server_addr = proxy_sess->server_ctrl_conn->remote_addr;
 
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
     "timed out connecting to %s:%d after %d %s",
@@ -77,7 +78,7 @@ static int proxy_connect_timeout_cb(CALLBACK_FRAME) {
 static pr_netaddr_t *proxy_gateway_get_server(struct proxy_session *proxy_sess) {
   config_rec *c;
   array_header *backend_servers;
-  struct proxy_conn *conns;
+  struct proxy_conn **conns;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyGatewayServers", FALSE);
   backend_servers = c->argv[0];
@@ -124,7 +125,7 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
       "error starting connect to %s:%u: %s", server_ipstr, server_port,
       strerror(xerrno));
 
-    pr_timer_remove(proxy_sess->connect_timerno);
+    pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
     errno = xerrno;
     return NULL;
   }  
@@ -134,8 +135,8 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
 
     /* Not yet connected. */
 
-    nstrm = pr_netio_open(p, PR_NETIO_STRM_OTHR, server_conn->listen_fd,
-      PR_NETIO_IO_RD);
+    nstrm = pr_netio_open(proxy_pool, PR_NETIO_STRM_OTHR,
+      server_conn->listen_fd, PR_NETIO_IO_RD);
     if (nstrm == NULL) {
       int xerrno = errno;
 
@@ -144,7 +145,7 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
         strerror(xerrno));
 
       pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-      pr_inet_close(p, server_conn);
+      pr_inet_close(proxy_pool, server_conn);
 
       errno = xerrno;
       return NULL;
@@ -157,7 +158,7 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
         /* Aborted, timed out.  Note that we shouldn't reach here. */
         pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
         pr_netio_close(nstrm);
-        pr_inet_close(p, server_conn);
+        pr_inet_close(proxy_pool, server_conn);
         errno = ETIMEDOUT;
         return NULL;
       }
@@ -172,7 +173,7 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
 
         pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
         pr_netio_close(nstrm);
-        pr_inet_close(p, server_conn);
+        pr_inet_close(proxy_pool, server_conn);
 
         errno = xerrno;
         return NULL;
@@ -192,7 +193,7 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
             "error obtaining local socket info on fd %d: %s\n",
             server_conn->listen_fd, strerror(xerrno));
 
-          pr_inet_close(p, server_conn);
+          pr_inet_close(proxy_pool, server_conn);
           errno = xerrno;
           return NULL;
         }
@@ -216,7 +217,7 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
       "unable to open control connection to %s:%u: %s", server_ipstr,
       server_port, strerror(xerrno));
 
-    pr_inet_close(p, server_conn);
+    pr_inet_close(proxy_pool, server_conn);
 
     errno = xerrno;
     return NULL;
@@ -229,39 +230,9 @@ static int proxy_have_authenticated(cmd_rec *cmd) {
   /* XXX Use a state variable here, which returns true when we have seen
    * a successful response to the PASS command...but only if we do NOT connect
    * to the backend at connect time (for then we are handling all FTP
-   * commands, until the client sends USER.
+   * commands, until the client sends USER).
    */
   return TRUE;
-}
-
-static void proxy_cmd_loop(server_rec *s, conn_t *client_conn) {
-  struct proxy_session *proxy_sess;
-  conn_t *server_conn;
-
-  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
-
-  proxy_sess->client_ctrl_conn = conn;
-
-  /* XXX Look at our configured proxy mode (proxy or gateway). */
-
-  /* XXX For now, assume we're acting as a gateway.  That being the case,
-   * we need to look at our gateway backend server selection strategy.
-   *
-   * For now, we assume there's only one backend server configured, so
-   * we connect to it.
-   */
-
-  server_conn = proxy_gateway_get_server_conn(proxy_sess);
-  if (server_conn == NULL) {
-    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
-      NULL);
-  }
-
-  proxy_sess->server_ctrl_conn = server_conn;
-
-  /* Read the response from the backend server and send it to the connected
-   * client.
-   */
 }
 
 static int proxy_mkdir(const char *dir, uid_t uid, gid_t gid, mode_t mode) {
@@ -343,7 +314,6 @@ MODRET set_proxygatewayservers(cmd_rec *cmd) {
   backend_servers = make_array(c->pool, 1, sizeof(struct proxy_conn *));
 
   if (cmd->argc-1 == 1) {
-    char *ptr;
 
     /* We are dealing with one of the following possibilities:
      *
@@ -376,7 +346,7 @@ MODRET set_proxygatewayservers(cmd_rec *cmd) {
       pconn = proxy_conn_create(c->pool, cmd->argv[1]);
       if (pconn == NULL) {
         CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing '", cmd->argv[1],
-          "': ", pstrerror(errno), NULL));
+          "': ", strerror(errno), NULL));
       }
 
       *((struct proxy_conn **) push_array(backend_servers)) = pconn;
@@ -393,7 +363,7 @@ MODRET set_proxygatewayservers(cmd_rec *cmd) {
       pconn = proxy_conn_create(c->pool, cmd->argv[i]);
       if (pconn == NULL) {
         CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing '", cmd->argv[i],
-          "': ", pstrerror(errno), NULL));
+          "': ", strerror(errno), NULL));
       }
 
       *((struct proxy_conn **) push_array(backend_servers)) = pconn;
@@ -434,11 +404,11 @@ MODRET set_proxymode(cmd_rec *cmd) {
 
   if (strcasecmp(cmd->argv[1], "forward") == 0 ||
       strcasecmp(cmd->argv[1], "proxy") == 0) {
-    mode = PROXY_MODE_FORWARD;
+    mode = PROXY_MODE_PROXY;
 
   } else if (strcasecmp(cmd->argv[1], "reverse") == 0 ||
              strcasecmp(cmd->argv[1], "gateway") == 0) {
-    mode = PROXY_MODE_REVERSE;
+    mode = PROXY_MODE_GATEWAY;
 
   } else {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown proxy mode '", cmd->argv[1],
@@ -565,7 +535,8 @@ MODRET proxy_any(cmd_rec *cmd) {
   }
 
   proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
-  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->server_ctrl_conn);
+  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->server_ctrl_conn,
+    cmd);
   if (res < 0) {
     int xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -625,7 +596,7 @@ static void proxy_exit_ev(const void *event_data, void *user_data) {
       proxy_sess->server_data_conn = NULL;
     }
 
-    pr_table_remove(session.notes, "mod_proxy.proxy-session");
+    pr_table_remove(session.notes, "mod_proxy.proxy-session", NULL);
   }
 
   if (proxy_logfd >= 0) {
@@ -655,8 +626,6 @@ static void proxy_restart_ev(const void *event_data, void *user_data) {
 }
 
 static void proxy_shutdown_ev(const void *event_data, void *user_data) {
-  register unsigned int i;
-
   destroy_pool(proxy_pool);
   proxy_pool = NULL;
 
@@ -689,6 +658,7 @@ static int proxy_init(void) {
 static int proxy_sess_init(void) {
   config_rec *c;
   int res;
+  conn_t *server_conn;
   struct proxy_session *proxy_sess;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyEngine", FALSE);
@@ -712,12 +682,12 @@ static int proxy_sess_init(void) {
 
     logname = c->argv[0];
 
-    if (strncasecmp(snmp_logname, "none", 5) != 0) {
+    if (strncasecmp(logname, "none", 5) != 0) {
       int xerrno;
 
       pr_signals_block();
       PRIVS_ROOT
-      res = pr_log_openfile(logname, &proxy_logfd, 0600);
+      res = pr_log_openfile(logname, &proxy_logfd, PR_LOG_SYSTEM_MODE);
       xerrno = errno;
       PRIVS_RELINQUISH
       pr_signals_unblock();
@@ -758,17 +728,20 @@ static int proxy_sess_init(void) {
    * if the RootRevoke option was programmatically set?)
    */
 
-  if (proxy_mode == PROXY_MODE_REVERSE) {
-    if (proxy_reverse_init() < 0) {
-      proxy_engine = FALSE;
-      return -1;
-    }
+  switch (proxy_mode) {
+    case PROXY_MODE_GATEWAY:
+      if (proxy_reverse_init() < 0) {
+        proxy_engine = FALSE;
+        return -1;
+      }
+      break;
 
-  } else if (proxy_mode == PROXY_MODE_FORWARD) {
-    if (proxy_forward_init() < 0) {
-      proxy_engine = FALSE;
-      return -1; 
-    }
+    case PROXY_MODE_PROXY:
+      if (proxy_forward_init() < 0) {
+        proxy_engine = FALSE;
+        return -1; 
+      }
+      break;
   }
 
   /* XXX DisplayLogin? Only if we do the gateway selection at USER time... */
@@ -790,6 +763,8 @@ static int proxy_sess_init(void) {
    * handling? (Need to add PRE_REQ handling in mod_sftp, to support proxying.)
    *
    * pr_session_set_protocol("proxy"); ?
+   *
+   * If we do this, we should also add separate "proxy" rows to the DelayTable.
    */
 
   /* Use our own "authenticated yet?" check. */
@@ -813,6 +788,25 @@ static int proxy_sess_init(void) {
   } else {
     proxy_sess->connect_timeout = PROXY_CONNECT_DEFAULT_TIMEOUT;
   }
+
+  /* XXX For now, assume we're acting as a gateway.  That being the case,
+   * we need to look at our gateway backend server selection strategy.
+   *
+   * For now, we assume there's only one backend server configured, so
+   * we connect to it.
+   */
+
+  server_conn = proxy_gateway_get_server_conn(proxy_sess);
+  if (server_conn == NULL) {
+    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
+      NULL);
+  }
+
+  proxy_sess->server_ctrl_conn = server_conn;
+
+  /* XXX Read the response from the backend server and send it to the
+   * connected client as if it were our own banner.
+   */
 
   return 0;
 }
@@ -843,14 +837,6 @@ static cmdtable proxy_cmdtab[] = {
   { 0, NULL }
 };
 
-static authtable proxy_cmdtab[] = {
-  { 0, "auth",		proxy_auth },
-  { 0, "authorize",	proxy_authz },
-  { 0, "check",		proxy_check },
-
-  { 0, NULL, NULL }
-};
-
 module proxy_module = {
   /* Always NULL */
   NULL, NULL,
@@ -868,7 +854,7 @@ module proxy_module = {
   proxy_cmdtab,
 
   /* Module authentication handler table */
-  proxy_authtab,
+  NULL,
 
   /* Module initialization */
   proxy_init,

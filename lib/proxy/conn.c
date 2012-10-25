@@ -114,3 +114,12 @@ pr_netaddr_t *proxy_conn_get_addr(struct proxy_conn *pconn) {
 
   return pconn->pconn_addr;
 }
+
+const char *proxy_conn_get_uri(struct proxy_conn *pconn) {
+  if (pconn == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  return pconn->pconn_uri;
+}
