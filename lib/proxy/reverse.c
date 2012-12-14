@@ -41,7 +41,7 @@ int proxy_reverse_init(pool *p) {
     return -1;
   }
 
-  backend_servers = *((array_header **) c->argv[0]);
+  backend_servers = c->argv[0];
 
   /* XXX ProxyGatewayBalancing? */
   c = find_config(main_server->conf, CONF_PARAM, "ProxyGatewayConnect",
