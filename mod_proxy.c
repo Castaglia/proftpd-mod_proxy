@@ -123,9 +123,15 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
   server_ipstr = pr_netaddr_get_ipstr(server_addr);
   server_port = ntohs(pr_netaddr_get_port(server_addr));
 
-  server_conn = pr_inet_create_conn(proxy_pool, -1, NULL, INPORT_ANY, FALSE);  
+  /* Instead of passing the local_addr here for the bind address, this is where
+   * one could configure the source interface/address for the client/connect
+   * side of the proxy connection.
+   */
+  server_conn = pr_inet_create_conn(proxy_pool, -1, session.c->local_addr,
+    INPORT_ANY, FALSE);  
+
   res = pr_inet_connect_nowait(proxy_pool, server_conn, server_addr,
-    pr_netaddr_get_port(server_addr));
+    ntohs(pr_netaddr_get_port(server_addr)));
   if (res < 0) {
     int xerrno = errno;
 
@@ -142,7 +148,6 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
     pr_netio_stream_t *nstrm;
 
     /* Not yet connected. */
-
     nstrm = pr_netio_open(proxy_pool, PR_NETIO_STRM_OTHR,
       server_conn->listen_fd, PR_NETIO_IO_RD);
     if (nstrm == NULL) {
@@ -192,7 +197,8 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
         server_conn->mode = CM_OPEN;
         pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
 
-        if (pr_inet_get_conn_info(server_conn, server_conn->listen_fd) < 0) {
+        res = pr_inet_get_conn_info(server_conn, server_conn->listen_fd);
+        if (res < 0) {
           int xerrno = errno;
 
           (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -212,8 +218,8 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
 
   pr_trace_msg(trace_channel, 5,
     "successfully connected to %s:%u from %s:%d", server_ipstr, server_port,
-    pr_netaddr_get_ipstr(proxy_sess->client_ctrl_conn->local_addr),
-    ntohs(pr_netaddr_get_port(proxy_sess->client_ctrl_conn->local_addr)));
+    pr_netaddr_get_ipstr(server_conn->local_addr),
+    ntohs(pr_netaddr_get_port(server_conn->local_addr)));
 
   server_ctrl_conn = pr_inet_openrw(proxy_pool, server_conn, NULL,
     PR_NETIO_STRM_CTRL, -1, -1, -1, FALSE);
@@ -763,6 +769,7 @@ static int proxy_sess_init(void) {
    * here, as mod_sftp does, we can prevent the client from receiving
    * the normal FTP banner later.
    */
+  pr_response_block(TRUE);
 
   /* XXX set protocol?  What about ssh2 proxying?  How to interact
    * with mod_sftp, which doesn't have the same pipeline of request
