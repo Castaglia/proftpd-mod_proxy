@@ -40,6 +40,8 @@
 /* How long (in secs) to wait to connect to real server? */
 #define PROXY_CONNECT_DEFAULT_TIMEOUT	60
 
+/* From response.c */
+extern pr_response_t *resp_list, *resp_err_list;
 extern xaset_t *server_list;
 
 module proxy_module;
@@ -519,64 +521,80 @@ MODRET proxy_port(cmd_rec *cmd) {
 }
 
 MODRET proxy_any(cmd_rec *cmd) {
-  int res;
+  int res, xerrno;
   struct proxy_session *proxy_sess;
   pr_response_t *resp;
+  modret_t *mr = NULL;
 
   if (proxy_engine == FALSE) {
     return PR_DECLINED(cmd);
   }
 
+  pr_response_block(FALSE);
+
   /* Commands related to data transfers are handled separately */
   switch (cmd->cmd_id) {
     case PR_CMD_EPRT_ID:
-      return proxy_eprt(cmd);
-      break;
+      mr = proxy_eprt(cmd);
+      pr_response_block(TRUE);
+      return mr;
 
     case PR_CMD_EPSV_ID:
-      return proxy_epsv(cmd);
-      break;
+      mr = proxy_epsv(cmd);
+      pr_response_block(TRUE);
+      return mr;
 
     case PR_CMD_PASV_ID:
-      return proxy_pasv(cmd);
-      break;
+      mr = proxy_pasv(cmd);
+      pr_response_block(TRUE);
+      return mr;
 
     case PR_CMD_PORT_ID:
-      return proxy_port(cmd);
-      break;
+      mr = proxy_port(cmd);
+      pr_response_block(TRUE);
+      return mr;
   }
 
   proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->server_ctrl_conn,
     cmd);
   if (res < 0) {
-    int xerrno = errno;
+    xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
 
     pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
     errno = xerrno;
     return PR_ERROR(cmd);
   }
 
   resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->server_ctrl_conn);
   if (resp == NULL) {
-    int xerrno = errno;
+    xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error receiving %s response from backend: %s", cmd->argv[0],
       strerror(xerrno));
 
     pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
     errno = xerrno;
     return PR_ERROR(cmd);
   }
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->client_ctrl_conn,
-    resp);
+    resp, 0);
+  xerrno = errno;
+
   if (res < 0) {
+    pr_response_block(TRUE);
+    errno = xerrno;
     return PR_ERROR(cmd);
   }
 
+  pr_response_block(TRUE);
   return PR_HANDLED(cmd);
 }
 
@@ -672,6 +690,7 @@ static int proxy_sess_init(void) {
   int res;
   conn_t *server_conn;
   struct proxy_session *proxy_sess;
+  pr_response_t *resp;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyEngine", FALSE);
   if (c != NULL) {
@@ -769,7 +788,6 @@ static int proxy_sess_init(void) {
    * here, as mod_sftp does, we can prevent the client from receiving
    * the normal FTP banner later.
    */
-  pr_response_block(TRUE);
 
   /* XXX set protocol?  What about ssh2 proxying?  How to interact
    * with mod_sftp, which doesn't have the same pipeline of request
@@ -820,7 +838,26 @@ static int proxy_sess_init(void) {
   /* XXX Read the response from the backend server and send it to the
    * connected client as if it were our own banner.
    */
+  resp = proxy_ftp_ctrl_recv_resp(proxy_pool, proxy_sess->server_ctrl_conn);
+  if (resp == NULL) {
+    int xerrno = errno;
 
+    pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to read banner from server %s:%u: %s",
+      pr_netaddr_get_ipstr(proxy_sess->server_ctrl_conn->remote_addr),
+      ntohs(pr_netaddr_get_port(proxy_sess->server_ctrl_conn->remote_addr)),
+      strerror(xerrno));
+
+  } else {
+    int flags = PROXY_FTP_SEND_RESP_FL_SEND_NOW;
+
+    if (proxy_ftp_ctrl_send_resp(proxy_pool, session.c, resp, flags) < 0) {
+      pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to send banner to client: %s", strerror(errno));
+    }
+  }
+
+  pr_response_block(TRUE);
   return 0;
 }
 

@@ -316,9 +316,11 @@ int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *ctrl_conn, cmd_rec *cmd) {
   return res;
 }
 
-int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp) {
+int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp,
+    int flags) {
   char *ptr;
   int use_err = FALSE;
+  pool *curr_pool;
 
   (void) ctrl_conn;
 
@@ -334,14 +336,29 @@ int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp) {
   pr_trace_msg(trace_channel, 9,
     "server->client response: %s %s", resp->num, resp->msg);
 
+  curr_pool = pr_response_get_pool();
+  if (curr_pool == NULL) {
+    pr_response_set_pool(p);
+  }
+
   /* We also need to deal with multiline responses. */
   ptr = strchr(resp->msg, '\n');
   if (ptr == NULL) {
     if (use_err) {
-      pr_response_add_err(resp->num, "%s", resp->msg);
+      if (flags & PROXY_FTP_SEND_RESP_FL_SEND_NOW) {
+        pr_response_send(resp->num, "%s", resp->msg);
+
+      } else {
+        pr_response_add_err(resp->num, "%s", resp->msg);
+      }
 
     } else {
-      pr_response_add(resp->num, "%s", resp->msg);
+      if (flags & PROXY_FTP_SEND_RESP_FL_SEND_NOW) {
+        pr_response_send(resp->num, "%s", resp->msg);
+
+      } else {
+        pr_response_add(resp->num, "%s", resp->msg);
+      }
     }
 
   } else {
@@ -358,10 +375,20 @@ int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp) {
 
       *ptr = '\0';
       if (use_err) {
-        pr_response_add_err(resp_code, "%s", line);
+        if (flags & PROXY_FTP_SEND_RESP_FL_SEND_NOW) {
+          pr_response_send(resp_code, "%s", line);
+
+        } else {
+          pr_response_add_err(resp_code, "%s", line);
+        }
 
       } else {
-        pr_response_add(resp_code, "%s", line);
+        if (flags & PROXY_FTP_SEND_RESP_FL_SEND_NOW) {
+          pr_response_send(resp_code, "%s", line);
+
+        } else {
+          pr_response_add(resp_code, "%s", line);
+        }
       }
 
       *ptr = '\n';
@@ -373,6 +400,8 @@ int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp) {
       }
     }
   }
+
+  pr_response_set_pool(curr_pool);
 
   if (use_err) {
     return -1;

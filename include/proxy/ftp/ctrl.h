@@ -30,6 +30,8 @@
 cmd_rec *proxy_ftp_ctrl_recv_cmd(pool *, conn_t *);
 pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *);
 int proxy_ftp_ctrl_send_cmd(pool *, conn_t *, cmd_rec *);
-int proxy_ftp_ctrl_send_resp(pool *, conn_t *, pr_response_t *);
+int proxy_ftp_ctrl_send_resp(pool *, conn_t *, pr_response_t *, int);
+
+#define PROXY_FTP_SEND_RESP_FL_SEND_NOW			0x001
 
 #endif /* MOD_PROXY_FTP_CTRL_H */

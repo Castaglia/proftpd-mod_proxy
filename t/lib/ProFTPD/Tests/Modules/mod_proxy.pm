@@ -88,7 +88,7 @@ sub proxy_gateway_connect {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'DEFAULT:10 proxy:20 proxy.parse:20',
+    Trace => 'DEFAULT:10 proxy:20 proxy.ftp.ctrl:20 proxy.ftp.data:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
