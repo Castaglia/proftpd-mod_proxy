@@ -521,7 +521,7 @@ MODRET proxy_port(cmd_rec *cmd) {
 }
 
 MODRET proxy_any(cmd_rec *cmd) {
-  int flags = 0, res, xerrno;
+  int res, xerrno;
   struct proxy_session *proxy_sess;
   pr_response_t *resp;
   modret_t *mr = NULL;
@@ -553,10 +553,6 @@ MODRET proxy_any(cmd_rec *cmd) {
       mr = proxy_port(cmd);
       pr_response_block(TRUE);
       return mr;
-
-    case PR_CMD_QUIT_ID:
-      flags = PROXY_FTP_SEND_RESP_FL_SEND_NOW; 
-      break;
   }
 
   proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
@@ -589,7 +585,7 @@ MODRET proxy_any(cmd_rec *cmd) {
   }
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->client_ctrl_conn,
-    resp, flags);
+    resp, PROXY_FTP_SEND_RESP_FL_SEND_NOW);
   xerrno = errno;
 
   if (res < 0) {
