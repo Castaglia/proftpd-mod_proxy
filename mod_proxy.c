@@ -585,7 +585,7 @@ MODRET proxy_any(cmd_rec *cmd) {
   }
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->client_ctrl_conn,
-    resp, PROXY_FTP_SEND_RESP_FL_SEND_NOW);
+    resp);
   xerrno = errno;
 
   if (res < 0) {
@@ -849,9 +849,7 @@ static int proxy_sess_init(void) {
       strerror(xerrno));
 
   } else {
-    int flags = PROXY_FTP_SEND_RESP_FL_SEND_NOW;
-
-    if (proxy_ftp_ctrl_send_resp(proxy_pool, session.c, resp, flags) < 0) {
+    if (proxy_ftp_ctrl_send_resp(proxy_pool, session.c, resp) < 0) {
       pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unable to send banner to client: %s", strerror(errno));
     }

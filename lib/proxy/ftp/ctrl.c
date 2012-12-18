@@ -316,22 +316,11 @@ int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *ctrl_conn, cmd_rec *cmd) {
   return res;
 }
 
-int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp,
-    int flags) {
+int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp) {
   char *ptr;
-  int use_err = FALSE;
   pool *curr_pool;
 
   (void) ctrl_conn;
-
-  /* Due to historical reasons, there are two different response chains, and
-   * we need to make sure we add this response to the correct chain, then
-   * flush that chain.
-   */
-  if (resp->num[0] == '4' ||
-      resp->num[0] == '5') {
-    use_err = TRUE;
-  }
 
   pr_trace_msg(trace_channel, 9,
     "server->client response: %s %s", resp->num, resp->msg);
@@ -344,22 +333,7 @@ int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp,
   /* We also need to deal with multiline responses. */
   ptr = strchr(resp->msg, '\n');
   if (ptr == NULL) {
-    if (use_err) {
-      if (flags & PROXY_FTP_SEND_RESP_FL_SEND_NOW) {
-        pr_response_send(resp->num, "%s", resp->msg);
-
-      } else {
-        pr_response_add_err(resp->num, "%s", resp->msg);
-      }
-
-    } else {
-      if (flags & PROXY_FTP_SEND_RESP_FL_SEND_NOW) {
-        pr_response_send(resp->num, "%s", resp->msg);
-
-      } else {
-        pr_response_add(resp->num, "%s", resp->msg);
-      }
-    }
+    pr_response_send(resp->num, "%s", resp->msg);
 
   } else {
     char *line, *resp_code;
@@ -374,22 +348,7 @@ int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp,
       pr_signals_handle();
 
       *ptr = '\0';
-      if (use_err) {
-        if (flags & PROXY_FTP_SEND_RESP_FL_SEND_NOW) {
-          pr_response_send(resp_code, "%s", line);
-
-        } else {
-          pr_response_add_err(resp_code, "%s", line);
-        }
-
-      } else {
-        if (flags & PROXY_FTP_SEND_RESP_FL_SEND_NOW) {
-          pr_response_send(resp_code, "%s", line);
-
-        } else {
-          pr_response_add(resp_code, "%s", line);
-        }
-      }
+      pr_response_send(resp_code, "%s", line);
 
       *ptr = '\n';
       ptr2 = strchr(line, '\n');
@@ -402,11 +361,6 @@ int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp,
   }
 
   pr_response_set_pool(curr_pool);
-
-  if (use_err) {
-    return -1;
-  }
-
   return 0;
 }
 
