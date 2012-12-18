@@ -21,7 +21,11 @@ my $TESTS = {
     test_class => [qw(forking)],
   },
 
-  # proxy_gateway_login
+  proxy_gateway_login => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
+
   # proxy_gateway_list_pasv
   # proxy_gateway_list_port
   # proxy_gateway_list_epsv
@@ -116,6 +120,9 @@ sub proxy_gateway_connect {
 <VirtualHost 127.0.0.1>
   Port $vhost_port
   ServerName "Real Server"
+
+  WtmpLog off
+  TransferLog none
 </VirtualHost>
 EOC
     unless (close($fh)) {
@@ -235,7 +242,7 @@ sub proxy_gateway_login {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'DEFAULT:10 proxy:20 proxy.parse:20',
+    Trace => 'DEFAULT:10 proxy:20 proxy.ftp.ctrl:20 proxy.ftp.data:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
@@ -254,6 +261,13 @@ sub proxy_gateway_login {
         DelayEngine => 'off',
       },
     },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $user,
+      },
+    },
+
   };
 
   my ($port, $config_user, $config_group) = config_write($config_file, $config);
@@ -262,10 +276,15 @@ sub proxy_gateway_login {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
-  ServerName "Real FTP Server"
+  ServerName "Real Server"
 
   AuthUserFile $auth_user_file
   AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
 </VirtualHost>
 EOC
     unless (close($fh)) {
