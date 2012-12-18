@@ -465,6 +465,48 @@ MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
+/* mod_proxy event/dispatch loop. */
+static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
+  while (TRUE) {
+    int res = 0;
+    cmd_rec *cmd = NULL;
+
+    pr_signals_handle();
+
+    res = pr_cmd_read(&cmd);
+    if (res < 0) {
+      if (PR_NETIO_ERRNO(session.c->instrm) == EINTR) {
+        /* Simple interrupted syscall */
+        continue;
+      }
+
+#ifndef PR_DEVEL_NO_DAEMON
+      /* Otherwise, EOF */
+      pr_session_disconnect(NULL, PR_SESS_DISCONNECT_CLIENT_EOF, NULL);
+#else
+      return;
+#endif /* PR_DEVEL_NO_DAEMON */
+    }
+
+    /* Data received, reset idle timer */
+    if (pr_data_get_timeout(PR_DATA_TIMEOUT_IDLE) > 0) {
+      pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
+    }
+
+    if (cmd) {
+      pr_cmd_dispatch(cmd);
+      destroy_pool(cmd->pool);
+
+    } else {
+      pr_event_generate("core.invalid-command", NULL);
+      pr_response_send(R_500, _("Invalid command: try being more creative"));
+    }
+
+    /* Release any working memory allocated in inet */
+    pr_inet_clear();
+  }
+}
+
 /* Command handlers
  */
 
@@ -856,6 +898,13 @@ static int proxy_sess_init(void) {
   }
 
   pr_response_block(TRUE);
+
+  /* We have to use our own command event loop, since we will also need to
+   * watch any data transfer connections with the backend server, in addition
+   * to the client control connection.
+   */
+  pr_cmd_set_handler(proxy_cmd_loop);
+
   return 0;
 }
 
