@@ -510,55 +510,204 @@ static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
 /* Command handlers
  */
 
-MODRET proxy_eprt(cmd_rec *cmd) {
+MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res;
-  struct proxy_session *proxy_sess;
   pr_response_t *resp;
 
   if (proxy_engine == FALSE) {
     return PR_DECLINED(cmd);
   }
 
-  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
   return PR_HANDLED(cmd);
 }
 
-MODRET proxy_epsv(cmd_rec *cmd) {
+MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res;
-  struct proxy_session *proxy_sess;
   pr_response_t *resp;
 
   if (proxy_engine == FALSE) {
     return PR_DECLINED(cmd);
   }
 
-  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
   return PR_HANDLED(cmd);
 }
 
-MODRET proxy_pasv(cmd_rec *cmd) {
-  int res;
-  struct proxy_session *proxy_sess;
+MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
+  int res, valid_response = FALSE, xerrno;
+  conn_t *data_conn;
+  char *data_addr, *ptr;
+  size_t data_addrlen;
+  pr_netaddr_t *remote_addr;
   pr_response_t *resp;
+  unsigned int addr_vals[4];
+  unsigned short port_vals[2];
+  unsigned short remote_port;
 
   if (proxy_engine == FALSE) {
     return PR_DECLINED(cmd);
   }
 
-  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->server_ctrl_conn,
+    cmd);
+  if (res < 0) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+
+    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->server_ctrl_conn);
+  if (resp == NULL) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error receiving %s response from backend: %s", cmd->argv[0],
+      strerror(xerrno));
+
+    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  /* Have to scan the response message for the encoded address/port to
+   * which we are to connect.  Note that we may see some strange formats
+   * for PASV responses from FTP servers here.
+   *
+   * We can't predict where the expected address/port numbers start in the
+   * string, so start from the beginning.
+   */
+  for (ptr = resp->msg; *ptr; ptr++) {
+    if (sscanf(ptr, "%u,%u,%u,%u,%hu,%hu",
+        &addr_vals[0], &addr_vals[1], &addr_vals[2], &addr_vals[3],
+        &port_vals[0], &port_vals[1]) == 6) {
+      valid_response = TRUE;
+      break;
+    }
+  }
+
+  if (valid_response == FALSE) {
+    pr_trace_msg("proxy", 2, "unknown PASV response format '%s'", resp->msg);
+    errno = EINVAL;
+
+    /* XXX send error response? */
+    return PR_ERROR(cmd);
+  }
+
+  if (addr_vals[0] > 255 ||
+      addr_vals[1] > 255 ||
+      addr_vals[2] > 255 ||
+      addr_vals[3] > 255 ||
+      port_vals[0] > 255 ||
+      port_vals[1] > 255 ||
+      (addr_vals[0]|addr_vals[1]|addr_vals[2]|addr_vals[3]) == 0 ||
+      (port_vals[0]|port_vals[1]) == 0) {
+    pr_trace_msg("proxy", 1, "PASV response '%s' has invalid value(s)",
+      resp->msg);
+    errno = EPERM;
+
+    /* XXX send error response? */
+    return PR_ERROR(cmd);
+  }
+
+  data_addrlen = (4 * 3) + (3 * 1) + 1;
+  data_addr = pcalloc(cmd->tmp_pool, data_addrlen);
+  snprintf(data_addr, data_addrlen-1, "%u.%u.%u.%u", addr_vals[0], addr_vals[1],
+    addr_vals[2], addr_vals[3]);
+  remote_addr = pr_netaddr_get_addr(cmd->tmp_pool, data_addr, NULL);
+  if (remote_addr == NULL) {
+    pr_trace_msg("proxy", 2, "unable to resolve '%s': %s", data_addr,
+      strerror(errno));
+    errno = EINVAL;
+
+    /* XXX send error response? */
+    return PR_ERROR(cmd);
+  }
+
+  remote_port = ((port_vals[0] << 8) + port_vals[1]);
+  pr_netaddr_set_port2(remote_addr, remote_port);
+
+  /* Make sure that the given address matches the address to which we
+   * originally connected.
+   */
+
+#ifdef PR_USE_IPV6
+  if (pr_netaddr_use_ipv6()) {
+    /* XXX Add appropriate check here */
+  }
+#endif /* PR_USE_IPV6 */
+
+  if (pr_netaddr_cmp(remote_addr,
+      proxy_sess->server_ctrl_conn->remote_addr) != 0) {
+    pr_trace_msg("proxy", 1,
+      "Refused PASV address %s (address mismatch with %s)",
+      pr_netaddr_get_ipstr(remote_addr),
+      pr_netaddr_get_ipstr(proxy_sess->server_ctrl_conn->remote_addr));
+    errno = EPERM;
+
+    /* XXX send error response? */
+    return PR_ERROR(cmd);
+  }
+
+  if (remote_port < 1024) {
+    pr_trace_msg("proxy", 1, "Refused PASV port %hu (below 1024)",
+      remote_port);
+
+    errno = EPERM;
+
+    /* XXX send error response? */
+    return PR_ERROR(cmd);
+  }
+
+  data_conn = pr_inet_create_conn(cmd->tmp_pool, -1, session.c->local_addr,
+    INPORT_ANY, TRUE);
+
+  /* XXX Need to set socket options on data conn */
+
+  pr_inet_set_block(cmd->tmp_pool, data_conn);
+  if (pr_inet_connect(cmd->tmp_pool, data_conn, remote_addr,
+      ntohs(pr_netaddr_get_port(remote_addr))) < 0) {
+    fprintf(stderr, "Unable to connect to %s:%u: %s\n",
+      pr_netaddr_get_ipstr(remote_addr),
+      ntohs(pr_netaddr_get_port(remote_addr)),
+      strerror(errno));
+    pr_inet_close(cmd->tmp_pool, data_conn);
+
+    /* XXX send error response? */
+    return PR_ERROR(cmd);
+  }
+
+  data_conn->instrm = pr_netio_open(cmd->tmp_pool, PR_NETIO_STRM_DATA,
+    data_conn->listen_fd, PR_NETIO_IO_RD);
+  proxy_sess->server_data_conn = data_conn;
+
+  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->client_ctrl_conn,
+    resp);
+  xerrno = errno;
+
+  if (res < 0) {
+    pr_response_block(TRUE);
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  pr_response_block(TRUE);
   return PR_HANDLED(cmd);
 }
 
-MODRET proxy_port(cmd_rec *cmd) {
+MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res;
-  struct proxy_session *proxy_sess;
   pr_response_t *resp;
 
   if (proxy_engine == FALSE) {
     return PR_DECLINED(cmd);
   }
 
-  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
   return PR_HANDLED(cmd);
 }
 
@@ -574,30 +723,31 @@ MODRET proxy_any(cmd_rec *cmd) {
 
   pr_response_block(FALSE);
 
+  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+
   /* Commands related to data transfers are handled separately */
   switch (cmd->cmd_id) {
     case PR_CMD_EPRT_ID:
-      mr = proxy_eprt(cmd);
+      mr = proxy_eprt(cmd, proxy_sess);
       pr_response_block(TRUE);
       return mr;
 
     case PR_CMD_EPSV_ID:
-      mr = proxy_epsv(cmd);
+      mr = proxy_epsv(cmd, proxy_sess);
       pr_response_block(TRUE);
       return mr;
 
     case PR_CMD_PASV_ID:
-      mr = proxy_pasv(cmd);
+      mr = proxy_pasv(cmd, proxy_sess);
       pr_response_block(TRUE);
       return mr;
 
     case PR_CMD_PORT_ID:
-      mr = proxy_port(cmd);
+      mr = proxy_port(cmd, proxy_sess);
       pr_response_block(TRUE);
       return mr;
   }
 
-  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->server_ctrl_conn,
     cmd);
   if (res < 0) {
