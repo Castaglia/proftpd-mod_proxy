@@ -1,0 +1,74 @@
+
+Linux Load Balancing with HAProxy + Heartbeat:
+  https://wiki.gogrid.com/wiki/index.php/Customer:Linux_Load_Balancing_with_HAProxy+Heartbeat 
+
+Load Balancing OpenSSH SFTP with HAProxy:
+  http://jpmorris-iso.blogspot.com/2013/01/load-balancing-openssh-sftp-with-haproxy.html 
+
+FTP Load Balancing?
+  http://www.formilux.org/archives/haproxy/0805/0976.html
+  http://www.formilux.org/archives/haproxy/0805/0977.html
+
+Best way to use HAProxy for FTP?
+  http://permalink.gmane.org/gmane.comp.web.haproxy/2486
+
+Load Balancing FTP:
+  http://ben.timby.com/?page_id=210
+
+FTP Load-balanced through haproxy:
+  http://www.taiter.com/techlog/2012/09/ftp-load-balanced-through-haproxy.html
+
+Network Load Balancing Services (MSFT):
+  http://en.wikipedia.org/wiki/Network_Load_Balancing_Services
+
+Network Load Balancing:
+  http://en.wikipedia.org/wiki/Network_Load_Balancing
+
+NcFTP.com "Why PASV Poses Problems for FTP Servers behind Load-Balancing Routers"
+  http://www.ncftp.com/ncftpd/doc/misc/ftp_and_firewalls.html#PASVLBProblems
+
+ftpcluster:
+  http://www.awk-scripting.de/cluster/
+
+Brane Dump: Load Balancing FTP servers
+  http://hezmatt.org/~mpalmer/blog/2008/10/22/load-balancing-ftp-servers.html
+
+Opensource load balancer projects:
+  http://www.inlab.de/articles/free-and-open-source-load-balancing-software-and-projects.html
+
+FTP ALG:
+  http://www.amaranten.com/support/user%20guide/Application_Layer_Gateways/FTP_ALG.htm
+  http://www.ietf.org/id/draft-tsou-behave-ftp46-00.txt
+
+Breaking through FTP ALGs: possible?
+  http://seclists.org/bugtraq/2000/Feb/176
+  http://seclists.org/vuln-dev/2000/Feb/82
+  https://listserv.icsalabs.com/pipermail/firewall-wizards/2000-March/008251.html
+
+AWS ELB for FTP:
+  https://forums.aws.amazon.com/thread.jspa?messageID=139143
+
+Trilent FTP Proxy:
+  http://trilent-ftp-proxy.en.softonic.com/
+
+ServerFault:
+  Reverse Proxy FTP traffic:
+    http://serverfault.com/questions/122636/reverse-proxy-ftp-traffic
+
+  Search on an FTP server:
+    http://serverfault.com/questions/28568/using-the-find-command-on-the-ftp-server?rq=1
+
+  FTP Load balancer:
+    http://serverfault.com/questions/139342/ftp-load-balancer?rq=1
+
+  Possible to load balance FTP?
+    http://serverfault.com/questions/113456/is-it-possible-to-load-balance-an-ftp-server
+
+  frox as reverse proxy?
+    http://serverfault.com/questions/390043/frox-as-reverse-proxy
+
+  proxy and reverse proxy on same server
+    http://serverfault.com/questions/65133/proxy-and-reverse-proxy-on-same-server?rq=1
+
+  FTP/SFTP/FTPS proxying
+    http://serverfault.com/questions/117899/ftp-sftp-ftps-proxying?rq=1

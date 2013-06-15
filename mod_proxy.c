@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy
- * Copyright (c) 2012 TJ Saunders
+ * Copyright (c) 2012-2013 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -467,12 +467,33 @@ MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
 
 /* mod_proxy event/dispatch loop. */
 static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
+
+  /* XXX Note: when reading/writing data from data connections, do NOT
+   * perform any sort of ASCII translation; we leave the data as is.
+   * (Or maybe we SHOULD perform the ASCII translation here, in case of
+   * ASCII translation error; the backend server can then be told that
+   * the data are binary, and thus relieve the backend of the translation
+   * burden.  Configurable?)
+   */
+
   while (TRUE) {
     int res = 0;
     cmd_rec *cmd = NULL;
 
     pr_signals_handle();
 
+    /* XXX Insert select(2) call here, where we wait for readability on:
+     *
+     *  client control connection
+     *  client data connection (if uploading)
+     *  server data connection (if downloading/directory listing)
+     *
+     * Bonus points for handling aborts on either control connection,
+     * broken data connections, blocked/slow writes to client (how much
+     * can/should we buffer?  what about short writes to the client?),
+     * timeouts, etc.
+     */
+ 
     res = pr_cmd_read(&cmd);
     if (res < 0) {
       if (PR_NETIO_ERRNO(session.c->instrm) == EINTR) {
@@ -664,6 +685,16 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
+  /* XXX We do NOT want to connect here, but would rather wait until the
+   * ensuing data transfer-initiating command.  Otherwise, a client could
+   * spew PASV commands at us, and we would flood the backend server with
+   * data transfer connections needlessly.
+   *
+   * We DO, however, need to create our own listening connection, so that
+   * we can inform the client of the address/port to which IT is to
+   * connect for its part of the data transfer.
+   */
+
   data_conn = pr_inet_create_conn(cmd->tmp_pool, -1, session.c->local_addr,
     INPORT_ANY, TRUE);
 
@@ -672,13 +703,16 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   pr_inet_set_block(cmd->tmp_pool, data_conn);
   if (pr_inet_connect(cmd->tmp_pool, data_conn, remote_addr,
       ntohs(pr_netaddr_get_port(remote_addr))) < 0) {
-    fprintf(stderr, "Unable to connect to %s:%u: %s\n",
-      pr_netaddr_get_ipstr(remote_addr),
-      ntohs(pr_netaddr_get_port(remote_addr)),
-      strerror(errno));
+    int xerrno = errno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+     "Unable to connect to %s#%u: %s\n", pr_netaddr_get_ipstr(remote_addr),
+      ntohs(pr_netaddr_get_port(remote_addr)), strerror(xerrno));
     pr_inet_close(cmd->tmp_pool, data_conn);
 
     /* XXX send error response? */
+
+    errno = xerrno;
     return PR_ERROR(cmd);
   }
 
