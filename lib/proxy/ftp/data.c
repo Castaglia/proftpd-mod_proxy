@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP data conn routines
- * Copyright (c) 2012 TJ Saunders
+ * Copyright (c) 2012-2013 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -44,6 +44,10 @@ pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn) {
     return NULL;
   }
 
+  /* XXX Reset TimeoutIdle timer, TimeoutNoTransfer timer.  Are there
+   * separate versions of these timers for frontend, backend?
+   */
+
   pr_event_generate("mod_proxy.data-read", pbuf);
   pr_trace_msg(trace_channel, 15, "%.*s", nread, pbuf->buf);
 
@@ -51,6 +55,31 @@ pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn) {
 }
 
 int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf) {
-  errno = ENOSYS;
-  return -1;
+  int nwrote;
+
+  pr_event_generate("mod_proxy.data-read", pbuf);
+
+  nwrote = pr_netio_write(data_conn->outstrm, pbuf->current, pbuf->remaining);
+  while (nwrote < 0) {
+    int xerrno = errno;
+
+    if (xerrno == EAGAIN) {
+      /* Since our socket is in non-blocking mode, write(2) can return
+       * EAGAIN if there is not enough from for our data yet.  Handle
+       * this by delaying temporarily, then trying again.
+       */
+      errno = EINTR;
+      pr_signals_handle();
+
+      nwrote = pr_netio_write(data_conn->outstrm, pbuf->current,
+        pbuf->remaining);
+      continue;
+    }
+  }
+
+  /* XXX Reset TimeoutIdle timer, TimeoutNoTransfer timer.  Are there
+   * separate versions of these timers for frontend, backend?
+   */
+
+  return nwrote;
 }

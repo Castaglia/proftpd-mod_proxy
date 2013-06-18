@@ -171,8 +171,8 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn) {
      * nonconformant with RFC 959.
      *
      * If we are NOT the first line of the response, then we are probably
-     * handling a multiline response,.   If the first character is a space,
-     * then this is a continuation line.  Otherwise, the first three characters
+     * handling a multiline response. If the first character is a space, then
+     * this is a continuation line.  Otherwise, the first three characters
      * MUST be numeric, AND MUST match the numeric code from the first line.
      * This indicates the last line in the multiline response -- and the
      * character after the numerics MUST be a space.
@@ -308,13 +308,13 @@ int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *ctrl_conn, cmd_rec *cmd) {
     display_str = pr_cmd_get_displayable_str(cmd, &display_len);
 
     pr_trace_msg(trace_channel, 9,
-      "proxied command from client to backend: %s", display_str);
+      "proxied %s command from frontend to backend", display_str);
     res = pr_netio_printf(ctrl_conn->outstrm, "%s %s\r\n", cmd->argv[0],
       cmd->arg);
 
   } else {
     pr_trace_msg(trace_channel, 9,
-      "proxied command from client to backend: %s", cmd->argv[0]);
+      "proxied %s command from frontend to backend", cmd->argv[0]);
     res = pr_netio_printf(ctrl_conn->outstrm, "%s\r\n", cmd->argv[0]);
   }
 
@@ -328,7 +328,7 @@ int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp) {
   (void) ctrl_conn;
 
   pr_trace_msg(trace_channel, 9,
-    "server->client response: %s %s", resp->num, resp->msg);
+    "backend->frontend response: %s %s", resp->num, resp->msg);
 
   curr_pool = pr_response_get_pool();
   if (curr_pool == NULL) {
