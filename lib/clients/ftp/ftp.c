@@ -846,6 +846,19 @@ static int proxy_ftp_list(pool *p, conn_t *ctrl_conn, pr_netaddr_t *local_addr,
       }
     }
 
+    /* If an FTP client fails to select(2) on the control connection at the
+     * same time as select(2) on the data connection, then when the data have
+     * stopped arriving, that client will appear to "hang"/block for a while,
+     * waiting for the data connection to close.  ProFTPD keeps the data
+     * connection open for a while, to ensure that the final response is
+     * sent on the control connection; this duration is tunable via
+     * TimeoutLinger.
+     *
+     * The proper fix is for the client to handle messages on the control
+     * connection at the same time; it will then see the final 226 response
+     * code indicating the end-of-transfer (at which point, the client can
+     * close the data connection at its leisure).
+     */
     if (FD_ISSET(PR_NETIO_FD(ctrl_conn->instrm), &rfds)) {
       /* Some data arrived on the ctrl connection... */
 
@@ -1269,7 +1282,7 @@ int main(int argc, char *argv[]) {
 #endif
 
   /* LIST, passive transfer via EPSV */
-  res = proxy_ftp_list(p, ctrl_conn, local_addr, USE_EPSV);
+  res = proxy_ftp_list(p, ctrl_conn, local_addr, PR_CMD_EPSV_ID);
   if (res < 0) {
     fprintf(stderr, "Error sending command to server: %s\n", strerror(errno));
   } 
