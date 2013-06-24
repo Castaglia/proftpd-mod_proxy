@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy sessions
- * Copyright (c) 2012 TJ Saunders
+ * Copyright (c) 2012-2013 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,11 +33,14 @@ struct proxy_session {
   int connect_timeout;
   int connect_timerno;
 
-  conn_t *client_ctrl_conn;
-  conn_t *client_data_conn;
+  conn_t *frontend_ctrl_conn;
+  conn_t *frontend_data_conn;
 
-  conn_t *server_ctrl_conn;
-  conn_t *server_data_conn;
+  conn_t *backend_ctrl_conn;
+  conn_t *backend_data_conn;
+
+  /* Data connection address: frontend (PORT/EPRT) or backend (PASV/EPSV) */
+  pr_netaddr_t *data_addr;
 };
 
 struct proxy_session *proxy_session_alloc(pool *p);

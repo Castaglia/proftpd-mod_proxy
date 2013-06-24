@@ -310,7 +310,7 @@ int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *ctrl_conn, cmd_rec *cmd) {
     display_str = pr_cmd_get_displayable_str(cmd, &display_len);
 
     pr_trace_msg(trace_channel, 9,
-      "proxied %s command from frontend to backend", display_str);
+      "proxied command '%s' from frontend to backend", display_str);
     res = pr_netio_printf(ctrl_conn->outstrm, "%s %s\r\n", cmd->argv[0],
       cmd->arg);
 
