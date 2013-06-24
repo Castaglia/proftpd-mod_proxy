@@ -34,7 +34,13 @@ my $TESTS = {
   # proxy_gateway_list_port
   # proxy_gateway_list_epsv
   # proxy_gateway_list_eprt
+  # proxy_gateway_retr_pasv
+  # proxy_gateway_retr_largefile
+  # proxy_gateway_retr_abort
   # proxy_gateway_stor_pasv
+  # proxy_gateway_stor_largefile
+  # proxy_gateway_stor_abort
+  # proxy_gateway_unknown_cmd
 
   # proxy_proxy_connect
   # proxy_proxy_login
@@ -51,7 +57,10 @@ sub new {
 }
 
 sub list_tests {
-  return testsuite_get_runnable_tests($TESTS);
+#  return testsuite_get_runnable_tests($TESTS);
+  return qw(
+    proxy_gateway_list_pasv
+  );
 }
 
 sub proxy_gateway_connect {
@@ -392,6 +401,8 @@ sub proxy_gateway_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $timeout_idle = 10;
+
   my $config = {
     PidFile => $pid_file,
     ScoreboardFile => $scoreboard_file,
@@ -402,6 +413,7 @@ sub proxy_gateway_list_pasv {
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
     SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
 
     IfModules => {
       'mod_proxy.c' => {
@@ -438,8 +450,10 @@ sub proxy_gateway_list_pasv {
   AuthOrder mod_auth_file.c
 
   AllowOverride off
-  WtmpLog off
+  TimeoutIdle $timeout_idle
+
   TransferLog none
+  WtmpLog off
 </VirtualHost>
 EOC
     unless (close($fh)) {
@@ -468,11 +482,29 @@ EOC
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
       $client->login($user, $passwd);
 
-      my ($resp_code, $resp_msg) = $client->list();
-print STDERR "resp_code: $resp_code\n";
-print STDERR "resp_msg: $resp_msg\n";
+      my $conn = $client->list_raw();
+      unless ($conn) {
+        die("Failed to LIST: " . $client->response_code() . ' ' .
+          $client->response_msg());
+      }
 
-      $client->quit();
+      my $buf;
+      $conn->read($buf, 8192, 10);
+      eval { $conn->close() };
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      my $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
     };
 
     if ($@) {
@@ -483,7 +515,7 @@ print STDERR "resp_msg: $resp_msg\n";
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($config_file, $rfh, $timeout_idle + 2) };
     if ($@) {
       warn($@);
       exit 1;

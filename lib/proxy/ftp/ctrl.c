@@ -295,6 +295,8 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn) {
     }
   }
 
+  pr_trace_msg(trace_channel, 9,
+    "received '%s %s' response from backend to frontend", resp->num, resp->msg);
   return resp;
 }
 

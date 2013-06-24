@@ -534,7 +534,7 @@ static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
 MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res, xerrno;
   pr_response_t *resp;
-  conn_t *frontend_conn = NULL, *backend_conn = NULL;
+  conn_t *frontend_conn = NULL, *backend_conn = NULL, *conn;
 
   if (proxy_engine == FALSE) {
     return PR_DECLINED(cmd);
@@ -567,6 +567,63 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
+  /* Connect to the backend server now. */
+  /* XXX We won't receive the initial response until we connect to the
+   * backend data address/port.
+   */
+  /* XXX Note: This is where we would specify the specific address/interface
+   * to use as the source address for connections to the backend server,
+   * rather than using session.c->local_addr as the bind address.
+   */
+
+  /* XXX Make a proxy_ftp_connect(proxy_sess) function for this. */
+  conn = pr_inet_create_conn(session.pool, -1, session.c->local_addr,
+    INPORT_ANY, TRUE);
+
+  pr_inet_set_proto_opts(session.pool, conn,
+    main_server->tcp_mss_len, 0, IPTOS_THROUGHPUT, 1);
+  pr_inet_generate_socket_event("proxy.data-connect", main_server,
+    conn->local_addr, conn->listen_fd);
+
+  pr_inet_set_nonblock(session.pool, conn);
+
+  if (pr_inet_connect(cmd->tmp_pool, conn, proxy_sess->backend_data_addr,
+      ntohs(pr_netaddr_get_port(proxy_sess->backend_data_addr))) < 0) {
+    xerrno = errno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to connect to %s#%u: %s\n",
+      pr_netaddr_get_ipstr(proxy_sess->backend_data_addr),
+      ntohs(pr_netaddr_get_port(proxy_sess->backend_data_addr)),
+      strerror(xerrno));
+    pr_inet_close(session.pool, conn);
+
+    /* XXX Is this the right response code here? */
+    pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  backend_conn = pr_inet_openrw(session.pool, conn, NULL, PR_NETIO_STRM_DATA,
+    conn->listen_fd, -1, -1, TRUE);
+  if (backend_conn == NULL) {
+    xerrno = errno;
+
+    pr_inet_close(session.pool, conn);
+
+    /* XXX Is this the right response code here? */
+    pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  proxy_sess->backend_data_conn = backend_conn;
+
+  /* Now we should receive the initial response from the backend server. */
   resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn);
   if (resp == NULL) {
     xerrno = errno;
@@ -577,6 +634,9 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_sess->backend_data_conn = NULL;
+
     errno = xerrno;
     return PR_ERROR(cmd);
   }
@@ -584,19 +644,18 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   /* If the backend server responds with 4xx/5xx here, close the frontend
    * data connection.
    */
-(void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION, "proxy_data: resp->num = %s", resp->num);
-
   if (resp->num[0] == '4' || resp->num[0] == '5') {
     pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
     proxy_sess->frontend_data_conn = NULL;
+
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_sess->backend_data_conn = NULL;
 
     errno = EPERM;
     return PR_HANDLED(cmd);
   }
 
   if (session.sf_flags & SF_PASSIVE) {
-    pr_netaddr_t *remote_addr;
-
     /* XXX Make a proxy_ftp_accept(proxy_sess) function for this. */
     /* XXX Other socket options need to be set -- depending on IO_RD/IO_WR
      * direction -- before calling accept(2).
@@ -607,6 +666,9 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       /* XXX ??? */
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "error accepting fronted data connection: %s", strerror(errno));
+
+      pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+      proxy_sess->backend_data_conn = NULL;
 
       /* XXX Error out here */
     }
@@ -641,45 +703,12 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
       pr_response_flush(&resp_err_list);
 
-      errno = xerrno;
-      return PR_ERROR(cmd);
-    }
-
-    /* Connect to the backend server now. */
-    /* XXX Note: This is where we would specify the specific address/interface
-     * to use as the source address for connections to the backend server,
-     * rather than using session.c->local_addr as the bind address.
-     */
-
-    /* XXX Make a proxy_ftp_connect(proxy_sess) function for this. */
-    backend_conn = pr_inet_create_conn(session.pool, -1,
-      session.c->local_addr, INPORT_ANY, TRUE);
-
-    pr_inet_set_proto_opts(session.pool, backend_conn,
-      main_server->tcp_mss_len, 0, IPTOS_THROUGHPUT, 1);
-    pr_inet_generate_socket_event("proxy.data-connect", main_server,
-      backend_conn->local_addr, backend_conn->listen_fd);
-
-    pr_inet_set_nonblock(session.pool, backend_conn);
-
-    remote_addr = proxy_sess->backend_data_addr;
-    if (pr_inet_connect(cmd->tmp_pool, backend_conn, remote_addr,
-        ntohs(pr_netaddr_get_port(remote_addr))) < 0) {
-      xerrno = errno;
-
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-       "unable to connect to %s#%u: %s\n", pr_netaddr_get_ipstr(remote_addr),
-        ntohs(pr_netaddr_get_port(remote_addr)), strerror(xerrno));
-      pr_inet_close(session.pool, backend_conn);
-
-      pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-      pr_response_flush(&resp_err_list);
+      pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+      proxy_sess->backend_data_conn = NULL;
 
       errno = xerrno;
       return PR_ERROR(cmd);
     }
-
-    proxy_sess->backend_data_conn = backend_conn;
 
   } else {
     /* XXX TODO */
@@ -715,6 +744,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
     tv.tv_sec = timeout;
     tv.tv_usec = 0;
+    res = -1;
 
     pr_signals_handle();
 
@@ -767,8 +797,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         /* Some data arrived on the data connection... */
         pr_buffer_t *pbuf = NULL;
 
-(void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION, "proxy_data: readable backend data conn, reading data from backend server");
-
+        pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
+ 
         pbuf = proxy_ftp_data_recv(cmd->tmp_pool,
           proxy_sess->backend_data_conn);
         if (pbuf == NULL) {
@@ -785,35 +815,43 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
             proxy_sess->backend_data_conn = NULL;
 
           } else {
+            size_t remaining = pbuf->remaining;
+
             (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
               "received %lu bytes of data from backend server",
-              (unsigned long) pbuf->remaining);
+              (unsigned long) remaining);
 
             res = proxy_ftp_data_send(cmd->tmp_pool,
               proxy_sess->frontend_data_conn, pbuf);
+            if (res < 0) {
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "error writng %lu bytes of data to frontend server: %s",
+                (unsigned long) remaining, strerror(errno));
+            }
           }
         }
       }
     }
 
-    /* XXX What happens if we didn't listen on the control conn?  Is this
-     * what causes the need to tune TimeoutLinger shorter?
-     */
     if (FD_ISSET(PR_NETIO_FD(proxy_sess->backend_ctrl_conn->instrm), &rfds)) {
       /* Some data arrived on the ctrl connection... */
-(void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION, "proxy_data: readable backend ctrl conn, reading resp from backend server");
+      pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
 
       resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool,
         proxy_sess->backend_ctrl_conn);
       if (resp == NULL) {
         xerrno = errno;
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "error receiving response from backend server ctrl conn: %s",
-          strerror(xerrno));
+          "error receiving response from backend server: %s", strerror(xerrno));
 
       } else {
 
-(void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION, "proxy_data: readable backend ctrl conn, writing resp to frontend server");
+        /* If not a 1xxx response, close the frontend data connection. */
+        if (resp->num[0] != '1') {
+          pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+          proxy_sess->frontend_data_conn = NULL;
+        }
+
         res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
           proxy_sess->frontend_ctrl_conn, resp);
         xerrno = errno;
@@ -830,18 +868,24 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
         /* If we get a 1xx response here, keep going.  Otherwise, we're
          * done with this data transfer.
-         *
-         * XXX What happens if we DON'T do this?  Is this what causes the
-         * need to tune TimeoutLinger shorter?
          */
         if (proxy_sess->backend_data_conn == NULL ||
             (resp->num)[0] != '1') {
+          session.sf_flags &= (SF_ALL^SF_PASSIVE);
+          session.sf_flags &= (SF_ALL^(SF_ABORT|SF_XFER|SF_PASSIVE|SF_ASCII_OVERRIDE));
+
+          if (proxy_sess->backend_data_conn != NULL) {
+            pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+            proxy_sess->backend_data_conn = NULL;
+          }
+
           break;
         }
       }
     }
   }
 
+  pr_response_clear(&resp_list);
   return PR_HANDLED(cmd);
 }
 
@@ -1060,6 +1104,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
+  /* XXX Do we need to open the outstrm here, too? */
   data_conn->instrm = pr_netio_open(session.pool, PR_NETIO_STRM_DATA,
     data_conn->listen_fd, PR_NETIO_IO_RD);
 
@@ -1088,8 +1133,8 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     }
   }
 
-  pr_log_debug(DEBUG1, "Entering Passive Mode (%s,%u,%u).", addr_str,
-    (local_port >> 8) & 255, local_port & 255);
+  pr_log_debug(DEBUG1, MOD_PROXY_VERSION ": Entering Passive Mode (%s,%u,%u).",
+    addr_str, (local_port >> 8) & 255, local_port & 255);
 
   /* Change the response to send back to the connecting client, telling it
    * to use OUR address/port.
@@ -1099,6 +1144,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   memset(resp_msg, '\0', sizeof(resp_msg));
   snprintf(resp_msg, sizeof(resp_msg)-1, "Entering Passive Mode (%s,%u,%u).",
     addr_str, (local_port >> 8) & 255, local_port & 255);
+  resp->msg = resp_msg;
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
     resp);
@@ -1160,7 +1206,8 @@ MODRET proxy_any(cmd_rec *cmd) {
   }
 
   pr_response_block(FALSE);
-
+  pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
+ 
   proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
 
   /* Commands related to data transfers are handled separately */

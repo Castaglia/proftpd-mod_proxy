@@ -118,7 +118,8 @@ int main(int argc, char *argv[]) {
     return 1;
   } 
 
-  remote_port = 23;
+  /* XXX Set this to the wrong port (e.g. 23) to test timeouts. */
+  remote_port = 21;
  
   fprintf(stdout, "Resolved name '%s' to IP address '%s'\n", remote_name,
     pr_netaddr_get_ipstr(remote_addr));

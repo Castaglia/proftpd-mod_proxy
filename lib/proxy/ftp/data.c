@@ -31,6 +31,8 @@ static const char *trace_channel = "proxy.ftp.data";
 pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn) {
   int nread;
   pr_buffer_t *pbuf = NULL;
+  char *buf = NULL;
+  size_t buflen = 0;
 
   if (data_conn->instrm->strm_buf != NULL) {
     pbuf = data_conn->instrm->strm_buf;
@@ -40,8 +42,13 @@ pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn) {
   }
 
   nread = pr_netio_read(data_conn->instrm, pbuf->buf, pbuf->buflen, 1);
-  if (nread <= 0) {
+  if (nread < 0) {
     return NULL;
+  }
+
+  if (nread == 0) {
+    pbuf->remaining = 0;
+    return pbuf;
   }
 
   /* XXX Reset TimeoutIdle timer, TimeoutNoTransfer timer.  Are there
@@ -51,14 +58,18 @@ pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn) {
   pr_event_generate("mod_proxy.data-read", pbuf);
   pr_trace_msg(trace_channel, 15, "%.*s", nread, pbuf->buf);
 
+  pbuf->current = pbuf->buf;
+  pbuf->remaining = nread;
+
   return pbuf;
 }
 
 int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf) {
   int nwrote;
 
-  pr_event_generate("mod_proxy.data-read", pbuf);
+  pr_event_generate("mod_proxy.data-write", pbuf);
 
+  /* XXX Handle short writes? */
   nwrote = pr_netio_write(data_conn->outstrm, pbuf->current, pbuf->remaining);
   while (nwrote < 0) {
     int xerrno = errno;
@@ -75,11 +86,23 @@ int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf) {
         pbuf->remaining);
       continue;
     }
+
+    errno = xerrno;
+    return -1;
   }
 
   /* XXX Reset TimeoutIdle timer, TimeoutNoTransfer timer.  Are there
    * separate versions of these timers for frontend, backend?
    */
+
+  if (nwrote == pbuf->remaining) {
+    pbuf->current = NULL;
+    pbuf->remaining = 0;
+
+  } else {
+    pbuf->current += nwrote;
+    pbuf->remaining -= nwrote;
+  }
 
   return nwrote;
 }
