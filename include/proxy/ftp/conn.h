@@ -29,5 +29,6 @@
 
 conn_t *proxy_ftp_conn_accept(pool *, conn_t *, conn_t *);
 conn_t *proxy_ftp_conn_connect(pool *, pr_netaddr_t *, pr_netaddr_t *);
+conn_t *proxy_ftp_conn_listen(pool *, pr_netaddr_t *);
 
 #endif /* MOD_PROXY_FTP_CONN_H */

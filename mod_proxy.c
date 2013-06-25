@@ -1099,44 +1099,17 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   proxy_sess->data_addr = remote_addr;
   bind_addr = session.c->local_addr;
 
-  data_conn = pr_inet_create_conn(session.pool, -1, bind_addr, INPORT_ANY,
-    FALSE);
+  data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
   if (data_conn == NULL) {
+    int xerrno = errno;
+
     pr_response_add_err(R_425, _("Unable to build data connection: "
       "Internal error"));
-    pr_response_flush(&resp_err_list);
-
-    errno = EINVAL;
-    return PR_ERROR(cmd);
-  }
-
-  /* Make sure that necessary socket options are set on the socket prior
-   * to the call to listen(2).
-   */
-  pr_inet_set_proto_opts(session.pool, data_conn, main_server->tcp_mss_len, 0,
-    IPTOS_THROUGHPUT, 1);
-  pr_inet_generate_socket_event("proxy.data-listen", main_server,
-    data_conn->local_addr, data_conn->listen_fd);
-
-  pr_inet_set_block(session.pool, data_conn);
-  if (pr_inet_listen(session.pool, data_conn, 1, 0) < 0) {
-    xerrno = errno;
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to listen on %s#%u: %s", pr_netaddr_get_ipstr(bind_addr),
-      ntohs(pr_netaddr_get_port(bind_addr)), strerror(xerrno));
-
-    pr_inet_close(session.pool, data_conn);
-    pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
     return PR_ERROR(cmd);
   }
-
-  /* XXX Do we need to open the outstrm here, too? */
-  data_conn->instrm = pr_netio_open(session.pool, PR_NETIO_STRM_DATA,
-    data_conn->listen_fd, PR_NETIO_IO_RD);
 
   if (proxy_sess->frontend_data_conn != NULL) {
     /* Make sure that we only have one frontend data connection. */
@@ -1324,13 +1297,9 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    */
   bind_addr = session.c->local_addr;
 
-  data_conn = pr_inet_create_conn(session.pool, -1, bind_addr, INPORT_ANY,
-    FALSE);
+  data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
   if (data_conn == NULL) {
     xerrno = errno;
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to create socket: %s", strerror(xerrno));
 
     pr_response_add_err(R_425, _("Unable to build data connection: "
       "Internal error"));
@@ -1339,34 +1308,6 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     errno = xerrno;
     return PR_ERROR(cmd);
   }
-
-  /* Make sure that necessary socket options are set on the socket prior
-   * to the call to listen(2).
-   */
-  pr_inet_set_proto_opts(session.pool, data_conn, main_server->tcp_mss_len, 0,
-    IPTOS_THROUGHPUT, 1);
-  pr_inet_generate_socket_event("proxy.data-listen", main_server,
-    data_conn->local_addr, data_conn->listen_fd);
-
-  pr_inet_set_block(session.pool, data_conn);
-  if (pr_inet_listen(session.pool, data_conn, 1, 0) < 0) {
-    xerrno = errno;
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to listen on %s#%u: %s", pr_netaddr_get_ipstr(bind_addr),
-      ntohs(pr_netaddr_get_port(bind_addr)), strerror(xerrno));
-
-    pr_inet_close(session.pool, data_conn);
-    pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  /* XXX Do we need to open the outstrm here, too? */
-  data_conn->instrm = pr_netio_open(session.pool, PR_NETIO_STRM_DATA,
-    data_conn->listen_fd, PR_NETIO_IO_RD);
 
   if (proxy_sess->backend_data_conn != NULL) {
     /* Make sure that we only have one backend data connection. */

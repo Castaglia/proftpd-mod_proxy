@@ -23,6 +23,7 @@
  */
 
 #include "mod_proxy.h"
+#include "include/proxy/ftp/conn.h"
 
 static const char *trace_channel = "proxy.ftp.conn";
 
@@ -89,3 +90,47 @@ conn_t *proxy_ftp_conn_connect(pool *p, pr_netaddr_t *local_addr,
 
   return opened;
 }
+
+conn_t *proxy_ftp_conn_listen(pool *p, pr_netaddr_t *bind_addr) {
+  conn_t *conn;
+
+  conn = pr_inet_create_conn(session.pool, -1, bind_addr, INPORT_ANY, FALSE);
+  if (conn == NULL) {
+    int xerrno = errno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error creating socket: %s", strerror(xerrno));
+
+    errno = xerrno;
+    return NULL;
+  }
+
+  /* Make sure that necessary socket options are set on the socket prior
+   * to the call to listen(2).
+   */
+  pr_inet_set_proto_opts(session.pool, conn, main_server->tcp_mss_len, 0,
+    IPTOS_THROUGHPUT, 1);
+  pr_inet_generate_socket_event("proxy.data-listen", main_server,
+    conn->local_addr, conn->listen_fd);
+
+  pr_inet_set_block(session.pool, conn);
+  if (pr_inet_listen(session.pool, conn, 1, 0) < 0) {
+    int xerrno = errno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to listen on %s#%u: %s", pr_netaddr_get_ipstr(bind_addr),
+      ntohs(pr_netaddr_get_port(bind_addr)), strerror(xerrno));
+
+    pr_inet_close(session.pool, conn);
+
+    errno = xerrno;
+    return NULL;
+  }
+
+  /* XXX Do we need to open the outstrm here, too? */
+  conn->instrm = pr_netio_open(session.pool, PR_NETIO_STRM_DATA,
+    conn->listen_fd, PR_NETIO_IO_RD);
+
+  return conn;
+}
+
