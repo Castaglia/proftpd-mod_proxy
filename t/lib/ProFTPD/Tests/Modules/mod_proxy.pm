@@ -418,7 +418,7 @@ sub proxy_gateway_list_pasv {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'DEFAULT:10 lock:0 scoreboard:0 proxy:20 proxy.ftp.ctrl:20 proxy.ftp.data:20',
+    Trace => 'DEFAULT:10 lock:0 scoreboard:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
@@ -595,7 +595,7 @@ sub proxy_gateway_list_port {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'DEFAULT:10 lock:0 scoreboard:0 proxy:20 proxy.ftp.ctrl:20 proxy.ftp.data:20',
+    Trace => 'DEFAULT:10 lock:0 scoreboard:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,

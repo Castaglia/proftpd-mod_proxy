@@ -30,6 +30,7 @@
 #include "proxy/conn.h"
 #include "proxy/forward.h"
 #include "proxy/reverse.h"
+#include "proxy/ftp/conn.h"
 #include "proxy/ftp/ctrl.h"
 #include "proxy/ftp/data.h"
 
@@ -565,7 +566,6 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   /* XXX Should handle PASSIVE_ALL here, too. */
   if (session.sf_flags & SF_PASSIVE) {
-    conn_t *conn;
 
     /* Connect to the backend server now. */
     /* XXX We won't receive the initial response until we connect to the
@@ -576,41 +576,10 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
      * rather than using session.c->local_addr as the bind address.
      */
 
-    /* XXX Make a proxy_ftp_connect(proxy_sess) function for this. */
-    conn = pr_inet_create_conn(session.pool, -1, session.c->local_addr,
-      INPORT_ANY, TRUE);
-
-    pr_inet_set_proto_opts(session.pool, conn,
-      main_server->tcp_mss_len, 0, IPTOS_THROUGHPUT, 1);
-    pr_inet_generate_socket_event("proxy.data-connect", main_server,
-      conn->local_addr, conn->listen_fd);
-
-    pr_inet_set_nonblock(session.pool, conn);
-
-    if (pr_inet_connect(cmd->tmp_pool, conn, proxy_sess->data_addr,
-        ntohs(pr_netaddr_get_port(proxy_sess->data_addr))) < 0) {
-      xerrno = errno;
-
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "unable to connect to %s#%u: %s\n",
-        pr_netaddr_get_ipstr(proxy_sess->data_addr),
-        ntohs(pr_netaddr_get_port(proxy_sess->data_addr)),
-        strerror(xerrno));
-      pr_inet_close(session.pool, conn);
-
-      pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-      pr_response_flush(&resp_err_list);
-
-      errno = xerrno;
-      return PR_ERROR(cmd);
-    }
-
-    backend_conn = pr_inet_openrw(session.pool, conn, NULL, PR_NETIO_STRM_DATA,
-      conn->listen_fd, -1, -1, TRUE);
+    backend_conn = proxy_ftp_conn_connect(cmd->tmp_pool, session.c->local_addr,
+      proxy_sess->data_addr);
     if (backend_conn == NULL) {
       xerrno = errno;
-
-      pr_inet_close(session.pool, conn);
 
       pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
       pr_response_flush(&resp_err_list);
@@ -622,21 +591,21 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     proxy_sess->backend_data_conn = backend_conn;
 
   } else if (session.sf_flags & SF_PORT) {
-    /* XXX Make a proxy_ftp_accept(proxy_sess) function for this. */
-    /* XXX Other socket options need to be set -- depending on IO_RD/IO_WR
-     * direction -- before calling accept(2).
-     */
-    backend_conn = pr_inet_accept(session.pool, proxy_sess->backend_data_conn,
-      proxy_sess->backend_ctrl_conn, -1, -1, TRUE);
+    backend_conn = proxy_ftp_conn_accept(cmd->tmp_pool,
+      proxy_sess->backend_data_conn, proxy_sess->backend_ctrl_conn);
     if (backend_conn == NULL) {
-      /* XXX ??? */
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error accepting backend data connection: %s", strerror(errno));
+      xerrno = errno;
 
-      pr_inet_close(session.pool, proxy_sess->backend_data_conn);
-      proxy_sess->backend_data_conn = NULL;
+      if (proxy_sess->backend_data_conn != NULL) {
+        pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+        proxy_sess->backend_data_conn = NULL;
+      }
 
-      /* XXX Error out here */
+      pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+      pr_response_flush(&resp_err_list);
+
+      errno = xerrno;
+      return PR_ERROR(cmd);
     }
 
     /* We can close our listening socket now. */
@@ -670,8 +639,10 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
-    proxy_sess->backend_data_conn = NULL;
+    if (proxy_sess->backend_data_conn != NULL) {
+      pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+      proxy_sess->backend_data_conn = NULL;
+    }
 
     errno = xerrno;
     return PR_ERROR(cmd);
@@ -699,22 +670,22 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   if (session.sf_flags & SF_PASSIVE) {
-    /* XXX Make a proxy_ftp_accept(proxy_sess) function for this. */
-    /* XXX Other socket options need to be set -- depending on IO_RD/IO_WR
-     * direction -- before calling accept(2).
-     */
-    frontend_conn = pr_inet_accept(session.pool, proxy_sess->frontend_data_conn,
-      proxy_sess->frontend_ctrl_conn, -1, -1, TRUE);
+    frontend_conn = proxy_ftp_conn_accept(cmd->tmp_pool,
+      proxy_sess->frontend_data_conn, proxy_sess->frontend_ctrl_conn);
     if (frontend_conn == NULL) {
-      /* XXX ??? */
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error accepting frontend data connection: %s", strerror(errno));
+      xerrno = errno;
 
-      pr_inet_close(session.pool, proxy_sess->backend_data_conn);
-      proxy_sess->backend_data_conn = NULL;
+      if (proxy_sess->frontend_data_conn != NULL) {
+        pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+        proxy_sess->frontend_data_conn = NULL;
+      }
 
-      /* XXX Error out here */
-    }
+      pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+      pr_response_flush(&resp_err_list);
+    
+      errno = xerrno;
+      return PR_ERROR(cmd);
+    } 
 
     /* We can close our listening socket now. */
     pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
@@ -732,45 +703,11 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       frontend_conn->remote_port);
 
   } else if (session.sf_flags & SF_PORT) {
-    conn_t *conn;
-
     /* Connect to the frontend server now. */
-
-    /* XXX Make a proxy_ftp_connect(proxy_sess) function for this. */
-    conn = pr_inet_create_conn(session.pool, -1, session.c->local_addr,
-      INPORT_ANY, TRUE);
-
-    pr_inet_set_proto_opts(session.pool, conn,
-      main_server->tcp_mss_len, 0, IPTOS_THROUGHPUT, 1);
-    pr_inet_generate_socket_event("proxy.data-connect", main_server,
-      conn->local_addr, conn->listen_fd);
-
-    pr_inet_set_nonblock(session.pool, conn);
-
-    if (pr_inet_connect(cmd->tmp_pool, conn, proxy_sess->data_addr,
-        ntohs(pr_netaddr_get_port(proxy_sess->data_addr))) < 0) {
-      xerrno = errno;
-
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "unable to connect to %s#%u: %s\n",
-        pr_netaddr_get_ipstr(proxy_sess->data_addr),
-        ntohs(pr_netaddr_get_port(proxy_sess->data_addr)),
-        strerror(xerrno));
-      pr_inet_close(session.pool, conn);
-
-      pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-      pr_response_flush(&resp_err_list);
-
-      errno = xerrno;
-      return PR_ERROR(cmd);
-    }
-
-    frontend_conn = pr_inet_openrw(session.pool, conn, NULL, PR_NETIO_STRM_DATA,
-      conn->listen_fd, -1, -1, TRUE);
+    frontend_conn = proxy_ftp_conn_connect(cmd->tmp_pool, session.c->local_addr,
+      proxy_sess->data_addr);
     if (frontend_conn == NULL) {
       xerrno = errno;
-
-      pr_inet_close(session.pool, conn);
 
       pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
       pr_response_flush(&resp_err_list);
