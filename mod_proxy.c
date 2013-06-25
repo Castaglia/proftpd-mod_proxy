@@ -533,7 +533,7 @@ static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
  */
 
 MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
-  int res, xerrno;
+  int res, xerrno, xfer_ok = TRUE;
   pr_response_t *resp;
   conn_t *frontend_conn = NULL, *backend_conn = NULL;
 
@@ -843,6 +843,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
             strerror(xerrno));
 
         } else {
+          pr_timer_reset(PR_TIMER_STALLED, ANY_MODULE);
+
           if (pbuf->remaining == 0) {
             /* EOF on the data connection; close it. */
             pr_inet_close(session.pool, proxy_sess->backend_data_conn);
@@ -886,16 +888,23 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         if (resp->num[0] != '1') {
           pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
           proxy_sess->frontend_data_conn = NULL;
+
+          /* If the response was a 4xx or 5xx, then we need to note that as
+           * a failed transfer.
+           */
+          /* XXX What about ABOR/aborted transfers? */
+          if (resp->num[0] == '4' || resp->num[0] == '5') {
+            xfer_ok = FALSE;
+          }
         }
 
         res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
           proxy_sess->frontend_ctrl_conn, resp);
-        xerrno = errno;
-
         if (res < 0) {
-          pr_response_block(TRUE);
+          xerrno = errno;
 
-          pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+          pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0],
+            strerror(xerrno));
           pr_response_flush(&resp_err_list);
 
           errno = xerrno;
@@ -916,7 +925,9 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   pr_response_clear(&resp_list);
-  return PR_HANDLED(cmd);
+  pr_response_clear(&resp_err_list);
+
+  return (xfer_ok ? PR_HANDLED(cmd) : PR_ERROR(cmd));
 }
 
 MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
