@@ -182,6 +182,10 @@ Other Proxy Implementations
 
   http://www.loadbalancer.org/
 
+  http://cr.yp.to/ftpparse.html
+    Use for parsing FTP lists into SFTP dirlist
+    What about MLSD, though?  Need to find parser for that, if avail
+ 
 Links/Articles:
 
   http://blog.cryptographyengineering.com/2012/03/how-do-interception-proxies-fail.html
