@@ -535,6 +535,7 @@ static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
 
 MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res, xerrno, xfer_ok = TRUE;
+  unsigned int resp_nlines = 0;
   pr_response_t *resp;
   conn_t *frontend_conn = NULL, *backend_conn = NULL;
 
@@ -630,7 +631,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   /* Now we should receive the initial response from the backend server. */
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -654,7 +656,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    */
   if (resp->num[0] == '4' || resp->num[0] == '5') {
     res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
-      proxy_sess->frontend_ctrl_conn, resp);
+      proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
 
     if (proxy_sess->frontend_data_conn) {
       pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
@@ -728,7 +730,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    * the backend to the frontend.
    */
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
-    proxy_sess->frontend_ctrl_conn, resp);
+    proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
   if (res < 0) {
     xerrno = errno;
 
@@ -875,7 +877,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
 
       resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool,
-        proxy_sess->backend_ctrl_conn);
+        proxy_sess->backend_ctrl_conn, &resp_nlines);
       if (resp == NULL) {
         xerrno = errno;
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -900,7 +902,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         }
 
         res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
-          proxy_sess->frontend_ctrl_conn, resp);
+          proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
         if (res < 0) {
           xerrno = errno;
 
@@ -935,6 +937,7 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res, xerrno;
   pr_netaddr_t *bind_addr = NULL, *remote_addr = NULL;
   pr_response_t *resp;
+  unsigned int resp_nlines = 0;
   conn_t *data_conn;
   unsigned short remote_port;
   const char *eprt_msg;
@@ -952,7 +955,7 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    */
 
   remote_addr = proxy_ftp_msg_parse_ext_addr(cmd->tmp_pool, cmd->argv[1],
-    session.c->remote_addr, NULL);
+    session.c->remote_addr, cmd->cmd_id, NULL);
   if (remote_addr == NULL) {
     xerrno = errno;
 
@@ -1096,7 +1099,8 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1114,7 +1118,7 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
-    resp);
+    resp, resp_nlines);
   if (res < 0) {
     xerrno = errno;
 
@@ -1138,6 +1142,7 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   char *net_proto = NULL, resp_msg[PR_RESPONSE_BUFFER_SIZE];
   pr_netaddr_t *bind_addr, *remote_addr;
   pr_response_t *resp;
+  unsigned int resp_nlines = 0;
   unsigned short remote_port;
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
@@ -1154,7 +1159,8 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1173,7 +1179,7 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   remote_addr = proxy_ftp_msg_parse_ext_addr(cmd->tmp_pool, resp->msg,
-    session.c->local_addr, net_proto);
+    session.c->local_addr, cmd->cmd_id, net_proto);
   if (remote_addr == NULL) {
     xerrno = errno;
 
@@ -1285,7 +1291,7 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   resp->msg = resp_msg;
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
-    resp);
+    resp, resp_nlines);
   if (res < 0) {
     xerrno = errno;
 
@@ -1309,6 +1315,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   char resp_msg[PR_RESPONSE_BUFFER_SIZE];
   pr_netaddr_t *bind_addr, *remote_addr;
   pr_response_t *resp;
+  unsigned int resp_nlines = 0;
   unsigned short remote_port;
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
@@ -1325,7 +1332,8 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1442,7 +1450,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   resp->msg = resp_msg;
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
-    resp);
+    resp, resp_nlines);
   if (res < 0) {
     xerrno = errno;
 
@@ -1463,6 +1471,7 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res, xerrno;
   pr_netaddr_t *bind_addr = NULL, *remote_addr = NULL;
   pr_response_t *resp;
+  unsigned int resp_nlines = 0;
   conn_t *data_conn;
   unsigned short remote_port;
   const char *port_msg;
@@ -1627,7 +1636,8 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1645,7 +1655,7 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
-    resp);
+    resp, resp_nlines);
   if (res < 0) {
     xerrno = errno;
 
@@ -1665,6 +1675,7 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res, xerrno;
   pr_response_t *resp;
+  unsigned int resp_nlines = 0;
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
     cmd);
@@ -1680,7 +1691,8 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1709,7 +1721,7 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
-    resp);
+    resp, resp_nlines);
   if (res < 0) {
     xerrno = errno;
 
@@ -1725,6 +1737,7 @@ MODRET proxy_any(cmd_rec *cmd) {
   int res, xerrno;
   struct proxy_session *proxy_sess;
   pr_response_t *resp;
+  unsigned int resp_nlines = 0;
   modret_t *mr = NULL;
 
   if (proxy_engine == FALSE) {
@@ -1789,7 +1802,8 @@ MODRET proxy_any(cmd_rec *cmd) {
     return PR_ERROR(cmd);
   }
 
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1804,7 +1818,7 @@ MODRET proxy_any(cmd_rec *cmd) {
   }
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
-    resp);
+    resp, resp_nlines);
   if (res < 0) {
     xerrno = errno;
 
@@ -1910,6 +1924,7 @@ static int proxy_sess_init(void) {
   conn_t *server_conn;
   struct proxy_session *proxy_sess;
   pr_response_t *resp;
+  unsigned int resp_nlines = 0;
 
   /* XXX Support/send a CLNT command of our own?  Configurable via e.g.
    * "UserAgent" string?
@@ -2062,7 +2077,8 @@ static int proxy_sess_init(void) {
   /* XXX Read the response from the backend server and send it to the
    * connected client as if it were our own banner.
    */
-  resp = proxy_ftp_ctrl_recv_resp(proxy_pool, proxy_sess->backend_ctrl_conn);
+  resp = proxy_ftp_ctrl_recv_resp(proxy_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
   if (resp == NULL) {
     int xerrno = errno;
 
@@ -2073,7 +2089,7 @@ static int proxy_sess_init(void) {
       strerror(xerrno));
 
   } else {
-    if (proxy_ftp_ctrl_send_resp(proxy_pool, session.c, resp) < 0) {
+    if (proxy_ftp_ctrl_send_resp(proxy_pool, session.c, resp, resp_nlines) < 0) {
       pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unable to send banner to client: %s", strerror(errno));
     }
