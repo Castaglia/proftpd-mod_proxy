@@ -56,8 +56,7 @@ pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn) {
    */
 
   pr_event_generate("mod_proxy.data-read", pbuf);
-  pr_trace_msg(trace_channel, 15, "received %d bytes of data: %.100s", nread,
-    pbuf->buf);
+  pr_trace_msg(trace_channel, 15, "received %d bytes of data", nread);
 
   pbuf->current = pbuf->buf;
   pbuf->remaining = nread;
@@ -67,6 +66,13 @@ pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn) {
 
 int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf) {
   int nwrote;
+
+  if (data_conn == NULL ||
+      data_conn->outstrm == NULL ||
+      pbuf == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
 
   pr_event_generate("mod_proxy.data-write", pbuf);
 
@@ -79,6 +85,7 @@ int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf) {
    * makes mod_proxy a little more sensitive to the slow producer/consumer
    * problem.
    */
+
   nwrote = pr_netio_write(data_conn->outstrm, pbuf->current, pbuf->remaining);
   while (nwrote < 0) {
     int xerrno = errno;

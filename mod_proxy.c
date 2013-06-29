@@ -42,6 +42,8 @@
 /* How long (in secs) to wait to connect to real server? */
 #define PROXY_CONNECT_DEFAULT_TIMEOUT	60
 
+extern module xfer_module;
+
 /* From response.c */
 extern pr_response_t *resp_list, *resp_err_list;
 extern xaset_t *server_list;
@@ -550,7 +552,7 @@ static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
  */
 
 MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
-  int res, xerrno, xfer_ok = TRUE;
+  int res, xerrno, xfer_direction, xfer_ok = TRUE;
   unsigned int resp_nlines = 0;
   pr_response_t *resp;
   conn_t *frontend_conn = NULL, *backend_conn = NULL;
@@ -568,6 +570,25 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    * backend control, backend data.
    */
 
+  if (pr_cmd_cmp(cmd, PR_CMD_APPE_ID) == 0 ||
+      pr_cmd_cmp(cmd, PR_CMD_STOR_ID) == 0 ||
+      pr_cmd_cmp(cmd, PR_CMD_STOU_ID) == 0) {
+    /* Uploading, i.e. writing to backend data conn. */
+    xfer_direction = PR_NETIO_IO_WR;
+
+    session.xfer.path = pr_table_get(cmd->notes, "mod_xfer.store-path", NULL);
+
+  } else {
+    /* Downloading, i.e. reading from backend data conn.*/
+    xfer_direction = PR_NETIO_IO_RD;
+
+    session.xfer.path = pr_table_get(cmd->notes, "mod_xfer.retr-path", NULL);
+  }
+
+  /* XXX Move all this connection setup into a function, separate from the
+   * transfer loop, if possible.
+   */
+
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
     cmd);
   if (res < 0) {
@@ -582,7 +603,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  /* XXX Should handle PASSIVE_ALL here, too. */
+  /* XXX Should handle EPSV_ALL here, too. */
   if (session.sf_flags & SF_PASSIVE) {
 
     /* Connect to the backend server now. */
@@ -601,6 +622,30 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
       pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
       pr_response_flush(&resp_err_list);
+
+      errno = xerrno;
+      return PR_ERROR(cmd);
+    }
+
+    if (pr_netio_postopen(backend_conn->instrm) < 0) {
+      xerrno = errno;
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "postopen error for backend data connection input stream: %s",
+        strerror(xerrno));
+      pr_inet_close(session.pool, backend_conn);
+
+      errno = xerrno;
+      return PR_ERROR(cmd);
+    }
+
+    if (pr_netio_postopen(backend_conn->outstrm) < 0) {
+      xerrno = errno;
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "postopen error for backend data connection output stream: %s",
+        strerror(xerrno));
+      pr_inet_close(session.pool, backend_conn);
 
       errno = xerrno;
       return PR_ERROR(cmd);
@@ -630,6 +675,30 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     pr_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = backend_conn; 
 
+    if (pr_netio_postopen(backend_conn->instrm) < 0) {
+      xerrno = errno;
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "postopen error for backend data connection input stream: %s",
+        strerror(xerrno));
+      pr_inet_close(session.pool, backend_conn);
+
+      errno = xerrno;
+      return PR_ERROR(cmd);
+    }
+
+    if (pr_netio_postopen(backend_conn->outstrm) < 0) {
+      xerrno = errno;
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "postopen error for backend data connection output stream: %s",
+        strerror(xerrno));
+      pr_inet_close(session.pool, backend_conn);
+
+      errno = xerrno;
+      return PR_ERROR(cmd);
+    }
+
     pr_inet_set_nonblock(session.pool, backend_conn);
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -640,10 +709,6 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       "active data connection opened - remote : %s:%d",
       pr_netaddr_get_ipstr(backend_conn->remote_addr),
       backend_conn->remote_port);
-
-  } else {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "ERROR: not in SF_PASSIVE or SF_PORT session state/flag");
   }
 
   /* Now we should receive the initial response from the backend server. */
@@ -706,6 +771,30 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       return PR_ERROR(cmd);
     } 
 
+    if (pr_netio_postopen(frontend_conn->instrm) < 0) {
+      xerrno = errno;
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "postopen error for frontend data connection input stream: %s",
+        strerror(xerrno));
+      pr_inet_close(session.pool, frontend_conn);
+
+      errno = xerrno;
+      return PR_ERROR(cmd);
+    }
+
+    if (pr_netio_postopen(frontend_conn->outstrm) < 0) {
+      xerrno = errno;
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "postopen error for frontend data connection output stream: %s",
+        strerror(xerrno));
+      pr_inet_close(session.pool, frontend_conn);
+
+      errno = xerrno;
+      return PR_ERROR(cmd);
+    }
+
     /* We can close our listening socket now. */
     pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
     proxy_sess->frontend_data_conn = frontend_conn; 
@@ -735,12 +824,32 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       return PR_ERROR(cmd);
     }
 
+    if (pr_netio_postopen(frontend_conn->instrm) < 0) {
+      xerrno = errno;
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "postopen error for frontend data connection input stream: %s",
+        strerror(xerrno));
+      pr_inet_close(session.pool, frontend_conn);
+
+      errno = xerrno;
+      return PR_ERROR(cmd);
+    }
+
+    if (pr_netio_postopen(frontend_conn->outstrm) < 0) {
+      xerrno = errno;
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "postopen error for frontend data connection output stream: %s",
+        strerror(xerrno));
+      pr_inet_close(session.pool, frontend_conn);
+
+      errno = xerrno;
+      return PR_ERROR(cmd);
+    }
+
     proxy_sess->frontend_data_conn = frontend_conn;
     pr_inet_set_nonblock(session.pool, frontend_conn);
-
-  } else {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "ERROR: not in SF_PASSIVE or SF_PORT session state/flag");
   }
 
   /* Now that we have our frontend connection, we can send the response from
@@ -785,6 +894,21 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
+  /* Allow aborts -- set the current NetIO stream to allow interrupted
+   * syscalls, so our SIGURG handler can interrupt it
+   */
+  switch (xfer_direction) {
+    case PR_NETIO_IO_RD:
+      pr_netio_set_poll_interval(backend_conn->instrm, 1);
+      pr_netio_set_poll_interval(frontend_conn->outstrm, 1);
+      break;
+
+    case PR_NETIO_IO_WR:
+      pr_netio_set_poll_interval(frontend_conn->instrm, 1);
+      pr_netio_set_poll_interval(backend_conn->outstrm, 1);
+      break;
+  }
+
   session.sf_flags |= SF_XFER;
 
   /* XXX Reset/clear TimeoutNoTransfer; is there a frontend/backend specific
@@ -792,9 +916,10 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    */
 
   while (TRUE) {
-    fd_set rfds, wfds;
+    fd_set rfds;
     struct timeval tv;
     int maxfd = -1, timeout = 15;
+    conn_t *src_data_conn = NULL, *dst_data_conn = NULL;
 
     tv.tv_sec = timeout;
     tv.tv_usec = 0;
@@ -802,22 +927,38 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
     pr_signals_handle();
 
-    /* XXX Whether we set the write or the read fds depends on the direction
-     * of the data transfer.
+    FD_ZERO(&rfds);
+
+    /* XXX If we wanted to allow/support commands during transfers, we would
+     * also need to add the frontend_ctrl_conn instrm fd here for reading.
+     * And possibly for ABOR commands, SIGURG.
      */
 
-    FD_ZERO(&rfds);
-    FD_ZERO(&wfds);
+    /* The source/origin data connection depends on our direction:
+     * downloads (IO_RD) from the backend, uploads (IO_WR) to the frontend.
+     */
+    switch (xfer_direction) {
+      case PR_NETIO_IO_RD:
+        src_data_conn = proxy_sess->backend_data_conn;
+        dst_data_conn = proxy_sess->frontend_data_conn;
+        break;
+
+      case PR_NETIO_IO_WR:
+        src_data_conn = proxy_sess->frontend_data_conn;
+        dst_data_conn = proxy_sess->backend_data_conn;
+
+        break;
+    }
 
     FD_SET(PR_NETIO_FD(proxy_sess->backend_ctrl_conn->instrm), &rfds);
     if (PR_NETIO_FD(proxy_sess->backend_ctrl_conn->instrm) > maxfd) {
       maxfd = PR_NETIO_FD(proxy_sess->backend_ctrl_conn->instrm);
     }
 
-    if (proxy_sess->backend_data_conn != NULL) {
-      FD_SET(PR_NETIO_FD(proxy_sess->backend_data_conn->instrm), &rfds);
-      if (PR_NETIO_FD(proxy_sess->backend_data_conn->instrm) > maxfd) {
-        maxfd = PR_NETIO_FD(proxy_sess->backend_data_conn->instrm);
+    if (src_data_conn != NULL) {
+      FD_SET(PR_NETIO_FD(src_data_conn->instrm), &rfds);
+      if (PR_NETIO_FD(src_data_conn->instrm) > maxfd) {
+        maxfd = PR_NETIO_FD(src_data_conn->instrm);
       }
     }
 
@@ -834,68 +975,89 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         "error calling select(2) while transferring data: %s",
         strerror(xerrno));
 
+      if (proxy_sess->frontend_data_conn != NULL) {
+        pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+        proxy_sess->frontend_data_conn = NULL;
+      }
+
+      if (proxy_sess->backend_data_conn != NULL) {
+        pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+        proxy_sess->backend_data_conn = NULL;
+      }
+
+      pr_response_block(TRUE);
+
+      pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+      pr_response_flush(&resp_err_list);
+
       errno = xerrno;
-      break;
+      return PR_ERROR(cmd);
     }
 
     if (res == 0) {
       /* XXX Have MAX_RETRIES logic here. */
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "timed out waiting for readability on backend ctrl/data conns, "
+        "timed out waiting for readability on ctrl/data connections, "
         "trying again");
       continue;
     }
 
-    if (proxy_sess->backend_data_conn != NULL) {
-      if (FD_ISSET(PR_NETIO_FD(proxy_sess->backend_data_conn->instrm), &rfds)) {
+    if (src_data_conn != NULL) {
+      if (FD_ISSET(PR_NETIO_FD(src_data_conn->instrm), &rfds)) {
         /* Some data arrived on the data connection... */
         pr_buffer_t *pbuf = NULL;
 
         pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
  
-        pbuf = proxy_ftp_data_recv(cmd->tmp_pool,
-          proxy_sess->backend_data_conn);
+        pbuf = proxy_ftp_data_recv(cmd->tmp_pool, src_data_conn);
         if (pbuf == NULL) {
           xerrno = errno;
 
           (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "error receiving from backend server data conn: %s",
+            "error receiving from source data connection: %s",
             strerror(xerrno));
 
         } else {
+          pr_timer_reset(PR_TIMER_NOXFER, ANY_MODULE);
           pr_timer_reset(PR_TIMER_STALLED, ANY_MODULE);
 
           if (pbuf->remaining == 0) {
-            /* EOF on the data connection; close it. */
+            /* EOF on the data connection; close BOTH of them. */
+
             pr_inet_close(session.pool, proxy_sess->backend_data_conn);
             proxy_sess->backend_data_conn = NULL;
+
+            pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+            proxy_sess->frontend_data_conn = NULL;
 
           } else {
             size_t remaining = pbuf->remaining;
 
             (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-              "received %lu bytes of data from backend server",
+              "received %lu bytes of data from source data connection",
               (unsigned long) remaining);
 
-            res = proxy_ftp_data_send(cmd->tmp_pool,
-              proxy_sess->frontend_data_conn, pbuf);
+            res = proxy_ftp_data_send(cmd->tmp_pool, dst_data_conn, pbuf);
             if (res < 0) {
               xerrno = errno;
 
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-                "error writng %lu bytes of data to frontend server: %s",
+                "error writing %lu bytes of data to sink data connection: %s",
                 (unsigned long) remaining, strerror(xerrno));
 
-              /* If this happens, close our backend connection prematurely.
+              /* If this happens, close our connection prematurely.
                * XXX Should we try to send an ABOR here, too?  Or SIGURG?
                * XXX Should we only do this for e.g. Broken pipe?
                */
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-                "unable to proxy data to frontend, closing backend data "
-                "connection");
+                "unable to proxy data between frontend/backend, "
+                "closing data connections");
 
               pr_inet_close(session.pool, proxy_sess->backend_data_conn);
               proxy_sess->backend_data_conn = NULL;
+
+              pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+              proxy_sess->frontend_data_conn = NULL;
             }
           }
         }
@@ -911,16 +1073,30 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       if (resp == NULL) {
         xerrno = errno;
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "error receiving response from backend server: %s", strerror(xerrno));
+          "error receiving response from control connection: %s",
+          strerror(xerrno));
 
       } else {
 
-        /* If not a 1xxx response, close the frontend data connection,
+        /* If not a 1xx response, close the destination data connection,
          * BEFORE we send the response from the backend to the connected client.
          */
         if (resp->num[0] != '1') {
-          pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-          proxy_sess->frontend_data_conn = NULL;
+          switch (xfer_direction) {
+            case PR_NETIO_IO_RD:
+              if (proxy_sess->frontend_data_conn != NULL) {
+                pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+                proxy_sess->frontend_data_conn = NULL;
+              }
+              break;
+
+            case PR_NETIO_IO_WR:
+              if (proxy_sess->backend_data_conn != NULL) {
+                pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+                proxy_sess->backend_data_conn = NULL;
+              }
+              break;
+          }
 
           /* If the response was a 4xx or 5xx, then we need to note that as
            * a failed transfer.
@@ -947,7 +1123,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         /* If we get a 1xx response here, keep going.  Otherwise, we're
          * done with this data transfer.
          */
-        if (proxy_sess->backend_data_conn == NULL ||
+        if (src_data_conn == NULL ||
             (resp->num)[0] != '1') {
           session.sf_flags &= (SF_ALL^SF_PASSIVE);
           session.sf_flags &= (SF_ALL^(SF_ABORT|SF_XFER|SF_PASSIVE|SF_ASCII_OVERRIDE));
@@ -1736,10 +1912,11 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  if (resp->num[0] == '2') {
+  if (resp->num[0] == '2' ||
+      resp->num[0] == '3') {
     char *user;
 
-    /* For 2xx responses (others?), stash the user name appropriately. */
+    /* For 2xx/3xx responses (others?), stash the user name appropriately. */
     user = cmd->arg;
 
     (void) pr_table_remove(session.notes, "mod_auth.orig-user", NULL);
@@ -1759,6 +1936,71 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     errno = xerrno;
     return PR_ERROR(cmd);
   }
+
+  return PR_HANDLED(cmd);
+}
+
+MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess) {
+  int res, xerrno;
+  pr_response_t *resp;
+  unsigned int resp_nlines = 0;
+
+  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    cmd);
+  if (res < 0) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+
+    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
+  if (resp == NULL) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error receiving %s response from backend: %s", cmd->argv[0],
+      strerror(xerrno));
+
+    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  /* XXX What about other response codes for PASS? */
+  if (resp->num[0] == '2') {
+    char *user;
+
+    user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
+    session.user = user;
+
+    /* XXX Do we need to set other login-related fields here?  E.g.
+     * session.uid, session.gid, etc?
+     */
+  }
+
+  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
+    resp, resp_nlines);
+  if (res < 0) {
+    xerrno = errno;
+
+    pr_response_block(TRUE);
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  /* Remove any exit handlers installed by mod_xfer.  We do this here,
+   * rather than in sess_init, since our sess_init is called BEFORE the
+   * sess_init of mod_xfer.
+   */
+  pr_event_unregister(&xfer_module, "core.exit", NULL);
 
   return PR_HANDLED(cmd);
 }
@@ -1783,6 +2025,11 @@ MODRET proxy_any(cmd_rec *cmd) {
   switch (cmd->cmd_id) {
     case PR_CMD_USER_ID:
       mr = proxy_user(cmd, proxy_sess);
+      pr_response_block(TRUE);
+      return mr;
+
+    case PR_CMD_PASS_ID:
+      mr = proxy_pass(cmd, proxy_sess);
       pr_response_block(TRUE);
       return mr;
 
@@ -1813,7 +2060,11 @@ MODRET proxy_any(cmd_rec *cmd) {
     case PR_CMD_RETR_ID:
     case PR_CMD_STOR_ID:
     case PR_CMD_STOU_ID:
+      session.xfer.p = make_sub_pool(session.pool);
       mr = proxy_data(cmd, proxy_sess);
+      destroy_pool(session.xfer.p);
+      memset(&session.xfer, 0, sizeof(session.xfer));
+
       pr_response_block(TRUE);
       return mr;
   }
@@ -2147,6 +2398,8 @@ static conftable proxy_conftab[] = {
   { "ProxyTimeoutConnect",	set_proxytimeoutconnect,NULL },
 
   /* Source address/interface for connections to backend */
+  /* Support TransferPriority for proxied connections? */
+  /* Deliberately ignore/disable HiddenStores in mod_proxy configs */
 
   /* Forward proxy directives */
 
