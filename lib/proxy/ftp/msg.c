@@ -59,8 +59,8 @@ const char *proxy_ftp_msg_fmt_addr(pool *p, pr_netaddr_t *addr,
 
 const char *proxy_ftp_msg_fmt_ext_addr(pool *p, pr_netaddr_t *addr,
     unsigned short port, int cmd_id) {
-  const char *addr_str, *msg;
-  char delim = '|';
+  const char *addr_str;
+  char delim = '|', *msg;
   int family;
   size_t addr_strlen, msglen;
 
@@ -83,18 +83,18 @@ const char *proxy_ftp_msg_fmt_ext_addr(pool *p, pr_netaddr_t *addr,
   addr_str = pr_netaddr_get_ipstr(addr);
   addr_strlen = strlen(addr_str);
 
-  /* 4 delimiters, the family, the IP address, the port, and a NUL. */
-  msglen = (4 * 1) + 1 + addr_strlen + 5 + 1;
+  /* 4 delimiters, the network protocol, the IP address, the port, and a NUL. */
+  msglen = (4 * 1) + addr_strlen + 5 + 1;
 
   msg = pcalloc(p, msglen);
   switch (cmd_id) {
     case PR_CMD_EPRT_ID:
-      snprintf(msg, msglen-1, "%c%d%c%s%c%u%c", delim, family, delim,
+      snprintf(msg, msglen, "%c%d%c%s%c%u%c", delim, family, delim,
         addr_str, delim, port, delim);
       break;
 
     case PR_CMD_EPSV_ID:
-      snprintf(msg, msglen-1, "%c%c%c%u%c", delim, delim, delim, port, delim);
+      snprintf(msg, msglen, "%c%c%c%u%c", delim, delim, delim, port, delim);
       break;
   }
 
@@ -193,35 +193,41 @@ pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *p, const char *msg,
 }
 
 pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
-    pr_netaddr_t *addr, const char *net_proto) {
+    pr_netaddr_t *addr, int cmd_id, const char *net_proto) {
   pr_netaddr_t *res = NULL, na;
   int family = 0;
   unsigned short port = 0;
   char delim, *msg_str, *ptr;
   size_t msglen;
 
-  /* First, find the opening '(' character. */
-  ptr = strchr(msg, '(');
-  if (ptr == NULL) {
-    pr_trace_msg(trace_channel, 12,
-      "missing starting '(' character for extended address in '%s'", msg);
-    errno = EINVAL;
-    return NULL;
-  }
+  if (cmd_id == PR_CMD_EPSV_ID) {
+    /* First, find the opening '(' character. */
+    ptr = strchr(msg, '(');
+    if (ptr == NULL) {
+      pr_trace_msg(trace_channel, 12,
+        "missing starting '(' character for extended address in '%s'", msg);
+      errno = EINVAL;
+      return NULL;
+    }
 
-  /* Make sure that the last character is a closing ')'. */
-  msglen = strlen(ptr);
-  if (ptr[msglen-1] != ')') {
-    pr_trace_msg(trace_channel, 12,
-      "missing ending ')' character for extended address in '%s'", msg);
-    errno = EINVAL;
-    return NULL;
+    /* Make sure that the last character is a closing ')'. */
+    msglen = strlen(ptr);
+    if (ptr[msglen-1] != ')') {
+      pr_trace_msg(trace_channel, 12,
+        "missing ending ')' character for extended address in '%s'", msg);
+      errno = EINVAL;
+      return NULL;
+    }
+
+    msg_str = pstrndup(p, ptr+1, msglen-2);
+
+  } else {
+    msg_str = pstrdup(p, msg);
   }
 
   /* Format is <d>proto<d>ip address<d>port<d> (ASCII in network order),
    * where <d> is an arbitrary delimiter character.
    */
-  msg_str = pstrndup(p, ptr+1, msglen-2);
   delim = *msg_str++;
 
   /* If the network protocol string (e.g. sent by client in EPSV command) is
@@ -378,7 +384,7 @@ pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
 
   /* XXX Use a pool other than session.pool here, in the future. */ 
   res = pr_netaddr_dup(session.pool, &na);
-  pr_netaddr_set_port2(res, port);
+  pr_netaddr_set_port(res, port);
 
   return res;
 }

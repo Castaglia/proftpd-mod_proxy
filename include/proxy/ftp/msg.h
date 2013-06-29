@@ -47,6 +47,6 @@ pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *, const char *, int);
  * an EPSV response.
  */
 pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *, const char *, pr_netaddr_t *,
-  const char *);
+  int, const char *);
 
 #endif /* MOD_PROXY_FTP_MSG_H */
