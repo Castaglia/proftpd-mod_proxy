@@ -139,9 +139,12 @@ cmd_rec *proxy_ftp_ctrl_recv_cmd(pool *p, conn_t *ctrl_conn) {
   return cmd;
 }
 
-pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn) {
+pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
+    unsigned int *nlines) {
   char buf[PR_TUNABLE_BUFFER_SIZE];
   pr_response_t *resp = NULL;
+  int multiline = FALSE;
+  unsigned int count = 0;
 
   while (TRUE) {
     char c, *ptr;
@@ -167,8 +170,8 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn) {
     }
 
     /* If we are the first line of the response, the first three characters
-     * MUST be numeric, followed by a space or hypen.  Anything else is
-     * nonconformant with RFC 959.
+     * MUST be numeric, followed by a hypen.  Anything else is nonconformant
+     * with RFC 959.
      *
      * If we are NOT the first line of the response, then we are probably
      * handling a multiline response. If the first character is a space, then
@@ -188,9 +191,9 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn) {
         return NULL;
       }
 
-      if (!isdigit((int) buf[0]) ||
-          !isdigit((int) buf[1]) ||
-          !isdigit((int) buf[2])) {
+      if (!PR_ISDIGIT((int) buf[0]) ||
+          !PR_ISDIGIT((int) buf[1]) ||
+          !PR_ISDIGIT((int) buf[2])) {
         pr_trace_msg(trace_channel, 1,
           "non-numeric characters in start of response data: '%c%c%c'",
           buf[0], buf[1], buf[2]);
@@ -198,6 +201,9 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn) {
         return NULL;
       }
 
+      /* If this is a space, then we have a single line response.  If it
+       * is a hyphen, then this is the first line of a multiline response.
+       */
       if (buf[3] != ' ' &&
           buf[3] != '-') {
         pr_trace_msg(trace_channel, 1,
@@ -206,6 +212,11 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn) {
         return NULL;
       }
 
+      if (buf[3] == '-') {
+        multiline = TRUE;
+      }
+ 
+      count++;
       resp = (pr_response_t *) pcalloc(p, sizeof(pr_response_t));
 
     } else {
@@ -213,8 +224,9 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn) {
         if (buf[0] == ' ') {
           /* Continuation line; append it the existing response. */
           if (buflen > 1) {
-            resp->msg = pstrcat(p, resp->msg, "\n", &(buf[1]), NULL);
+            resp->msg = pstrcat(p, resp->msg, "\r\n", buf, NULL);
           }
+          count++;
           continue;
 
         } else {
@@ -224,9 +236,9 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn) {
             return NULL;
           }
 
-          if (!isdigit((int) buf[0]) ||
-              !isdigit((int) buf[1]) ||
-              !isdigit((int) buf[2])) {
+          if (!PR_ISDIGIT((int) buf[0]) ||
+              !PR_ISDIGIT((int) buf[1]) ||
+              !PR_ISDIGIT((int) buf[2])) {
             pr_trace_msg(trace_channel, 1,
               "non-numeric characters in end of response data: '%c%c%c'",
               buf[0], buf[1], buf[2]);
@@ -238,6 +250,8 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn) {
             errno = EINVAL;
             return NULL;
           }
+
+          count++;
         }
       }
     }
@@ -273,7 +287,14 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn) {
 
     if (resp->msg == NULL) {
       if (buflen > 4) {
-        resp->msg = pstrdup(p, ptr + 1);
+        if (multiline) {
+          *ptr = c;
+          resp->msg = pstrdup(p, ptr);
+          *ptr = '\0';
+
+        } else {
+          resp->msg = pstrdup(p, ptr + 1);
+        }
 
       } else {
         resp->msg = "";
@@ -288,15 +309,28 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn) {
 
     } else {
       if (buflen > 4) {
-        resp->msg = pstrcat(p, resp->msg, "\n", ptr + 1, NULL);
+        if (multiline) {
+          *ptr = c;
+
+          /* This the last line of a multiline response, which means we
+           * need the ENTIRE line, including the response code.
+           */
+          resp->msg = pstrcat(p, resp->msg, "\r\n", buf, NULL);
+
+        } else {
+          resp->msg = pstrcat(p, resp->msg, "\r\n", ptr + 1, NULL);
+        }
       }
 
       break;
     }
   }
 
+  *nlines = count;
+
   pr_trace_msg(trace_channel, 9,
-    "received '%s %s' response from backend to frontend", resp->num, resp->msg);
+    "received '%s%s%s' response from backend to frontend", resp->num,
+    multiline ? "" : " ", resp->msg);
   return resp;
 }
 
@@ -323,48 +357,26 @@ int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *ctrl_conn, cmd_rec *cmd) {
   return res;
 }
 
-int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp) {
-  char *ptr;
+int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp,
+    unsigned int resp_nlines) {
   pool *curr_pool;
 
   (void) ctrl_conn;
 
   pr_trace_msg(trace_channel, 9,
-    "backend->frontend response: %s %s", resp->num, resp->msg);
+    "backend->frontend response: %s%s%s", resp->num,
+    resp_nlines == 1 ? " " : "", resp->msg);
 
   curr_pool = pr_response_get_pool();
   if (curr_pool == NULL) {
     pr_response_set_pool(p);
   }
 
-  /* We also need to deal with multiline responses. */
-  ptr = strchr(resp->msg, '\n');
-  if (ptr == NULL) {
-    pr_response_send(resp->num, "%s", resp->msg);
+  if (resp_nlines > 1) {
+    pr_response_send_raw("%s%s", resp->num, resp->msg);
 
   } else {
-    char *line, *resp_code;
-
-    resp_code = resp->num;
-    line = resp->msg;
-
-    /* ...now send the following lines. */
-    while (ptr != NULL) {
-      char *ptr2;
-
-      pr_signals_handle();
-
-      *ptr = '\0';
-      pr_response_send(resp_code, "%s", line);
-
-      *ptr = '\n';
-      ptr2 = strchr(line, '\n');
-      if (ptr2 != NULL) {
-        ptr = ptr2;
-        line = ptr2 + 1;
-        resp_code = R_DUP;
-      }
-    }
+    pr_response_send(resp->num, "%s", resp->msg);
   }
 
   pr_response_set_pool(curr_pool);
