@@ -84,17 +84,17 @@ const char *proxy_ftp_msg_fmt_ext_addr(pool *p, pr_netaddr_t *addr,
   addr_strlen = strlen(addr_str);
 
   /* 4 delimiters, the network protocol, the IP address, the port, and a NUL. */
-  msglen = (4 * 1) + addr_strlen + 5 + 1;
+  msglen = (4 * 1) + addr_strlen + 6 + 1;
 
   msg = pcalloc(p, msglen);
   switch (cmd_id) {
     case PR_CMD_EPRT_ID:
-      snprintf(msg, msglen, "%c%d%c%s%c%u%c", delim, family, delim,
+      snprintf(msg, msglen, "%c%d%c%s%c%hu%c", delim, family, delim,
         addr_str, delim, port, delim);
       break;
 
     case PR_CMD_EPSV_ID:
-      snprintf(msg, msglen, "%c%c%c%u%c", delim, delim, delim, port, delim);
+      snprintf(msg, msglen-1, "%c%c%c%u%c", delim, delim, delim, port, delim);
       break;
   }
 
@@ -384,7 +384,7 @@ pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
 
   /* XXX Use a pool other than session.pool here, in the future. */ 
   res = pr_netaddr_dup(session.pool, &na);
-  pr_netaddr_set_port(res, port);
+  pr_netaddr_set_port(res, htons(port));
 
   return res;
 }
