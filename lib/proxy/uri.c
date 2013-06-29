@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy URI implementation
- * Copyright (c) 2012 TJ Saunders
+ * Copyright (c) 2012-2013 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,6 +32,70 @@
  */
 
 static const char *trace_channel = "proxy.uri";
+
+static char *uri_parse_host(pool *p, const char *uri, char **remaining) {
+  char *host = NULL, *ptr = NULL;
+
+  /* We have either of:
+   *
+   *  host<:...>
+   *  [host]<:...>
+   *
+   * Look for an opening square bracket, to see if we have an IPv6 address
+   * in the URI.
+   */
+  if (uri[0] == '[') {
+    ptr = strchr(uri + 1, ']');
+    if (ptr == NULL) {
+      /* If there is no ']', then it's a badly-formatted URI. */
+      pr_trace_msg(trace_channel, 4,
+        "badly formatted IPv6 address in host info '%.100s'", uri);
+      errno = EINVAL;
+      return NULL;
+    }
+
+    host = pstrndup(p, uri + 1, ptr - uri - 1);
+
+    if (remaining != NULL) {
+      size_t urilen;
+      urilen = strlen(ptr);
+
+      if (urilen > 0) {
+        *remaining = ptr + 1;
+
+      } else {
+        *remaining = NULL;
+      }
+    }
+
+    pr_trace_msg(trace_channel, 17, "parsed host '%s' out of URI '%s'", host,
+      uri);
+    return host;
+  }
+
+  ptr = strchr(uri + 1, ':');
+  if (ptr == NULL) {
+    if (remaining != NULL) {
+      *remaining = NULL;
+    }
+
+    host = pstrdup(p, uri);
+
+    pr_trace_msg(trace_channel, 17, "parsed host '%s' out of URI '%s'", host,
+      uri);
+    return host;
+  }
+
+  if (remaining != NULL) {
+    *remaining = ptr;
+  }
+
+  host = pstrndup(p, uri, ptr - uri);
+
+  pr_trace_msg(trace_channel, 17, "parsed host '%s' out of URI '%s'", host,
+    uri);
+  return host;
+}
 
 int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
     unsigned int *port) {
@@ -87,6 +151,13 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
    *  scheme://host:port
    *  scheme://host
    *
+   * And, in the case where 'host' is an IPv6 address:
+   *
+   *  scheme://[host]:port/path/...
+   *  scheme://[host]:port/
+   *  scheme://[host]:port
+   *  scheme://[host]
+   *
    * Note that:
    *
    *  scheme://user:password@....
@@ -111,7 +182,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
 
   ptr2 = strchr(ptr, ':');
   if (ptr2 == NULL) {
-    *host = pstrdup(p, ptr);
+    *host = uri_parse_host(p, ptr, NULL);
 
     /* XXX How to configure "implicit" FTPS, if at all? */
 
@@ -130,11 +201,31 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
     } 
 
   } else {
+    *host = uri_parse_host(p, ptr, &ptr2);
+  }
+
+  ptr2 = strchr(ptr2, ':');
+  if (ptr2 == NULL) {
+    /* XXX How to configure "implicit" FTPS, if at all? */
+
+    if (strncmp(*scheme, "ftp", 4) == 0 ||
+        strncmp(*scheme, "ftps", 5) == 0) {
+      *port = 21;
+
+    } else if (strncmp(*scheme, "sftp", 5) == 0) {
+      *port = 22;
+
+    } else {
+      pr_trace_msg(trace_channel, 4,
+        "unable to determine port for scheme '%.100s'", *scheme);
+      errno = EINVAL;
+      return -1;
+    }
+
+  } else {
     register unsigned int i;
     char *ptr3, *portspec;
     size_t portspeclen;
-
-    *host = pstrndup(p, ptr, ptr2 - ptr);
 
     /* Look for any possible trailing '/'. */
     ptr3 = strchr(ptr2, '/');
@@ -143,8 +234,8 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
       portspeclen = strlen(portspec);
 
     } else {
-      portspeclen = ptr3 - ptr2;
-      portspec = pstrndup(p, ptr2, ptr3 - ptr2);
+      portspeclen = ptr3 - (ptr2 + 1);
+      portspec = pstrndup(p, ptr2 + 1, portspeclen);
     }
 
     /* Ensure that only numeric characters appear in the portspec. */
