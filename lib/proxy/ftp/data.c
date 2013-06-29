@@ -56,7 +56,8 @@ pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn) {
    */
 
   pr_event_generate("mod_proxy.data-read", pbuf);
-  pr_trace_msg(trace_channel, 15, "%.*s", nread, pbuf->buf);
+  pr_trace_msg(trace_channel, 15, "received %d bytes of data: %.100s", nread,
+    pbuf->buf);
 
   pbuf->current = pbuf->buf;
   pbuf->remaining = nread;
@@ -69,7 +70,15 @@ int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf) {
 
   pr_event_generate("mod_proxy.data-write", pbuf);
 
-  /* XXX Handle short writes? */
+  /* Currently, we make the conn_t nonblocking (via pr_inet_set_nonblocking),
+   * BUT that does NOT set the nonblocking flag on the contained stream.
+   * Thus this write is actually a BLOCKING write -- which means that we will
+   * not need to worry about short writes here.
+   *
+   * In the future, we may want to make the streams nonblocking, but that
+   * makes mod_proxy a little more sensitive to the slow producer/consumer
+   * problem.
+   */
   nwrote = pr_netio_write(data_conn->outstrm, pbuf->current, pbuf->remaining);
   while (nwrote < 0) {
     int xerrno = errno;

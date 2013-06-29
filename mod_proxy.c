@@ -131,6 +131,7 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
    * to connect.  If there's a mismatch, we need to get an addr with the
    * matching family.
    */
+
   if (pr_netaddr_get_family(session.c->local_addr) == pr_netaddr_get_family(remote_addr)) {
     local_addr = session.c->local_addr;
 
@@ -735,6 +736,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     }
 
     proxy_sess->frontend_data_conn = frontend_conn;
+    pr_inet_set_nonblock(session.pool, frontend_conn);
 
   } else {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -878,9 +880,22 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
             res = proxy_ftp_data_send(cmd->tmp_pool,
               proxy_sess->frontend_data_conn, pbuf);
             if (res < 0) {
+              xerrno = errno;
+
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "error writng %lu bytes of data to frontend server: %s",
-                (unsigned long) remaining, strerror(errno));
+                (unsigned long) remaining, strerror(xerrno));
+
+              /* If this happens, close our backend connection prematurely.
+               * XXX Should we try to send an ABOR here, too?  Or SIGURG?
+               * XXX Should we only do this for e.g. Broken pipe?
+               */
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "unable to proxy data to frontend, closing backend data "
+                "connection");
+
+              pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+              proxy_sess->backend_data_conn = NULL;
             }
           }
         }
