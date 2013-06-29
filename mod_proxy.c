@@ -102,14 +102,14 @@ static pr_netaddr_t *proxy_gateway_get_server(struct proxy_session *proxy_sess) 
 }
 
 static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
-  pr_netaddr_t *server_addr;
-  unsigned int server_port;
-  const char *server_ipstr;
+  pr_netaddr_t *local_addr, *remote_addr;
+  unsigned int remote_port;
+  const char *remote_ipstr;
   conn_t *server_conn, *backend_ctrl_conn;
   int res;
 
-  server_addr = proxy_gateway_get_server(proxy_sess);
-  if (server_addr == NULL) {
+  remote_addr = proxy_gateway_get_server(proxy_sess);
+  if (remote_addr == NULL) {
     int xerrno = errno;
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -124,23 +124,38 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
       -1, &proxy_module, proxy_connect_timeout_cb, "ProxyTimeoutConnect");
   }
 
-  server_ipstr = pr_netaddr_get_ipstr(server_addr);
-  server_port = ntohs(pr_netaddr_get_port(server_addr));
+  remote_ipstr = pr_netaddr_get_ipstr(remote_addr);
+  remote_port = ntohs(pr_netaddr_get_port(remote_addr));
+
+  /* Check the family of the retrieved address vs what we'll be using
+   * to connect.  If there's a mismatch, we need to get an addr with the
+   * matching family.
+   */
+  if (pr_netaddr_get_family(session.c->local_addr) == pr_netaddr_get_family(remote_addr)) {
+    local_addr = session.c->local_addr;
+
+  } else {
+    /* In this scenario, the proxy has an IPv6 socket, but the remote/backend
+     * server has an IPv4 (or IPv4-mapped IPv6) address.
+     */
+    local_addr = pr_netaddr_v6tov4(session.pool, session.c->local_addr);
+  }
 
   /* Instead of passing the local_addr here for the bind address, this is where
    * one could configure the source interface/address for the client/connect
    * side of the proxy connection.
    */
-  server_conn = pr_inet_create_conn(proxy_pool, -1, session.c->local_addr,
-    INPORT_ANY, FALSE);  
 
-  res = pr_inet_connect_nowait(proxy_pool, server_conn, server_addr,
-    ntohs(pr_netaddr_get_port(server_addr)));
+  server_conn = pr_inet_create_conn(proxy_pool, -1, local_addr, INPORT_ANY,
+    FALSE);  
+
+  res = pr_inet_connect_nowait(proxy_pool, server_conn, remote_addr,
+    ntohs(pr_netaddr_get_port(remote_addr)));
   if (res < 0) {
     int xerrno = errno;
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error starting connect to %s:%u: %s", server_ipstr, server_port,
+      "error starting connect to %s#%u: %s", remote_ipstr, remote_port,
       strerror(xerrno));
 
     pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
@@ -158,7 +173,7 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
       int xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error opening stream to %s:%u: %s", server_ipstr, server_port,
+        "error opening stream to %s#%u: %s", remote_ipstr, remote_port,
         strerror(xerrno));
 
       pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
@@ -185,7 +200,7 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
         int xerrno = errno;
 
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "error connecting to %s:%u: %s", server_ipstr, server_port,
+          "error connecting to %s#%u: %s", remote_ipstr, remote_port,
           strerror(xerrno));
 
         pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
@@ -221,7 +236,7 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
   }
 
   pr_trace_msg(trace_channel, 5,
-    "successfully connected to %s:%u from %s:%d", server_ipstr, server_port,
+    "successfully connected to %s#%u from %s#%d", remote_ipstr, remote_port,
     pr_netaddr_get_ipstr(server_conn->local_addr),
     ntohs(pr_netaddr_get_port(server_conn->local_addr)));
 
@@ -231,8 +246,8 @@ static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
     int xerrno = errno;
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to open control connection to %s:%u: %s", server_ipstr,
-      server_port, strerror(xerrno));
+      "unable to open control connection to %s#%u: %s", remote_ipstr,
+      remote_port, strerror(xerrno));
 
     pr_inet_close(proxy_pool, server_conn);
 
