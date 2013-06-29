@@ -35,7 +35,8 @@ const char *proxy_ftp_msg_fmt_addr(pool *, pr_netaddr_t *, unsigned short);
 /* Format a string containg the address for use in an EPRT command or an
  * EPSV response.
  */
-const char *proxy_ftp_msg_fmt_ext_addr(pool *, pr_netaddr_t *, unsigned short);
+const char *proxy_ftp_msg_fmt_ext_addr(pool *, pr_netaddr_t *, unsigned short,
+  int);
 
 /* Parse the address/port out of a string, e.g. from a PORT command or from
  * a PASV response.
@@ -45,6 +46,7 @@ pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *, const char *, int);
 /* Parse the address/port out of a string, e.g. from an EPRT command or from
  * an EPSV response.
  */
-pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *, const char *, int);
+pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *, const char *, pr_netaddr_t *,
+  const char *);
 
 #endif /* MOD_PROXY_FTP_MSG_H */

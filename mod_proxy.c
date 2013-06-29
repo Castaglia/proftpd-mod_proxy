@@ -932,8 +932,201 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 }
 
 MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
-  int res;
+  int res, xerrno;
+  pr_netaddr_t *bind_addr = NULL, *remote_addr = NULL;
   pr_response_t *resp;
+  conn_t *data_conn;
+  unsigned short remote_port;
+  const char *eprt_msg;
+  unsigned char *allow_foreign_addr = NULL;
+
+  CHECK_CMD_ARGS(cmd, 2);
+
+  /* We can't just send the frontend's EPRT, as is, to the backend.
+   * We need to connect to the frontend's EPRT; we need to open a listening
+   * socket and send its address to the backend in our EPRT command.
+   */
+
+  /* XXX How to handle this if we are chrooted, without root privs, for
+   * e.g. source ports below 1024?
+   */
+
+  remote_addr = proxy_ftp_msg_parse_ext_addr(cmd->tmp_pool, cmd->argv[1],
+    session.c->remote_addr, NULL);
+  if (remote_addr == NULL) {
+    xerrno = errno;
+
+    pr_trace_msg("proxy", 2, "error parsing EPRT command '%s': %s",
+      cmd->argv[1], strerror(xerrno));
+
+    if (xerrno == EPROTOTYPE) {
+#ifdef PR_USE_IPV6
+      if (pr_netaddr_use_ipv6()) {
+        pr_response_add_err(R_522,
+          _("Network protocol not supported, use (1,2)"));
+
+      } else {
+        pr_response_add_err(R_522,
+          _("Network protocol not supported, use (1)"));
+      }
+#else
+      pr_response_add_err(R_522, _("Network protocol not supported, use (1)"));
+#endif /* PR_USE_IPV6 */
+
+    } else {
+      pr_response_add_err(R_501, _("Illegal EPRT command"));
+    }
+
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  remote_port = ntohs(pr_netaddr_get_port(remote_addr));
+
+  /* If we are NOT listening on an RFC1918 address, BUT the client HAS
+   * sent us an RFC1918 address in its EPRT command (which we know to not be
+   * routable), then ignore that address, and use the client's remote address.
+   */
+  if (pr_netaddr_is_rfc1918(session.c->local_addr) != TRUE &&
+      pr_netaddr_is_rfc1918(session.c->remote_addr) != TRUE &&
+      pr_netaddr_is_rfc1918(remote_addr) == TRUE) {
+    const char *rfc1918_ipstr;
+
+    rfc1918_ipstr = pr_netaddr_get_ipstr(remote_addr);
+    remote_addr = pr_netaddr_dup(cmd->tmp_pool, session.c->remote_addr);
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "client sent RFC1918 address '%s' in EPRT command, ignoring it and "
+      "using '%s'", rfc1918_ipstr, pr_netaddr_get_ipstr(remote_addr));
+  }
+
+  /* Make sure that the address specified matches the address from which
+   * the control connection is coming.
+   */
+  allow_foreign_addr = get_param_ptr(main_server->conf, "AllowForeignAddress",
+    FALSE);
+
+  if (allow_foreign_addr == NULL ||
+      *allow_foreign_addr == FALSE) {
+    if (pr_netaddr_cmp(remote_addr, session.c->remote_addr) != 0 ||
+        !remote_port) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+       "Refused EPRT %s (address mismatch)", cmd->arg);
+      pr_response_add_err(R_500, _("Illegal EPRT command"));
+      pr_response_flush(&resp_err_list);
+
+      errno = EPERM;
+      return PR_ERROR(cmd);
+    }
+  }
+
+  /* Additionally, make sure that the port number used is a "high numbered"
+   * port, to avoid bounce attacks.  For remote Windows machines, the
+   * port numbers mean little.  However, there are also quite a few Unix
+   * machines out there for whom the port number matters...
+   */
+  if (remote_port < 1024) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "Refused EPRT %s (port %d below 1024, possible bounce attack)", cmd->arg,
+      remote_port);
+
+    pr_response_add_err(R_500, _("Illegal EPRT command"));
+    pr_response_flush(&resp_err_list);
+
+    errno = EPERM;
+    return PR_ERROR(cmd);
+  }
+
+  proxy_sess->data_addr = remote_addr;
+
+  /* XXX Now that we recorded the address to which we'll connect, we need
+   * to open a new listening socket for the backend to which connect,
+   * and sent that address to the backend in our PORT command.
+   */
+
+  /* XXX This is where we would configure a different source address/interface
+   * for the backend to connect to.
+   */
+  bind_addr = session.c->local_addr;
+
+  data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
+  if (data_conn == NULL) {
+    xerrno = errno;
+
+    pr_response_add_err(R_425, _("Unable to build data connection: "
+      "Internal error"));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  if (proxy_sess->backend_data_conn != NULL) {
+    /* Make sure that we only have one backend data connection. */
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_sess->backend_data_conn = NULL;
+  }
+
+  proxy_sess->backend_data_conn = data_conn;
+
+  eprt_msg = proxy_ftp_msg_fmt_ext_addr(cmd->tmp_pool, data_conn->local_addr,
+    data_conn->local_port, cmd->cmd_id);
+  cmd->arg = (char *) eprt_msg;
+
+  /* XXX Need to fix logging; why does the trace logging show
+   * "proxied <old-port>" rather than showing the new address from data_addr?
+   */
+  pr_cmd_clear_cache(cmd);
+
+  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    cmd);
+  if (res < 0) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_sess->backend_data_conn = NULL;
+
+    pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn);
+  if (resp == NULL) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error receiving %s response from backend: %s", cmd->argv[0],
+      strerror(xerrno));
+
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_sess->backend_data_conn = NULL;
+
+    pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
+    resp);
+  if (res < 0) {
+    xerrno = errno;
+
+    pr_response_block(TRUE);
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  if (resp->num[0] == '2') {
+    /* If the command was successful, mark it in the session state/flags. */
+    session.sf_flags |= SF_PORT;
+  }
 
   return PR_HANDLED(cmd);
 }
@@ -941,10 +1134,11 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res, xerrno;
   conn_t *data_conn;
-  char *local_addr_str, *ptr, resp_msg[PR_RESPONSE_BUFFER_SIZE];
+  const char *epsv_msg;
+  char *net_proto = NULL, resp_msg[PR_RESPONSE_BUFFER_SIZE];
   pr_netaddr_t *bind_addr, *remote_addr;
   pr_response_t *resp;
-  unsigned short local_port, remote_port;
+  unsigned short remote_port;
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
     cmd);
@@ -974,8 +1168,12 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
+  if (cmd->argc == 2) {
+    net_proto = cmd->argv[1];
+  }
+
   remote_addr = proxy_ftp_msg_parse_ext_addr(cmd->tmp_pool, resp->msg,
-    pr_netaddr_get_family(session.c->local_addr));
+    session.c->local_addr, net_proto);
   if (remote_addr == NULL) {
     xerrno = errno;
 
@@ -1035,7 +1233,18 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    */
 
   proxy_sess->data_addr = remote_addr;
-  bind_addr = session.c->local_addr;
+
+  if (pr_netaddr_get_family(session.c->local_addr) == pr_netaddr_get_family(session.c->remote_addr)) {
+    bind_addr = session.c->local_addr;
+
+  } else {
+    /* In this scenario, the server has an IPv6 socket, but the remote client
+     * is an IPv4 (or IPv4-mapped IPv6) peer.
+     */
+    bind_addr = pr_netaddr_v6tov4(cmd->pool, session.c->local_addr);
+  }
+
+  /* XXX Need to handle PassivePorts here. */
 
   data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
   if (data_conn == NULL) {
@@ -1057,28 +1266,13 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   proxy_sess->frontend_data_conn = data_conn;
 
-  local_port = data_conn->local_port;
   session.sf_flags |= SF_PASSIVE;
 
-  local_addr_str = pstrdup(cmd->tmp_pool,
-    pr_netaddr_get_ipstr(data_conn->local_addr));
-
-  /* Fixup the address string for the EPSV response. */
-  /* XXX Need to fix this up for extended addrs: |1|addr|port| */
-  ptr = strrchr(local_addr_str, ':');
-  if (ptr != NULL) {
-    local_addr_str = ptr + 1;
-  }
-
-  for (ptr = local_addr_str; *ptr; ptr++) {
-    if (*ptr == '.') {
-      *ptr = ',';
-    }
-  }
+  epsv_msg = proxy_ftp_msg_fmt_ext_addr(cmd->tmp_pool, data_conn->local_addr,
+    data_conn->local_port, cmd->cmd_id);
 
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-    "Entering Extended Passive Mode (%s,%u,%u).", local_addr_str,
-    (local_port >> 8) & 255, local_port & 255);
+    "Entering Extended Passive Mode (%s)", epsv_msg);
 
   /* Change the response to send back to the connecting client, telling it
    * to use OUR address/port.
@@ -1086,8 +1280,8 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   resp->next = NULL;
   resp->num = R_229;
   memset(resp_msg, '\0', sizeof(resp_msg));
-  snprintf(resp_msg, sizeof(resp_msg)-1, "Entering Passive Mode (%s,%u,%u).",
-    local_addr_str, (local_port >> 8) & 255, local_port & 255);
+  snprintf(resp_msg, sizeof(resp_msg)-1, "Entering Extended Passive Mode (%s)",
+    epsv_msg);
   resp->msg = resp_msg;
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
@@ -1105,7 +1299,6 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  pr_response_block(TRUE);
   return PR_HANDLED(cmd);
 }
 
@@ -1209,6 +1402,8 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   proxy_sess->data_addr = remote_addr;
   bind_addr = session.c->local_addr;
 
+  /* XXX Need to handle PassivePorts here. */
+
   data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
   if (data_conn == NULL) {
     xerrno = errno;
@@ -1271,10 +1466,11 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   conn_t *data_conn;
   unsigned short remote_port;
   const char *port_msg;
+  unsigned char *allow_foreign_addr = NULL;
 
   CHECK_CMD_ARGS(cmd, 2);
 
-  /* XXX Can't just send the frontend's PORT, as is, to the backend.
+  /* We can't just send the frontend's PORT, as is, to the backend.
    * We need to connect to the frontend's PORT; we need to open a listening
    * socket and send its address to the backend in our PORT command.
    */
@@ -1316,9 +1512,45 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       "using '%s'", rfc1918_ipstr, pr_netaddr_get_ipstr(remote_addr));
   }
 
-  /* XXX Make sure that the address specified matches the address from which
-   * the control connection is coming (AllowForeignAddress check)
+  /* Make sure that the address specified matches the address from which
+   * the control connection is coming.
    */
+
+  allow_foreign_addr = get_param_ptr(TOPLEVEL_CONF, "AllowForeignAddress",
+    FALSE);
+
+  if (allow_foreign_addr == NULL ||
+      *allow_foreign_addr == FALSE) {
+#ifdef PR_USE_IPV6
+    if (pr_netaddr_use_ipv6()) {
+      /* We can only compare the PORT-given address against the remote client
+       * address if the remote client address is an IPv4-mapped IPv6 address.
+       */
+      if (pr_netaddr_get_family(session.c->remote_addr) == AF_INET6 &&
+          pr_netaddr_is_v4mappedv6(session.c->remote_addr) != TRUE) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "Refused PORT %s (IPv4/IPv6 address mismatch)", cmd->arg);
+
+        pr_response_add_err(R_500, _("Illegal PORT command"));
+        pr_response_flush(&resp_err_list);
+
+        errno = EPERM;
+        return PR_ERROR(cmd);
+      }
+    }
+#endif /* PR_USE_IPV6 */
+
+    if (pr_netaddr_cmp(remote_addr, session.c->remote_addr) != 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "Refused PORT %s (address mismatch)", cmd->arg);
+
+      pr_response_add_err(R_500, _("Illegal PORT command"));
+      pr_response_flush(&resp_err_list);
+
+      errno = EPERM;
+      return PR_ERROR(cmd);
+    }
+  }
 
   /* Additionally, make sure that the port number used is a "high numbered"
    * port, to avoid bounce attacks.  For remote Windows machines, the
@@ -1371,7 +1603,7 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   port_msg = proxy_ftp_msg_fmt_addr(cmd->tmp_pool, data_conn->local_addr,
     data_conn->local_port);
-  cmd->arg = port_msg;
+  cmd->arg = (char *) port_msg;
 
   /* XXX Need to fix logging; why does the trace logging show
    * "proxied <old-port>" rather than showing the new address from data_addr?

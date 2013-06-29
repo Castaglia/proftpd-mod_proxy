@@ -54,7 +54,12 @@ my $TESTS = {
   # XXX
   # proxy_gateway_epsv_all
 
-  proxy_gateway_eprt => {
+  proxy_gateway_eprt_ipv4 => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
+
+  proxy_gateway_eprt_ipv6 => {
     order => ++$order,
     test_class => [qw(forking)],
   },
@@ -110,11 +115,10 @@ sub new {
 sub list_tests {
 #  return testsuite_get_runnable_tests($TESTS);
   return qw(
-    proxy_gateway_list_pasv
-    proxy_gateway_list_port
+    proxy_gateway_epsv
   );
-#    proxy_gateway_epsv
-#    proxy_gateway_eprt
+#    proxy_gateway_eprt_ipv4
+#    proxy_gateway_eprt_ipv6
 }
 
 sub proxy_gateway_connect {
@@ -1131,7 +1135,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_list_epsv {
+sub proxy_gateway_epsv {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -1177,7 +1181,7 @@ sub proxy_gateway_list_epsv {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'DEFAULT:10 lock:0 scoreboard:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20',
+    Trace => 'DEFAULT:10 lock:0 scoreboard:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
