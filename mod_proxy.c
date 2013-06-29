@@ -33,6 +33,7 @@
 #include "proxy/ftp/conn.h"
 #include "proxy/ftp/ctrl.h"
 #include "proxy/ftp/data.h"
+#include "proxy/ftp/msg.h"
 
 /* Proxy mode/type */
 #define PROXY_MODE_GATEWAY		1
@@ -938,21 +939,11 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 }
 
 MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
-  int res;
-  pr_response_t *resp;
-
-  return PR_HANDLED(cmd);
-}
-
-MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
-  int res, valid_response = FALSE, xerrno;
+  int res, xerrno;
   conn_t *data_conn;
-  char *addr_str, *data_addr, *ptr, resp_msg[PR_RESPONSE_BUFFER_SIZE];
-  size_t data_addrlen;
+  char *local_addr_str, *ptr, resp_msg[PR_RESPONSE_BUFFER_SIZE];
   pr_netaddr_t *bind_addr, *remote_addr;
   pr_response_t *resp;
-  unsigned int addr_vals[4];
-  unsigned short port_vals[2];
   unsigned short local_port, remote_port;
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
@@ -983,62 +974,15 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  /* Have to scan the response message for the encoded address/port to
-   * which we are to connect.  Note that we may see some strange formats
-   * for PASV responses from FTP servers here.
-   *
-   * We can't predict where the expected address/port numbers start in the
-   * string, so start from the beginning.
-   */
-  for (ptr = resp->msg; *ptr; ptr++) {
-    if (sscanf(ptr, "%u,%u,%u,%u,%hu,%hu",
-        &addr_vals[0], &addr_vals[1], &addr_vals[2], &addr_vals[3],
-        &port_vals[0], &port_vals[1]) == 6) {
-      valid_response = TRUE;
-      break;
-    }
-  }
-
-  if (valid_response == FALSE) {
-    pr_trace_msg("proxy", 2, "unknown PASV response format '%s'", resp->msg);
-    xerrno = EPERM;
-
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  if (addr_vals[0] > 255 ||
-      addr_vals[1] > 255 ||
-      addr_vals[2] > 255 ||
-      addr_vals[3] > 255 ||
-      port_vals[0] > 255 ||
-      port_vals[1] > 255 ||
-      (addr_vals[0]|addr_vals[1]|addr_vals[2]|addr_vals[3]) == 0 ||
-      (port_vals[0]|port_vals[1]) == 0) {
-    pr_trace_msg("proxy", 1, "PASV response '%s' has invalid value(s)",
-      resp->msg);
-    xerrno = EPERM;
-
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  data_addrlen = (4 * 3) + (3 * 1) + 1;
-  data_addr = pcalloc(cmd->tmp_pool, data_addrlen);
-  snprintf(data_addr, data_addrlen-1, "%u.%u.%u.%u", addr_vals[0], addr_vals[1],
-    addr_vals[2], addr_vals[3]);
-  remote_addr = pr_netaddr_get_addr(cmd->tmp_pool, data_addr, NULL);
+  remote_addr = proxy_ftp_msg_parse_ext_addr(cmd->tmp_pool, resp->msg,
+    pr_netaddr_get_family(session.c->local_addr));
   if (remote_addr == NULL) {
-    pr_trace_msg("proxy", 2, "unable to resolve '%s': %s", data_addr,
-      strerror(errno));
-    xerrno = EINVAL;
+    xerrno = errno;
 
+    pr_trace_msg("proxy", 2, "error parsing EPSV response '%s': %s", resp->msg,
+      strerror(xerrno));
+
+    xerrno = EPERM;
     pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
@@ -1046,23 +990,16 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  remote_port = ((port_vals[0] << 8) + port_vals[1]);
-  pr_netaddr_set_port2(remote_addr, remote_port);
+  remote_port = ntohs(pr_netaddr_get_port(remote_addr));
 
   /* Make sure that the given address matches the address to which we
    * originally connected.
    */
 
-#ifdef PR_USE_IPV6
-  if (pr_netaddr_use_ipv6()) {
-    /* XXX Add appropriate check here */
-  }
-#endif /* PR_USE_IPV6 */
-
   if (pr_netaddr_cmp(remote_addr,
       proxy_sess->backend_ctrl_conn->remote_addr) != 0) {
     pr_trace_msg("proxy", 1,
-      "Refused PASV address %s (address mismatch with %s)",
+      "Refused EPSV address %s (address mismatch with %s)",
       pr_netaddr_get_ipstr(remote_addr),
       pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr));
     xerrno = EPERM;
@@ -1075,10 +1012,11 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   if (remote_port < 1024) {
-    pr_trace_msg("proxy", 1, "Refused PASV port %hu (below 1024)",
+    pr_trace_msg("proxy", 1, "Refused EPSV port %hu (below 1024)",
       remote_port);
     xerrno = EPERM;
 
+    /* XXX Is this the best/correct response code here? */
     pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
@@ -1101,7 +1039,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
   if (data_conn == NULL) {
-    int xerrno = errno;
+    xerrno = errno;
 
     pr_response_add_err(R_425, _("Unable to build data connection: "
       "Internal error"));
@@ -1122,39 +1060,41 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   local_port = data_conn->local_port;
   session.sf_flags |= SF_PASSIVE;
 
-  addr_str = pstrdup(cmd->tmp_pool,
+  local_addr_str = pstrdup(cmd->tmp_pool,
     pr_netaddr_get_ipstr(data_conn->local_addr));
 
-  /* Fixup the address string for the PASV response. */
-  ptr = strrchr(addr_str, ':');
+  /* Fixup the address string for the EPSV response. */
+  /* XXX Need to fix this up for extended addrs: |1|addr|port| */
+  ptr = strrchr(local_addr_str, ':');
   if (ptr != NULL) {
-    addr_str = ptr + 1;
+    local_addr_str = ptr + 1;
   }
 
-  for (ptr = addr_str; *ptr; ptr++) {
+  for (ptr = local_addr_str; *ptr; ptr++) {
     if (*ptr == '.') {
       *ptr = ',';
     }
   }
 
-  pr_log_debug(DEBUG1, MOD_PROXY_VERSION ": Entering Passive Mode (%s,%u,%u).",
-    addr_str, (local_port >> 8) & 255, local_port & 255);
+  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+    "Entering Extended Passive Mode (%s,%u,%u).", local_addr_str,
+    (local_port >> 8) & 255, local_port & 255);
 
   /* Change the response to send back to the connecting client, telling it
    * to use OUR address/port.
    */
   resp->next = NULL;
-  resp->num = R_227;
+  resp->num = R_229;
   memset(resp_msg, '\0', sizeof(resp_msg));
   snprintf(resp_msg, sizeof(resp_msg)-1, "Entering Passive Mode (%s,%u,%u).",
-    addr_str, (local_port >> 8) & 255, local_port & 255);
+    local_addr_str, (local_port >> 8) & 255, local_port & 255);
   resp->msg = resp_msg;
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
     resp);
-  xerrno = errno;
-
   if (res < 0) {
+    xerrno = errno;
+
     pr_inet_close(session.pool, data_conn);
     pr_response_block(TRUE);
 
@@ -1169,20 +1109,168 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   return PR_HANDLED(cmd);
 }
 
+MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
+  int res, xerrno;
+  conn_t *data_conn;
+  const char *pasv_msg;
+  char resp_msg[PR_RESPONSE_BUFFER_SIZE];
+  pr_netaddr_t *bind_addr, *remote_addr;
+  pr_response_t *resp;
+  unsigned short remote_port;
+
+  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    cmd);
+  if (res < 0) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+
+    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn);
+  if (resp == NULL) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error receiving %s response from backend: %s", cmd->argv[0],
+      strerror(xerrno));
+
+    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  remote_addr = proxy_ftp_msg_parse_addr(cmd->tmp_pool, resp->msg,
+    pr_netaddr_get_family(session.c->local_addr));
+  if (remote_addr == NULL) {
+    xerrno = errno;
+
+    pr_trace_msg("proxy", 2, "error parsing PASV response '%s': %s", resp->msg,
+      strerror(xerrno));
+
+    xerrno = EPERM;
+    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  remote_port = ntohs(pr_netaddr_get_port(remote_addr));
+
+  /* Make sure that the given address matches the address to which we
+   * originally connected.
+   */
+
+  if (pr_netaddr_cmp(remote_addr,
+      proxy_sess->backend_ctrl_conn->remote_addr) != 0) {
+    pr_trace_msg("proxy", 1,
+      "Refused PASV address %s (address mismatch with %s)",
+      pr_netaddr_get_ipstr(remote_addr),
+      pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr));
+    xerrno = EPERM;
+
+    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  if (remote_port < 1024) {
+    pr_trace_msg("proxy", 1, "Refused PASV port %hu (below 1024)",
+      remote_port);
+    xerrno = EPERM;
+
+    /* XXX Is this the best/correct response code here? */
+    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  /* We do NOT want to connect here, but would rather wait until the
+   * ensuing data transfer-initiating command.  Otherwise, a client could
+   * spew PASV commands at us, and we would flood the backend server with
+   * data transfer connections needlessly.
+   *
+   * We DO, however, need to create our own listening connection, so that
+   * we can inform the client of the address/port to which IT is to
+   * connect for its part of the data transfer.
+   */
+
+  proxy_sess->data_addr = remote_addr;
+  bind_addr = session.c->local_addr;
+
+  data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
+  if (data_conn == NULL) {
+    xerrno = errno;
+
+    pr_response_add_err(R_425, _("Unable to build data connection: "
+      "Internal error"));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  if (proxy_sess->frontend_data_conn != NULL) {
+    /* Make sure that we only have one frontend data connection. */
+    pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+    proxy_sess->frontend_data_conn = NULL;
+  }
+
+  proxy_sess->frontend_data_conn = data_conn;
+  session.sf_flags |= SF_PASSIVE;
+
+  pasv_msg = proxy_ftp_msg_fmt_addr(cmd->tmp_pool, data_conn->local_addr,
+    data_conn->local_port);
+
+  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+    "Entering Passive Mode (%s).", pasv_msg);
+
+  /* Change the response to send back to the connecting client, telling it
+   * to use OUR address/port.
+   */
+  resp->next = NULL;
+  resp->num = R_227;
+  memset(resp_msg, '\0', sizeof(resp_msg));
+  snprintf(resp_msg, sizeof(resp_msg)-1, "Entering Passive Mode (%s).",
+    pasv_msg);
+  resp->msg = resp_msg;
+
+  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
+    resp);
+  if (res < 0) {
+    xerrno = errno;
+
+    pr_inet_close(session.pool, data_conn);
+    pr_response_block(TRUE);
+
+    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  return PR_HANDLED(cmd);
+}
+
 MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res, xerrno;
   pr_netaddr_t *bind_addr = NULL, *remote_addr = NULL;
   pr_response_t *resp;
   conn_t *data_conn;
-#ifdef PR_USE_IPV6
-  char buf[INET6_ADDRSTRLEN] = {'\0'};
-#else
-  char buf[INET_ADDRSTRLEN] = {'\0'};
-#endif /* PR_USE_IPV6 */
-  unsigned int h1, h2, h3, h4, p1, p2;
-  unsigned short local_port = 0, remote_port;
-  char *addr_str, *data_addr, *ptr;
-  size_t data_addrlen;
+  unsigned short remote_port;
+  const char *port_msg;
 
   CHECK_CMD_ARGS(cmd, 2);
 
@@ -1195,57 +1283,22 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    * e.g. source ports below 1024?
    */
 
-  /* Format is h1,h2,h3,h4,p1,p2 (ASCII in network order) */
-  if (sscanf(cmd->argv[1], "%u,%u,%u,%u,%u,%u", &h1, &h2, &h3, &h4, &p1,
-      &p2) != 6) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "PORT '%s' is not syntactically valid", cmd->argv[1]);
-
-    pr_response_add_err(R_501, _("Illegal PORT command"));
-    pr_response_flush(&resp_err_list);
-
-    errno = EPERM;
-    return PR_ERROR(cmd);
-  }
-
-  if (h1 > 255 || h2 > 255 || h3 > 255 || h4 > 255 || p1 > 255 || p2 > 255 ||
-      (h1|h2|h3|h4) == 0 || (p1|p2) == 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "PORT '%s' has invalid value(s)", cmd->arg);
-
-    pr_response_add_err(R_501, _("Illegal PORT command"));
-    pr_response_flush(&resp_err_list);
-
-    errno = EPERM;
-    return PR_ERROR(cmd);
-  }
-  remote_port = ((p1 << 8) | p2);
-
-#ifdef PR_USE_IPV6
-  if (pr_netaddr_use_ipv6()) {
-    if (pr_netaddr_get_family(session.c->remote_addr) == AF_INET6) {
-      snprintf(buf, sizeof(buf), "::ffff:%u.%u.%u.%u", h1, h2, h3, h4);
-
-    } else {
-      snprintf(buf, sizeof(buf), "%u.%u.%u.%u", h1, h2, h3, h4);
-    }
-
-  } else
-#endif /* PR_USE_IPV6 */
-  snprintf(buf, sizeof(buf), "%u.%u.%u.%u", h1, h2, h3, h4);
-  buf[sizeof(buf)-1] = '\0';
-
-  remote_addr = pr_netaddr_get_addr(session.pool, buf, NULL);
+  remote_addr = proxy_ftp_msg_parse_addr(cmd->tmp_pool, cmd->argv[1],
+    pr_netaddr_get_family(session.c->remote_addr));
   if (remote_addr == NULL) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error getting sockaddr for '%s': %s", buf, strerror(errno));
+    xerrno = errno;
+
+    pr_trace_msg("proxy", 2, "error parsing PORT command '%s': %s",
+      cmd->argv[1], strerror(xerrno));
 
     pr_response_add_err(R_501, _("Illegal PORT command"));
     pr_response_flush(&resp_err_list);
 
-    errno = EPERM;
+    errno = xerrno;
     return PR_ERROR(cmd);
   }
+
+  remote_port = ntohs(pr_netaddr_get_port(remote_addr));
 
   /* If we are NOT listening on an RFC1918 address, BUT the client HAS
    * sent us an RFC1918 address in its PORT command (which we know to not be
@@ -1284,7 +1337,6 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  pr_netaddr_set_port(remote_addr, htons(remote_port));
   proxy_sess->data_addr = remote_addr;
 
   /* XXX Now that we recorded the address to which we'll connect, we need
@@ -1316,32 +1368,10 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   proxy_sess->backend_data_conn = data_conn;
-  local_port = data_conn->local_port;
 
-  addr_str = pstrdup(cmd->tmp_pool,
-    pr_netaddr_get_ipstr(data_conn->local_addr));
-
-  /* Fixup the address string for the PORT command. */
-  ptr = strrchr(addr_str, ':');
-  if (ptr != NULL) {
-    addr_str = ptr + 1;
-  }
-
-  for (ptr = addr_str; *ptr; ptr++) {
-    if (*ptr == '.') {
-      *ptr = ',';
-    }
-  }
-
-  /* Allocate enough room for 6 numbers (3 digits max each), 5 separators,
-   * and a trailing NUL.
-   */
-  data_addrlen = (6 * 3) + (5 * 1) + 1;
-  data_addr = pcalloc(cmd->pool, data_addrlen);
-  snprintf(data_addr, data_addrlen-1, "%s,%u,%u", addr_str,
-    (local_port >> 8) & 255, local_port & 255);
-
-  cmd->arg = data_addr;
+  port_msg = proxy_ftp_msg_fmt_addr(cmd->tmp_pool, data_conn->local_addr,
+    data_conn->local_port);
+  cmd->arg = port_msg;
 
   /* XXX Need to fix logging; why does the trace logging show
    * "proxied <old-port>" rather than showing the new address from data_addr?
@@ -1837,6 +1867,8 @@ static conftable proxy_conftab[] = {
   { "ProxyLog",			set_proxylog,		NULL },
   { "ProxyOptions",		set_proxyoptions,	NULL },
   { "ProxyTimeoutConnect",	set_proxytimeoutconnect,NULL },
+
+  /* Source address/interface for connections to backend */
 
   /* Forward proxy directives */
 

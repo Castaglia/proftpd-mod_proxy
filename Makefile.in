@@ -21,7 +21,8 @@ MODULE_OBJS=mod_proxy.o \
   lib/proxy/ftp/buffer.o \
   lib/proxy/ftp/conn.o \
   lib/proxy/ftp/ctrl.o \
-  lib/proxy/ftp/data.o
+  lib/proxy/ftp/data.o \
+  lib/proxy/ftp/msg.o
 
 SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/stacktrace.lo \
@@ -33,7 +34,8 @@ SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/ftp/buffer.lo \
   lib/proxy/ftp/conn.lo \
   lib/proxy/ftp/ctrl.lo \
-  lib/proxy/ftp/data.lo
+  lib/proxy/ftp/data.lo \
+  lib/proxy/ftp/msg.lo
 
 # Necessary redefinitions
 INCLUDES=-I. -I./include -I../.. -I../../include @INCLUDES@

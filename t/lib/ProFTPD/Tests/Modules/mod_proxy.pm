@@ -110,8 +110,10 @@ sub new {
 sub list_tests {
 #  return testsuite_get_runnable_tests($TESTS);
   return qw(
-    proxy_gateway_epsv
+    proxy_gateway_list_pasv
+    proxy_gateway_list_port
   );
+#    proxy_gateway_epsv
 #    proxy_gateway_eprt
 }
 
