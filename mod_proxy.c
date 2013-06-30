@@ -35,9 +35,9 @@
 #include "proxy/ftp/data.h"
 #include "proxy/ftp/msg.h"
 
-/* Proxy mode/type */
-#define PROXY_MODE_GATEWAY		1
-#define PROXY_MODE_PROXY		2
+/* Proxy type */
+#define PROXY_TYPE_GATEWAY		1
+#define PROXY_TYPE_PROXY		2
 
 /* How long (in secs) to wait to connect to real server? */
 #define PROXY_CONNECT_DEFAULT_TIMEOUT	60
@@ -54,7 +54,7 @@ int proxy_logfd = -1;
 pool *proxy_pool = NULL;
 
 static int proxy_engine = FALSE;
-static int proxy_mode = PROXY_MODE_GATEWAY;
+static int proxy_type = PROXY_TYPE_GATEWAY;
 
 static const char *trace_channel = "proxy";
 
@@ -428,34 +428,6 @@ MODRET set_proxylog(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
-/* usage: ProxyMode "forward" (proxy) |"reverse" (gateway) */
-MODRET set_proxymode(cmd_rec *cmd) {
-  int mode = 0;
-  config_rec *c;
-
-  CHECK_ARGS(cmd, 1);
-  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
-
-  if (strcasecmp(cmd->argv[1], "forward") == 0 ||
-      strcasecmp(cmd->argv[1], "proxy") == 0) {
-    mode = PROXY_MODE_PROXY;
-
-  } else if (strcasecmp(cmd->argv[1], "reverse") == 0 ||
-             strcasecmp(cmd->argv[1], "gateway") == 0) {
-    mode = PROXY_MODE_GATEWAY;
-
-  } else {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown proxy mode '", cmd->argv[1],
-      "'", NULL));
-  }
-
-  c = add_config_param(cmd->argv[0], 1, NULL);
-  c->argv[0] = palloc(c->pool, sizeof(int));
-  *((int *) c->argv[0]) = mode;
-
-  return PR_HANDLED(cmd);
-}
-
 /* usage: ProxyOptions opt1 ... optN */
 MODRET set_proxyoptions(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
@@ -481,6 +453,34 @@ MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
   c = add_config_param(cmd->argv[0], 1, NULL);
   c->argv[0] = pcalloc(c->pool, sizeof(int));
   *((int *) c->argv[0]) = timeout;
+
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxyType "forward" (proxy) |"reverse" (gateway) */
+MODRET set_proxytype(cmd_rec *cmd) {
+  int type = 0;
+  config_rec *c;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  if (strcasecmp(cmd->argv[1], "forward") == 0 ||
+      strcasecmp(cmd->argv[1], "proxy") == 0) {
+    type = PROXY_TYPE_PROXY;
+
+  } else if (strcasecmp(cmd->argv[1], "reverse") == 0 ||
+             strcasecmp(cmd->argv[1], "gateway") == 0) {
+    type = PROXY_TYPE_GATEWAY;
+
+  } else {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown proxy type '", cmd->argv[1],
+      "'", NULL));
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = type;
 
   return PR_HANDLED(cmd);
 }
@@ -2305,9 +2305,9 @@ static int proxy_sess_init(void) {
   proxy_pool = make_sub_pool(session.pool);
   pr_pool_tag(proxy_pool, MOD_PROXY_VERSION);
 
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyMode", FALSE);
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyType", FALSE);
   if (c != NULL) {
-    proxy_mode = *((int *) c->argv[0]);
+    proxy_type = *((int *) c->argv[0]);
   }
 
   /* XXX All proxied connections are automatically chrooted (after auth,
@@ -2318,15 +2318,15 @@ static int proxy_sess_init(void) {
    * if the RootRevoke option was programmatically set?)
    */
 
-  switch (proxy_mode) {
-    case PROXY_MODE_GATEWAY:
+  switch (proxy_type) {
+    case PROXY_TYPE_GATEWAY:
       if (proxy_reverse_init(proxy_pool) < 0) {
         proxy_engine = FALSE;
         return -1;
       }
       break;
 
-    case PROXY_MODE_PROXY:
+    case PROXY_TYPE_PROXY:
       if (proxy_forward_init(proxy_pool) < 0) {
         proxy_engine = FALSE;
         return -1; 
@@ -2435,10 +2435,10 @@ static int proxy_sess_init(void) {
 
 static conftable proxy_conftab[] = {
   { "ProxyEngine",		set_proxyengine,	NULL },
-  { "ProxyMode",		set_proxymode,		NULL },
   { "ProxyLog",			set_proxylog,		NULL },
   { "ProxyOptions",		set_proxyoptions,	NULL },
   { "ProxyTimeoutConnect",	set_proxytimeoutconnect,NULL },
+  { "ProxyType",		set_proxytype,		NULL },
 
   /* Source address/interface for connections to backend */
   /* Support TransferPriority for proxied connections? */
