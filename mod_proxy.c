@@ -488,14 +488,6 @@ MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
 /* mod_proxy event/dispatch loop. */
 static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
 
-  /* XXX Note: when reading/writing data from data connections, do NOT
-   * perform any sort of ASCII translation; we leave the data as is.
-   * (Or maybe we SHOULD perform the ASCII translation here, in case of
-   * ASCII translation error; the backend server can then be told that
-   * the data are binary, and thus relieve the backend of the translation
-   * burden.  Configurable?)
-   */
-
   while (TRUE) {
     int res = 0;
     cmd_rec *cmd = NULL;
@@ -529,14 +521,24 @@ static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
 #endif /* PR_DEVEL_NO_DAEMON */
     }
 
-    /* Data received, reset idle timer */
-    if (pr_data_get_timeout(PR_DATA_TIMEOUT_IDLE) > 0) {
-      pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
-    }
+    pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
 
     if (cmd) {
+      /* We unblock responses here so that if any PRE_CMD handlers generate
+       * responses (usually errors), those responses are sent to the
+       * connecting client.
+       */
+      pr_response_block(FALSE);
+
+      /* XXX If we need to, we can exert finer-grained control over
+       * command dispatching/routing here.  For example, this is where we
+       * could block responses for PRE_CMD handlers, or skip certain
+       * modules' handlers.
+       */
       pr_cmd_dispatch(cmd);
       destroy_pool(cmd->pool);
+
+      pr_response_block(TRUE);
 
     } else {
       pr_event_generate("core.invalid-command", NULL);
@@ -913,6 +915,14 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   /* XXX Reset/clear TimeoutNoTransfer; is there a frontend/backend specific
    * version of that timer?
+   */
+
+  /* XXX Note: when reading/writing data from data connections, do NOT
+   * perform any sort of ASCII translation; we leave the data as is.
+   * (Or maybe we SHOULD perform the ASCII translation here, in case of
+   * ASCII translation error; the backend server can then be told that
+   * the data are binary, and thus relieve the backend of the translation
+   * burden.  Configurable?)
    */
 
   while (TRUE) {
@@ -1984,6 +1994,8 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     /* XXX Do we need to set other login-related fields here?  E.g.
      * session.uid, session.gid, etc?
      */
+
+    fixup_dirs(main_server, CF_DEFER);
   }
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
@@ -2199,6 +2211,34 @@ static int proxy_init(void) {
   return 0;
 }
 
+/* Set defaults for directives that mod_proxy should allow (but whose
+ * values are checked e.g. by PRE_CMD handlers):
+ *
+ *  AllowOverwrite
+ *  AllowStoreRestart
+ *
+ * Unless these directives have already been set, of course.
+ */
+static void proxy_set_sess_defaults(void) {
+  config_rec *c;
+
+  c = find_config(main_server->conf, CONF_PARAM, "AllowOverwrite", FALSE);
+  if (c == NULL) {
+    c = add_config_param_set(&main_server->conf, "AllowOverwrite", 1, NULL);
+    c->argv[0] = palloc(c->pool, sizeof(unsigned char));
+    *((unsigned char *) c->argv[0]) = TRUE;
+    c->flags |= CF_MERGEDOWN;
+  }
+
+  c = find_config(main_server->conf, CONF_PARAM, "AllowStoreRestart", FALSE);
+  if (c == NULL) {
+    c = add_config_param_set(&main_server->conf, "AllowStoreRestart", 1, NULL);
+    c->argv[0] = palloc(c->pool, sizeof(unsigned char));
+    *((unsigned char *) c->argv[0]) = TRUE;
+    c->flags |= CF_MERGEDOWN;
+  }
+}
+
 static int proxy_sess_init(void) {
   config_rec *c;
   int res;
@@ -2320,6 +2360,9 @@ static int proxy_sess_init(void) {
   /* Use our own "authenticated yet?" check. */
   set_auth_check(proxy_have_authenticated);
 
+  /* Set defaults for directives that mod_proxy should allow. */
+  proxy_set_sess_defaults();
+
   /* Allocate our own session structure, for tracking proxy-specific
    * fields.  Use the session.notes table for stashing/retrieving it as
    * needed.
@@ -2400,6 +2443,7 @@ static conftable proxy_conftab[] = {
   /* Source address/interface for connections to backend */
   /* Support TransferPriority for proxied connections? */
   /* Deliberately ignore/disable HiddenStores in mod_proxy configs */
+  /* Two timeouts, one for frontend and one for backend? */
 
   /* Forward proxy directives */
 
