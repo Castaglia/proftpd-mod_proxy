@@ -92,9 +92,32 @@ conn_t *proxy_ftp_conn_connect(pool *p, pr_netaddr_t *local_addr,
 }
 
 conn_t *proxy_ftp_conn_listen(pool *p, pr_netaddr_t *bind_addr) {
-  conn_t *conn;
+  conn_t *conn = NULL;
+  config_rec *c;
 
-  conn = pr_inet_create_conn(session.pool, -1, bind_addr, INPORT_ANY, FALSE);
+  c = find_config(main_server->conf, CONF_PARAM, "PassivePorts", FALSE);
+  if (c != NULL) {
+    int pasv_min_port = *((int *) c->argv[0]);
+    int pasv_max_port = *((int *) c->argv[1]);
+
+    conn = pr_inet_create_conn_portrange(session.pool, bind_addr,
+      pasv_min_port, pasv_max_port);
+    if (conn == NULL) {
+      /* If not able to open a passive port in the given range, default to
+       * normal behavior (using INPORT_ANY), and log the failure.  This
+       * indicates a too-small range configuration.
+       */
+      pr_log_pri(PR_LOG_WARNING,
+        "unable to find open port in PassivePorts range %d-%d: "
+        "defaulting to INPORT_ANY (consider defining a larger PassivePorts "
+        "range)", pasv_min_port, pasv_max_port);
+    }
+  }
+
+  if (conn == NULL) {
+    conn = pr_inet_create_conn(session.pool, -1, bind_addr, INPORT_ANY, FALSE);
+  }
+
   if (conn == NULL) {
     int xerrno = errno;
 

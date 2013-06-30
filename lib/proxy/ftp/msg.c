@@ -28,9 +28,19 @@
 static const char *trace_channel = "proxy.ftp.msg";
 
 const char *proxy_ftp_msg_fmt_addr(pool *p, pr_netaddr_t *addr,
-    unsigned short port) {
+    unsigned short port, int use_masqaddr) {
   char *addr_str, *msg, *ptr;
   size_t msglen;
+
+  if (use_masqaddr) {
+    config_rec *c;
+
+    /* Handle MasqueradeAddress. */
+    c = find_config(main_server->conf, CONF_PARAM, "MasqueradeAddress", FALSE);
+    if (c != NULL) {
+      addr = c->argv[0];
+    }
+  }
 
   addr_str = pstrdup(p, pr_netaddr_get_ipstr(addr));
 
@@ -58,11 +68,21 @@ const char *proxy_ftp_msg_fmt_addr(pool *p, pr_netaddr_t *addr,
 }
 
 const char *proxy_ftp_msg_fmt_ext_addr(pool *p, pr_netaddr_t *addr,
-    unsigned short port, int cmd_id) {
+    unsigned short port, int cmd_id, int use_masqaddr) {
   const char *addr_str;
   char delim = '|', *msg;
   int family;
   size_t addr_strlen, msglen;
+
+  if (use_masqaddr) {
+    config_rec *c;
+
+    /* Handle MasqueradeAddress. */
+    c = find_config(main_server->conf, CONF_PARAM, "MasqueradeAddress", FALSE);
+    if (c != NULL) {
+      addr = c->argv[0];
+    }
+  }
 
   /* Format is <d>proto<d>ip address<d>port<d> (ASCII in network order),
    * where <d> is an arbitrary delimiter character.

@@ -30,13 +30,13 @@
 /* Format a string containg the address for use in a PORT command or a
  * PASV response.
  */
-const char *proxy_ftp_msg_fmt_addr(pool *, pr_netaddr_t *, unsigned short);
+const char *proxy_ftp_msg_fmt_addr(pool *, pr_netaddr_t *, unsigned short, int);
 
 /* Format a string containg the address for use in an EPRT command or an
  * EPSV response.
  */
 const char *proxy_ftp_msg_fmt_ext_addr(pool *, pr_netaddr_t *, unsigned short,
-  int);
+  int, int);
 
 /* Parse the address/port out of a string, e.g. from a PORT command or from
  * a PASV response.

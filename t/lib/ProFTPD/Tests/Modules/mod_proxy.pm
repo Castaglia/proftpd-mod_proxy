@@ -149,10 +149,31 @@ my $TESTS = {
     test_class => [qw(forking)],
   },
 
+  proxy_gateway_config_passiveports_pasv => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
 
-  # Normal PassivePorts, honored by mod_proxy
-  # Normal MasqueradeAddress, honored by mod_proxy
-  # Normal AllowForeignAddress, honored by mod_proxy
+  proxy_gateway_config_passiveports_epsv => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
+
+  # MasqueradeAddress only really applies to PASV
+  proxy_gateway_config_masqueradeaddress => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
+
+  proxy_gateway_config_allowforeignaddress_port => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
+
+  proxy_gateway_config_allowforeignaddress_eprt => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
 
   # Normal TimeoutIdle, honored by mod_proxy (both sides, frontend and backend)
   # proxy_gateway_timeout_idle
@@ -194,7 +215,10 @@ sub new {
 }
 
 sub list_tests {
-  return testsuite_get_runnable_tests($TESTS);
+#  return testsuite_get_runnable_tests($TESTS);
+  return qw(
+    proxy_gateway_config_allowforeignaddress_eprt
+  );
 }
 
 sub proxy_gateway_connect {
@@ -4611,6 +4635,896 @@ EOC
         test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = "$unknown_cmd not understood";
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_gateway_config_passiveports_pasv {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $timeout_idle = 10;
+
+  my $min_port = 49152;
+  my $max_port = 49652;
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    PassivePorts => "$min_port $max_port",
+
+    IfModules => {
+      'mod_proxy.c' => {
+        ProxyEngine => 'on',
+        ProxyLog => $log_file,
+        ProxyType => 'gateway',
+
+        ProxyGatewayServers => "ftp://127.0.0.1:$vhost_port",
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+
+      my ($resp_code, $resp_msg) = $client->pasv();
+
+      my $expected;
+      $expected = 227;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = '^Entering Passive Mode \(\d+,\d+,\d+,\d+,\d+,\d+\)';
+      $self->assert(qr/$expected/, $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      # Make sure that the chosen port is within our configured PassivePorts
+      # range.
+      if ($resp_msg =~ /^Entering Passive Mode \(\d+,\d+,\d+,\d+,(\d+),(\d+)\)/) {
+        my $p1 = $1;
+        my $p2 = $2;
+
+        my $port = ($p1 * 256) + $p2;
+        $self->assert($port >= $min_port && $port <= $max_port,
+          test_msg("Selected port $port not within PassivePorts $min_port $max_port"));
+
+      } else {
+        die("PASV response message '$resp_msg' not matched");
+      }
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_gateway_config_passiveports_epsv {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $timeout_idle = 10;
+
+  my $min_port = 49152;
+  my $max_port = 49652;
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    PassivePorts => "$min_port $max_port",
+
+    IfModules => {
+      'mod_proxy.c' => {
+        ProxyEngine => 'on',
+        ProxyLog => $log_file,
+        ProxyType => 'gateway',
+
+        ProxyGatewayServers => "ftp://127.0.0.1:$vhost_port",
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+
+      my ($resp_code, $resp_msg) = $client->epsv();
+
+      my $expected;
+      $expected = 229;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = '^Entering Extended Passive Mode \(\|\|\|\d+\|\)';
+      $self->assert(qr/$expected/, $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      # Make sure that the chosen port is within our configured PassivePorts
+      # range.
+      if ($resp_msg =~ /^Entering Extended Passive Mode \(\|\|\|(\d+)\|\)/) {
+        my $port = $1;
+        $self->assert($port >= $min_port && $port <= $max_port,
+          test_msg("Selected port $port not within PassivePorts $min_port $max_port"));
+
+      } else {
+        die("EPSV response message '$resp_msg' not matched");
+      }
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_gateway_config_masqueradeaddress {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $timeout_idle = 10;
+
+  my $masq_addr = '1.2.3.4';
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    MasqueradeAddress => $masq_addr,
+
+    IfModules => {
+      'mod_proxy.c' => {
+        ProxyEngine => 'on',
+        ProxyLog => $log_file,
+        ProxyType => 'gateway',
+
+        ProxyGatewayServers => "ftp://127.0.0.1:$vhost_port",
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+
+      my ($resp_code, $resp_msg) = $client->pasv();
+
+      my $expected;
+      $expected = 227;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = '^Entering Passive Mode \(\d+,\d+,\d+,\d+,\d+,\d+\)';
+      $self->assert(qr/$expected/, $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      # Make sure that the reported address is our MasqueradeAddress.
+      if ($resp_msg =~ /^Entering Passive Mode \((\d+,\d+,\d+,\d+),\d+,\d+\)/) {
+        my $addr = $1;
+        $addr =~ s/,/./g;
+
+        $self->assert($addr eq $masq_addr,
+          test_msg("Expected address '$masq_addr', got '$addr'"));
+
+      } else {
+        die("PASV response message '$resp_msg' not matched");
+      }
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_gateway_config_allowforeignaddress_port {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $timeout_idle = 10;
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    AllowForeignAddress => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => {
+        ProxyEngine => 'on',
+        ProxyLog => $log_file,
+        ProxyType => 'gateway',
+
+        ProxyGatewayServers => "ftp://127.0.0.1:$vhost_port",
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+
+      my ($resp_code, $resp_msg) = $client->port('1,2,3,4,192,168');
+
+      my $expected;
+      $expected = 200;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'PORT command successful';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_gateway_config_allowforeignaddress_eprt {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $timeout_idle = 10;
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    AllowForeignAddress => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => {
+        ProxyEngine => 'on',
+        ProxyLog => $log_file,
+        ProxyType => 'gateway',
+
+        ProxyGatewayServers => "ftp://127.0.0.1:$vhost_port",
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+
+      my ($resp_code, $resp_msg) = $client->eprt('|1|1.2.3.4|49152|');
+
+      my $expected;
+      $expected = 200;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'EPRT command successful';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
     };

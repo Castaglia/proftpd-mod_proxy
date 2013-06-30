@@ -1290,7 +1290,7 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   proxy_sess->backend_data_conn = data_conn;
 
   eprt_msg = proxy_ftp_msg_fmt_ext_addr(cmd->tmp_pool, data_conn->local_addr,
-    data_conn->local_port, cmd->cmd_id);
+    data_conn->local_port, cmd->cmd_id, FALSE);
   cmd->arg = (char *) eprt_msg;
 
   /* XXX Need to fix logging; why does the trace logging show
@@ -1466,8 +1466,7 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     bind_addr = pr_netaddr_v6tov4(cmd->pool, session.c->local_addr);
   }
 
-  /* XXX Need to handle PassivePorts here. */
-
+  /* PassivePorts is handled by proxy_ftp_conn_listen(). */
   data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
   if (data_conn == NULL) {
     xerrno = errno;
@@ -1491,7 +1490,7 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   session.sf_flags |= SF_PASSIVE;
 
   epsv_msg = proxy_ftp_msg_fmt_ext_addr(cmd->tmp_pool, data_conn->local_addr,
-    data_conn->local_port, cmd->cmd_id);
+    data_conn->local_port, cmd->cmd_id, TRUE);
 
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
     "Entering Extended Passive Mode (%s)", epsv_msg);
@@ -1626,8 +1625,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   proxy_sess->data_addr = remote_addr;
   bind_addr = session.c->local_addr;
 
-  /* XXX Need to handle PassivePorts here. */
-
+  /* PassivePorts is handled by proxy_ftp_conn_listen(). */
   data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
   if (data_conn == NULL) {
     xerrno = errno;
@@ -1650,7 +1648,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   session.sf_flags |= SF_PASSIVE;
 
   pasv_msg = proxy_ftp_msg_fmt_addr(cmd->tmp_pool, data_conn->local_addr,
-    data_conn->local_port);
+    data_conn->local_port, TRUE);
 
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
     "Entering Passive Mode (%s).", pasv_msg);
@@ -1827,7 +1825,7 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   proxy_sess->backend_data_conn = data_conn;
 
   port_msg = proxy_ftp_msg_fmt_addr(cmd->tmp_pool, data_conn->local_addr,
-    data_conn->local_port);
+    data_conn->local_port, FALSE);
   cmd->arg = (char *) port_msg;
 
   /* XXX Need to fix logging; why does the trace logging show
