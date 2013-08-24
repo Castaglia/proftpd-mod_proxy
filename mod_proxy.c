@@ -940,9 +940,9 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   session.sf_flags |= SF_XFER;
 
-  /* XXX Reset/clear TimeoutNoTransfer; is there a frontend/backend specific
-   * version of that timer?
-   */
+  if (pr_data_get_timeout(PR_DATA_TIMEOUT_NO_TRANSFER) > 0) {
+    pr_timer_reset(PR_TIMER_NOXFER, ANY_MODULE);
+  }
 
   /* XXX Note: when reading/writing data from data connections, do NOT
    * perform any sort of ASCII translation; we leave the data as is.
@@ -1420,6 +1420,14 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
+  if (resp->num[0] == '4' || resp->num[0] == '5') {
+    res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
+      proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
+
+    errno = EPERM;
+    return PR_ERROR(cmd);
+  }
+
   if (cmd->argc == 2) {
     net_proto = cmd->argv[1];
   }
@@ -1589,6 +1597,14 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  if (resp->num[0] == '4' || resp->num[0] == '5') {
+    res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
+      proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
+
+    errno = EPERM;
     return PR_ERROR(cmd);
   }
 
