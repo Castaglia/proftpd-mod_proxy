@@ -37,6 +37,11 @@ struct proxy_session *proxy_session_alloc(pool *p) {
   proxy_sess = pcalloc(sess_pool, sizeof(struct proxy_session));
   proxy_sess->pool = sess_pool;
 
+  /* This will be filled in by the ProxyBackendAddress directive, if
+   * configured.
+   */
+  proxy_sess->backend_addr = NULL;
+
   /* Fill in the defaults for the session members. */
   proxy_sess->connect_timeout = -1;
   proxy_sess->connect_timerno = -1;

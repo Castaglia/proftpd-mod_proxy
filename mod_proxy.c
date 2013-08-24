@@ -410,8 +410,8 @@ MODRET set_proxygatewayservers(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
-/* usage: ProxyGatewayStrategy [strategy] */
-MODRET set_proxygatewaystrategy(cmd_rec *cmd) {
+/* usage: ProxyGatewaySelectionStrategy [strategy] */
+MODRET set_proxygatewayselectionstrategy(cmd_rec *cmd) {
 
   /* CHECK_ARGS(cmd, 1) */
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
@@ -430,6 +430,28 @@ MODRET set_proxylog(cmd_rec *cmd) {
 
 /* usage: ProxyOptions opt1 ... optN */
 MODRET set_proxyoptions(cmd_rec *cmd) {
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxySourceAddress address */
+MODRET set_proxysourceaddress(cmd_rec *cmd) {
+  config_rec *c = NULL;
+  pr_netaddr_t *src_addr = NULL;
+  unsigned int addr_flags = PR_NETADDR_GET_ADDR_FL_INCL_DEVICE;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  src_addr = pr_netaddr_get_addr2(cmd->server->pool, cmd->argv[1], NULL,
+    addr_flags);
+  if (src_addr == NULL) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to resolve '", cmd->argv[1],
+      "'", NULL));
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = src_addr;
+
   return PR_HANDLED(cmd);
 }
 
@@ -607,17 +629,20 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   /* XXX Should handle EPSV_ALL here, too. */
   if (session.sf_flags & SF_PASSIVE) {
+    pr_netaddr_t *bind_addr = NULL;
 
     /* Connect to the backend server now. */
     /* XXX We won't receive the initial response until we connect to the
      * backend data address/port.
      */
+
     /* XXX Note: This is where we would specify the specific address/interface
      * to use as the source address for connections to the backend server,
      * rather than using session.c->local_addr as the bind address.
      */
+    bind_addr = session.c->local_addr;
 
-    backend_conn = proxy_ftp_conn_connect(cmd->tmp_pool, session.c->local_addr,
+    backend_conn = proxy_ftp_conn_connect(cmd->tmp_pool, bind_addr,
       proxy_sess->data_addr);
     if (backend_conn == NULL) {
       xerrno = errno;
@@ -2372,6 +2397,11 @@ static int proxy_sess_init(void) {
       "error stashing proxy session note: %s", strerror(errno));
   }
 
+  c = find_config(main_server->conf, CONF_PARAM, "ProxySourceAddress", FALSE);
+  if (c != NULL) {
+    proxy_sess->src_addr = c->argv[0];
+  }
+
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTimeoutConnect", FALSE);
   if (c != NULL) {
     proxy_sess->connect_timeout = *((int *) c->argv[0]);
@@ -2435,10 +2465,10 @@ static conftable proxy_conftab[] = {
   { "ProxyEngine",		set_proxyengine,	NULL },
   { "ProxyLog",			set_proxylog,		NULL },
   { "ProxyOptions",		set_proxyoptions,	NULL },
+  { "ProxySourceAddress",	set_proxysourceaddress,	NULL },
   { "ProxyTimeoutConnect",	set_proxytimeoutconnect,NULL },
   { "ProxyType",		set_proxytype,		NULL },
 
-  /* Source address/interface for connections to backend */
   /* Support TransferPriority for proxied connections? */
   /* Deliberately ignore/disable HiddenStores in mod_proxy configs */
   /* Two timeouts, one for frontend and one for backend? */
@@ -2446,8 +2476,8 @@ static conftable proxy_conftab[] = {
   /* Forward proxy directives */
 
   /* Reverse proxy directives */
-  { "ProxyGatewayServers",	set_proxygatewayservers,	NULL },
-  { "ProxyGatewayStrategy",	set_proxygatewaystrategy,	NULL },
+  { "ProxyGatewaySelectionStrategy", set_proxygatewayselectionstrategy, NULL },
+  { "ProxyGatewayServers",	     set_proxygatewayservers,		NULL },
 
   { NULL }
 };

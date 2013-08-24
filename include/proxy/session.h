@@ -39,6 +39,9 @@ struct proxy_session {
   conn_t *backend_ctrl_conn;
   conn_t *backend_data_conn;
 
+  /* Address for connections to/from backend.  May be null. */
+  pr_netaddr_t *backend_addr;
+
   /* Data connection address: frontend (PORT/EPRT) or backend (PASV/EPSV) */
   pr_netaddr_t *data_addr;
 };
