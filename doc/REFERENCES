@@ -5,6 +5,9 @@ Linux Load Balancing with HAProxy + Heartbeat:
 Load Balancing OpenSSH SFTP with HAProxy:
   http://jpmorris-iso.blogspot.com/2013/01/load-balancing-openssh-sftp-with-haproxy.html 
 
+HAproxy PROXY protocol
+  http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt
+
 FTP Load Balancing?
   http://www.formilux.org/archives/haproxy/0805/0976.html
   http://www.formilux.org/archives/haproxy/0805/0977.html
@@ -35,6 +38,7 @@ Brane Dump: Load Balancing FTP servers
 
 Opensource load balancer projects:
   http://www.inlab.de/articles/free-and-open-source-load-balancing-software-and-projects.html
+  http://sourceforge.net/projects/balance/
 
 FTP ALG:
   http://www.amaranten.com/support/user%20guide/Application_Layer_Gateways/FTP_ALG.htm
@@ -72,3 +76,11 @@ ServerFault:
 
   FTP/SFTP/FTPS proxying
     http://serverfault.com/questions/117899/ftp-sftp-ftps-proxying?rq=1
+
+  X-Forwarded-For
+    http://stackoverflow.com/questions/11891185/x-forward-for-over-ssl-using-load-balancers?rq=1
+
+Diagrams:
+  http://pic.dhe.ibm.com/infocenter/ssp/v3r4/index.jsp?topic=%2Fcom.ibm.help.sspftpreverseproxy.doc%2FSSP_FTS_FTPRProxCfg.html
+  http://pic.dhe.ibm.com/infocenter/ssp/v3r4/index.jsp?topic=%2Fcom.ibm.help.sspoverview.doc%2FSSP_Diag_FinishedFTPRev.html
+  http://pic.dhe.ibm.com/infocenter/ssp/v3r4/index.jsp?topic=%2Fcom.ibm.help.sspoverview.doc%2FSSP_Diag_FinishSFTPRev.html

@@ -87,6 +87,37 @@ Reverse Proxy
                           sql://SQLNamedQuery/...
                           ldap://...?
 
+SITE VIA
+  http://www.faqs.org/rfcs/rfc2616.html, Section 14.45 (Via header)
+
+    Via = "Via" ":" 1#(received-protocol received-by [comment])
+    received-protocol = [protocol-name "/"] protocol-version
+    protocol-name = token
+    protocol-version = token
+    received-by = (host [":" port]) | pseudonym
+    pseudonym = token
+
+  Proposed FTP SITE VIA command:
+    SITE VIA 1#(protocol from to)[","]
+    protocol = protocol-name ["/" protocol-version]
+    from = remote-host [":" port]
+    remote-host = hostname | remote-ip
+    to = local-host [":" port]
+    local-host = hostname | local-ip
+
+   Examples:
+     SITE VIA ftp 127.0.0.1:1234 127.0.0.1:21, sftp ....
+
+ HAproxy PROXY protocol
+   http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt
+    http://ben.timby.com/?page_id=210
+
+   Support for this could be implemented in mod_proxy, as an option, and
+   could be handled in sess_init.  Would, however, need to be implemented BOTH
+   in mod_proxy (as sender) and in proftpd backend (as receiver), which may
+   or not be using mod_proxy.  Thus perhaps a separate module, e.g.
+   mod_proxy_protocol?
+
 Any caching of proxied results, files, directory transfers, etc?
 
 Use of DNAT/SNAT, so the remote/target server sees real IP of connecting
@@ -94,7 +125,6 @@ client, rather than that of the proxy?  Or how else to inform the
 backend/origin of the connecting client info?  Keep in mind this possibility:
 
   client -> proxy -> proxy -> proxy -> proxy -> server
-
 
 FTP to SFTP proxying:
 
@@ -188,12 +218,17 @@ Other Proxy Implementations
  
 Links/Articles:
 
+  http://ben.timby.com/?page_id=210
+  http://www.taiter.com/techlog/2012/09/ftp-load-balanced-through-haproxy.html
+    FTP load balancing through HAproxy
+
   http://blog.cryptographyengineering.com/2012/03/how-do-interception-proxies-fail.html
 
   ftpcluster:
     http://www.awk-scripting.de/cluster/
       Uses different cluster server addresses in PORT/PASV, and FXP among
       cluster nodes.  Interesting idea.
+
 Goals
 
   Contrast with Squid, Apache mod_proxy, others
