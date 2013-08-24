@@ -3,7 +3,12 @@ mod_proxy
 
   ProxyEngine
   ProxyLog
-  ProxyMode forward|reverse
+  ProxyMode forward|proxy|reverse|gateway
+
+Benefits:
+  Front servers which can't do: PASV, EPRT/EPSV, FTPS
+  Can use to do your logging: TransferLog, ExtendedLog, mod_log_zmq, etc.
+  Can use to do your monitoring: mod_snmp, etc
 
 Why?
   Have mod_netsieve here, for sieving the inbound commands and outbound files

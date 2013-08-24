@@ -81,6 +81,21 @@ static int proxy_connect_timeout_cb(CALLBACK_FRAME) {
   return 0;
 }
 
+static int proxy_stalled_timeout_cb(CALLBACK_FRAME) {
+  int timeout_stalled;
+
+  timeout_stalled = pr_data_get_timeout(PR_DATA_TIMEOUT_STALLED);
+
+  pr_event_generate("core.timeout-stalled", NULL);
+  pr_log_pri(PR_LOG_NOTICE, "Data transfer stall timeout: %d %s",
+    timeout_stalled, timeout_stalled != 1 ? "seconds" : "second");
+  pr_session_disconnect(NULL, PR_SESS_DISCONNECT_TIMEOUT,
+    "TimeoutStalled during data transfer");
+
+  /* Do not restart the timer (should never be reached). */
+  return 0;
+}
+
 static pr_netaddr_t *proxy_gateway_get_server(struct proxy_session *proxy_sess) {
   config_rec *c;
   array_header *backend_servers;
@@ -631,9 +646,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   if (session.sf_flags & SF_PASSIVE) {
     pr_netaddr_t *bind_addr = NULL;
 
-    /* Connect to the backend server now. */
-    /* XXX We won't receive the initial response until we connect to the
-     * backend data address/port.
+    /* Connect to the backend server now. We won't receive the initial
+     * response until we connect to the backend data address/port.
      */
 
     /* Specify the specific address/interface to use as the source address for
@@ -944,6 +958,12 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     pr_timer_reset(PR_TIMER_NOXFER, ANY_MODULE);
   }
 
+  if (pr_data_get_timeout(PR_DATA_TIMEOUT_STALLED) > 0) {
+    pr_timer_add(pr_data_get_timeout(PR_DATA_TIMEOUT_STALLED),
+      PR_TIMER_STALLED, &proxy_module, proxy_stalled_timeout_cb,
+      "TimeoutStalled");
+  }
+
   /* XXX Note: when reading/writing data from data connections, do NOT
    * perform any sort of ASCII translation; we leave the data as is.
    * (Or maybe we SHOULD perform the ASCII translation here, in case of
@@ -1022,6 +1042,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         proxy_sess->backend_data_conn = NULL;
       }
 
+      pr_timer_remove(PR_TIMER_STALLED, ANY_MODULE);
       pr_response_block(TRUE);
 
       pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
@@ -1113,6 +1134,33 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
           "error receiving response from control connection: %s",
           strerror(xerrno));
 
+        if (proxy_sess->frontend_data_conn != NULL) {
+          pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+          proxy_sess->frontend_data_conn = NULL;
+        }
+
+        if (proxy_sess->backend_data_conn != NULL) {
+          pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+          proxy_sess->backend_data_conn = NULL;
+        }
+
+        /* For a certain number of conditions, if we cannot read the response
+         * from the backend, then we should just close the frontend, otherwise
+         * we might "leak" to the client the fact that we are fronting some
+         * backend server rather than being the server.
+         */
+        if (xerrno == ECONNRESET ||
+            xerrno == ECONNABORTED ||
+            xerrno == ENOENT ||
+            xerrno == EPIPE) {
+          pr_session_disconnect(&proxy_module,
+            PR_SESS_DISCONNECT_BY_APPLICATION,
+            "Backend control connection lost");
+        }
+
+        xfer_ok = FALSE;
+        break;
+
       } else {
 
         /* If not a 1xx response, close the destination data connection,
@@ -1153,6 +1201,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
             strerror(xerrno));
           pr_response_flush(&resp_err_list);
 
+          pr_timer_remove(PR_TIMER_STALLED, ANY_MODULE);
           errno = xerrno;
           return PR_ERROR(cmd);
         }
@@ -1168,6 +1217,10 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         }
       }
     }
+  }
+
+  if (pr_data_get_timeout(PR_DATA_TIMEOUT_STALLED) > 0) {
+    pr_timer_remove(PR_TIMER_STALLED, ANY_MODULE);
   }
 
   pr_response_clear(&resp_list);
@@ -1840,15 +1893,10 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   proxy_sess->data_addr = remote_addr;
 
-  /* XXX Now that we recorded the address to which we'll connect, we need
-   * to open a new listening socket for the backend to which connect,
-   * and sent that address to the backend in our PORT command.
-   */
-
-  /* XXX This is where we would configure a different source address/interface
-   * for the backend to connect to.
-   */
-  bind_addr = session.c->local_addr;
+  bind_addr = proxy_sess->backend_addr;
+  if (bind_addr == NULL) {
+    bind_addr = session.c->local_addr;
+  }
 
   data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
   if (data_conn == NULL) {
@@ -2143,6 +2191,20 @@ MODRET proxy_any(cmd_rec *cmd) {
     &resp_nlines);
   if (resp == NULL) {
     xerrno = errno;
+
+    /* For a certain number of conditions, if we cannot read the response
+     * from the backend, then we should just close the frontend, otherwise
+     * we might "leak" to the client the fact that we are fronting some
+     * backend server rather than being the server.
+     */
+    if (xerrno == ECONNRESET ||
+        xerrno == ECONNABORTED ||
+        xerrno == ENOENT ||
+        xerrno == EPIPE) {
+      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
+        "Backend control connection lost");
+    }
+
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error receiving %s response from backend: %s", cmd->argv[0],
       strerror(xerrno));
