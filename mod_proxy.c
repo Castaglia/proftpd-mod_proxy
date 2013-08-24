@@ -311,6 +311,28 @@ static int proxy_mkdir(const char *dir, uid_t uid, gid_t gid, mode_t mode) {
 /* Configuration handlers
  */
 
+/* usage: ProxyBackendAddress address */
+MODRET set_proxybackendeaddress(cmd_rec *cmd) {
+  config_rec *c = NULL;
+  pr_netaddr_t *backend_addr = NULL;
+  unsigned int addr_flags = PR_NETADDR_GET_ADDR_FL_INCL_DEVICE;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  backend_addr = pr_netaddr_get_addr2(cmd->server->pool, cmd->argv[1], NULL,
+    addr_flags);
+  if (backend_addr == NULL) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to resolve '", cmd->argv[1],
+      "'", NULL));
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = backend_addr;
+
+  return PR_HANDLED(cmd);
+}
+
 /* usage: ProxyEngine on|off */
 MODRET set_proxyengine(cmd_rec *cmd) {
   int bool = 1;
@@ -430,28 +452,6 @@ MODRET set_proxylog(cmd_rec *cmd) {
 
 /* usage: ProxyOptions opt1 ... optN */
 MODRET set_proxyoptions(cmd_rec *cmd) {
-  return PR_HANDLED(cmd);
-}
-
-/* usage: ProxySourceAddress address */
-MODRET set_proxysourceaddress(cmd_rec *cmd) {
-  config_rec *c = NULL;
-  pr_netaddr_t *src_addr = NULL;
-  unsigned int addr_flags = PR_NETADDR_GET_ADDR_FL_INCL_DEVICE;
-
-  CHECK_ARGS(cmd, 1);
-  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
-
-  src_addr = pr_netaddr_get_addr2(cmd->server->pool, cmd->argv[1], NULL,
-    addr_flags);
-  if (src_addr == NULL) {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to resolve '", cmd->argv[1],
-      "'", NULL));
-  }
-
-  c = add_config_param(cmd->argv[0], 1, NULL);
-  c->argv[0] = src_addr;
-
   return PR_HANDLED(cmd);
 }
 
@@ -636,11 +636,13 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
      * backend data address/port.
      */
 
-    /* XXX Note: This is where we would specify the specific address/interface
-     * to use as the source address for connections to the backend server,
-     * rather than using session.c->local_addr as the bind address.
+    /* Specify the specific address/interface to use as the source address for
+     * connections to the backend server.
      */
-    bind_addr = session.c->local_addr;
+    bind_addr = proxy_sess->backend_addr;
+    if (bind_addr == NULL) {
+      bind_addr = session.c->local_addr;
+    }
 
     backend_conn = proxy_ftp_conn_connect(cmd->tmp_pool, bind_addr,
       proxy_sess->data_addr);
@@ -1289,10 +1291,13 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    * and sent that address to the backend in our PORT command.
    */
 
-  /* XXX This is where we would configure a different source address/interface
-   * for the backend to connect to.
+  /* Specify the specific address/interface to use as the destination address
+   * for connections from the backend server.
    */
-  bind_addr = session.c->local_addr;
+  bind_addr = proxy_sess->backend_addr;
+  if (bind_addr == NULL) {
+    bind_addr = session.c->local_addr;
+  }
 
   data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
   if (data_conn == NULL) {
@@ -2214,6 +2219,27 @@ static void proxy_shutdown_ev(const void *event_data, void *user_data) {
   }
 }
 
+static void proxy_timeoutidle_ev(const void *event_data, void *user_data) {
+  /* Unblock responses here, so that mod_core's response will be flushed
+   * out to the frontend client.
+   */
+  pr_response_block(FALSE);
+}
+
+static void proxy_timeoutnoxfer_ev(const void *event_data, void *user_data) {
+  /* Unblock responses here, so that mod_xfer's response will be flushed
+   * out to the frontend client.
+   */
+  pr_response_block(FALSE);
+}
+
+static void proxy_timeoutstalled_ev(const void *event_data, void *user_data) {
+  /* Unblock responses here, so that mod_xfer's response will be flushed
+   * out to the frontend client.
+   */
+  pr_response_block(FALSE);
+}
+
 /* XXX Do we want to support any Controls/ftpctl actions? */
 
 /* Initialization routines
@@ -2283,11 +2309,22 @@ static int proxy_sess_init(void) {
     return 0;
   }
 
-  /* XXX Install event handlers for timeouts, so that we can properly close
+  pr_event_register(&proxy_module, "core.exit", proxy_exit_ev, NULL);
+
+  /* Install event handlers for timeouts, so that we can properly close
    * the connections on either side.
    */
+  pr_event_register(&proxy_module, "core.timeout-idle",
+    proxy_timeoutidle_ev, NULL);
+  pr_event_register(&proxy_module, "core.timeout-no-transfer",
+    proxy_timeoutnoxfer_ev, NULL);
+  pr_event_register(&proxy_module, "core.timeout-stalled",
+    proxy_timeoutstalled_ev, NULL);
 
-  pr_event_register(&proxy_module, "core.exit", proxy_exit_ev, NULL);
+  /* XXX What do we do about TimeoutLogin?  That timeout doesn't really mean
+   * much to mod_proxy; how can we ensure that it won't be enforced e.g.
+   * by mod_core?
+   */
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyLog", FALSE);
   if (c != NULL) {
@@ -2397,9 +2434,9 @@ static int proxy_sess_init(void) {
       "error stashing proxy session note: %s", strerror(errno));
   }
 
-  c = find_config(main_server->conf, CONF_PARAM, "ProxySourceAddress", FALSE);
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyBackendAddress", FALSE);
   if (c != NULL) {
-    proxy_sess->src_addr = c->argv[0];
+    proxy_sess->backend_addr = c->argv[0];
   }
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTimeoutConnect", FALSE);
@@ -2462,12 +2499,12 @@ static int proxy_sess_init(void) {
  */
 
 static conftable proxy_conftab[] = {
-  { "ProxyEngine",		set_proxyengine,	NULL },
-  { "ProxyLog",			set_proxylog,		NULL },
-  { "ProxyOptions",		set_proxyoptions,	NULL },
-  { "ProxySourceAddress",	set_proxysourceaddress,	NULL },
-  { "ProxyTimeoutConnect",	set_proxytimeoutconnect,NULL },
-  { "ProxyType",		set_proxytype,		NULL },
+  { "ProxyBackendAddress",	set_proxybackendeaddress,	NULL },
+  { "ProxyEngine",		set_proxyengine,		NULL },
+  { "ProxyLog",			set_proxylog,			NULL },
+  { "ProxyOptions",		set_proxyoptions,		NULL },
+  { "ProxyTimeoutConnect",	set_proxytimeoutconnect,	NULL },
+  { "ProxyType",		set_proxytype,			NULL },
 
   /* Support TransferPriority for proxied connections? */
   /* Deliberately ignore/disable HiddenStores in mod_proxy configs */
