@@ -220,7 +220,8 @@ Other Proxy Implementations
   http://cr.yp.to/ftpparse.html
     Use for parsing FTP lists into SFTP dirlist
     What about MLSD, though?  Need to find parser for that, if avail
- 
+      http://software.clapper.org/grizzled-python/epydoc/grizzled.net.ftp.parse.FTPMlstDataParser-class.html 
+
 Links/Articles:
 
   http://ben.timby.com/?page_id=210

@@ -1,4 +1,7 @@
 
+Stateful Inspection Advantage (Checkpoint):
+  http://www.checkpoint.com/smb/help/z100g/7.5/7082.htm
+
 Linux Load Balancing with HAProxy + Heartbeat:
   https://wiki.gogrid.com/wiki/index.php/Customer:Linux_Load_Balancing_with_HAProxy+Heartbeat 
 
@@ -79,6 +82,9 @@ ServerFault:
 
   X-Forwarded-For
     http://stackoverflow.com/questions/11891185/x-forward-for-over-ssl-using-load-balancers?rq=1
+
+Reverse proxy capabilities:
+  http://www.rhinosoft.com/pressarchive/PressRelease2012-05-10.asp?prod=rs
 
 Diagrams:
   http://pic.dhe.ibm.com/infocenter/ssp/v3r4/index.jsp?topic=%2Fcom.ibm.help.sspftpreverseproxy.doc%2FSSP_FTS_FTPRProxCfg.html
