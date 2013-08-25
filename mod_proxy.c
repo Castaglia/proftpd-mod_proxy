@@ -1391,7 +1391,7 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       unsigned int resp_nlines = 0;
 
       addr = proxy_ftp_xfer_prepare_passive(proxy_sess->dataxfer_policy, cmd,
-        proxy_sess);
+        R_500, proxy_sess);
       if (addr == NULL) {
         return PR_ERROR(cmd);
       }
@@ -1420,16 +1420,38 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     }
 
     case PR_CMD_PORT_ID:
-    case PR_CMD_EPRT_ID:
-    default:
+    case PR_CMD_EPRT_ID: 
+    default: {
+      pr_response_t *resp;
+      unsigned int resp_nlines = 0;
+
       res = proxy_ftp_xfer_prepare_active(proxy_sess->dataxfer_policy, cmd,
-        proxy_sess);
+        R_425, proxy_sess);
       if (res < 0) {
+        return PR_ERROR(cmd);
+      }
+
+      resp = palloc(cmd->tmp_pool, sizeof(pr_response_t));
+      resp->num = R_200;
+      resp->msg = _("EPRT command successful");
+      resp_nlines = 1;
+
+      res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
+        proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
+      if (res < 0) {
+        xerrno = errno;
+
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error sending '%s %s' response to frontend: %s", resp->num,
+          resp->msg, strerror(xerrno));
+
+        errno = xerrno;
         return PR_ERROR(cmd);
       }
 
       proxy_sess->backend_sess_flags |= SF_PORT;
       break;
+    }
   }
 
   /* If the command was successful, mark it in the session state/flags. */
@@ -1632,99 +1654,13 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   unsigned int resp_nlines = 0;
   unsigned short remote_port;
 
-  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    cmd);
-  if (res < 0) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
-
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
-  if (resp == NULL) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", cmd->argv[0],
-      strerror(xerrno));
-
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  /* We specifically expect a 227 response code here; anything else is an
-   * error.  Right?
-   */
-  if (strncmp(resp->num, R_227, 4) != 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "received response code %s, but expected 227 for %s command", resp->num,
-      cmd->argv[0]);
-
-    res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
-      proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
-
-    errno = EPERM;
-    return PR_ERROR(cmd);
-  }
-
-  remote_addr = proxy_ftp_msg_parse_addr(cmd->tmp_pool, resp->msg,
-    pr_netaddr_get_family(session.c->local_addr));
+  remote_addr = proxy_ftp_xfer_prepare_passive(proxy_sess->dataxfer_policy, cmd,
+    R_500, proxy_sess);
   if (remote_addr == NULL) {
-    xerrno = errno;
-
-    pr_trace_msg("proxy", 2, "error parsing PASV response '%s': %s", resp->msg,
-      strerror(xerrno));
-
-    xerrno = EPERM;
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
     return PR_ERROR(cmd);
   }
 
-  remote_port = ntohs(pr_netaddr_get_port(remote_addr));
-
-  /* Make sure that the given address matches the address to which we
-   * originally connected.
-   */
-
-  if (pr_netaddr_cmp(remote_addr,
-      proxy_sess->backend_ctrl_conn->remote_addr) != 0) {
-    pr_trace_msg("proxy", 1,
-      "Refused PASV address %s (address mismatch with %s)",
-      pr_netaddr_get_ipstr(remote_addr),
-      pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr));
-    xerrno = EPERM;
-
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  if (remote_port < 1024) {
-    pr_trace_msg("proxy", 1, "Refused PASV port %hu (below 1024)",
-      remote_port);
-    xerrno = EPERM;
-
-    /* XXX Is this the best/correct response code here? */
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
+  proxy_sess->backend_data_addr = remote_addr;
 
   /* We do NOT want to connect here, but would rather wait until the
    * ensuing data transfer-initiating command.  Otherwise, a client could
@@ -1734,9 +1670,11 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    * We DO, however, need to create our own listening connection, so that
    * we can inform the client of the address/port to which IT is to
    * connect for its part of the data transfer.
+   *
+   * Note that we do NOT use the ProxyBackendAddress here, since this listening
+   * connection is for the frontend client.
    */
 
-  proxy_sess->backend_data_addr = remote_addr;
   bind_addr = session.c->local_addr;
 
   /* PassivePorts is handled by proxy_ftp_conn_listen(). */
@@ -1769,7 +1707,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   /* Change the response to send back to the connecting client, telling it
    * to use OUR address/port.
    */
-  resp->next = NULL;
+  resp = palloc(cmd->tmp_pool, sizeof(pr_response_t));
   resp->num = R_227;
   memset(resp_msg, '\0', sizeof(resp_msg));
   snprintf(resp_msg, sizeof(resp_msg)-1, "Entering Passive Mode (%s).",
@@ -1913,7 +1851,7 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       unsigned int resp_nlines = 0;
 
       addr = proxy_ftp_xfer_prepare_passive(proxy_sess->dataxfer_policy, cmd,
-        proxy_sess);
+        R_500, proxy_sess);
       if (addr == NULL) {
         return PR_ERROR(cmd);
       }
@@ -1943,15 +1881,37 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
     case PR_CMD_PORT_ID:
     case PR_CMD_EPRT_ID:
-    default:
+    default: {
+      pr_response_t *resp;
+      unsigned int resp_nlines = 0;
+
       res = proxy_ftp_xfer_prepare_active(proxy_sess->dataxfer_policy, cmd,
-        proxy_sess);
+        R_425, proxy_sess);
       if (res < 0) {
+        return PR_ERROR(cmd);
+      }
+
+      resp = palloc(cmd->tmp_pool, sizeof(pr_response_t));
+      resp->num = R_200;
+      resp->msg = _("PORT command successful");
+      resp_nlines = 1;
+
+      res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
+        proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
+      if (res < 0) {
+        xerrno = errno;
+
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error sending '%s %s' response to frontend: %s", resp->num,
+          resp->msg, strerror(xerrno));
+
+        errno = xerrno;
         return PR_ERROR(cmd);
       }
 
       proxy_sess->backend_sess_flags |= SF_PORT;
       break;
+    }
   }
 
   /* If the command was successful, mark it in the session state/flags. */

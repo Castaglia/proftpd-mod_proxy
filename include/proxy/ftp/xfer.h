@@ -28,7 +28,9 @@
 #ifndef MOD_PROXY_FTP_XFER_H
 #define MOD_PROXY_FTP_XFER_H
 
-int proxy_ftp_xfer_prepare_active(int, cmd_rec *, struct proxy_session *);
-int proxy_ftp_xfer_prepare_passive(int, cmd_rec *, struct proxy_session *);
+int proxy_ftp_xfer_prepare_active(int, cmd_rec *, const char *,
+  struct proxy_session *);
+pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int, cmd_rec *, const char *,
+  struct proxy_session *);
 
 #endif /* MOD_PROXY_FTP_XFER_H */

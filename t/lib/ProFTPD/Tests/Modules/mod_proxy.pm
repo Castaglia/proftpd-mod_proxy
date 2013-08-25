@@ -307,6 +307,7 @@ sub new {
 sub list_tests {
 #  return testsuite_get_runnable_tests($TESTS);
   return qw(
+    proxy_gateway_config_datatransferpolicy_pasv_list_pasv
   );
 #    proxy_gateway_config_datatransferpolicy_pasv_list_pasv
 #    proxy_gateway_config_datatransferpolicy_port_list_pasv
