@@ -34,6 +34,7 @@
 #include "proxy/ftp/ctrl.h"
 #include "proxy/ftp/data.h"
 #include "proxy/ftp/msg.h"
+#include "proxy/ftp/xfer.h"
 
 /* Proxy type */
 #define PROXY_TYPE_GATEWAY		1
@@ -327,7 +328,7 @@ static int proxy_mkdir(const char *dir, uid_t uid, gid_t gid, mode_t mode) {
  */
 
 /* usage: ProxyBackendAddress address */
-MODRET set_proxybackendeaddress(cmd_rec *cmd) {
+MODRET set_proxybackendaddress(cmd_rec *cmd) {
   config_rec *c = NULL;
   pr_netaddr_t *backend_addr = NULL;
   unsigned int addr_flags = PR_NETADDR_GET_ADDR_FL_INCL_DEVICE;
@@ -344,6 +345,49 @@ MODRET set_proxybackendeaddress(cmd_rec *cmd) {
 
   c = add_config_param(cmd->argv[0], 1, NULL);
   c->argv[0] = backend_addr;
+
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxyDataTransferPolicy "active"|"passive"|"pasv"|"epsv"|"port"|
+ *          "eprt"|"client"
+ */
+MODRET set_proxydatatransferpolicy(cmd_rec *cmd) {
+  config_rec *c;
+  int cmd_id = -1;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  cmd_id = pr_cmd_get_id(cmd->argv[1]);
+  if (cmd_id < 0) {
+    if (strncasecmp(cmd->argv[1], "active", 7) == 0) {
+      cmd_id = PR_CMD_PORT_ID;
+
+    } else if (strncasecmp(cmd->argv[1], "passive", 8) == 0) {
+      cmd_id = PR_CMD_PASV_ID;
+
+    } else if (strncasecmp(cmd->argv[1], "client", 7) == 0) {
+      cmd_id = 0;
+
+    } else {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unsupported DataTransferPolicy: ",
+        cmd->argv[1], NULL));
+    }
+  }
+
+  if (cmd_id != PR_CMD_PASV_ID &&
+      cmd_id != PR_CMD_EPSV_ID &&
+      cmd_id != PR_CMD_PORT_ID &&
+      cmd_id != PR_CMD_EPRT_ID &&
+      cmd_id != 0) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unsupported DataTransferPolicy: ",
+      cmd->argv[1], NULL));
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = cmd_id;
 
   return PR_HANDLED(cmd);
 }
@@ -598,10 +642,10 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   /* We are handling a data transfer command (e.g. LIST, RETR, etc).
    *
-   * Thus we need to check the session.sf_flags, and determine whether
-   * we are to connect to the backend server, or open a listening socket
-   * to which the backend will connect.  Then we send the given command
-   * to the backend.
+   * Thus we need to check the proxy_session->backend_sess_flags, and
+   * determine whether we are to connect to the backend server, or open a
+   * listening socket to which the backend will connect.  Then we send the
+   * given command to the backend.
    *
    * At the same time, we will need to be managing the data connection
    * from the frontend client separately; we will need to multiplex
@@ -643,7 +687,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   /* XXX Should handle EPSV_ALL here, too. */
-  if (session.sf_flags & SF_PASSIVE) {
+  if (proxy_sess->backend_sess_flags & SF_PASSIVE) {
     pr_netaddr_t *bind_addr = NULL;
 
     /* Connect to the backend server now. We won't receive the initial
@@ -659,7 +703,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     }
 
     backend_conn = proxy_ftp_conn_connect(cmd->tmp_pool, bind_addr,
-      proxy_sess->data_addr);
+      proxy_sess->backend_data_addr);
     if (backend_conn == NULL) {
       xerrno = errno;
 
@@ -696,7 +740,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
     proxy_sess->backend_data_conn = backend_conn;
 
-  } else if (session.sf_flags & SF_PORT) {
+  } else if (proxy_sess->backend_sess_flags & SF_PORT) {
     backend_conn = proxy_ftp_conn_accept(cmd->tmp_pool,
       proxy_sess->backend_data_conn, proxy_sess->backend_ctrl_conn);
     if (backend_conn == NULL) {
@@ -796,7 +840,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_HANDLED(cmd);
   }
 
-  if (session.sf_flags & SF_PASSIVE) {
+  if (proxy_sess->frontend_sess_flags & SF_PASSIVE) {
     frontend_conn = proxy_ftp_conn_accept(cmd->tmp_pool,
       proxy_sess->frontend_data_conn, proxy_sess->frontend_ctrl_conn);
     if (frontend_conn == NULL) {
@@ -853,10 +897,10 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       pr_netaddr_get_ipstr(frontend_conn->remote_addr),
       frontend_conn->remote_port);
 
-  } else if (session.sf_flags & SF_PORT) {
+  } else if (proxy_sess->frontend_sess_flags & SF_PORT) {
     /* Connect to the frontend server now. */
     frontend_conn = proxy_ftp_conn_connect(cmd->tmp_pool, session.c->local_addr,
-      proxy_sess->data_addr);
+      proxy_sess->frontend_data_addr);
     if (frontend_conn == NULL) {
       xerrno = errno;
 
@@ -952,7 +996,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       break;
   }
 
-  session.sf_flags |= SF_XFER;
+  proxy_sess->frontend_sess_flags |= SF_XFER;
+  proxy_sess->backend_sess_flags |= SF_XFER;
 
   if (pr_data_get_timeout(PR_DATA_TIMEOUT_NO_TRANSFER) > 0) {
     pr_timer_reset(PR_TIMER_NOXFER, ANY_MODULE);
@@ -1211,8 +1256,11 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
          */
         if (src_data_conn == NULL ||
             (resp->num)[0] != '1') {
-          session.sf_flags &= (SF_ALL^SF_PASSIVE);
-          session.sf_flags &= (SF_ALL^(SF_ABORT|SF_XFER|SF_PASSIVE|SF_ASCII_OVERRIDE));
+          proxy_sess->frontend_sess_flags &= (SF_ALL^SF_PASSIVE);
+          proxy_sess->frontend_sess_flags &= (SF_ALL^(SF_ABORT|SF_XFER|SF_PASSIVE|SF_ASCII_OVERRIDE));
+
+          proxy_sess->backend_sess_flags &= (SF_ALL^SF_PASSIVE);
+          proxy_sess->backend_sess_flags &= (SF_ALL^(SF_ABORT|SF_XFER|SF_PASSIVE|SF_ASCII_OVERRIDE));
           break;
         }
       }
@@ -1337,7 +1385,7 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  proxy_sess->data_addr = remote_addr;
+  proxy_sess->frontend_data_addr = remote_addr;
 
   /* XXX Now that we recorded the address to which we'll connect, we need
    * to open a new listening socket for the backend to which connect,
@@ -1351,6 +1399,8 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   if (bind_addr == NULL) {
     bind_addr = session.c->local_addr;
   }
+
+  /* XXX DataTransferPolicy: start block */
 
   data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
   if (data_conn == NULL) {
@@ -1428,8 +1478,11 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   if (resp->num[0] == '2') {
     /* If the command was successful, mark it in the session state/flags. */
-    session.sf_flags |= SF_PORT;
+    proxy_sess->frontend_sess_flags |= SF_PORT;
+    proxy_sess->backend_sess_flags |= SF_PORT;
   }
+
+  /* XXX DataTransferPolicy: end block */
 
   return PR_HANDLED(cmd);
 }
@@ -1443,6 +1496,8 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
   unsigned short remote_port;
+
+  /* XXX DataTransferPolicy: start block */
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
     cmd);
@@ -1545,7 +1600,7 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    * connect for its part of the data transfer.
    */
 
-  proxy_sess->data_addr = remote_addr;
+  proxy_sess->backend_data_addr = remote_addr;
 
   if (pr_netaddr_get_family(session.c->local_addr) == pr_netaddr_get_family(session.c->remote_addr)) {
     bind_addr = session.c->local_addr;
@@ -1578,8 +1633,6 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   proxy_sess->frontend_data_conn = data_conn;
 
-  session.sf_flags |= SF_PASSIVE;
-
   epsv_msg = proxy_ftp_msg_fmt_ext_addr(cmd->tmp_pool, data_conn->local_addr,
     data_conn->local_port, cmd->cmd_id, TRUE);
 
@@ -1611,6 +1664,10 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
+  /* XXX DataTransferPolicy: end block */
+
+  proxy_sess->frontend_sess_flags |= SF_PASSIVE;
+  proxy_sess->backend_sess_flags |= SF_PASSIVE;
   return PR_HANDLED(cmd);
 }
 
@@ -1653,7 +1710,14 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  if (resp->num[0] == '4' || resp->num[0] == '5') {
+  /* We specifically expect a 227 response code here; anything else is an
+   * error.  Right?
+   */
+  if (strncmp(resp->num, R_227, 4) != 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "received response code %s, but expected 227 for %s command", resp->num,
+      cmd->argv[0]);
+
     res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
       proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
 
@@ -1721,7 +1785,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    * connect for its part of the data transfer.
    */
 
-  proxy_sess->data_addr = remote_addr;
+  proxy_sess->backend_data_addr = remote_addr;
   bind_addr = session.c->local_addr;
 
   /* PassivePorts is handled by proxy_ftp_conn_listen(). */
@@ -1744,7 +1808,6 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   proxy_sess->frontend_data_conn = data_conn;
-  session.sf_flags |= SF_PASSIVE;
 
   pasv_msg = proxy_ftp_msg_fmt_addr(cmd->tmp_pool, data_conn->local_addr,
     data_conn->local_port, TRUE);
@@ -1777,17 +1840,15 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
+  proxy_sess->frontend_sess_flags |= SF_PASSIVE;
+  proxy_sess->backend_sess_flags |= SF_PASSIVE;
   return PR_HANDLED(cmd);
 }
 
 MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res, xerrno;
-  pr_netaddr_t *bind_addr = NULL, *remote_addr = NULL;
-  pr_response_t *resp;
-  unsigned int resp_nlines = 0;
-  conn_t *data_conn;
+  pr_netaddr_t *remote_addr = NULL;
   unsigned short remote_port;
-  const char *port_msg;
   unsigned char *allow_foreign_addr = NULL;
 
   CHECK_CMD_ARGS(cmd, 2);
@@ -1891,91 +1952,59 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  proxy_sess->data_addr = remote_addr;
+  proxy_sess->frontend_data_addr = remote_addr;
 
-  bind_addr = proxy_sess->backend_addr;
-  if (bind_addr == NULL) {
-    bind_addr = session.c->local_addr;
+  switch (proxy_sess->dataxfer_policy) {
+    case PR_CMD_PASV_ID:
+    case PR_CMD_EPSV_ID: {
+      pr_netaddr_t *addr;
+      pr_response_t *resp;
+      unsigned int resp_nlines = 0;
+
+      addr = proxy_ftp_xfer_prepare_passive(proxy_sess->dataxfer_policy, cmd,
+        proxy_sess);
+      if (addr == NULL) {
+        return PR_ERROR(cmd);
+      }
+
+      resp = palloc(cmd->tmp_pool, sizeof(pr_response_t));
+      resp->num = R_200;
+      resp->msg = _("PORT command successful");
+      resp_nlines = 1;
+
+      res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
+        proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
+      if (res < 0) {
+        xerrno = errno;
+
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error sending '%s %s' response to frontend: %s", resp->num,
+          resp->msg, strerror(xerrno));
+
+        errno = xerrno;
+        return PR_ERROR(cmd);
+      }
+
+      proxy_sess->backend_data_addr = addr;
+      proxy_sess->backend_sess_flags |= SF_PASSIVE;
+      break;
+    }
+
+    case PR_CMD_PORT_ID:
+    case PR_CMD_EPRT_ID:
+    default:
+      res = proxy_ftp_xfer_prepare_active(proxy_sess->dataxfer_policy, cmd,
+        proxy_sess);
+      if (res < 0) {
+        return PR_ERROR(cmd);
+      }
+
+      proxy_sess->backend_sess_flags |= SF_PORT;
+      break;
   }
 
-  data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
-  if (data_conn == NULL) {
-    xerrno = errno;
-
-    pr_response_add_err(R_425, _("Unable to build data connection: "
-      "Internal error"));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  if (proxy_sess->backend_data_conn != NULL) {
-    /* Make sure that we only have one backend data connection. */
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
-    proxy_sess->backend_data_conn = NULL;
-  }
-
-  proxy_sess->backend_data_conn = data_conn;
-
-  port_msg = proxy_ftp_msg_fmt_addr(cmd->tmp_pool, data_conn->local_addr,
-    data_conn->local_port, FALSE);
-  cmd->arg = (char *) port_msg;
-
-  /* XXX Need to fix logging; why does the trace logging show
-   * "proxied <old-port>" rather than showing the new address from data_addr?
-   */
-  pr_cmd_clear_cache(cmd);
-
-  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    cmd);
-  if (res < 0) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
-
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
-    proxy_sess->backend_data_conn = NULL;
-
-    pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
-  if (resp == NULL) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", cmd->argv[0],
-      strerror(xerrno));
-
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
-    proxy_sess->backend_data_conn = NULL;
-
-    pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
-    resp, resp_nlines);
-  if (res < 0) {
-    xerrno = errno;
-
-    pr_response_block(TRUE);
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  if (resp->num[0] == '2') {
-    /* If the command was successful, mark it in the session state/flags. */
-    session.sf_flags |= SF_PORT;
-  }
+  /* If the command was successful, mark it in the session state/flags. */
+  proxy_sess->frontend_sess_flags |= SF_PORT;
 
   return PR_HANDLED(cmd);
 }
@@ -2517,6 +2546,12 @@ static int proxy_sess_init(void) {
     proxy_sess->backend_addr = c->argv[0];
   }
 
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyDataTransferPolicy",
+    FALSE);
+  if (c != NULL) {
+    proxy_sess->dataxfer_policy = *((int *) c->argv[0]);
+  }
+
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTimeoutConnect", FALSE);
   if (c != NULL) {
     proxy_sess->connect_timeout = *((int *) c->argv[0]);
@@ -2577,7 +2612,8 @@ static int proxy_sess_init(void) {
  */
 
 static conftable proxy_conftab[] = {
-  { "ProxyBackendAddress",	set_proxybackendeaddress,	NULL },
+  { "ProxyBackendAddress",	set_proxybackendaddress,	NULL },
+  { "ProxyDataTransferPolicy",	set_proxydatatransferpolicy,	NULL },
   { "ProxyEngine",		set_proxyengine,		NULL },
   { "ProxyLog",			set_proxylog,			NULL },
   { "ProxyOptions",		set_proxyoptions,		NULL },

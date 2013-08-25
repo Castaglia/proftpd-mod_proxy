@@ -37,10 +37,15 @@ struct proxy_session *proxy_session_alloc(pool *p) {
   proxy_sess = pcalloc(sess_pool, sizeof(struct proxy_session));
   proxy_sess->pool = sess_pool;
 
-  /* This will be filled in by the ProxyBackendAddress directive, if
-   * configured.
+  /* This will be configured by the ProxyBackendAddress directive, if
+   * present.
    */
   proxy_sess->backend_addr = NULL;
+
+  /* This will be configured by the ProxyDataTransferPolicy directive, if
+   * present.
+   */
+  proxy_sess->dataxfer_policy = PROXY_SESS_DATA_TRANSFER_POLICY_DEFAULT;
 
   /* Fill in the defaults for the session members. */
   proxy_sess->connect_timeout = -1;

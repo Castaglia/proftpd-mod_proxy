@@ -35,16 +35,23 @@ struct proxy_session {
 
   conn_t *frontend_ctrl_conn;
   conn_t *frontend_data_conn;
+  volatile int frontend_sess_flags;
+  pr_netaddr_t *frontend_data_addr;
 
   conn_t *backend_ctrl_conn;
   conn_t *backend_data_conn;
+  volatile int backend_sess_flags;
+  pr_netaddr_t *backend_data_addr;
 
   /* Address for connections to/from backend.  May be null. */
   pr_netaddr_t *backend_addr;
 
-  /* Data connection address: frontend (PORT/EPRT) or backend (PASV/EPSV) */
-  pr_netaddr_t *data_addr;
+  /* Data transfer policy: PASV, EPSV, PORT, EPRT, or client. */
+  int dataxfer_policy;
 };
+
+/* Zero indicates "do what the client does". */
+#define PROXY_SESS_DATA_TRANSFER_POLICY_DEFAULT		0
 
 struct proxy_session *proxy_session_alloc(pool *p);
 
