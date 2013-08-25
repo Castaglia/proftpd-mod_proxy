@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse-proxy implementation
- * Copyright (c) 2012 TJ Saunders
+ * Copyright (c) 2012-2013 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,18 +33,18 @@ int proxy_reverse_init(pool *p) {
   array_header *backend_servers;
   struct proxy_conn *pconn, **pconns;
 
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyGatewayServers",
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyBackendServers",
     FALSE);
   if (c == NULL) {
     pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
-      ": gateway mode enabled, but no ProxyGatewayServers configured");
+      ": gateway mode enabled, but no ProxyBackendServers configured");
     return -1;
   }
 
   backend_servers = c->argv[0];
 
   /* XXX ProxyGatewayBalancing? */
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyGatewayConnect",
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyBackendSelection",
     FALSE);
   if (c != NULL) {
     /* Handle the particular connect/balancing/selection method configured.

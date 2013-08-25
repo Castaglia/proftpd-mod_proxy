@@ -36,9 +36,9 @@
 #include "proxy/ftp/msg.h"
 #include "proxy/ftp/xfer.h"
 
-/* Proxy type */
-#define PROXY_TYPE_GATEWAY		1
-#define PROXY_TYPE_PROXY		2
+/* Proxy role */
+#define PROXY_ROLE_GATEWAY		1
+#define PROXY_ROLE_PROXY		2
 
 /* How long (in secs) to wait to connect to real server? */
 #define PROXY_CONNECT_DEFAULT_TIMEOUT	60
@@ -55,7 +55,7 @@ int proxy_logfd = -1;
 pool *proxy_pool = NULL;
 
 static int proxy_engine = FALSE;
-static int proxy_type = PROXY_TYPE_GATEWAY;
+static int proxy_role = PROXY_ROLE_GATEWAY;
 
 static const char *trace_channel = "proxy";
 
@@ -97,13 +97,13 @@ static int proxy_stalled_timeout_cb(CALLBACK_FRAME) {
   return 0;
 }
 
-static pr_netaddr_t *proxy_gateway_get_server(struct proxy_session *proxy_sess) {
+static pr_netaddr_t *proxy_backend_get_server(struct proxy_session *proxy_sess) {
   config_rec *c;
   array_header *backend_servers;
   struct proxy_conn **conns;
   pr_netaddr_t *addr;
 
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyGatewayServers", FALSE);
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyBackendServers", FALSE);
   if (c == NULL) {
     /* XXX This shouldn't happen; should be checked by proxy_reverse_init(). */
     errno = ENOENT;
@@ -119,14 +119,14 @@ static pr_netaddr_t *proxy_gateway_get_server(struct proxy_session *proxy_sess) 
   return addr;
 }
 
-static conn_t *proxy_gateway_get_server_conn(struct proxy_session *proxy_sess) {
+static conn_t *proxy_backend_get_server_conn(struct proxy_session *proxy_sess) {
   pr_netaddr_t *local_addr, *remote_addr;
   unsigned int remote_port;
   const char *remote_ipstr;
   conn_t *server_conn, *backend_ctrl_conn;
   int res;
 
-  remote_addr = proxy_gateway_get_server(proxy_sess);
+  remote_addr = proxy_backend_get_server(proxy_sess);
   if (remote_addr == NULL) {
     int xerrno = errno;
 
@@ -286,6 +286,51 @@ static int proxy_have_authenticated(cmd_rec *cmd) {
   return TRUE;
 }
 
+static void proxy_log_xfer(cmd_rec *cmd, char abort_flag) {
+  struct timeval end_time;
+  char direction, *path = NULL;
+
+  switch (cmd->cmd_id) {
+    case PR_CMD_APPE_ID:
+    case PR_CMD_STOR_ID:
+    case PR_CMD_STOU_ID:
+      direction = 'i';
+      break;
+
+    case PR_CMD_RETR_ID:
+      direction = 'o';
+      break;
+  }
+
+  memset(&end_time, '\0', sizeof(end_time));
+
+  if (session.xfer.start_time.tv_sec != 0) {
+    gettimeofday(&end_time, NULL);
+    end_time.tv_sec -= session.xfer.start_time.tv_sec;
+
+    if (end_time.tv_usec >= session.xfer.start_time.tv_usec) {
+      end_time.tv_usec -= session.xfer.start_time.tv_usec;
+
+    } else {
+      end_time.tv_usec = 1000000L - (session.xfer.start_time.tv_usec -
+        end_time.tv_usec);
+      end_time.tv_sec--;
+    }
+  }
+
+  path = cmd->arg;
+
+  xferlog_write(end_time.tv_sec, pr_netaddr_get_sess_remote_name(),
+    session.xfer.total_bytes, path,
+    (session.sf_flags & SF_ASCII ? 'a' : 'b'), direction,
+    'r', session.user, abort_flag, "_");
+
+  pr_log_debug(DEBUG1, "Transfer %s %" PR_LU " bytes in %ld.%02lu seconds",
+    abort_flag == 'c' ? "completed:" : "aborted after",
+    (pr_off_t) session.xfer.total_bytes, (long) end_time.tv_sec,
+    (unsigned long)(end_time.tv_usec / 10000));
+}
+
 static int proxy_mkdir(const char *dir, uid_t uid, gid_t gid, mode_t mode) {
   mode_t prev_mask;
   struct stat st;
@@ -349,74 +394,20 @@ MODRET set_proxybackendaddress(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
-/* usage: ProxyDataTransferPolicy "active"|"passive"|"pasv"|"epsv"|"port"|
- *          "eprt"|"client"
- */
-MODRET set_proxydatatransferpolicy(cmd_rec *cmd) {
-  config_rec *c;
-  int cmd_id = -1;
+/* usage: ProxyBackendSelection [strategy] */
+MODRET set_proxybackendselection(cmd_rec *cmd) {
 
-  CHECK_ARGS(cmd, 1);
+  /* CHECK_ARGS(cmd, 1) */
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
-
-  cmd_id = pr_cmd_get_id(cmd->argv[1]);
-  if (cmd_id < 0) {
-    if (strncasecmp(cmd->argv[1], "active", 7) == 0) {
-      cmd_id = PR_CMD_PORT_ID;
-
-    } else if (strncasecmp(cmd->argv[1], "passive", 8) == 0) {
-      cmd_id = PR_CMD_PASV_ID;
-
-    } else if (strncasecmp(cmd->argv[1], "client", 7) == 0) {
-      cmd_id = 0;
-
-    } else {
-      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unsupported DataTransferPolicy: ",
-        cmd->argv[1], NULL));
-    }
-  }
-
-  if (cmd_id != PR_CMD_PASV_ID &&
-      cmd_id != PR_CMD_EPSV_ID &&
-      cmd_id != PR_CMD_PORT_ID &&
-      cmd_id != PR_CMD_EPRT_ID &&
-      cmd_id != 0) {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unsupported DataTransferPolicy: ",
-      cmd->argv[1], NULL));
-  }
-
-  c = add_config_param(cmd->argv[0], 1, NULL);
-  c->argv[0] = palloc(c->pool, sizeof(int));
-  *((int *) c->argv[0]) = cmd_id;
 
   return PR_HANDLED(cmd);
 }
 
-/* usage: ProxyEngine on|off */
-MODRET set_proxyengine(cmd_rec *cmd) {
-  int bool = 1;
-  config_rec *c;
-
-  CHECK_ARGS(cmd, 1);
-  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
-
-  bool = get_boolean(cmd, 1);
-  if (bool == -1) {
-    CONF_ERROR(cmd, "expected Boolean parameter");
-  }
-
-  c = add_config_param(cmd->argv[0], 1, NULL);
-  c->argv[0] = pcalloc(c->pool, sizeof(int));
-  *((int *) c->argv[0]) = bool;
-
-  return PR_HANDLED(cmd);
-}
-
-/* usage: ProxyGatewayServers server1 ... server N
+/* usage: ProxyBackendServers server1 ... server N
  *                            file://path/to/server/list.txt
  *                            sql://SQLNamedQuery
  */
-MODRET set_proxygatewayservers(cmd_rec *cmd) {
+MODRET set_proxybackendservers(cmd_rec *cmd) {
   config_rec *c;
   array_header *backend_servers;
 
@@ -487,15 +478,68 @@ MODRET set_proxygatewayservers(cmd_rec *cmd) {
   }
 
   c->argv[0] = backend_servers;
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxyDataTransferPolicy "active"|"passive"|"pasv"|"epsv"|"port"|
+ *          "eprt"|"client"
+ */
+MODRET set_proxydatatransferpolicy(cmd_rec *cmd) {
+  config_rec *c;
+  int cmd_id = -1;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  cmd_id = pr_cmd_get_id(cmd->argv[1]);
+  if (cmd_id < 0) {
+    if (strncasecmp(cmd->argv[1], "active", 7) == 0) {
+      cmd_id = PR_CMD_PORT_ID;
+
+    } else if (strncasecmp(cmd->argv[1], "passive", 8) == 0) {
+      cmd_id = PR_CMD_PASV_ID;
+
+    } else if (strncasecmp(cmd->argv[1], "client", 7) == 0) {
+      cmd_id = 0;
+
+    } else {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unsupported DataTransferPolicy: ",
+        cmd->argv[1], NULL));
+    }
+  }
+
+  if (cmd_id != PR_CMD_PASV_ID &&
+      cmd_id != PR_CMD_EPSV_ID &&
+      cmd_id != PR_CMD_PORT_ID &&
+      cmd_id != PR_CMD_EPRT_ID &&
+      cmd_id != 0) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unsupported DataTransferPolicy: ",
+      cmd->argv[1], NULL));
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = cmd_id;
 
   return PR_HANDLED(cmd);
 }
 
-/* usage: ProxyGatewaySelectionStrategy [strategy] */
-MODRET set_proxygatewayselectionstrategy(cmd_rec *cmd) {
+/* usage: ProxyEngine on|off */
+MODRET set_proxyengine(cmd_rec *cmd) {
+  int bool = 1;
+  config_rec *c;
 
-  /* CHECK_ARGS(cmd, 1) */
+  CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  bool = get_boolean(cmd, 1);
+  if (bool == -1) {
+    CONF_ERROR(cmd, "expected Boolean parameter");
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = pcalloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = bool;
 
   return PR_HANDLED(cmd);
 }
@@ -540,7 +584,7 @@ MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
 
 /* usage: ProxyType "forward" (proxy) |"reverse" (gateway) */
 MODRET set_proxytype(cmd_rec *cmd) {
-  int type = 0;
+  int role = 0;
   config_rec *c;
 
   CHECK_ARGS(cmd, 1);
@@ -548,11 +592,11 @@ MODRET set_proxytype(cmd_rec *cmd) {
 
   if (strcasecmp(cmd->argv[1], "forward") == 0 ||
       strcasecmp(cmd->argv[1], "proxy") == 0) {
-    type = PROXY_TYPE_PROXY;
+    role = PROXY_ROLE_PROXY;
 
   } else if (strcasecmp(cmd->argv[1], "reverse") == 0 ||
              strcasecmp(cmd->argv[1], "gateway") == 0) {
-    type = PROXY_TYPE_GATEWAY;
+    role = PROXY_ROLE_GATEWAY;
 
   } else {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown proxy type '", cmd->argv[1],
@@ -561,7 +605,7 @@ MODRET set_proxytype(cmd_rec *cmd) {
 
   c = add_config_param(cmd->argv[0], 1, NULL);
   c->argv[0] = palloc(c->pool, sizeof(int));
-  *((int *) c->argv[0]) = type;
+  *((int *) c->argv[0]) = role;
 
   return PR_HANDLED(cmd);
 }
@@ -1139,6 +1183,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
             (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
               "received %lu bytes of data from source data connection",
               (unsigned long) remaining);
+            session.xfer.total_bytes += remaining;
 
             res = proxy_ftp_data_send(cmd->tmp_pool, dst_data_conn, pbuf);
             if (res < 0) {
@@ -1916,7 +1961,8 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   if (resp->num[0] == '2' ||
       resp->num[0] == '3') {
-    char *user;
+    config_rec *c;
+    char *user, *xferlog = PR_XFERLOG_PATH;
 
     /* For 2xx/3xx responses (others?), stash the user name appropriately. */
     user = cmd->arg;
@@ -1926,6 +1972,35 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     if (pr_table_add_dup(session.notes, "mod_auth.orig-user", user, 0) < 0) {
       pr_log_debug(DEBUG3, "error stashing 'mod_auth.orig-user' in "
         "session.notes: %s", strerror(errno));
+    }
+
+    /* Open the TransferLog here. */
+    c = find_config(main_server->conf, CONF_PARAM, "TransferLog", FALSE);
+    if (c != NULL) {
+      xferlog = c->argv[0];
+    }
+
+    if (strncasecmp(xferlog, "none", 5) == 0) {
+      xferlog_open(NULL);
+
+    } else {
+      xferlog_open(xferlog);
+    }
+
+    /* Handle DefaultTransferMode here. */
+    c = find_config(main_server->conf, CONF_PARAM, "DefaultTransferMode",
+      FALSE);
+    if (c != NULL) {
+      if (strncasecmp(c->argv[0], "binary", 7) == 0) {
+        session.sf_flags &= (SF_ALL^SF_ASCII);
+
+      } else {
+        session.sf_flags |= SF_ASCII;
+      }
+
+    } else {
+      /* ASCII by default. */
+      session.sf_flags |= SF_ASCII;
     }
   }
 
@@ -2003,8 +2078,86 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   /* Remove any exit handlers installed by mod_xfer.  We do this here,
    * rather than in sess_init, since our sess_init is called BEFORE the
    * sess_init of mod_xfer.
+   *
+   * XXX What if no PASS command is sent/needed by the client?  Can we
+   * remove the mod_xfer exit headers in the proxy_user() function?
    */
   pr_event_unregister(&xfer_module, "core.exit", NULL);
+
+  return PR_HANDLED(cmd);
+}
+
+MODRET proxy_type(cmd_rec *cmd, struct proxy_session *proxy_sess) {
+  int res, xerrno;
+  pr_response_t *resp;
+  unsigned int resp_nlines = 0;
+
+  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    cmd);
+  if (res < 0) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+
+    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
+  if (resp == NULL) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error receiving %s response from backend: %s", cmd->argv[0],
+      strerror(xerrno));
+
+    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  if (resp->num[0] == '2') {
+    char *type;
+
+    /* This code is duplicated from mod_xfer.c:xfer_type().  Would be nice
+     * to factor it out somewhere reusable, i.e. some pr_str_ function.
+     */
+
+    type = pstrdup(cmd->tmp_pool, cmd->argv[1]);
+    type[0] = toupper(type[0]);
+
+    if (strncmp(type, "A", 2) == 0 ||
+        (cmd->argc == 3 &&
+         strncmp(type, "L", 2) == 0 &&
+         strncmp(cmd->argv[2], "7", 2) == 0)) {
+
+      /* TYPE A(SCII) or TYPE L 7. */
+      session.sf_flags |= SF_ASCII;
+
+    } else if (strncmp(type, "I", 2) == 0 ||
+        (cmd->argc == 3 &&
+         strncmp(type, "L", 2) == 0 &&
+         strncmp(cmd->argv[2], "8", 2) == 0)) {
+
+      /* TYPE I(MAGE) or TYPE L 8. */
+      session.sf_flags &= (SF_ALL^(SF_ASCII|SF_ASCII_OVERRIDE));
+    }
+  }
+
+  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
+    resp, resp_nlines);
+  if (res < 0) {
+    xerrno = errno;
+
+    pr_response_block(TRUE);
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
 
   return PR_HANDLED(cmd);
 }
@@ -2057,15 +2210,39 @@ MODRET proxy_any(cmd_rec *cmd) {
       pr_response_block(TRUE);
       return mr;
 
-    case PR_CMD_APPE_ID:
+    case PR_CMD_TYPE_ID:
+      /* Used for setting the ASCII/binary session flag properly, e.g. for
+       * TransferLogs.
+       */
+      mr = proxy_type(cmd, proxy_sess);
+      pr_response_block(TRUE);
+      return mr;
+
     case PR_CMD_LIST_ID:
     case PR_CMD_MLSD_ID:
     case PR_CMD_NLST_ID:
+      session.xfer.p = make_sub_pool(session.pool);
+      mr = proxy_data(cmd, proxy_sess);
+      destroy_pool(session.xfer.p);
+      memset(&session.xfer, 0, sizeof(session.xfer));
+
+      pr_response_block(TRUE);
+      return mr;
+
+    case PR_CMD_APPE_ID:
     case PR_CMD_RETR_ID:
     case PR_CMD_STOR_ID:
     case PR_CMD_STOU_ID:
+      /* In addition to the same setup as for directory listings, we also
+       * track more things, for supporting e.g. TransferLog.
+       */
+      memset(&session.xfer, 0, sizeof(session.xfer));
       session.xfer.p = make_sub_pool(session.pool);
+      gettimeofday(&session.xfer.start_time, NULL);
+
       mr = proxy_data(cmd, proxy_sess);
+
+      proxy_log_xfer(cmd, 'c');
       destroy_pool(session.xfer.p);
       memset(&session.xfer, 0, sizeof(session.xfer));
 
@@ -2345,7 +2522,7 @@ static int proxy_sess_init(void) {
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyType", FALSE);
   if (c != NULL) {
-    proxy_type = *((int *) c->argv[0]);
+    proxy_role = *((int *) c->argv[0]);
   }
 
   /* XXX All proxied connections are automatically chrooted (after auth,
@@ -2356,15 +2533,15 @@ static int proxy_sess_init(void) {
    * if the RootRevoke option was programmatically set?)
    */
 
-  switch (proxy_type) {
-    case PROXY_TYPE_GATEWAY:
+  switch (proxy_role) {
+    case PROXY_ROLE_GATEWAY:
       if (proxy_reverse_init(proxy_pool) < 0) {
         proxy_engine = FALSE;
         return -1;
       }
       break;
 
-    case PROXY_TYPE_PROXY:
+    case PROXY_ROLE_PROXY:
       if (proxy_forward_init(proxy_pool) < 0) {
         proxy_engine = FALSE;
         return -1; 
@@ -2438,7 +2615,7 @@ static int proxy_sess_init(void) {
    * we connect to it.
    */
 
-  server_conn = proxy_gateway_get_server_conn(proxy_sess);
+  server_conn = proxy_backend_get_server_conn(proxy_sess);
   if (server_conn == NULL) {
     pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
       NULL);
@@ -2484,6 +2661,8 @@ static int proxy_sess_init(void) {
 
 static conftable proxy_conftab[] = {
   { "ProxyBackendAddress",	set_proxybackendaddress,	NULL },
+  { "ProxyBackendSelection",	set_proxybackendselection,	NULL },
+  { "ProxyBackendServers",	set_proxybackendservers,	NULL },
   { "ProxyDataTransferPolicy",	set_proxydatatransferpolicy,	NULL },
   { "ProxyEngine",		set_proxyengine,		NULL },
   { "ProxyLog",			set_proxylog,			NULL },
@@ -2494,12 +2673,6 @@ static conftable proxy_conftab[] = {
   /* Support TransferPriority for proxied connections? */
   /* Deliberately ignore/disable HiddenStores in mod_proxy configs */
   /* Two timeouts, one for frontend and one for backend? */
-
-  /* Forward proxy directives */
-
-  /* Reverse proxy directives */
-  { "ProxyGatewaySelectionStrategy", set_proxygatewayselectionstrategy, NULL },
-  { "ProxyGatewayServers",	     set_proxygatewayservers,		NULL },
 
   { NULL }
 };
