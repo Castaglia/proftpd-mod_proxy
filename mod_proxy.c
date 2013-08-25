@@ -1279,12 +1279,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
 MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res, xerrno;
-  pr_netaddr_t *bind_addr = NULL, *remote_addr = NULL;
-  pr_response_t *resp;
-  unsigned int resp_nlines = 0;
-  conn_t *data_conn;
+  pr_netaddr_t *remote_addr = NULL;
   unsigned short remote_port;
-  const char *eprt_msg;
   unsigned char *allow_foreign_addr = NULL;
 
   CHECK_CMD_ARGS(cmd, 2);
@@ -1387,102 +1383,57 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   proxy_sess->frontend_data_addr = remote_addr;
 
-  /* XXX Now that we recorded the address to which we'll connect, we need
-   * to open a new listening socket for the backend to which connect,
-   * and sent that address to the backend in our PORT command.
-   */
+  switch (proxy_sess->dataxfer_policy) {
+    case PR_CMD_PASV_ID:
+    case PR_CMD_EPSV_ID: {
+      pr_netaddr_t *addr;
+      pr_response_t *resp;
+      unsigned int resp_nlines = 0;
 
-  /* Specify the specific address/interface to use as the destination address
-   * for connections from the backend server.
-   */
-  bind_addr = proxy_sess->backend_addr;
-  if (bind_addr == NULL) {
-    bind_addr = session.c->local_addr;
+      addr = proxy_ftp_xfer_prepare_passive(proxy_sess->dataxfer_policy, cmd,
+        proxy_sess);
+      if (addr == NULL) {
+        return PR_ERROR(cmd);
+      }
+
+      resp = palloc(cmd->tmp_pool, sizeof(pr_response_t));
+      resp->num = R_200;
+      resp->msg = _("EPRT command successful");
+      resp_nlines = 1;
+
+      res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
+        proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
+      if (res < 0) {
+        xerrno = errno;
+
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error sending '%s %s' response to frontend: %s", resp->num,
+          resp->msg, strerror(xerrno));
+
+        errno = xerrno;
+        return PR_ERROR(cmd);
+      }
+
+      proxy_sess->backend_data_addr = addr;
+      proxy_sess->backend_sess_flags |= SF_PASSIVE;
+      break;
+    }
+
+    case PR_CMD_PORT_ID:
+    case PR_CMD_EPRT_ID:
+    default:
+      res = proxy_ftp_xfer_prepare_active(proxy_sess->dataxfer_policy, cmd,
+        proxy_sess);
+      if (res < 0) {
+        return PR_ERROR(cmd);
+      }
+
+      proxy_sess->backend_sess_flags |= SF_PORT;
+      break;
   }
 
-  /* XXX DataTransferPolicy: start block */
-
-  data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
-  if (data_conn == NULL) {
-    xerrno = errno;
-
-    pr_response_add_err(R_425, _("Unable to build data connection: "
-      "Internal error"));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  if (proxy_sess->backend_data_conn != NULL) {
-    /* Make sure that we only have one backend data connection. */
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
-    proxy_sess->backend_data_conn = NULL;
-  }
-
-  proxy_sess->backend_data_conn = data_conn;
-
-  eprt_msg = proxy_ftp_msg_fmt_ext_addr(cmd->tmp_pool, data_conn->local_addr,
-    data_conn->local_port, cmd->cmd_id, FALSE);
-  cmd->arg = (char *) eprt_msg;
-
-  /* XXX Need to fix logging; why does the trace logging show
-   * "proxied <old-port>" rather than showing the new address from data_addr?
-   */
-  pr_cmd_clear_cache(cmd);
-
-  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    cmd);
-  if (res < 0) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
-
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
-    proxy_sess->backend_data_conn = NULL;
-
-    pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
-  if (resp == NULL) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", cmd->argv[0],
-      strerror(xerrno));
-
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
-    proxy_sess->backend_data_conn = NULL;
-
-    pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
-    resp, resp_nlines);
-  if (res < 0) {
-    xerrno = errno;
-
-    pr_response_block(TRUE);
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  if (resp->num[0] == '2') {
-    /* If the command was successful, mark it in the session state/flags. */
-    proxy_sess->frontend_sess_flags |= SF_PORT;
-    proxy_sess->backend_sess_flags |= SF_PORT;
-  }
-
-  /* XXX DataTransferPolicy: end block */
+  /* If the command was successful, mark it in the session state/flags. */
+  proxy_sess->frontend_sess_flags |= SF_PORT;
 
   return PR_HANDLED(cmd);
 }

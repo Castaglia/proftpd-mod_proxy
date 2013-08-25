@@ -36,11 +36,13 @@ static const char *trace_channel = "proxy.ftp.xfer";
 int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
     struct proxy_session *proxy_sess) {
   int res, xerrno = 0;
+  cmd_rec *actv_cmd;
   pr_netaddr_t *bind_addr = NULL;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
   conn_t *data_conn = NULL;
-  const char *port_msg;
+  char *active_cmd;
+  const char *resp_msg;
 
   bind_addr = proxy_sess->backend_addr;
   if (bind_addr == NULL) {
@@ -67,18 +69,46 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
 
   proxy_sess->backend_data_conn = data_conn;
 
-  port_msg = proxy_ftp_msg_fmt_addr(cmd->tmp_pool, data_conn->local_addr,
-    data_conn->local_port, FALSE);
-  cmd->arg = cmd->argv[1] = (char *) port_msg;
+  switch (cmd_id) {
+    case PR_CMD_PORT_ID:
+      active_cmd = C_PORT;
+      break;
 
-  pr_cmd_clear_cache(cmd);
+    case PR_CMD_EPRT_ID:
+      active_cmd = C_EPRT;
+      break;
+
+    default:
+      /* In this case, the cmd we were given is the one we should send to
+       * the backend server.
+       */
+      active_cmd = cmd->argv[0];
+      break;
+  }
+
+  switch (pr_cmd_get_id(active_cmd)) {
+    case PR_CMD_PORT_ID:
+      resp_msg = proxy_ftp_msg_fmt_addr(cmd->tmp_pool, data_conn->local_addr,
+        data_conn->local_port, FALSE);
+      break;
+
+    case PR_CMD_EPRT_ID:
+      resp_msg = proxy_ftp_msg_fmt_ext_addr(cmd->tmp_pool,
+        data_conn->local_addr, data_conn->local_port, PR_CMD_EPRT_ID, FALSE);
+      break;
+  }
+
+  actv_cmd = pr_cmd_alloc(cmd->tmp_pool, 2, active_cmd, resp_msg);
+  actv_cmd->arg = (char *) resp_msg;
+
+  pr_cmd_clear_cache(actv_cmd);
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    cmd);
+    actv_cmd);
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+      "error sending %s to backend: %s", actv_cmd->argv[0], strerror(xerrno));
 
     pr_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
@@ -95,7 +125,7 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", cmd->argv[0],
+      "error receiving %s response from backend: %s", actv_cmd->argv[0],
       strerror(xerrno));
 
     pr_inet_close(session.pool, proxy_sess->backend_data_conn);
@@ -107,6 +137,16 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
     errno = xerrno;
     return -1;
   }
+
+  /* We cannot simply proxy the response from the backend to the frontend
+   * here, since the frontend may have sent us a PORT command, and we may
+   * have sent the backend an EPRT command; we do not want to leak the EPRT
+   * response back to the PORT-sending client.  Fortunately, the success
+   * response code for both PORT and EPRT is 200.  In error cases, though,
+   * the response message may (or may not) mention the command used.
+   *
+   * TODO: Fix this in the future.
+   */
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
     resp, resp_nlines);
@@ -120,7 +160,8 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
 
   if (resp->num[0] != '2') {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "received non-2xx response from backend: %s %s", resp->num, resp->msg);
+      "received non-2xx response from backend for %s: %s %s", actv_cmd->argv[0],
+      resp->num, resp->msg);
 
     pr_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
