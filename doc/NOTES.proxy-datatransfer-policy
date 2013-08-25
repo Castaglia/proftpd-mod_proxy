@@ -1,0 +1,120 @@
+
+                       Client:
+
+  C -> P: PORT 1,2,3,4,5,6        P -> S: PORT 9,8,7,6,5,4
+  C <- P: 200 OK                  P <- S: 200 OK
+
+  C -> P: PASV                    P -> S: PASV
+  C <- P: 227 (1,2,3,4,5,6)       P <- S: 227 (9,8,7,6,5,4)
+
+Order of operations:
+
+  C -> P: PORT
+    Parse addr/port
+    Check RFC1918 addr
+    Check AllowForeignAddress
+    Check high-numbered port
+
+    Open local listening conn
+    Format local listening addr for PORT command
+    Send new PORT command to S
+    Receive 200 OK response from S
+
+    Send 200 OK response to C
+    Set frontend_sess_flags = SF_PORT
+    Set backend_sess_flags = SF_PORT
+
+  C -> P: PASV
+    Send PASV command to S
+    Receive 227 response from S
+    Parse addr/port
+    Check addr against remote addr
+    Check high-numbered port
+
+    Open local listening conn
+    Format local listening addr for PASV response
+    Send new PASV response to C
+
+    Set frontend_sess_flags = SF_PASSIVE
+    Set backend_sess_flags = SF_PASSIVE
+
+
+                       Active:
+
+  C -> P: PORT 1,2,3,4,5,6        P -> S: PORT 9,8,7,6,5,4
+  C <- P: 200 OK                  P <- S: 200 OK
+
+  C -> P: PASV                    P -> S: PORT 9,8,7,6,5,4
+  C <- P: 227 (1,2,3,4,5,6)       P <- S: 200 OK
+
+Order of operations:
+
+  C -> P: PORT
+    Parse addr/port
+    Check RFC1918 addr
+    Check AllowForeignAddress
+    Check high-numbered port
+
+    Open local listening conn
+    Format local listening addr for PORT command
+    Send new PORT command to S
+    Receive 200 OK response from S
+
+    Send 200 OK response to C
+    Set frontend_sess_flags = SF_PORT
+    Set backend_sess_flags = SF_PORT
+
+  C -> P: PASV
+    Open local listening conn
+    Format local listening addr for PORT command
+    Send new PORT command to S
+    Receive 200 OK response from S
+
+    Open local listening conn
+    Format local listening addr for PASV response
+    Send new PASV response to C
+
+    Set frontend_sess_flags = SF_PASSIVE
+    Set backend_sess_flags = SF_PORT
+
+
+                       Passive:
+
+  C -> P: PORT 1,2,3,4,5,6        P -> S: PASV
+  C <- P: 200 OK                  P <- S: 227 (9,8,7,6,5,4)
+
+  C -> P: PASV                    P -> S: PASV
+  C <- P: 227 (1,2,3,4,5,6)       P <- S: 227 (9,8,7,6,5,4)
+
+Order of operations:
+
+  C -> P: PORT
+    Parse addr/port
+    Check RFC1918 addr
+    Check AllowForeignAddress
+    Check high-numbered port
+
+    Send new PASV command to S
+    Receive 227 responses from S
+    Parse addr/port
+    Check addr against remote addr
+    Check high-numbered port
+
+    Send 200 OK response to C
+    Set frontend_sess_flags = SF_PORT
+    Set backend_sess_flags = SF_PASSIVE
+
+  C -> P: PASV
+    Send PASV command to S
+    Receive 227 response from S
+    Parse addr/port
+    Check addr against remote addr
+    Check high-numbered port
+
+    Open local listening conn
+    Format local listening addr for PASV response
+    Send new PASV response to C
+
+    Set frontend_sess_flags = SF_PASSIVE
+    Set backend_sess_flags = SF_PASSIVE
+
