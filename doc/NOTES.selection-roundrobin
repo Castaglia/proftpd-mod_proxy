@@ -1,0 +1,79 @@
+
+Issues for ProxyBackendSelection 'roundRobin':
+
+  1.  Selection strategy is per-vhost.
+  2.  Selection lists are per-vhost.
+
+     This means that a 'core.fork' event, before the vhost is known,
+     would not work easily.  We don't just want to increment some
+     counter/index for all vhosts, as that would not actually be
+     the expected "round robin" behavior.
+
+To implement round robin, we need:
+
+  1.  An ordered list of backend servers, whose order is preferably stable.
+
+     How would healthchecks, with servers moving into and out of the "live"
+     list, affect this?
+
+     What happens if the "previous selection" or "next selection" (whichever
+     we persist) is not available in the "live" list for the next connection?
+
+  2.  Knowledge of what the "next" server should be (or, conversely,
+      what the previous server was) 
+  3.  Persistence of #2 in some storage accessible across connections to
+      that vhost (i.e. vhost-specific storage).
+
+     Possibilities: SysV shm, file, SQL, memcache, external process.
+     What about an mmap'd file?  Still needs locking (with retries?)
+
+     Any of these would require a postparse (startup?) event listener, to see
+     if any vhost has RoundRobin selection configured, to create/prep the
+     shared storage area.
+
+What if there are THREE backend server lists:
+
+  configured
+  live
+  dead
+
+The "configured" list would be static, wouldn't change, would have stable
+ordering.  That could then be the reference server/index for round robin.
+
+Basic data structure:
+
+  vhost1
+    curr index
+    max index
+
+   ...
+  vhostN
+
+Could use SID to identify vhost.
+
+  unsigned int idx;
+
+  int proxy_roundrobin_get_index(main_server->sid, &idx);
+  /* Get backend for index */
+  idx++;
+  if (idx == max_idx) {
+    idx = 0;
+  }
+  int proxy_roundrobin_set_index(main_server->sid, idx);
+
+OR:
+
+  unsigned int idx;
+
+  int proxy_roundrobin_incr_index(main_server->sid, &idx);
+    This would "atomically" return the current index, and
+    increment (with wraparound) the index for the next call.
+    Callers, then, don't need to know about the max_idx.
+
+  With this arrangement, an on-disk mmap'd file would have range
+  locking, and a "row" would be:
+
+    unsigned int sid
+    unsigned int max
+    unsigned int curr
+

@@ -9,15 +9,41 @@ ProxyBackendSelection random roundRobin leastConns perUser per
     Means backend server list management, with attributes:
       server:
         connCount
-        lastChecked
-        up/down
         connectTime
+        lastChecked
+
+    Or, better: TWO lists: live list, dead list
+
+    For tracking connectTime (time to connect, in millisecs):
+
+      long timevaldiff(struct timeval *starttime, struct timeval *finishtime) {
+        long msec;
+        msec=(finishtime->tv_sec-starttime->tv_sec)*1000;
+        msec+=(finishtime->tv_usec-starttime->tv_usec)/1000;
+        return msec;
+      }
+
+      struct timeval start, finish;
+      long msec;
+
+      gettimeofday(&start, NULL);
+      sleep(1);
+      gettimeofday(&finish, NULL);
+      msec = timevaldiff(&start, &finish);
+      printf("Elapsed time for sleep(1) is: %d milliseconds.\n", msec);
+
+    Some platforms have a timersub(3) macro for this, but it'll be more
+    portable to do our own.
 
 Simple balancing (selection at connect time):
 
   random
+
   round robin
     (requires pre-fork event to be added to core)
+    Note: For "SeverType inetd", roundrobin cannot be supported (no process
+      for tracking state)
+
   least conns
     (requires pre-fork event to be added to core, state to be maintained by
      mod_proxy)
@@ -29,7 +55,7 @@ Complex/adaptive balancing:
 
   Client IP address/class (connect time selection)
   FTP USER (i.e. user affinity to specific server(s)) (USER time selection)
-    lookup AND hashed (algo?)
+    lookup AND hashed (algo?  Same algo used by Table API?)
   SSL/TLS protocol version (AUTH time selection)
   SSL/TLS ciphersuite (AUTH time selection)
   Backend response time (connect time selection)
