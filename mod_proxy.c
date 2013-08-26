@@ -369,6 +369,35 @@ static int proxy_mkdir(const char *dir, uid_t uid, gid_t gid, mode_t mode) {
   return 0;
 }
 
+static int proxy_mkpath(pool *p, const char *path, uid_t uid, gid_t gid,
+    mode_t mode) {
+  char *currpath = NULL, *tmppath = NULL;
+  struct stat st;
+
+  pr_fs_clear_cache();
+  if (pr_fsio_stat(path, &st) == 0) {
+    /* Path already exists, nothing to be done. */
+    errno = EEXIST;
+    return -1;
+  }
+
+  tmppath = pstrdup(p, path);
+
+  currpath = "/";
+  while (tmppath && *tmppath) {
+    char *currdir = strsep(&tmppath, "/");
+    currpath = pdircat(p, currpath, currdir, NULL);
+
+    if (proxy_mkdir(currpath, uid, gid, mode) < 0) {
+      return -1;
+    }
+
+    pr_signals_handle();
+  }
+
+  return 0;
+}
+
 /* Configuration handlers
  */
 
@@ -582,8 +611,8 @@ MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
-/* usage: ProxyType "forward" (proxy) |"reverse" (gateway) */
-MODRET set_proxytype(cmd_rec *cmd) {
+/* usage: ProxyRole "forward" (proxy) |"reverse" (gateway) */
+MODRET set_proxyrole(cmd_rec *cmd) {
   int role = 0;
   config_rec *c;
 
@@ -607,6 +636,95 @@ MODRET set_proxytype(cmd_rec *cmd) {
   c->argv[0] = palloc(c->pool, sizeof(int));
   *((int *) c->argv[0]) = role;
 
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxyTables path */
+MODRET set_proxytables(cmd_rec *cmd) {
+  int res;
+  struct stat st;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT);
+
+  if (*cmd->argv[1] != '/') {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "must be a full path: '",
+      cmd->argv[1], "'", NULL));
+  }
+
+  res = stat(cmd->argv[1], &st);
+  if (res < 0) {
+    char *proxy_chroot;
+
+    if (errno != ENOENT) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to stat '", cmd->argv[1],
+        "': ", strerror(errno), NULL));
+    }
+
+    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+      ": ProxyTables directory '%s' does not exist, creating it", cmd->argv[1]);
+
+    /* Create the directory. */
+    res = proxy_mkpath(cmd->tmp_pool, cmd->argv[1], geteuid(), getegid(), 0755);
+    if (res < 0) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to create directory '",
+        cmd->argv[1], "': ", strerror(errno), NULL));
+    }
+
+    /* Also create the empty/ directory underneath, for the chroot. */
+    proxy_chroot = pdircat(cmd->tmp_pool, cmd->argv[1], "empty", NULL);
+
+    res = proxy_mkpath(cmd->tmp_pool, proxy_chroot, geteuid(), getegid(), 0111);
+    if (res < 0) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to create directory '",
+        proxy_chroot, "': ", strerror(errno), NULL));
+    }
+
+    pr_log_debug(DEBUG2, MOD_PROXY_VERSION
+      ": created ProxyTables directory '%s'", cmd->argv[1]);
+
+  } else {
+    char *proxy_chroot;
+
+    if (!S_ISDIR(st.st_mode)) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to use '", cmd->argv[1],
+        ": Not a directory", NULL));
+    }
+
+    /* See if the chroot directory empty/ already exists as well.  And enforce
+     * the permissions on that directory.
+     */
+    proxy_chroot = pdircat(cmd->tmp_pool, cmd->argv[1], "empty", NULL);
+
+    res = stat(proxy_chroot, &st);
+    if (res < 0) {
+      if (errno != ENOENT) {
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to stat '", proxy_chroot,
+          "': ", strerror(errno), NULL));
+      }
+
+      res = proxy_mkpath(cmd->tmp_pool, proxy_chroot, geteuid(), getegid(),
+        0111);
+      if (res < 0) {
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to create directory '",
+          proxy_chroot, "': ", strerror(errno), NULL));
+      }
+
+    } else {
+      mode_t dir_mode, expected_mode;
+
+      dir_mode = st.st_mode;
+      dir_mode &= ~S_IFMT;
+      expected_mode = (S_IXUSR|S_IXGRP|S_IXOTH);
+
+      if (dir_mode != expected_mode) {
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "directory '", proxy_chroot,
+          "' has incorrect permissions (not 0111 as required)", NULL));
+      }
+    }
+  }
+
+  (void) add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
   return PR_HANDLED(cmd);
 }
 
@@ -2361,6 +2479,45 @@ static void proxy_mod_unload_ev(const void *event_data, void *user_data) {
 }
 #endif
 
+static void proxy_postparse_ev(const void *event_data, void *user_data) {
+  config_rec *c;
+  server_rec *s;
+  unsigned int vhost_count = 0;
+  const char *tables_dir;
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyEngine", FALSE);
+  if (c) {
+    proxy_engine = *((int *) c->argv[0]);
+  }
+
+  if (proxy_engine == FALSE) {
+    return;
+  }
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyTables", FALSE);
+  if (c == NULL) {
+    /* No ProxyTables configured, mod_proxy cannot run. */
+    pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
+      ": missing required ProxyTables directive");
+
+    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BAD_CONFIG,
+      "Missing required config");
+  }
+
+  tables_dir = c->argv[0];
+
+  /* Iterate through the server_list, and count up the number of vhosts. */
+  for (s = (server_rec *) server_list->xas_list; s; s = s->next) {
+    vhost_count++;
+  }
+
+  /* XXX Create our roundrobin.dat file:
+   *
+   *  size = (sizeof(unsigned int) * 3) * vhost_count
+   *
+   */
+}
+
 static void proxy_restart_ev(const void *event_data, void *user_data) {
 }
 
@@ -2409,6 +2566,7 @@ static int proxy_init(void) {
   pr_event_register(&proxy_module, "core.module-unload", proxy_mod_unload_ev,
     NULL);
 #endif
+  pr_event_register(&proxy_module, "core.postparse", proxy_postparse_ev, NULL);
   pr_event_register(&proxy_module, "core.restart", proxy_restart_ev, NULL);
   pr_event_register(&proxy_module, "core.shutdown", proxy_shutdown_ev, NULL);
 
@@ -2520,7 +2678,7 @@ static int proxy_sess_init(void) {
   proxy_pool = make_sub_pool(session.pool);
   pr_pool_tag(proxy_pool, MOD_PROXY_VERSION);
 
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyType", FALSE);
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyRole", FALSE);
   if (c != NULL) {
     proxy_role = *((int *) c->argv[0]);
   }
@@ -2668,7 +2826,8 @@ static conftable proxy_conftab[] = {
   { "ProxyLog",			set_proxylog,			NULL },
   { "ProxyOptions",		set_proxyoptions,		NULL },
   { "ProxyTimeoutConnect",	set_proxytimeoutconnect,	NULL },
-  { "ProxyType",		set_proxytype,			NULL },
+  { "ProxyRole",		set_proxyrole,			NULL },
+  { "ProxyTables",		set_proxytables,		NULL },
 
   /* Support TransferPriority for proxied connections? */
   /* Deliberately ignore/disable HiddenStores in mod_proxy configs */

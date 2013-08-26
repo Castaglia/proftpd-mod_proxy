@@ -302,7 +302,22 @@ my $TESTS = {
     test_class => [qw(forking)],
   },
 
-  # ExtendedLog entries
+  # ExtendedLog entries.  The most affected will be %D/%d and %F/%f.
+  proxy_gateway_extlog_retr_var_F_f => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
+
+  proxy_gateway_extlog_stor_var_F_f => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
+
+  proxy_gateway_extlog_list_var_D_d => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
+
   # LastLog?  WtmpLog?
 
   # HiddenStore
@@ -331,10 +346,7 @@ sub new {
 }
 
 sub list_tests {
-#  return testsuite_get_runnable_tests($TESTS);
-  return qw(
-    proxy_gateway_xferlog_stor_binary_ok
-  );
+  return testsuite_get_runnable_tests($TESTS);
 }
 
 sub proxy_gateway_connect {
@@ -391,7 +403,7 @@ sub proxy_gateway_connect {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -541,7 +553,7 @@ sub proxy_gateway_login {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -690,7 +702,7 @@ sub proxy_gateway_login_failed {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -853,7 +865,7 @@ sub proxy_gateway_feat {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -1011,7 +1023,7 @@ sub proxy_gateway_list_pasv {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -1188,7 +1200,7 @@ sub proxy_gateway_list_port {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -1365,7 +1377,7 @@ sub proxy_gateway_list_pasv_enoent {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -1546,7 +1558,7 @@ sub proxy_gateway_list_port_enoent {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -1726,7 +1738,7 @@ sub proxy_gateway_epsv {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -1889,7 +1901,7 @@ sub proxy_gateway_eprt_ipv4 {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -2057,7 +2069,7 @@ sub proxy_gateway_eprt_ipv6 {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -2238,7 +2250,7 @@ sub proxy_gateway_retr_pasv_ascii {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -2429,7 +2441,7 @@ sub proxy_gateway_retr_pasv_binary {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -2620,7 +2632,7 @@ sub proxy_gateway_retr_large_file {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -2814,7 +2826,7 @@ sub proxy_gateway_retr_empty_file {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -3010,7 +3022,7 @@ sub proxy_gateway_retr_abort {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -3184,7 +3196,7 @@ sub proxy_gateway_stor_pasv {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -3365,7 +3377,7 @@ sub proxy_gateway_stor_port {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -3546,7 +3558,7 @@ sub proxy_gateway_stor_large_file {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -3731,7 +3743,7 @@ sub proxy_gateway_stor_empty_file {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -3922,7 +3934,7 @@ sub proxy_gateway_stor_eperm {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -4098,7 +4110,7 @@ sub proxy_gateway_stor_abort {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -4283,7 +4295,7 @@ sub proxy_gateway_rest_retr {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -4484,7 +4496,7 @@ sub proxy_gateway_rest_stor {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -4672,7 +4684,7 @@ sub proxy_gateway_unknown_cmd {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -4847,7 +4859,7 @@ sub proxy_gateway_config_passiveports_pasv {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -5033,7 +5045,7 @@ sub proxy_gateway_config_passiveports_epsv {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -5215,7 +5227,7 @@ sub proxy_gateway_config_masqueradeaddress {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -5396,7 +5408,7 @@ sub proxy_gateway_config_allowforeignaddress_port {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -5565,7 +5577,7 @@ sub proxy_gateway_config_allowforeignaddress_eprt {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -5735,7 +5747,7 @@ sub proxy_gateway_config_timeoutidle_frontend {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -5907,7 +5919,7 @@ sub proxy_gateway_config_timeoutidle_backend {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -6079,7 +6091,7 @@ sub proxy_gateway_config_timeoutnoxfer_frontend {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -6251,7 +6263,7 @@ sub proxy_gateway_config_timeoutnoxfer_backend {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -6423,7 +6435,7 @@ sub proxy_gateway_config_timeoutstalled_frontend {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -6608,7 +6620,7 @@ sub proxy_gateway_config_timeoutstalled_backend {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -6790,7 +6802,7 @@ sub proxy_gateway_config_datatransferpolicy_pasv_list_pasv {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
         ProxyDataTransferPolicy => 'PASV',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
@@ -6968,7 +6980,7 @@ sub proxy_gateway_config_datatransferpolicy_pasv_list_port {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
         ProxyDataTransferPolicy => 'PASV',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
@@ -7146,7 +7158,7 @@ sub proxy_gateway_config_datatransferpolicy_port_list_pasv {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
         ProxyDataTransferPolicy => 'PORT',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
@@ -7324,7 +7336,7 @@ sub proxy_gateway_config_datatransferpolicy_port_list_port {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
         ProxyDataTransferPolicy => 'PORT',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
@@ -7502,7 +7514,7 @@ sub proxy_gateway_config_datatransferpolicy_epsv_list_pasv {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
         ProxyDataTransferPolicy => 'EPSV',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
@@ -7680,7 +7692,7 @@ sub proxy_gateway_config_datatransferpolicy_epsv_list_port {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
         ProxyDataTransferPolicy => 'EPSV',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
@@ -7858,7 +7870,7 @@ sub proxy_gateway_config_datatransferpolicy_eprt_list_pasv {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
         ProxyDataTransferPolicy => 'EPRT',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
@@ -8036,7 +8048,7 @@ sub proxy_gateway_config_datatransferpolicy_eprt_list_port {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
         ProxyDataTransferPolicy => 'EPRT',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
@@ -8214,7 +8226,7 @@ sub proxy_gateway_config_datatransferpolicy_active_list_pasv {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
         ProxyDataTransferPolicy => 'active',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
@@ -8392,7 +8404,7 @@ sub proxy_gateway_config_datatransferpolicy_active_list_port {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
         ProxyDataTransferPolicy => 'active',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
@@ -8570,7 +8582,7 @@ sub proxy_gateway_config_datatransferpolicy_passive_list_pasv {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
         ProxyDataTransferPolicy => 'passive',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
@@ -8748,7 +8760,7 @@ sub proxy_gateway_config_datatransferpolicy_passive_list_port {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
         ProxyDataTransferPolicy => 'passive',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
@@ -8926,7 +8938,7 @@ sub proxy_gateway_config_datatransferpolicy_client {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
         ProxyDataTransferPolicy => 'client',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
@@ -9120,7 +9132,7 @@ sub proxy_gateway_xferlog_retr_ascii_ok {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -9362,7 +9374,7 @@ sub proxy_gateway_xferlog_retr_binary_ok {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -9594,7 +9606,7 @@ sub proxy_gateway_xferlog_stor_ascii_ok {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -9819,7 +9831,7 @@ sub proxy_gateway_xferlog_stor_binary_ok {
       'mod_proxy.c' => {
         ProxyEngine => 'on',
         ProxyLog => $log_file,
-        ProxyType => 'gateway',
+        ProxyRole => 'gateway',
 
         ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
       },
@@ -9965,6 +9977,613 @@ EOC
 
     } else {
       die("Can't read $xfer_log: $!");
+    }
+  };
+  if ($@) {
+    $ex = $@;
+  }
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_gateway_extlog_retr_var_F_f {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $test_data = "Hello, Proxying World!\n";
+  my $test_file = File::Spec->rel2abs("$tmpdir/test.txt");
+  if (open(my $fh, "> $test_file")) {
+    print $fh $test_data;
+
+    unless (close($fh)) {
+      die("Unable to write $test_file: $!");
+    }
+
+  } else {
+    die("Unable to open $test_file: $!");
+  }
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $timeout_idle = 10;
+  my $ext_log = File::Spec->rel2abs("$tmpdir/ext.log");
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    LogFormat => 'custom "%F|%f"',
+    ExtendedLog => "$ext_log READ custom",
+
+    IfModules => {
+      'mod_proxy.c' => {
+        ProxyEngine => 'on',
+        ProxyLog => $log_file,
+        ProxyRole => 'gateway',
+
+        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $user,
+      },
+    },
+
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+      $client->type('binary');
+
+      my $conn = $client->retr_raw($test_file);
+      unless ($conn) {
+        die("RETR failed: " . $client->response_code() . " " .
+          $client->response_msg());
+      }
+
+      my $buf;
+      $conn->read($buf, 8192, 30);
+      my $size = $conn->bytes_read();
+      eval { $conn->close() };
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      $client->quit();
+
+      # The length of 'Hello, Proxying World!\n' is 23, so that is what
+      # we expect here; no ASCII conversion to change things.
+      my $expected = length($test_data);
+      $self->assert($expected == $size,
+        test_msg("Expected $expected, got $size"));
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  eval {
+    if (open(my $fh, "< $ext_log")) {
+      my $line = <$fh>;
+      chomp($line);
+      close($fh);
+
+      # Due to the fact that these tests run both the proxy server and the
+      # backend server on the same box, it means that the proxy server's
+      # mod_log IS in a position to get the full path for %f.  But in other
+      # cases, the proxy server won't have that file present (or it might
+      # even be the wrong file).  Thus %F/%f are to be distrusted in the
+      # ExtendedLog entries generated by mod_proxy.
+
+    } else {
+      die("Can't read $ext_log: $!");
+    }
+  };
+  if ($@) {
+    $ex = $@;
+  }
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_gateway_extlog_stor_var_F_f {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $test_data = "Hello, Proxying World!\n";
+  my $test_file = File::Spec->rel2abs("$tmpdir/test.txt");
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $timeout_idle = 10;
+  my $ext_log = File::Spec->rel2abs("$tmpdir/ext.log");
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    LogFormat => 'custom "%F|%f"',
+    ExtendedLog => "$ext_log WRITE custom",
+
+    IfModules => {
+      'mod_proxy.c' => {
+        ProxyEngine => 'on',
+        ProxyLog => $log_file,
+        ProxyRole => 'gateway',
+
+        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $user,
+      },
+    },
+
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+      $client->type('binary');
+
+      my $conn = $client->stor_raw($test_file);
+      unless ($conn) {
+        die("STOR failed: " . $client->response_code() . " " .
+          $client->response_msg());
+      }
+
+      my $buf = $test_data;
+      $conn->write($buf, length($test_data), 30);
+      eval { $conn->close() };
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  eval {
+    if (open(my $fh, "< $ext_log")) {
+      my $line = <$fh>;
+      chomp($line);
+      close($fh);
+
+      # Due to the fact that these tests run both the proxy server and the
+      # backend server on the same box, it means that the proxy server's
+      # mod_log IS in a position to get the full path for %f.  But in other
+      # cases, the proxy server won't have that file present (or it might
+      # even be the wrong file).  Thus %F/%f are to be distrusted in the
+      # ExtendedLog entries generated by mod_proxy.
+
+    } else {
+      die("Can't read $ext_log: $!");
+    }
+  };
+  if ($@) {
+    $ex = $@;
+  }
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_gateway_extlog_list_var_D_d {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $timeout_idle = 10;
+  my $ext_log = File::Spec->rel2abs("$tmpdir/ext.log");
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    LogFormat => 'custom "%D|%d"',
+    ExtendedLog => "$ext_log DIRS custom",
+
+    IfModules => {
+      'mod_proxy.c' => {
+        ProxyEngine => 'on',
+        ProxyLog => $log_file,
+        ProxyRole => 'gateway',
+
+        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $user,
+      },
+    },
+
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+
+      my $conn = $client->list_raw();
+      unless ($conn) {
+        die("LIST failed: " . $client->response_code() . " " .
+          $client->response_msg());
+      }
+
+      my $buf;
+      $conn->read($buf, 8192, 30);
+      eval { $conn->close() };
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  eval {
+    if (open(my $fh, "< $ext_log")) {
+      my $line = <$fh>;
+      chomp($line);
+      close($fh);
+
+      # Due to the fact that these tests run both the proxy server and the
+      # backend server on the same box, it means that the proxy server's
+      # mod_log IS in a position to get the full path for %d.  But in other
+      # cases, the proxy server won't have that file present (or it might
+      # even be the wrong file).  Thus %D/%d are to be distrusted in the
+      # ExtendedLog entries generated by mod_proxy.
+
+    } else {
+      die("Can't read $ext_log: $!");
     }
   };
   if ($@) {
