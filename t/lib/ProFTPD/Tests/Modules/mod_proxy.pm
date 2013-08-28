@@ -275,7 +275,7 @@ my $TESTS = {
     test_class => [qw(forking)],
   },
 
-  # backend selection: per-user, round robin, random, ...?
+  # backend selection: random, roundrobin, per-user, ...?
 
   # TransferLog entries (binary/ascii, upload/download, complete/aborted)
   # Note that TransferLog, as supported by mod_proxy, CANNOT have the absolute
@@ -349,6 +349,24 @@ sub list_tests {
   return testsuite_get_runnable_tests($TESTS);
 }
 
+sub get_proxy_config {
+  my $tmpdir = shift;
+  my $log_file = shift;
+  my $vhost_port = shift;
+
+  my $table_dir = File::Spec->rel2abs("$tmpdir/var/proxy");
+
+  my $config = {
+    ProxyEngine => 'on',
+    ProxyLog => $log_file,
+    ProxyRole => 'gateway',
+    ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
+    ProxyTables => $table_dir,
+  };
+
+  return $config;
+}
+
 sub proxy_gateway_connect {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
@@ -388,6 +406,8 @@ sub proxy_gateway_connect {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $config = {
     PidFile => $pid_file,
     ScoreboardFile => $scoreboard_file,
@@ -400,13 +420,7 @@ sub proxy_gateway_connect {
     SocketBindTight => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -538,6 +552,8 @@ sub proxy_gateway_login {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $config = {
     PidFile => $pid_file,
     ScoreboardFile => $scoreboard_file,
@@ -550,13 +566,7 @@ sub proxy_gateway_login {
     SocketBindTight => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -687,6 +697,8 @@ sub proxy_gateway_login_failed {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $config = {
     PidFile => $pid_file,
     ScoreboardFile => $scoreboard_file,
@@ -699,13 +711,7 @@ sub proxy_gateway_login_failed {
     SocketBindTight => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -850,6 +856,8 @@ sub proxy_gateway_feat {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $config = {
     PidFile => $pid_file,
     ScoreboardFile => $scoreboard_file,
@@ -862,13 +870,7 @@ sub proxy_gateway_feat {
     SocketBindTight => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -1005,6 +1007,8 @@ sub proxy_gateway_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -1020,13 +1024,7 @@ sub proxy_gateway_list_pasv {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -1182,6 +1180,8 @@ sub proxy_gateway_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -1197,13 +1197,7 @@ sub proxy_gateway_list_port {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -1359,6 +1353,8 @@ sub proxy_gateway_list_pasv_enoent {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -1374,13 +1370,7 @@ sub proxy_gateway_list_pasv_enoent {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -1540,6 +1530,8 @@ sub proxy_gateway_list_port_enoent {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -1555,13 +1547,7 @@ sub proxy_gateway_list_port_enoent {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -1720,6 +1706,8 @@ sub proxy_gateway_epsv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -1735,13 +1723,7 @@ sub proxy_gateway_epsv {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -1883,6 +1865,8 @@ sub proxy_gateway_eprt_ipv4 {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -1898,13 +1882,7 @@ sub proxy_gateway_eprt_ipv4 {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -2050,6 +2028,8 @@ sub proxy_gateway_eprt_ipv6 {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -2066,13 +2046,7 @@ sub proxy_gateway_eprt_ipv6 {
     UseIPv6 => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -2231,6 +2205,8 @@ sub proxy_gateway_retr_pasv_ascii {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -2247,13 +2223,7 @@ sub proxy_gateway_retr_pasv_ascii {
     UseIPv6 => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -2422,6 +2392,8 @@ sub proxy_gateway_retr_pasv_binary {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -2438,13 +2410,7 @@ sub proxy_gateway_retr_pasv_binary {
     UseIPv6 => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -2613,6 +2579,8 @@ sub proxy_gateway_retr_large_file {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 120;
 
   my $config = {
@@ -2629,13 +2597,7 @@ sub proxy_gateway_retr_large_file {
     UseIPv6 => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -2807,6 +2769,8 @@ sub proxy_gateway_retr_empty_file {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 120;
 
   my $config = {
@@ -2823,13 +2787,7 @@ sub proxy_gateway_retr_empty_file {
     UseIPv6 => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -3003,6 +2961,8 @@ sub proxy_gateway_retr_abort {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -3019,13 +2979,7 @@ sub proxy_gateway_retr_abort {
     UseIPv6 => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -3177,6 +3131,8 @@ sub proxy_gateway_stor_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -3193,13 +3149,7 @@ sub proxy_gateway_stor_pasv {
     UseIPv6 => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -3358,6 +3308,8 @@ sub proxy_gateway_stor_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -3374,13 +3326,7 @@ sub proxy_gateway_stor_port {
     UseIPv6 => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -3539,6 +3485,8 @@ sub proxy_gateway_stor_large_file {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 120;
 
   my $config = {
@@ -3555,13 +3503,7 @@ sub proxy_gateway_stor_large_file {
     UseIPv6 => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -3724,6 +3666,8 @@ sub proxy_gateway_stor_empty_file {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 120;
 
   my $config = {
@@ -3740,13 +3684,7 @@ sub proxy_gateway_stor_empty_file {
     UseIPv6 => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -3915,6 +3853,8 @@ sub proxy_gateway_stor_eperm {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -3931,13 +3871,7 @@ sub proxy_gateway_stor_eperm {
     UseIPv6 => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -4091,6 +4025,8 @@ sub proxy_gateway_stor_abort {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -4107,13 +4043,7 @@ sub proxy_gateway_stor_abort {
     UseIPv6 => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -4276,6 +4206,8 @@ sub proxy_gateway_rest_retr {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -4292,13 +4224,7 @@ sub proxy_gateway_rest_retr {
     UseIPv6 => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -4477,6 +4403,8 @@ sub proxy_gateway_rest_stor {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -4493,13 +4421,7 @@ sub proxy_gateway_rest_stor {
     UseIPv6 => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -4666,6 +4588,8 @@ sub proxy_gateway_unknown_cmd {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -4681,13 +4605,7 @@ sub proxy_gateway_unknown_cmd {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -4836,6 +4754,8 @@ sub proxy_gateway_config_passiveports_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $min_port = 49152;
@@ -4856,13 +4776,7 @@ sub proxy_gateway_config_passiveports_pasv {
     PassivePorts => "$min_port $max_port",
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -5022,6 +4936,8 @@ sub proxy_gateway_config_passiveports_epsv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $min_port = 49152;
@@ -5042,13 +4958,7 @@ sub proxy_gateway_config_passiveports_epsv {
     PassivePorts => "$min_port $max_port",
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -5205,6 +5115,8 @@ sub proxy_gateway_config_masqueradeaddress {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $masq_addr = '1.2.3.4';
@@ -5224,13 +5136,7 @@ sub proxy_gateway_config_masqueradeaddress {
     MasqueradeAddress => $masq_addr,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -5388,6 +5294,8 @@ sub proxy_gateway_config_allowforeignaddress_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -5405,13 +5313,7 @@ sub proxy_gateway_config_allowforeignaddress_port {
     AllowForeignAddress => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -5557,6 +5459,8 @@ sub proxy_gateway_config_allowforeignaddress_eprt {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -5574,13 +5478,7 @@ sub proxy_gateway_config_allowforeignaddress_eprt {
     AllowForeignAddress => 'on',
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -5726,6 +5624,8 @@ sub proxy_gateway_config_timeoutidle_frontend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $frontend_timeoutidle = 4;
   my $frontend_timeout_delay = $frontend_timeoutidle + 2;
   my $backend_timeoutidle = 10;
@@ -5744,13 +5644,7 @@ sub proxy_gateway_config_timeoutidle_frontend {
     TimeoutIdle => $frontend_timeoutidle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -5898,6 +5792,8 @@ sub proxy_gateway_config_timeoutidle_backend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $frontend_timeoutidle = 10;
   my $frontend_timeout_delay = $frontend_timeoutidle - 2;
   my $backend_timeoutidle = 4;
@@ -5916,13 +5812,7 @@ sub proxy_gateway_config_timeoutidle_backend {
     TimeoutIdle => $frontend_timeoutidle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -6070,6 +5960,8 @@ sub proxy_gateway_config_timeoutnoxfer_frontend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $frontend_timeoutnoxfer = 2;
   my $frontend_timeout_delay = $frontend_timeoutnoxfer + 2;
   my $backend_timeoutnoxfer = 10;
@@ -6088,13 +5980,7 @@ sub proxy_gateway_config_timeoutnoxfer_frontend {
     TimeoutNoTransfer => $frontend_timeoutnoxfer,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -6242,6 +6128,8 @@ sub proxy_gateway_config_timeoutnoxfer_backend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $frontend_timeoutnoxfer = 10;
   my $frontend_timeout_delay = $frontend_timeoutnoxfer - 2;
   my $backend_timeoutnoxfer = 2;
@@ -6260,13 +6148,7 @@ sub proxy_gateway_config_timeoutnoxfer_backend {
     TimeoutNoTransfer => $frontend_timeoutnoxfer,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -6414,6 +6296,8 @@ sub proxy_gateway_config_timeoutstalled_frontend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $frontend_timeoutstalled = 2;
   my $frontend_timeout_delay = $frontend_timeoutstalled + 2;
   my $backend_timeoutstalled = 10;
@@ -6432,13 +6316,7 @@ sub proxy_gateway_config_timeoutstalled_frontend {
     TimeoutStalled => $frontend_timeoutstalled,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -6599,6 +6477,8 @@ sub proxy_gateway_config_timeoutstalled_backend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $frontend_timeoutstalled = 12;
   my $backend_timeoutstalled = 2;
   my $frontend_timeout_delay = $backend_timeoutstalled + 2;
@@ -6617,13 +6497,7 @@ sub proxy_gateway_config_timeoutstalled_backend {
     TimeoutStalled => $frontend_timeoutstalled,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -6784,6 +6658,9 @@ sub proxy_gateway_config_datatransferpolicy_pasv_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyDataTransferPolicy} = 'PASV';
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -6799,14 +6676,7 @@ sub proxy_gateway_config_datatransferpolicy_pasv_list_pasv {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-        ProxyDataTransferPolicy => 'PASV',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -6962,6 +6832,9 @@ sub proxy_gateway_config_datatransferpolicy_pasv_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyDataTransferPolicy} = 'PASV';
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -6977,14 +6850,7 @@ sub proxy_gateway_config_datatransferpolicy_pasv_list_port {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-        ProxyDataTransferPolicy => 'PASV',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -7140,6 +7006,9 @@ sub proxy_gateway_config_datatransferpolicy_port_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyDataTransferPolicy} = 'PORT';
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -7155,14 +7024,7 @@ sub proxy_gateway_config_datatransferpolicy_port_list_pasv {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-        ProxyDataTransferPolicy => 'PORT',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -7318,6 +7180,9 @@ sub proxy_gateway_config_datatransferpolicy_port_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyDataTransferPolicy} = 'PORT';
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -7333,14 +7198,7 @@ sub proxy_gateway_config_datatransferpolicy_port_list_port {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-        ProxyDataTransferPolicy => 'PORT',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -7496,6 +7354,9 @@ sub proxy_gateway_config_datatransferpolicy_epsv_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyDataTransferPolicy} = 'EPSV';
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -7511,14 +7372,7 @@ sub proxy_gateway_config_datatransferpolicy_epsv_list_pasv {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-        ProxyDataTransferPolicy => 'EPSV',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -7674,6 +7528,9 @@ sub proxy_gateway_config_datatransferpolicy_epsv_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyDataTransferPolicy} = 'EPSV';
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -7689,14 +7546,7 @@ sub proxy_gateway_config_datatransferpolicy_epsv_list_port {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-        ProxyDataTransferPolicy => 'EPSV',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -7852,6 +7702,9 @@ sub proxy_gateway_config_datatransferpolicy_eprt_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyDataTransferPolicy} = 'EPRT';
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -7867,14 +7720,7 @@ sub proxy_gateway_config_datatransferpolicy_eprt_list_pasv {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-        ProxyDataTransferPolicy => 'EPRT',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -8030,6 +7876,9 @@ sub proxy_gateway_config_datatransferpolicy_eprt_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyDataTransferPolicy} = 'EPRT';
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -8045,14 +7894,7 @@ sub proxy_gateway_config_datatransferpolicy_eprt_list_port {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-        ProxyDataTransferPolicy => 'EPRT',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -8208,6 +8050,9 @@ sub proxy_gateway_config_datatransferpolicy_active_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyDataTransferPolicy} = 'active';
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -8223,14 +8068,7 @@ sub proxy_gateway_config_datatransferpolicy_active_list_pasv {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-        ProxyDataTransferPolicy => 'active',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -8386,6 +8224,9 @@ sub proxy_gateway_config_datatransferpolicy_active_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyDataTransferPolicy} = 'active';
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -8401,14 +8242,7 @@ sub proxy_gateway_config_datatransferpolicy_active_list_port {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-        ProxyDataTransferPolicy => 'active',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -8564,6 +8398,9 @@ sub proxy_gateway_config_datatransferpolicy_passive_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyDataTransferPolicy} = 'passive';
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -8579,14 +8416,7 @@ sub proxy_gateway_config_datatransferpolicy_passive_list_pasv {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-        ProxyDataTransferPolicy => 'passive',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -8742,6 +8572,9 @@ sub proxy_gateway_config_datatransferpolicy_passive_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyDataTransferPolicy} = 'passive';
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -8757,14 +8590,7 @@ sub proxy_gateway_config_datatransferpolicy_passive_list_port {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-        ProxyDataTransferPolicy => 'passive',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -8920,6 +8746,9 @@ sub proxy_gateway_config_datatransferpolicy_client {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyDataTransferPolicy} = 'client';
+
   my $timeout_idle = 10;
 
   my $config = {
@@ -8935,14 +8764,7 @@ sub proxy_gateway_config_datatransferpolicy_client {
     TimeoutIdle => $timeout_idle,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-        ProxyDataTransferPolicy => 'client',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -9111,6 +8933,8 @@ sub proxy_gateway_xferlog_retr_ascii_ok {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
   my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
 
@@ -9129,13 +8953,7 @@ sub proxy_gateway_xferlog_retr_ascii_ok {
     TransferLog => $xfer_log,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -9353,6 +9171,8 @@ sub proxy_gateway_xferlog_retr_binary_ok {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
   my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
 
@@ -9371,13 +9191,7 @@ sub proxy_gateway_xferlog_retr_binary_ok {
     TransferLog => $xfer_log,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -9585,6 +9399,8 @@ sub proxy_gateway_xferlog_stor_ascii_ok {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
   my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
 
@@ -9603,13 +9419,7 @@ sub proxy_gateway_xferlog_stor_ascii_ok {
     TransferLog => $xfer_log,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -9810,6 +9620,8 @@ sub proxy_gateway_xferlog_stor_binary_ok {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
   my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
 
@@ -9828,13 +9640,7 @@ sub proxy_gateway_xferlog_stor_binary_ok {
     TransferLog => $xfer_log,
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -10045,6 +9851,8 @@ sub proxy_gateway_extlog_retr_var_F_f {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
   my $ext_log = File::Spec->rel2abs("$tmpdir/ext.log");
 
@@ -10064,13 +9872,7 @@ sub proxy_gateway_extlog_retr_var_F_f {
     ExtendedLog => "$ext_log READ custom",
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -10250,6 +10052,8 @@ sub proxy_gateway_extlog_stor_var_F_f {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
   my $ext_log = File::Spec->rel2abs("$tmpdir/ext.log");
 
@@ -10269,13 +10073,7 @@ sub proxy_gateway_extlog_stor_var_F_f {
     ExtendedLog => "$ext_log WRITE custom",
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',
@@ -10445,6 +10243,8 @@ sub proxy_gateway_extlog_list_var_D_d {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
+  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+
   my $timeout_idle = 10;
   my $ext_log = File::Spec->rel2abs("$tmpdir/ext.log");
 
@@ -10464,13 +10264,7 @@ sub proxy_gateway_extlog_list_var_D_d {
     ExtendedLog => "$ext_log DIRS custom",
 
     IfModules => {
-      'mod_proxy.c' => {
-        ProxyEngine => 'on',
-        ProxyLog => $log_file,
-        ProxyRole => 'gateway',
-
-        ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
-      },
+      'mod_proxy.c' => $proxy_config,
 
       'mod_delay.c' => {
         DelayEngine => 'off',

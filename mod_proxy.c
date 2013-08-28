@@ -41,7 +41,7 @@
 #define PROXY_ROLE_PROXY		2
 
 /* How long (in secs) to wait to connect to real server? */
-#define PROXY_CONNECT_DEFAULT_TIMEOUT	60
+#define PROXY_CONNECT_DEFAULT_TIMEOUT	2
 
 extern module xfer_module;
 
@@ -120,7 +120,7 @@ static pr_netaddr_t *proxy_backend_get_server(struct proxy_session *proxy_sess) 
 }
 
 static conn_t *proxy_backend_get_server_conn(struct proxy_session *proxy_sess) {
-  pr_netaddr_t *local_addr, *remote_addr;
+  pr_netaddr_t *bind_addr, *local_addr, *remote_addr;
   unsigned int remote_port;
   const char *remote_ipstr;
   conn_t *server_conn, *backend_ctrl_conn;
@@ -160,14 +160,17 @@ static conn_t *proxy_backend_get_server_conn(struct proxy_session *proxy_sess) {
     local_addr = pr_netaddr_v6tov4(session.pool, session.c->local_addr);
   }
 
-  /* Instead of passing the local_addr here for the bind address, this is where
-   * one could configure the source interface/address for the client/connect
-   * side of the proxy connection.
-   */
+  bind_addr = proxy_sess->backend_addr;
+  if (bind_addr == NULL) {
+    bind_addr = local_addr;
+  }
 
-  server_conn = pr_inet_create_conn(proxy_pool, -1, local_addr, INPORT_ANY,
+  server_conn = pr_inet_create_conn(proxy_pool, -1, bind_addr, INPORT_ANY,
     FALSE);  
 
+  pr_trace_msg(trace_channel, 11, "connecting to backend address %s:%u from %s",
+    remote_ipstr, remote_port, pr_netaddr_get_ipstr(bind_addr));
+ 
   res = pr_inet_connect_nowait(proxy_pool, server_conn, remote_addr,
     ntohs(pr_netaddr_get_port(remote_addr)));
   if (res < 0) {
@@ -2480,6 +2483,7 @@ static void proxy_mod_unload_ev(const void *event_data, void *user_data) {
 #endif
 
 static void proxy_postparse_ev(const void *event_data, void *user_data) {
+  int engine = FALSE;
   config_rec *c;
   server_rec *s;
   unsigned int vhost_count = 0;
@@ -2487,10 +2491,10 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyEngine", FALSE);
   if (c) {
-    proxy_engine = *((int *) c->argv[0]);
+    engine = *((int *) c->argv[0]);
   }
 
-  if (proxy_engine == FALSE) {
+  if (engine == FALSE) {
     return;
   }
 
@@ -2498,7 +2502,7 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
   if (c == NULL) {
     /* No ProxyTables configured, mod_proxy cannot run. */
     pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
-      ": missing required ProxyTables directive");
+      ": missing required ProxyTables directive, failing to start up");
 
     pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BAD_CONFIG,
       "Missing required config");
@@ -2519,11 +2523,15 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
 }
 
 static void proxy_restart_ev(const void *event_data, void *user_data) {
+
+  /* TODO: Remove/clean up state files (e.g. roundrobin.dat). */
 }
 
 static void proxy_shutdown_ev(const void *event_data, void *user_data) {
   destroy_pool(proxy_pool);
   proxy_pool = NULL;
+
+  /* TODO: Delete ProxyTables dir, recursively. */
 
   if (proxy_logfd >= 0) {
     (void) close(proxy_logfd);
