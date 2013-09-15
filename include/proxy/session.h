@@ -33,11 +33,13 @@ struct proxy_session {
   int connect_timeout;
   int connect_timerno;
 
+  /* Frontend connection */
   conn_t *frontend_ctrl_conn;
   conn_t *frontend_data_conn;
   volatile int frontend_sess_flags;
   pr_netaddr_t *frontend_data_addr;
 
+  /* Backend connection */
   conn_t *backend_ctrl_conn;
   conn_t *backend_data_conn;
   volatile int backend_sess_flags;
@@ -45,6 +47,9 @@ struct proxy_session {
 
   /* Address for connections to/from backend.  May be null. */
   pr_netaddr_t *backend_addr;
+
+  /* Features supported by backend server */
+  pr_table_t *backend_feats;
 
   /* Data transfer policy: PASV, EPSV, PORT, EPRT, or client. */
   int dataxfer_policy;

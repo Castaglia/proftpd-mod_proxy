@@ -34,6 +34,7 @@
 #include "proxy/ftp/ctrl.h"
 #include "proxy/ftp/data.h"
 #include "proxy/ftp/msg.h"
+#include "proxy/ftp/feat.h"
 #include "proxy/ftp/xfer.h"
 
 /* Proxy role */
@@ -2805,10 +2806,19 @@ static int proxy_sess_init(void) {
       strerror(xerrno));
 
   } else {
+    /* XXX Check for non-200 response codes from backend server! */
+    /* XXX Testing using proftpd configured for shutdown mode? */
+
     if (proxy_ftp_ctrl_send_resp(proxy_pool, session.c, resp, resp_nlines) < 0) {
-      pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unable to send banner to client: %s", strerror(errno));
     }
+  }
+
+  /* Get the features supported by the backend server */
+  if (proxy_ftp_feat_get(proxy_pool, proxy_sess) < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to determine features of backend server: %s", strerror(errno));
   }
 
   pr_response_block(TRUE);

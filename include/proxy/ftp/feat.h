@@ -1,5 +1,5 @@
 /*
- * ProFTPD - mod_proxy FTP data transfer API
+ * ProFTPD - mod_proxy FTP FEAT API
  * Copyright (c) 2013 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
@@ -25,12 +25,9 @@
 #include "mod_proxy.h"
 #include "proxy/session.h"
 
-#ifndef MOD_PROXY_FTP_XFER_H
-#define MOD_PROXY_FTP_XFER_H
+#ifndef MOD_PROXY_FEAT_BUFFER_H
+#define MOD_PROXY_FEAT_BUFFER_H
 
-int proxy_ftp_xfer_prepare_active(int, cmd_rec *, const char *,
-  struct proxy_session *);
-pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int, cmd_rec *, const char *,
-  struct proxy_session *);
+int proxy_ftp_feat_get(pool *, struct proxy_session *);
 
-#endif /* MOD_PROXY_FTP_XFER_H */
+#endif /* MOD_PROXY_FEAT_BUFFER_H */
