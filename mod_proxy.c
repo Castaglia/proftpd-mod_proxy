@@ -741,18 +741,15 @@ static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
 
     pr_signals_handle();
 
-    /* XXX Insert select(2) call here, where we wait for readability on:
-     *
-     *  client control connection
-     *  client data connection (if uploading)
-     *  server data connection (if downloading/directory listing)
+    /* XXX Insert select(2) call here, where we wait for readability on
+     * the client control connection.
      *
      * Bonus points for handling aborts on either control connection,
      * broken data connections, blocked/slow writes to client (how much
      * can/should we buffer?  what about short writes to the client?),
      * timeouts, etc.
      */
- 
+
     res = pr_cmd_read(&cmd);
     if (res < 0) {
       if (PR_NETIO_ERRNO(session.c->instrm) == EINTR) {
@@ -2300,7 +2297,15 @@ MODRET proxy_any(cmd_rec *cmd) {
  
   proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
 
-  /* Commands related to logins and data transfers are handled separately */
+  /* Commands related to logins and data transfers are handled separately.
+   *
+   * RFC 2228 commands are not to be proxied (since we cannot necessarily
+   * provide end-to-end protection, just hop-by-hop).
+   *
+   * FEAT should not necessarily be proxied to the backend, but should be
+   * handled locally.
+   */
+
   switch (cmd->cmd_id) {
     case PR_CMD_USER_ID:
       mr = proxy_user(cmd, proxy_sess);
@@ -2370,6 +2375,20 @@ MODRET proxy_any(cmd_rec *cmd) {
 
       pr_response_block(TRUE);
       return mr;
+
+    case PR_CMD_FEAT_ID:
+      return PR_DECLINED(cmd);
+
+    /* RFC 2228 commands */
+    case PR_CMD_ADAT_ID:
+    case PR_CMD_AUTH_ID:
+    case PR_CMD_CCC_ID:
+    case PR_CMD_CONF_ID:
+    case PR_CMD_ENC_ID:
+    case PR_CMD_MIC_ID:
+    case PR_CMD_PBSZ_ID:
+    case PR_CMD_PROT_ID:
+      return PR_DECLINED(cmd);
   }
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
