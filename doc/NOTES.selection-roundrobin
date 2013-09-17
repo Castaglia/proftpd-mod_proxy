@@ -74,6 +74,28 @@ OR:
   locking, and a "row" would be:
 
     unsigned int sid
-    unsigned int max
-    unsigned int curr
+    unsigned int max_idx
+    unsigned int curr_idx
 
+And, to support the leastConns, equalConns, and leastResponseTime policies,
+we'll need a separate table (also mmap'd):
+
+    unsigned int idx
+    unsigned long curr_conns
+    unsigned long curr_response_ms
+
+To make this more general (e.g. for other selection policies), maybe:
+
+  int proxy_reverse_select_next_index(main_server->sid, &idx, policy);
+
+Where policy could be:
+
+  POLICY_RANDOM
+  POLICY_ROUND_ROBIN
+  POLICY_LEAST_CONNS
+  POLICY_EQUAL_CONNS
+  POLICY_LOWEST_RESPONSE_TIME
+
+If that backend is chosen/used successfully, then:
+
+  int policy_reverse_select_used_index(main_server->sid, idx, response_ms);

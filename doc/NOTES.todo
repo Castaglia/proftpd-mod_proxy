@@ -1,6 +1,4 @@
 
-  Test logging (TransferLog, ExtendedLog)
-  Test frontend FTPS (should Just Work with mod_tls)
   default low (1 sec) ConnectTimeout; consider many slow backends
 
   setjmp/longjmp for -X command-line option

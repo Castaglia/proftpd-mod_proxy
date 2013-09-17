@@ -41,15 +41,33 @@ Simple balancing (selection at connect time):
 
   round robin
     (requires pre-fork event to be added to core)
-    Note: For "SeverType inetd", roundrobin cannot be supported (no process
+    Note: For "ServerType inetd", roundrobin cannot be supported (no process
       for tracking state)
 
   least conns
     (requires pre-fork event to be added to core, state to be maintained by
      mod_proxy)
+
   equal distribution (all servers have same number of conns)
     (requires pre-fork event to be added to core, state to be maintained by
      mod_proxy)
+
+  Note: for any of these, if the initially selected backend refuses the
+  connection (tcp connect fails, or response code non-2xxx returned), then
+  need to select next from "live" list, and so on.  Should the number of
+  "retry nexts" be configurable?
+
+Advanced balancing (selection at USER time):
+
+  random
+
+  round robin
+
+  least conns
+
+  equal distribution
+
+  user-specific (lookup per user)
 
 Complex/adaptive balancing:
 
