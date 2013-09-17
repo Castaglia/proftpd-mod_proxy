@@ -26,6 +26,7 @@
  */
 
 #include "mod_proxy.h"
+#include "proxy/random.h"
 #include "proxy/session.h"
 #include "proxy/conn.h"
 #include "proxy/forward.h"
@@ -2705,6 +2706,8 @@ static int proxy_sess_init(void) {
 
   proxy_pool = make_sub_pool(session.pool);
   pr_pool_tag(proxy_pool, MOD_PROXY_VERSION);
+
+  proxy_random_init();
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyRole", FALSE);
   if (c != NULL) {
