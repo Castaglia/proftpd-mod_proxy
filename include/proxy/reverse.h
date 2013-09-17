@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse-proxy API
- * Copyright (c) 2012 TJ Saunders
+ * Copyright (c) 2012-2013 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,5 +28,25 @@
 #define MOD_PROXY_REVERSE_H
 
 int proxy_reverse_init(pool *p);
+
+/* Backend selection policy API */
+
+#define PROXY_REVERSE_SELECT_POLICY_RANDOM			1
+#define PROXY_REVERSE_SELECT_POLICY_ROUND_ROBIN			2
+#define PROXY_REVERSE_SELECT_POLICY_LEAST_CONNS			3
+#define PROXY_REVERSE_SELECT_POLICY_EQUAL_CONNS			4
+#define PROXY_REVERSE_SELECT_POLICY_LOWEST_RESPONSE_TIME	5
+#define PROXY_REVERSE_SELECT_POLICY_PER_USER			6
+
+/* Return the policy ID for the given string, or -1 if the given policy
+ * is not recognized/supported.
+ */
+int proxy_reverse_select_get_policy(const char *policy);
+
+int proxy_reverse_select_next_index(unsigned int sid, unsigned int idx,
+  int select_policy, void *policy_data);
+
+int proxy_reverse_select_used_index(unsigned int sid, unsigned int idx,
+  unsigned long response_ms);
 
 #endif /* MOD_PROXY_FORWARD_H */

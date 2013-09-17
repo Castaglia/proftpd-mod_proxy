@@ -63,5 +63,78 @@ int proxy_reverse_init(pool *p) {
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
     "connecting to backend server '%s'", proxy_conn_get_uri(pconn));
 
+  /* XXX Need to be given/set the ProxyTables directory, for opening fds
+   * and mmapping the necessary selection state tables.  Need to determine
+   * curr/max indexes, set up the three lists of backend server:
+   *
+   *  configured
+   *  live
+   *  dead (initially empty)
+   */
+
+  /* XXX On mod_proxy 'core.postparse', need additional code which writes
+   * out the state tables, so that each vhost gets a SID entry.  Make sure
+   * each SID row's curr_idx == max_idx, so that incrementing it goes to the
+   * "first" configured backend server.
+   */
+
   return 0;
+}
+
+int proxy_reverse_select_get_policy(const char *policy) {
+  if (policy == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (strncasecmp(policy, "random", 7) == 0) {
+    return PROXY_REVERSE_SELECT_POLICY_RANDOM;
+
+  } else if (strncasecmp(policy, "roundRobin", 11) == 0) {
+    return PROXY_REVERSE_SELECT_POLICY_ROUND_ROBIN;
+
+  } else if (strncasecmp(policy, "leastConns", 11) == 0) {
+    return PROXY_REVERSE_SELECT_POLICY_LEAST_CONNS;
+
+  } else if (strncasecmp(policy, "equalConns", 11) == 0) {
+    return PROXY_REVERSE_SELECT_POLICY_EQUAL_CONNS;
+
+  } else if (strncasecmp(policy, "lowestResponseTime", 19) == 0) {
+    return PROXY_REVERSE_SELECT_POLICY_LOWEST_RESPONSE_TIME;
+
+  } else if (strncasecmp(policy, "perUser", 8) == 0) {
+    return PROXY_REVERSE_SELECT_POLICY_PER_USER;
+  }
+
+  errno = ENOENT;
+  return -1;
+}
+
+int proxy_reverse_select_next_index(unsigned int sid, unsigned int idx,
+    int select_policy, void *policy_data) {
+
+  switch (select_policy) {
+    case PROXY_REVERSE_SELECT_POLICY_RANDOM:
+      /* Find max index for SID, randomly choose between 0 and max (inclusive).
+       */
+      break;
+
+    case PROXY_REVERSE_SELECT_POLICY_ROUND_ROBIN:
+      /* Find current index for SID, increment by one, lock row, write data,
+       * unlock row, return incremented idx.
+       */
+      break;
+
+    default:
+      break;
+  }
+
+  errno = ENOSYS;
+  return -1;
+}
+
+int proxy_reverse_select_used_index(unsigned int sid, unsigned int idx,
+    unsigned long response_ms) {
+  errno = ENOSYS;
+  return -1;
 }
