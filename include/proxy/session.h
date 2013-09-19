@@ -49,7 +49,7 @@ struct proxy_session {
   pr_netaddr_t *backend_addr;
 
   /* Features supported by backend server */
-  pr_table_t *backend_feats;
+  pr_table_t *backend_features;
 
   /* Data transfer policy: PASV, EPSV, PORT, EPRT, or client. */
   int dataxfer_policy;

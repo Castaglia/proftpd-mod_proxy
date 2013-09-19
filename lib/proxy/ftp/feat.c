@@ -76,7 +76,7 @@ int proxy_ftp_feat_get(pool *p, struct proxy_session *proxy_sess) {
     return -1;
   }
 
-  proxy_sess->backend_feats = pr_table_nalloc(p, 0, 4);
+  proxy_sess->backend_features = pr_table_nalloc(p, 0, 4);
 
   feats = resp->msg;
   token = pr_str_get_token2(&feats, (char *) feat_crlf, &token_len);
@@ -101,7 +101,7 @@ int proxy_ftp_feat_get(pool *p, struct proxy_session *proxy_sess) {
           val = pstrdup(p, "");
         }
 
-        pr_table_add(proxy_sess->backend_feats, key, val, 0);
+        pr_table_add(proxy_sess->backend_features, key, val, 0);
       }
     }
 
