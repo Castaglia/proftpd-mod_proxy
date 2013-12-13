@@ -1,0 +1,48 @@
+
+ HAproxy's PROXY protocol
+
+  ProxyProtocol SendProxy|ReceiveProxy|LogProxy [haproxy|haproxyV2]
+
+    SendProxy
+      Only for backend control connections.  Only useful to mod_proxy.
+
+    ReceiveProxy
+      Expect to read PROXY protocol on control connection, AND
+      use the sent values for local conn info
+
+    LogProxy
+      Expect to read PROXY protocol on control connection, BUT
+      log the sent values only.
+
+ Note: haproxy-1.5 only implements version 1 of the PROXY protocol:
+
+  http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt 
+
+  http://www.postfix.org/XCLIENT_README.html
+    See "Security" section
+
+ Thus mod_proxy should implement version 1 only, for TCP4 and TCP6.
+
+ Given the above use cases, I think a separate mod_proxy_protocol
+ makes sense -- and would be easier to deploy, as well as easier
+ to manage in terms of module load order.  To be useful, the decoding
+ of a PROXY line MUST be first thing done, so mod_proxy_protocol
+ MUST be LAST module (barring mod_ifsession), otherwise things like
+ mod_wrap2/mod_geoip will use wrong conn info.
+
+ Tests:
+   FTP
+     TCP4
+     TCP6
+     negative cases
+       non-numbers
+       header too short, too long
+       bad start-of-text
+
+     positive cases
+       mod_wrap2 with deny rules for proxied address
+
+   FTPS
+   SFTP
+   SCP
+
