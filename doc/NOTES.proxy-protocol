@@ -14,6 +14,9 @@
       Expect to read PROXY protocol on control connection, BUT
       log the sent values only.
 
+  ProxyProtocolTimeout
+    Amount of time, in secs, to receive all of expected PROXY bytes.
+
  Note: haproxy-1.5 only implements version 1 of the PROXY protocol:
 
   http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt 
