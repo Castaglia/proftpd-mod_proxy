@@ -55,6 +55,7 @@ module proxy_module;
 
 int proxy_logfd = -1;
 pool *proxy_pool = NULL;
+unsigned long proxy_opts = 0UL;
 
 static int proxy_engine = FALSE;
 static int proxy_role = PROXY_ROLE_GATEWAY;
@@ -66,7 +67,8 @@ static int proxy_connect_timeout_cb(CALLBACK_FRAME) {
   pr_netaddr_t *server_addr;
 
   proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
-  server_addr = proxy_sess->backend_ctrl_conn->remote_addr;
+  server_addr = pr_table_get(session.notes, "mod_proxy.proxy-connect-address",
+    NULL);
 
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
     "timed out connecting to %s:%d after %d %s",
@@ -142,6 +144,12 @@ static conn_t *proxy_backend_get_server_conn(struct proxy_session *proxy_sess) {
   if (proxy_sess->connect_timeout > 0) {
     proxy_sess->connect_timerno = pr_timer_add(proxy_sess->connect_timeout,
       -1, &proxy_module, proxy_connect_timeout_cb, "ProxyTimeoutConnect");
+
+    if (pr_table_add(session.notes, "mod_proxy.proxy-connect-address",
+      remote_addr, sizeof(pr_netaddr_t)) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error stashing proxy connect address note: %s", strerror(errno));
+    }
   }
 
   remote_ipstr = pr_netaddr_get_ipstr(remote_addr);
@@ -189,10 +197,19 @@ static conn_t *proxy_backend_get_server_conn(struct proxy_session *proxy_sess) {
 
   if (res == 0) {
     pr_netio_stream_t *nstrm;
+    int nstrm_mode = PR_NETIO_IO_RD;
+
+    if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL) {
+      /* Rather than waiting for the stream to be readable (because the
+       * other end sent us something), wait for the stream to be writable
+       * so that we can send something to the other end).
+       */
+      nstrm_mode = PR_NETIO_IO_WR;
+    }
 
     /* Not yet connected. */
     nstrm = pr_netio_open(proxy_pool, PR_NETIO_STRM_OTHR,
-      server_conn->listen_fd, PR_NETIO_IO_RD);
+      server_conn->listen_fd, nstrm_mode);
     if (nstrm == NULL) {
       int xerrno = errno;
 
@@ -215,6 +232,7 @@ static conn_t *proxy_backend_get_server_conn(struct proxy_session *proxy_sess) {
         pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
         pr_netio_close(nstrm);
         pr_inet_close(proxy_pool, server_conn);
+
         errno = ETIMEDOUT;
         return NULL;
       }
@@ -239,6 +257,7 @@ static conn_t *proxy_backend_get_server_conn(struct proxy_session *proxy_sess) {
         /* Connected */
         server_conn->mode = CM_OPEN;
         pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
+        pr_table_remove(session.notes, "mod_proxy.proxy-connect-addr", NULL);
 
         res = pr_inet_get_conn_info(server_conn, server_conn->listen_fd);
         if (res < 0) {
@@ -250,6 +269,7 @@ static conn_t *proxy_backend_get_server_conn(struct proxy_session *proxy_sess) {
 
           pr_netio_close(nstrm);
           pr_inet_close(proxy_pool, server_conn);
+
           errno = xerrno;
           return NULL;
         }
@@ -277,6 +297,14 @@ static conn_t *proxy_backend_get_server_conn(struct proxy_session *proxy_sess) {
 
     errno = xerrno;
     return NULL;
+  }
+
+  if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL) {
+    if (proxy_conn_send_proxy(proxy_pool, backend_ctrl_conn) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error sending PROXY message to %s#%u: %s", remote_ipstr, remote_port,
+        strerror(errno));
+    }
   }
 
   return backend_ctrl_conn;
@@ -589,24 +617,44 @@ MODRET set_proxylog(cmd_rec *cmd) {
 
 /* usage: ProxyOptions opt1 ... optN */
 MODRET set_proxyoptions(cmd_rec *cmd) {
+  register unsigned int i;
+  config_rec *c;
+  unsigned long opts = 0UL;
+
+  if (cmd->argc-1 == 0)
+    CONF_ERROR(cmd, "wrong number of parameters");
+
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+
+  for (i = 1; i < cmd->argc; i++) {
+    if (strncmp(cmd->argv[i], "UseProxyProtocol", 17) == 0) {
+      opts |= PROXY_OPT_USE_PROXY_PROTOCOL;
+
+    } else {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxyOption '",
+        cmd->argv[i], "'", NULL));
+    }
+  }
+
+  c->argv[0] = pcalloc(c->pool, sizeof(unsigned long));
+  *((unsigned long *) c->argv[0]) = opts;
+
   return PR_HANDLED(cmd);
 }
 
 /* usage: ProxyTimeoutConnect secs */
 MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
   int timeout = -1;
-  char *tmp = NULL;
   config_rec *c = NULL;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
-  timeout = (int) strtol(cmd->argv[1], &tmp, 10);
-
-  if ((tmp && *tmp) ||
-      timeout < 0 ||
-      timeout > 65535) {
-    CONF_ERROR(cmd, "timeout values must be between 0 and 65535");
+  if (pr_str_get_duration(cmd->argv[1], &timeout) < 0) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing timeout value '",
+      cmd->argv[1], "': ", strerror(errno), NULL));
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
@@ -2706,6 +2754,18 @@ static int proxy_sess_init(void) {
 
   proxy_pool = make_sub_pool(session.pool);
   pr_pool_tag(proxy_pool, MOD_PROXY_VERSION);
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyOptions", FALSE);
+  while (c != NULL) {
+    unsigned long opts;
+
+    pr_signals_handle();
+
+    opts = *((unsigned long *) c->argv[0]);
+    proxy_opts |= opts;
+
+    c = find_config_next(c, c->next, CONF_PARAM, "ProxyOptions", FALSE);
+  }
 
   proxy_random_init();
 

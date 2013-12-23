@@ -32,5 +32,6 @@ struct proxy_conn;
 struct proxy_conn *proxy_conn_create(pool *p, const char *uri);
 pr_netaddr_t *proxy_conn_get_addr(struct proxy_conn *);
 const char *proxy_conn_get_uri(struct proxy_conn *);
+int proxy_conn_send_proxy(pool *p, conn_t *);
 
 #endif /* MOD_PROXY_CONN_H */

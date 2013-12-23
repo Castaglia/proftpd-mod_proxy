@@ -123,3 +123,71 @@ const char *proxy_conn_get_uri(struct proxy_conn *pconn) {
 
   return pconn->pconn_uri;
 }
+
+int proxy_conn_send_proxy(pool *p, conn_t *conn) {
+  int res, src_port, dst_port;
+  const char *proto, *src_ipstr, *dst_ipstr;
+  pool *sub_pool = NULL;
+
+  /* "PROXY" "TCP4"|"TCP6"|"UNKNOWN"
+   *   session.c->remote_addr session.c->local_addr
+   *   session.c->remote_port, session.c->local_port "\r\n"
+   */
+
+  if (pr_netaddr_get_family(session.c->remote_addr) == AF_INET &&
+      pr_netaddr_get_family(session.c->local_addr) == AF_INET) {
+    proto = "TCP4";
+    src_ipstr = pr_netaddr_get_ipstr(session.c->remote_addr);
+    src_port = session.c->remote_port;
+    dst_ipstr = pr_netaddr_get_ipstr(session.c->local_addr);
+    dst_port = session.c->local_port;
+
+  } else {
+    proto = "TCP6";
+    sub_pool = make_sub_pool(p);
+
+    /* Note: what should we do if the entire frontend connection is IPv6,
+     * but the backend server is IPv4?  Sending "PROXY TCP6" there may not
+     * work as expected, e.g. the backend server may not want to handle
+     * IPv6 addresses (even though it does not have to); should that be
+     * handled using "PROXY UNKNOWN"?
+     */
+
+    if (pr_netaddr_get_family(session.c->remote_addr) == AF_INET) {
+      const char *ipstr;
+
+      ipstr = pr_netaddr_get_ipstr(session.c->remote_addr);
+      src_ipstr = pstrcat(sub_pool, "::ffff:", ipstr, NULL);
+
+    } else {
+      src_ipstr = pr_netaddr_get_ipstr(session.c->remote_addr);
+    }
+
+    src_port = session.c->remote_port;
+
+    if (pr_netaddr_get_family(session.c->local_addr) == AF_INET) {
+      const char *ipstr;
+
+      ipstr = pr_netaddr_get_ipstr(session.c->local_addr);
+      dst_ipstr = pstrcat(sub_pool, "::ffff:", ipstr, NULL);
+
+    } else {
+      dst_ipstr = pr_netaddr_get_ipstr(session.c->local_addr);
+    }
+
+    dst_port = session.c->local_port;
+  }
+
+  pr_trace_msg(trace_channel, 9,
+    "sending proxy protocol message: 'PROXY %s %s %s %d %d' to backend",
+    proto, src_ipstr, dst_ipstr, src_port, dst_port);
+
+  res = pr_netio_printf(conn->outstrm, "PROXY %s %s %s %d %d\r\n",
+    proto, src_ipstr, dst_ipstr, src_port, dst_port);
+
+  if (sub_pool != NULL) {
+    destroy_pool(sub_pool);
+  }
+
+  return res;
+}

@@ -47,9 +47,13 @@
 # error "ProFTPD 1.3.5rc4 or later required"
 #endif
 
+/* mod_proxy option flags */
+#define PROXY_OPT_USE_PROXY_PROTOCOL		0x0001
+
 /* Miscellaneous */
 extern int proxy_logfd;
 extern module proxy_module;
 extern pool *proxy_pool;
+extern unsigned long proxy_opts;
 
 #endif /* MOD_PROXY_H */
