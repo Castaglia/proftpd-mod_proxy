@@ -1,5 +1,6 @@
 
-Health check metrics:
+Health check (more properly "application server state" checks with applied
+interpretation/policy) metrics:
 
   TCP connect to port
     conect timeout
@@ -7,7 +8,7 @@ Health check metrics:
     retry interval
 
   FTP connect to port
-    require 220 response code, or any?
+    require 220 response code, or any?  (Keep in mind UseProxyProtocol option)
     require specific response string?
     connect timeout
     number of retries

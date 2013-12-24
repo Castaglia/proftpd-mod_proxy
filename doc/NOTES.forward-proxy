@@ -1,0 +1,37 @@
+
+Supported forward proxy method:
+
+  USER user@dest-server[:port]
+  PASS pass
+
+Chilkatsoft.com ChilkatFtp2.ProxyMethod = 2
+Net::Config:
+  ftp_firewall_type 1
+
+Complications:
+
+  '@' symbol in username?
+    Avoidable if the USER argument is parsed from end-to-beginning
+
+    What if no '@' symbol appears in USER argument?
+
+  IPv6 dest server?
+    Support "USER user@[::1]:port".  Easy enough.
+
+  FTPS?
+    If USER command is received over SSL/TLS, then connection to dest
+    server will use SSL/TLS.  Configurable?
+
+      Connect, then send FEAT.  If "AUTH SSL" or "AUTH TLS" appears in
+      FEAT, AND mod_proxy+mod_tls is available, then automatically try
+      to do FTPS.  No "implicit" FTPS support?
+
+  Connection to dest server opened later
+
+Benefits:
+
+  use mod_proxy in forward mode to add "IPv6" capability, i.e. talk to IPv6
+  server, for IPv4-only client.
+
+  use mod_proxy in forward mode to add SSL/TLS capability, i.e. to talk to
+  FTPS server, for non-SSL/TLS clients?
