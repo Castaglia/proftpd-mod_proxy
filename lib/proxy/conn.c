@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy conn implementation
- * Copyright (c) 2012 TJ Saunders
+ * Copyright (c) 2012-2013 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -146,13 +146,6 @@ int proxy_conn_send_proxy(pool *p, conn_t *conn) {
     proto = "TCP6";
     sub_pool = make_sub_pool(p);
 
-    /* Note: what should we do if the entire frontend connection is IPv6,
-     * but the backend server is IPv4?  Sending "PROXY TCP6" there may not
-     * work as expected, e.g. the backend server may not want to handle
-     * IPv6 addresses (even though it does not have to); should that be
-     * handled using "PROXY UNKNOWN"?
-     */
-
     if (pr_netaddr_get_family(session.c->remote_addr) == AF_INET) {
       const char *ipstr;
 
@@ -176,6 +169,21 @@ int proxy_conn_send_proxy(pool *p, conn_t *conn) {
     }
 
     dst_port = session.c->local_port;
+
+    /* What should we do if the entire frontend connection is IPv6, but the
+     * backend server is IPv4?  Sending "PROXY TCP6" there may not work as
+     * expected, e.g. the backend server may not want to handle IPv6 addresses
+     * (even though it does not have to); should that be handled using
+     * "PROXY UNKNOWN"?
+     */
+    if (pr_netaddr_get_family(conn->remote_addr) == AF_INET) {
+      proto = "UNKNOWN";
+
+      pr_trace_msg(trace_channel, 9,
+        "client address '%s' and local address '%s' are both IPv6, "
+        "but backend address '%s' is IPv4, using '%s' proto", src_ipstr,
+        dst_ipstr, pr_netaddr_get_ipstr(conn->remote_addr), proto);
+    }
   }
 
   pr_trace_msg(trace_channel, 9,
