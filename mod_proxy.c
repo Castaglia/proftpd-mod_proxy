@@ -2714,6 +2714,10 @@ static int proxy_sess_init(void) {
   /* XXX What do we do about TimeoutLogin?  That timeout doesn't really mean
    * much to mod_proxy; how can we ensure that it won't be enforced e.g.
    * by mod_core?
+   *
+   * Well, it MIGHT mean something for a forward/proxy ProxyRole, since we
+   * need to at least get the USER command from the client before knowing
+   * the destination server.
    */
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyLog", FALSE);
@@ -2886,14 +2890,34 @@ static int proxy_sess_init(void) {
       pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr),
       ntohs(pr_netaddr_get_port(proxy_sess->backend_ctrl_conn->remote_addr)),
       strerror(xerrno));
+    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
+      "Unable to connect to backend server");
 
   } else {
-    /* XXX Check for non-200 response codes from backend server! */
-    /* XXX Testing using proftpd configured for shutdown mode? */
+    int banner_ok = TRUE;
 
-    if (proxy_ftp_ctrl_send_resp(proxy_pool, session.c, resp, resp_nlines) < 0) {
+    if (resp->num[0] != '2') {
+      banner_ok = FALSE;
+    }
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "received banner from backend %s:%u%s: %s %s",
+      pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr),
+      ntohs(pr_netaddr_get_port(proxy_sess->backend_ctrl_conn->remote_addr)),
+      banner_ok ? "" : ", DISCONNECTING", resp->num, resp->msg);
+
+    if (proxy_ftp_ctrl_send_resp(proxy_pool, session.c, resp,
+        resp_nlines) < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unable to send banner to client: %s", strerror(errno));
+    }
+
+    if (banner_ok == FALSE) {
+      pr_inet_close(proxy_pool, proxy_sess->backend_ctrl_conn);
+      proxy_sess->backend_ctrl_conn = NULL;
+
+      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
+        "Unable to connect to backend server");
     }
   }
 
