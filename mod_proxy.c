@@ -59,6 +59,7 @@ unsigned long proxy_opts = 0UL;
 
 static int proxy_engine = FALSE;
 static int proxy_role = PROXY_ROLE_GATEWAY;
+static const char *proxy_tables_dir = NULL;
 
 static const char *trace_channel = "proxy";
 
@@ -2522,6 +2523,86 @@ MODRET proxy_any(cmd_rec *cmd) {
 /* Event handlers
  */
 
+static void proxy_ctrl_read_ev(const void *event_data, void *user_data) {
+  const char *proxy_chroot = NULL;
+  rlim_t curr_nproc, max_nproc;
+
+  PRIVS_ROOT
+
+  if (getuid() == PR_ROOT_UID) {
+    int res;
+
+    /* Chroot to the ProxyTables/empty/ directory before dropping root privs. */
+    proxy_chroot = pdircat(proxy_pool, proxy_tables_dir, "empty", NULL);
+    res = chroot(proxy_chroot);
+    if (res < 0) {
+      int xerrno = errno;
+
+      PRIVS_RELINQUISH
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to chroot to ProxyTables/empty/ directory '%s': %s",
+        proxy_chroot, strerror(xerrno));
+      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_MODULE_ACL,
+       "Unable to chroot proxy session");
+    }
+
+    if (chdir("/") < 0) {
+      int xerrno = errno;
+
+      PRIVS_RELINQUISH
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to chdir to root directory within chroot: %s",
+        strerror(xerrno));
+      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_MODULE_ACL,
+       "Unable to chroot proxy session");
+    }
+  }
+
+  /* Make the proxy session process have the identity of the configured daemon
+   * User/Group.
+   */
+  PRIVS_REVOKE
+
+  if (proxy_chroot != NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "proxy session running as UID %lu, GID %lu, restricted to '%s'",
+      (unsigned long) getuid(), (unsigned long) getgid(), proxy_chroot);
+
+  } else {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "proxy session running as UID %lu, GID %lu, located in '%s'",
+      (unsigned long) getuid(), (unsigned long) getgid(), getcwd(NULL, 0));
+  }
+
+  /* Once we have chrooted, and dropped root privs completely, we can now
+   * lower our nproc resource limit, so that we cannot fork any new
+   * processed.  We should not be doing so, and we want to mitigate any
+   * possible exploitation.
+   */
+  if (pr_rlimit_get_nproc(&curr_nproc, NULL) == 0) {
+    max_nproc = curr_nproc;
+
+    if (pr_rlimit_set_nproc(curr_nproc, max_nproc) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error setting nproc resource limits to %lu: %s",
+        (unsigned long) max_nproc, strerror(errno));
+
+    } else {
+      pr_trace_msg(trace_channel, 13,
+        "set nproc resource limits to %lu", (unsigned long) max_nproc);
+    }
+
+  } else {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error getting nproc limits: %s", strerror(errno));
+  }
+
+  /* Our work here is done; we no longer need to listen for future reads. */
+  pr_event_unregister(&proxy_module, "mod_proxy.ctrl-read", proxy_ctrl_read_ev);
+}
+
 static void proxy_exit_ev(const void *event_data, void *user_data) {
   struct proxy_session *proxy_sess;
 
@@ -2578,7 +2659,6 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
   config_rec *c;
   server_rec *s;
   unsigned int vhost_count = 0;
-  const char *tables_dir;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyEngine", FALSE);
   if (c) {
@@ -2599,7 +2679,7 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
       "Missing required config");
   }
 
-  tables_dir = c->argv[0];
+  proxy_tables_dir = c->argv[0];
 
   /* Iterate through the server_list, and count up the number of vhosts. */
   for (s = (server_rec *) server_list->xas_list; s; s = s->next) {
@@ -2722,6 +2802,8 @@ static int proxy_sess_init(void) {
   }
 
   pr_event_register(&proxy_module, "core.exit", proxy_exit_ev, NULL);
+  pr_event_register(&proxy_module, "mod_proxy.ctrl-read", proxy_ctrl_read_ev,
+    NULL);
 
   /* Install event handlers for timeouts, so that we can properly close
    * the connections on either side.
