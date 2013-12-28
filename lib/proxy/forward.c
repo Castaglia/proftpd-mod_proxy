@@ -41,13 +41,31 @@ int proxy_forward_init(pool *p) {
   return 0;
 }
 
+int proxy_forward_have_authenticated(cmd_rec *cmd) {
+  /* XXX Use a state variable here, which returns true when we have seen
+   * a successful response to the PASS command...but only if we do NOT connect
+   * to the backend at connect time (for then we are handling all FTP
+   * commands, until the client sends USER).
+   *
+   * And does this mean authenticated *to the proxy*, or to the
+   * backend/destination server?  As far as the command dispatching code
+   * goes, I think this means "authenticated locally", i.e. should we allow
+   * more commands, or reject them because the client hasn't authenticated
+   * yet.
+   */
+  return TRUE;
+}
+
 int proxy_forward_get_method(const char *method) {
   if (method == NULL) {
     errno = EINVAL;
     return -1;
   }
 
-  if (strncasecmp(method, "user@host", 10) == 0) {
+  if (strncasecmp(method, "proxyAuth", 10) == 0) {
+    return PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH;
+
+  } else if (strncasecmp(method, "user@host", 10) == 0) {
     return PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH;
   }
 

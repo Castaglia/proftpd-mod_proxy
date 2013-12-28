@@ -28,6 +28,7 @@
 #define MOD_PROXY_FORWARD_H
 
 int proxy_forward_init(pool *p);
+int proxy_forward_have_authenticated(cmd_rec *cmd);
 
 /* Forward proxy method API */
 

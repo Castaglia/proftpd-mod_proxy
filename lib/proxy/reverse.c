@@ -77,6 +77,21 @@ int proxy_reverse_init(pool *p) {
   return 0;
 }
 
+int proxy_reverse_have_authenticated(cmd_rec *cmd) {
+  /* XXX Use a state variable here, which returns true when we have seen
+   * a successful response to the PASS command...but only if we do NOT connect
+   * to the backend at connect time (for then we are handling all FTP
+   * commands, until the client sends USER).
+   *
+   * And does this mean authenticated *to the proxy*, or to the
+   * backend/destination server?  As far as the command dispatching code
+   * goes, I think this means "authenticated locally", i.e. should we allow
+   * more commands, or reject them because the client hasn't authenticated
+   * yet.
+   */
+  return TRUE;
+}
+
 int proxy_reverse_select_get_policy(const char *policy) {
   if (policy == NULL) {
     errno = EINVAL;
@@ -350,6 +365,10 @@ conn_t *proxy_reverse_server_get_conn(struct proxy_session *proxy_sess) {
         strerror(errno));
     }
   }
+
+  /* XXX Support/send a CLNT command of our own?  Configurable via e.g.
+   * "UserAgent" string?
+   */
 
   return backend_ctrl_conn;
 }

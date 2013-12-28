@@ -39,8 +39,8 @@
 #include "proxy/ftp/xfer.h"
 
 /* Proxy role */
-#define PROXY_ROLE_GATEWAY		1
-#define PROXY_ROLE_PROXY		2
+#define PROXY_ROLE_REVERSE		1
+#define PROXY_ROLE_FORWARD		2
 
 /* How long (in secs) to wait to connect to real server? */
 #define PROXY_CONNECT_DEFAULT_TIMEOUT	2
@@ -58,7 +58,7 @@ pool *proxy_pool = NULL;
 unsigned long proxy_opts = 0UL;
 
 static int proxy_engine = FALSE;
-static int proxy_role = PROXY_ROLE_GATEWAY;
+static int proxy_role = PROXY_ROLE_REVERSE;
 static const char *proxy_tables_dir = NULL;
 
 static const char *trace_channel = "proxy";
@@ -76,15 +76,6 @@ static int proxy_stalled_timeout_cb(CALLBACK_FRAME) {
 
   /* Do not restart the timer (should never be reached). */
   return 0;
-}
-
-static int proxy_have_authenticated(cmd_rec *cmd) {
-  /* XXX Use a state variable here, which returns true when we have seen
-   * a successful response to the PASS command...but only if we do NOT connect
-   * to the backend at connect time (for then we are handling all FTP
-   * commands, until the client sends USER).
-   */
-  return TRUE;
 }
 
 static void proxy_log_xfer(cmd_rec *cmd, char abort_flag) {
@@ -247,20 +238,20 @@ MODRET set_proxydatatransferpolicy(cmd_rec *cmd) {
 
 /* usage: ProxyEngine on|off */
 MODRET set_proxyengine(cmd_rec *cmd) {
-  int bool = 1;
+  int engine = 1;
   config_rec *c;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
-  bool = get_boolean(cmd, 1);
-  if (bool == -1) {
+  engine = get_boolean(cmd, 1);
+  if (engine == -1) {
     CONF_ERROR(cmd, "expected Boolean parameter");
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
   c->argv[0] = pcalloc(c->pool, sizeof(int));
-  *((int *) c->argv[0]) = bool;
+  *((int *) c->argv[0]) = engine;
 
   return PR_HANDLED(cmd);
 }
@@ -357,7 +348,7 @@ MODRET set_proxyreverseselection(cmd_rec *cmd) {
   select_policy = proxy_reverse_select_get_policy(cmd->argv[1]);
   if (select_policy < 0) {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
-      "unknown/unsupported selection strategy: ", cmd->argv[1], NULL));
+      "unknown/unsupported selection policy: ", cmd->argv[1], NULL));
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
@@ -405,6 +396,8 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
        * to the appropriate server_rec, and clear/reload on 'core.restart'.
        */
 
+      CONF_ERROR(cmd, "not yet implemented");
+
     } else if (strncmp(cmd->argv[1], "sql:/", 5) == 0) {
       /* XXX Implement */
 
@@ -445,7 +438,7 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
-/* usage: ProxyRole "forward" (proxy) |"reverse" (gateway) */
+/* usage: ProxyRole "forward"|"reverse" */
 MODRET set_proxyrole(cmd_rec *cmd) {
   int role = 0;
   config_rec *c;
@@ -453,13 +446,11 @@ MODRET set_proxyrole(cmd_rec *cmd) {
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
-  if (strcasecmp(cmd->argv[1], "forward") == 0 ||
-      strcasecmp(cmd->argv[1], "proxy") == 0) {
-    role = PROXY_ROLE_PROXY;
+  if (strcasecmp(cmd->argv[1], "forward") == 0) {
+    role = PROXY_ROLE_FORWARD;
 
-  } else if (strcasecmp(cmd->argv[1], "reverse") == 0 ||
-             strcasecmp(cmd->argv[1], "gateway") == 0) {
-    role = PROXY_ROLE_GATEWAY;
+  } else if (strcasecmp(cmd->argv[1], "reverse") == 0) {
+    role = PROXY_ROLE_REVERSE;
 
   } else {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown proxy type '", cmd->argv[1],
@@ -2310,6 +2301,11 @@ static void proxy_ctrl_read_ev(const void *event_data, void *user_data) {
   const char *proxy_chroot = NULL;
   rlim_t curr_nproc, max_nproc;
 
+  /* XXX TODO: If we are a forward proxy, AND we require proxy auth, THEN
+   * this chroot/privdrop should not happen until AFTER successful
+   * authentication.  Right?
+   */
+
   PRIVS_ROOT
 
   if (getuid() == PR_ROOT_UID) {
@@ -2428,6 +2424,8 @@ static void proxy_mod_unload_ev(const void *event_data, void *user_data) {
     /* Unregister ourselves from all events. */
     pr_event_unregister(&proxy_module, NULL, NULL);
 
+    /* TODO: Remove/clean up state files (e.g. roundrobin.dat). */
+
     destroy_pool(proxy_pool);
     proxy_pool = NULL;
 
@@ -2473,6 +2471,9 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
    *
    *  size = (sizeof(unsigned int) * 3) * vhost_count
    *
+   * Do we do this if any of the vhosts are configured as reverse proxies,
+   * or do we do it all of the time, regardless of whether any reverse proxies
+   * are configured?
    */
 }
 
@@ -2571,10 +2572,6 @@ static int proxy_sess_init(void) {
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
 
-  /* XXX Support/send a CLNT command of our own?  Configurable via e.g.
-   * "UserAgent" string?
-   */
-
   c = find_config(main_server->conf, CONF_PARAM, "ProxyEngine", FALSE);
   if (c != NULL) {
     proxy_engine = *((int *) c->argv[0]);
@@ -2602,7 +2599,7 @@ static int proxy_sess_init(void) {
    * much to mod_proxy; how can we ensure that it won't be enforced e.g.
    * by mod_core?
    *
-   * Well, it MIGHT mean something for a forward/proxy ProxyRole, since we
+   * Well, it MIGHT mean something for a forward ProxyRole, since we
    * need to at least get the USER command from the client before knowing
    * the destination server.
    */
@@ -2674,19 +2671,30 @@ static int proxy_sess_init(void) {
    */
 
   switch (proxy_role) {
-    case PROXY_ROLE_GATEWAY:
+    case PROXY_ROLE_REVERSE:
       if (proxy_reverse_init(proxy_pool) < 0) {
         proxy_engine = FALSE;
+
+        /* XXX TODO: Return 530 to connecting client? */
         return -1;
       }
 
+      set_auth_check(proxy_reverse_have_authenticated);
       break;
 
-    case PROXY_ROLE_PROXY:
+    case PROXY_ROLE_FORWARD:
       if (proxy_forward_init(proxy_pool) < 0) {
         proxy_engine = FALSE;
+
+        /* XXX TODO: Return 530 to connecting client? */
         return -1; 
       }
+
+      /* XXX TODO:
+       *   DisplayLogin
+       */
+
+      set_auth_check(proxy_forward_have_authenticated);
       break;
   }
 
@@ -2712,9 +2720,6 @@ static int proxy_sess_init(void) {
    *
    * If we do this, we should also add separate "proxy" rows to the DelayTable.
    */
-
-  /* Use our own "authenticated yet?" check. */
-  set_auth_check(proxy_have_authenticated);
 
   /* Set defaults for directives that mod_proxy should allow. */
   proxy_set_sess_defaults();

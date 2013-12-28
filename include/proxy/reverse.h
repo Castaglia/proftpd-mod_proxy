@@ -28,6 +28,7 @@
 #define MOD_PROXY_REVERSE_H
 
 int proxy_reverse_init(pool *p);
+int proxy_reverse_have_authenticated(cmd_rec *cmd);
 
 /* Backend selection policy API */
 
