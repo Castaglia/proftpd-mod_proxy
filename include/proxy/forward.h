@@ -29,4 +29,14 @@
 
 int proxy_forward_init(pool *p);
 
+/* Forward proxy method API */
+
+#define PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH		1
+#define PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH			2
+
+/* Return the method ID for the given string, or -1 if the given method
+ * is not recognized/supported.
+ */
+int proxy_forward_get_method(const char *);
+
 #endif /* MOD_PROXY_FORWARD_H */

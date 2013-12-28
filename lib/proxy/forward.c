@@ -26,9 +26,32 @@
 #include "proxy/conn.h"
 #include "proxy/forward.h"
 
+static int proxy_method = PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH;
+
 static const char *trace_channel = "proxy.forward";
 
 int proxy_forward_init(pool *p) {
-  errno = ENOSYS;
+  config_rec *c;
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyForwardMethod", FALSE);
+  if (c != NULL) {
+    proxy_method = *((int *) c->argv[0]);
+  }
+
+  return 0;
+}
+
+int proxy_forward_get_method(const char *method) {
+  if (method == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (strncasecmp(method, "user@host", 10) == 0) {
+    return PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH;
+  }
+
+  errno = ENOENT;
   return -1;
 }
+

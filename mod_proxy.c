@@ -265,6 +265,27 @@ MODRET set_proxyengine(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
+/* usage: ProxyForwardMethod method */
+MODRET set_proxyforwardmethod(cmd_rec *cmd) {
+  config_rec *c;
+  int forward_method = -1;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  forward_method = proxy_forward_get_method(cmd->argv[1]);
+  if (forward_method < 0) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+      "unknown/unsupported forward method: ", cmd->argv[1], NULL));
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = forward_method;
+
+  return PR_HANDLED(cmd);
+}
+
 /* usage: ProxyLog path|"none" */
 MODRET set_proxylog(cmd_rec *cmd) {
   CHECK_ARGS(cmd, 1);
@@ -2806,6 +2827,7 @@ static int proxy_sess_init(void) {
 static conftable proxy_conftab[] = {
   { "ProxyDataTransferPolicy",	set_proxydatatransferpolicy,	NULL },
   { "ProxyEngine",		set_proxyengine,		NULL },
+  { "ProxyForwardMethod",	set_proxyforwardmethod,		NULL },
   { "ProxyLog",			set_proxylog,			NULL },
   { "ProxyOptions",		set_proxyoptions,		NULL },
   { "ProxyReverseAddress",	set_proxyreverseaddress,	NULL },
