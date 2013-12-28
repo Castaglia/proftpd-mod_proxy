@@ -421,8 +421,8 @@ sub new {
 
 sub list_tests {
 #  return testsuite_get_runnable_tests($TESTS);
-#    proxy_reverse_login
   return qw(
+    proxy_reverse_login
     proxy_forward_login
   );
 
@@ -12320,7 +12320,7 @@ sub proxy_forward_login {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,

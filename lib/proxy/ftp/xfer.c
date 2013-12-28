@@ -23,6 +23,7 @@
  */
 
 #include "mod_proxy.h"
+
 #include "include/proxy/ftp/conn.h"
 #include "include/proxy/ftp/ctrl.h"
 #include "include/proxy/ftp/msg.h"
@@ -44,7 +45,7 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
   char *active_cmd;
   const char *resp_msg;
 
-  bind_addr = proxy_sess->backend_addr;
+  bind_addr = proxy_sess->src_addr;
   if (bind_addr == NULL) {
     bind_addr = session.c->local_addr;
   }

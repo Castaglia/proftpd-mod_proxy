@@ -1916,16 +1916,17 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   if (ok) {
     config_rec *c;
+    const char *notes_key = "mod_auth.orig-user";
     char *user, *xferlog = PR_XFERLOG_PATH;
 
     /* For 2xx/3xx responses (others?), stash the user name appropriately. */
     user = cmd->arg;
 
-    (void) pr_table_remove(session.notes, "mod_auth.orig-user", NULL);
+    (void) pr_table_remove(session.notes, notes_key, NULL);
 
-    if (pr_table_add_dup(session.notes, "mod_auth.orig-user", user, 0) < 0) {
-      pr_log_debug(DEBUG3, "error stashing 'mod_auth.orig-user' in "
-        "session.notes: %s", strerror(errno));
+    if (pr_table_add_dup(session.notes, notes_key, user, 0) < 0) {
+      pr_log_debug(DEBUG3, "error stashing '%s' in session.notes: %s",
+        notes_key, strerror(errno));
     }
 
     /* Open the TransferLog here. */

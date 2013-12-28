@@ -74,10 +74,10 @@ int proxy_forward_have_authenticated(cmd_rec *cmd) {
 }
 
 static int forward_connect(pool *p, struct proxy_session *proxy_sess,
-    pr_netaddr_t *remote_addr) {
+    pr_netaddr_t *remote_addr,
+    pr_response_t **resp, unsigned int *resp_nlines) {
   conn_t *server_conn = NULL;
-  pr_response_t *resp = NULL;
-  unsigned int resp_nlines = 0;
+  int banner_ok = TRUE;
 
   server_conn = proxy_conn_get_server_conn(p, proxy_sess, remote_addr);
   if (server_conn == NULL) {
@@ -92,9 +92,9 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
   proxy_sess->backend_ctrl_conn = server_conn;
 
   /* Read the response from the backend server. */
-  resp = proxy_ftp_ctrl_recv_resp(p, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
-  if (resp == NULL) {
+  *resp = proxy_ftp_ctrl_recv_resp(p, proxy_sess->backend_ctrl_conn,
+    resp_nlines);
+  if (*resp == NULL) {
     int xerrno = errno;
 
     pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -105,30 +105,22 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
 
     errno = xerrno;
     return -1;
+  }
 
-  } else {
-    int banner_ok = TRUE;
+  if ((*resp)->num[0] != '2') {
+    banner_ok = FALSE;
+  }
 
-    if (resp->num[0] != '2') {
-      banner_ok = FALSE;
-    }
+  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+    "received banner from backend %s:%u%s: %s %s",
+    pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr),
+    ntohs(pr_netaddr_get_port(proxy_sess->backend_ctrl_conn->remote_addr)),
+    banner_ok ? "" : ", DISCONNECTING", (*resp)->num, (*resp)->msg);
 
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "received banner from backend %s:%u%s: %s %s",
-      pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr),
-      ntohs(pr_netaddr_get_port(proxy_sess->backend_ctrl_conn->remote_addr)),
-      banner_ok ? "" : ", DISCONNECTING", resp->num, resp->msg);
-
-    if (proxy_ftp_ctrl_send_resp(p, session.c, resp, resp_nlines) < 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "unable to send banner to client: %s", strerror(errno));
-    }
-
-    if (banner_ok == FALSE) {
-      pr_inet_close(p, proxy_sess->backend_ctrl_conn);
-      proxy_sess->backend_ctrl_conn = NULL;
-      return -1;
-    }
+  if (banner_ok == FALSE) {
+    pr_inet_close(p, proxy_sess->backend_ctrl_conn);
+    proxy_sess->backend_ctrl_conn = NULL;
+    return -1;
   }
 
   /* Get the features supported by the backend server */
@@ -138,9 +130,6 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
   }
 
   proxy_sess_state |= PROXY_SESS_STATE_CONNECTED;
-
-  pr_response_block(TRUE);
-
   return 0;
 }
 
@@ -204,7 +193,7 @@ static int forward_user_noproxyauth_parse(pool *p, const char *arg,
   *name = pstrndup(p, arg, (host_ptr - arg));
   proto = default_proto;
 
-  uri = pstrcat(p, proto, "//", host, ":", port, NULL);
+  uri = pstrcat(p, proto, "://", host, ":", port, NULL);
 
   /* Note: We deliberately use proxy_pool, rather than the given pool, here
    * so that the created structure (especially the pr_netaddr_t) are
@@ -220,19 +209,14 @@ static int forward_user_noproxyauth_parse(pool *p, const char *arg,
 
 static int forward_handle_user_noproxyauth(cmd_rec *cmd,
     struct proxy_session *proxy_sess, int *ok) {
-  int res;
+  int res, xerrno;
   char *user = NULL;
+  cmd_rec *user_cmd = NULL;
   struct proxy_conn *pconn = NULL;
   pr_netaddr_t *remote_addr = NULL;
+  pr_response_t *banner = NULL, *resp = NULL;
+  unsigned int banner_nlines = 0, resp_nlines = 0;
 
-  /* Parse the remote site/port out of the USER command:
-   *
-   *  USER name@host[:port]
-   *
-   * Then connect to that host/port.  (Include server banner in USER response.)
-   * Send "USER name", proxy response.
-   */
-  
   res = forward_user_noproxyauth_parse(cmd->tmp_pool, cmd->arg, &user, &pconn);
   if (res < 0) {
     return -1;
@@ -240,13 +224,100 @@ static int forward_handle_user_noproxyauth(cmd_rec *cmd,
 
   remote_addr = proxy_conn_get_addr(pconn);
 
-  res = proxy_conn_get_server_conn(proxy_pool, proxy_sess, remote_addr);
+  res = forward_connect(proxy_pool, proxy_sess, remote_addr, &banner,
+    &banner_nlines);
   if (res < 0) {
+    *ok = FALSE;
+
+    /* Send a failed USER response to our waiting frontend client, but do
+     * not necessarily close the frontend connection.
+     */
+    resp = pcalloc(cmd->tmp_pool, sizeof(pr_response_t));
+    resp->num = R_530;
+
+    if (banner != NULL) {
+      resp->msg = banner->msg;
+      resp_nlines = banner_nlines;
+
+    } else {
+      char *host_ptr = NULL;
+
+      host_ptr = strrchr(cmd->arg, '@');
+
+      resp->msg = pstrcat(cmd->tmp_pool, "Unable to connect to ",
+        host_ptr + 1, NULL);
+      resp_nlines = 1;
+    }
+
+    res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
+      proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
+    if (res < 0) {
+      xerrno = errno;
+
+      pr_response_block(TRUE);
+      errno = xerrno;
+      return -1;
+    }
+
+    return 0;
+  }
+
+  /* Change the command so that it no longer includes the proxy info. */
+  user_cmd = pr_cmd_alloc(cmd->pool, 2, C_USER, user);
+  user_cmd->arg = user;
+  pr_cmd_clear_cache(user_cmd);
+
+  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    user_cmd);
+  if (res < 0) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error sending %s to backend: %s", user_cmd->argv[0], strerror(xerrno));
+
+    errno = xerrno;
     return -1;
   }
- 
-  errno = ENOSYS;
-  return -1;
+
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
+  if (resp == NULL) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error receiving %s response from backend: %s", cmd->argv[0],
+      strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  if (resp->num[0] == '2' ||
+      resp->num[0] == '3') {
+    *ok = TRUE;
+  }
+
+  /* XXX TODO: Concatenate the banner from the connect with the USER response
+   * message here, and send the entire kit to the frontend client, e.g.:
+   * 
+   *  Name (gatekeeper:you): anonymous@ftp.uu.net
+   *  331-(----GATEWAY CONNECTED TO ftp.uu.net----)
+   *  331-(220 ftp.uu.net FTP server (SunOS 4.1) ready. 
+   *  331 Guest login ok, send ident as password.
+   *  Password: ######
+   *  230 Guest login ok, access restrictions apply.
+   *  ftp> dir
+   */
+
+  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
+    resp, resp_nlines);
+  if (res < 0) {
+    xerrno = errno;
+
+    pr_response_block(TRUE);
+    errno = xerrno;
+    return -1;
+  }
+
+  return 0; 
 }
 
 int proxy_forward_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
