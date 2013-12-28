@@ -5,8 +5,11 @@ Supported forward proxy method:
   PASS pass
 
 Chilkatsoft.com ChilkatFtp2.ProxyMethod = 2
+
 Net::Config:
   ftp_firewall_type 1
+    USER user@remote.host[:port]
+    PASS pass
 
 Complications:
 
@@ -16,6 +19,9 @@ Complications:
     What if no '@' symbol appears in USER argument?
     What if single '@' symbol appears in USER argument, as part of actual
       username?
+
+  What if USER is not first command?  I.e. what if we see FEAT, SYST,
+    etc?
 
   IPv6 dest server?
     Support "USER user@[::1]:port".  Easy enough.
@@ -41,3 +47,19 @@ Benefits:
 Supporting this means not connecting to the real server until pre-USER time;
 mod_proxy needs to be modified to deal with this case.  It's work needed
 for USER-based backend selection in the reverse proxy case, anyway.
+
+Future methods:
+
+Net::Config:
+  ftp_firewall_type 2
+    USER proxy-user
+    PASS proxy-pass
+    USER user@remote.host[:port]
+    PASS pass
+
+  ftp_firewall_type 6
+    USER proxy-user@remote.host[:port]
+    PASS proxy-pass
+    USER user
+    PASS pass
+
