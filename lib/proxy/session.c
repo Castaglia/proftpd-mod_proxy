@@ -37,7 +37,7 @@ struct proxy_session *proxy_session_alloc(pool *p) {
   proxy_sess = pcalloc(sess_pool, sizeof(struct proxy_session));
   proxy_sess->pool = sess_pool;
 
-  /* This will be configured by the ProxyBackendAddress directive, if
+  /* This will be configured by the ProxyReverseAddress directive, if
    * present.
    */
   proxy_sess->backend_addr = NULL;

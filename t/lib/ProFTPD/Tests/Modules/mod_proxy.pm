@@ -23,6 +23,16 @@ my $TESTS = {
     test_class => [qw(forking)],
   },
 
+  proxy_gateway_connect_failed_bad_addr => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
+
+  proxy_gateway_connect_failed_non2xx => {
+    order => ++$order,
+    test_class => [qw(forking mod_wrap2 mod_wrap2_file)],
+  },
+
   proxy_gateway_login => {
     order => ++$order,
     test_class => [qw(forking)],
@@ -63,8 +73,7 @@ my $TESTS = {
     test_class => [qw(forking)],
   },
 
-  # XXX
-  # proxy_gateway_epsv_all
+  # TODO: proxy_gateway_epsv_all
 
   proxy_gateway_eprt_ipv4 => {
     order => ++$order,
@@ -276,7 +285,11 @@ my $TESTS = {
     test_class => [qw(forking)],
   },
 
-  # backend selection: random, roundrobin, per-user, ...?
+  # backend selection: random, roundrobin, shuffle, per-user, leastconns...?
+  proxy_gateway_config_selection_random => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
 
   # TransferLog entries (binary/ascii, upload/download, complete/aborted)
   # Note that TransferLog, as supported by mod_proxy, CANNOT have the absolute
@@ -325,6 +338,19 @@ my $TESTS = {
   # TransferPriority?
   # TransferRate?
 
+  proxy_gateway_proxy_protocol_ipv4 => {
+    order => ++$order,
+    test_class => [qw(forking mod_proxy_protocol)],
+  },
+
+  proxy_gateway_proxy_protocol_ipv6 => {
+    order => ++$order,
+    test_class => [qw(forking mod_proxy_protocol)],
+  },
+
+  # proxy_gateway_proxy_protocol_ipv6_useipv6_off
+  # proxy_gateway_proxy_protocol_unknown
+
   proxy_tls_gateway_login => {
     order => ++$order,
     test_class => [qw(forking mod_tls)],
@@ -340,12 +366,16 @@ my $TESTS = {
     test_class => [qw(forking mod_tls)],
   },
 
-  proxy_tls_gateway_list_pasv => {
+#  proxy_tls_gateway_list_pasv => {
+#    order => ++$order,
+#    test_class => [qw(forking mod_tls)],
+#  },
+
+  proxy_proxy_connect => {
     order => ++$order,
-    test_class => [qw(forking mod_tls)],
+    test_class => [qw(forking)],
   },
 
-  # proxy_proxy_connect
   # proxy_proxy_login
   # proxy_proxy_list_pasv
   # proxy_proxy_list_port
@@ -353,6 +383,8 @@ my $TESTS = {
   # proxy_proxy_eprt
   # proxy_proxy_stor_pasv
 
+  # proxy_proxy_config_forward_filter
+  # proxy_proxy_config_type (no proxy user auth, reqd proxy user auth)
 };
 
 sub new {
@@ -362,11 +394,12 @@ sub new {
 sub list_tests {
 #  return testsuite_get_runnable_tests($TESTS);
   return qw(
-    proxy_tls_gateway_list_pasv
+    proxy_gateway_config_selection_random
   );
+#    proxy_proxy_connect
 }
 
-sub get_proxy_config {
+sub get_gateway_proxy_config {
   my $tmpdir = shift;
   my $log_file = shift;
   my $vhost_port = shift;
@@ -376,9 +409,25 @@ sub get_proxy_config {
   my $config = {
     ProxyEngine => 'on',
     ProxyLog => $log_file,
+    ProxyReverseServers => "ftp://127.0.0.1:$vhost_port",
     ProxyRole => 'gateway',
-    ProxyBackendServers => "ftp://127.0.0.1:$vhost_port",
     ProxyTables => $table_dir,
+  };
+
+  return $config;
+}
+
+sub get_proxy_proxy_config {
+  my $tmpdir = shift;
+  my $log_file = shift;
+  my $vhost_port = shift;
+
+  # XXX Provide necessary <Proxy>/<Limit> section?
+
+  my $config = {
+    ProxyEngine => 'on',
+    ProxyLog => $log_file,
+    ProxyRole => 'proxy',
   };
 
   return $config;
@@ -423,7 +472,7 @@ sub proxy_gateway_connect {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
@@ -530,6 +579,297 @@ EOC
   unlink($log_file);
 }
 
+sub proxy_gateway_connect_bad_addr {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyReverseServers} = 'ftp://1.2.3.4:5678';
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  WtmpLog off
+  TransferLog none
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      eval { ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1) };
+      unless ($@) {
+        die("Unexpectedly connected successfully");
+      }
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+#  unlink($log_file);
+}
+
+sub proxy_gateway_connect_failed_non2xx {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+
+  my $allow_file = File::Spec->rel2abs("$tmpdir/wrap2.allow");
+  if (open(my $fh, "> $allow_file")) {
+    unless (close($fh)) {
+      die("Can't write $allow_file: $!");
+    }
+
+  } else {
+    die("Can't open $allow_file: $!");
+  }
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+
+  <IfModule mod_wrap2_file.c>
+    WrapEngine on
+    WrapLog $log_file
+    WrapTables file:$allow_file builtin:all
+    WrapOptions CheckOnConnect
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      eval { ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1) };
+      unless ($@) {
+        die("Unexpectedly connected successfully");
+      }
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
 sub proxy_gateway_login {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
@@ -569,7 +909,7 @@ sub proxy_gateway_login {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
@@ -714,7 +1054,7 @@ sub proxy_gateway_login_failed {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
@@ -873,7 +1213,7 @@ sub proxy_gateway_feat {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
@@ -1024,7 +1364,7 @@ sub proxy_gateway_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -1197,7 +1537,7 @@ sub proxy_gateway_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -1370,7 +1710,7 @@ sub proxy_gateway_list_pasv_enoent {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -1547,7 +1887,7 @@ sub proxy_gateway_list_port_enoent {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -1723,7 +2063,7 @@ sub proxy_gateway_epsv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -1882,7 +2222,7 @@ sub proxy_gateway_eprt_ipv4 {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -2045,7 +2385,7 @@ sub proxy_gateway_eprt_ipv6 {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -2222,7 +2562,7 @@ sub proxy_gateway_retr_pasv_ascii {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -2409,7 +2749,7 @@ sub proxy_gateway_retr_pasv_binary {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -2596,7 +2936,7 @@ sub proxy_gateway_retr_large_file {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 120;
 
@@ -2786,7 +3126,7 @@ sub proxy_gateway_retr_empty_file {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 120;
 
@@ -2978,7 +3318,7 @@ sub proxy_gateway_retr_abort {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -3148,7 +3488,7 @@ sub proxy_gateway_stor_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -3325,7 +3665,7 @@ sub proxy_gateway_stor_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -3502,7 +3842,7 @@ sub proxy_gateway_stor_large_file {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 120;
 
@@ -3683,7 +4023,7 @@ sub proxy_gateway_stor_empty_file {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 120;
 
@@ -3870,7 +4210,7 @@ sub proxy_gateway_stor_eperm {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -4042,7 +4382,7 @@ sub proxy_gateway_stor_abort {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -4223,7 +4563,7 @@ sub proxy_gateway_rest_retr {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -4420,7 +4760,7 @@ sub proxy_gateway_rest_stor {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -4605,7 +4945,7 @@ sub proxy_gateway_unknown_cmd {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -4771,7 +5111,7 @@ sub proxy_gateway_config_passiveports_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -4953,7 +5293,7 @@ sub proxy_gateway_config_passiveports_epsv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -5132,7 +5472,7 @@ sub proxy_gateway_config_masqueradeaddress {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -5311,7 +5651,7 @@ sub proxy_gateway_config_allowforeignaddress_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -5476,7 +5816,7 @@ sub proxy_gateway_config_allowforeignaddress_eprt {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -5641,7 +5981,7 @@ sub proxy_gateway_config_timeoutidle_frontend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $frontend_timeoutidle = 4;
   my $frontend_timeout_delay = $frontend_timeoutidle + 2;
@@ -5809,7 +6149,7 @@ sub proxy_gateway_config_timeoutidle_backend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $frontend_timeoutidle = 10;
   my $frontend_timeout_delay = $frontend_timeoutidle - 2;
@@ -5977,7 +6317,7 @@ sub proxy_gateway_config_timeoutnoxfer_frontend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $frontend_timeoutnoxfer = 2;
   my $frontend_timeout_delay = $frontend_timeoutnoxfer + 2;
@@ -6145,7 +6485,7 @@ sub proxy_gateway_config_timeoutnoxfer_backend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $frontend_timeoutnoxfer = 10;
   my $frontend_timeout_delay = $frontend_timeoutnoxfer - 2;
@@ -6313,7 +6653,7 @@ sub proxy_gateway_config_timeoutstalled_frontend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $frontend_timeoutstalled = 2;
   my $frontend_timeout_delay = $frontend_timeoutstalled + 2;
@@ -6494,7 +6834,7 @@ sub proxy_gateway_config_timeoutstalled_backend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $frontend_timeoutstalled = 12;
   my $backend_timeoutstalled = 2;
@@ -6675,7 +7015,7 @@ sub proxy_gateway_config_datatransferpolicy_pasv_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'PASV';
 
   my $timeout_idle = 10;
@@ -6849,7 +7189,7 @@ sub proxy_gateway_config_datatransferpolicy_pasv_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'PASV';
 
   my $timeout_idle = 10;
@@ -7023,7 +7363,7 @@ sub proxy_gateway_config_datatransferpolicy_port_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'PORT';
 
   my $timeout_idle = 10;
@@ -7197,7 +7537,7 @@ sub proxy_gateway_config_datatransferpolicy_port_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'PORT';
 
   my $timeout_idle = 10;
@@ -7371,7 +7711,7 @@ sub proxy_gateway_config_datatransferpolicy_epsv_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'EPSV';
 
   my $timeout_idle = 10;
@@ -7545,7 +7885,7 @@ sub proxy_gateway_config_datatransferpolicy_epsv_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'EPSV';
 
   my $timeout_idle = 10;
@@ -7719,7 +8059,7 @@ sub proxy_gateway_config_datatransferpolicy_eprt_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'EPRT';
 
   my $timeout_idle = 10;
@@ -7893,7 +8233,7 @@ sub proxy_gateway_config_datatransferpolicy_eprt_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'EPRT';
 
   my $timeout_idle = 10;
@@ -8067,7 +8407,7 @@ sub proxy_gateway_config_datatransferpolicy_active_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'active';
 
   my $timeout_idle = 10;
@@ -8241,7 +8581,7 @@ sub proxy_gateway_config_datatransferpolicy_active_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'active';
 
   my $timeout_idle = 10;
@@ -8415,7 +8755,7 @@ sub proxy_gateway_config_datatransferpolicy_passive_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'passive';
 
   my $timeout_idle = 10;
@@ -8589,7 +8929,7 @@ sub proxy_gateway_config_datatransferpolicy_passive_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'passive';
 
   my $timeout_idle = 10;
@@ -8763,7 +9103,7 @@ sub proxy_gateway_config_datatransferpolicy_client {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'client';
 
   my $timeout_idle = 10;
@@ -8898,6 +9238,183 @@ EOC
   unlink($log_file);
 }
 
+sub proxy_gateway_config_selection_random {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyReverseSelection} = 'random';
+
+  # For now, we cheat and simply repeat the same vhost three times
+  $proxy_config->{ProxyReverseServers} = "ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port";
+
+  my $timeout_idle = 10;
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.reverse:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $user,
+      },
+    },
+
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+      $client->login($user, $passwd);
+
+      my $conn = $client->list_raw();
+      unless ($conn) {
+        die("Failed to LIST: " . $client->response_code() . ' ' .
+          $client->response_msg());
+      }
+
+      my $buf;
+      $conn->read($buf, 8192, 10);
+      eval { $conn->close() };
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      my $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+#  unlink($log_file);
+}
+
 sub proxy_gateway_xferlog_retr_ascii_ok {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
@@ -8950,7 +9467,7 @@ sub proxy_gateway_xferlog_retr_ascii_ok {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
   my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
@@ -9188,7 +9705,7 @@ sub proxy_gateway_xferlog_retr_binary_ok {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
   my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
@@ -9416,7 +9933,7 @@ sub proxy_gateway_xferlog_stor_ascii_ok {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
   my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
@@ -9637,7 +10154,7 @@ sub proxy_gateway_xferlog_stor_binary_ok {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
   my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
@@ -9868,7 +10385,7 @@ sub proxy_gateway_extlog_retr_var_F_f {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
   my $ext_log = File::Spec->rel2abs("$tmpdir/ext.log");
@@ -10069,7 +10586,7 @@ sub proxy_gateway_extlog_stor_var_F_f {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
   my $ext_log = File::Spec->rel2abs("$tmpdir/ext.log");
@@ -10260,7 +10777,7 @@ sub proxy_gateway_extlog_list_var_D_d {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
   my $ext_log = File::Spec->rel2abs("$tmpdir/ext.log");
@@ -10411,6 +10928,298 @@ EOC
   unlink($log_file);
 }
 
+sub proxy_gateway_proxy_protocol_ipv4 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyOptions} = 'UseProxyProtocol';
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:10 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy_protocol:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  IdentLookups off
+  TransferLog none
+  WtmpLog off
+
+  <IfModule mod_proxy_protocol.c>
+    ProxyProtocolEngine on
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_gateway_proxy_protocol_ipv6 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyReverseServers} = "ftp://[::1]:$vhost_port";
+  $proxy_config->{ProxyOptions} = 'UseProxyProtocol';
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:10 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy_protocol:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+    UseIPv6 => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost ::1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  IdentLookups off
+  TransferLog none
+  WtmpLog off
+
+  <IfModule mod_proxy_protocol.c>
+    ProxyProtocolEngine on
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
 sub proxy_tls_gateway_login {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
@@ -10453,7 +11262,7 @@ sub proxy_tls_gateway_login {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
@@ -10625,7 +11434,7 @@ sub proxy_tls_gateway_login_failed {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
@@ -10803,7 +11612,7 @@ sub proxy_tls_gateway_login_tlslogin {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $tlslogin_file = File::Spec->rel2abs("$tmpdir/.tlslogin");
   unless (copy($client_cert_file, $tlslogin_file)) {
@@ -11001,7 +11810,7 @@ sub proxy_tls_gateway_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
@@ -11106,6 +11915,154 @@ EOC
 
 use Data::Dumper;
 print STDERR "res: ", Dumper($res), "\n";
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_proxy_connect {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 17;
+
+  my $proxy_config = get_proxy_proxy_config($tmpdir, $log_file, $vhost_port);
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  WtmpLog off
+  TransferLog none
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+
+      # 
+
+      $client->quit();
+
+      my $expected;
+
+      $expected = 220;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Real Server';
+      $self->assert(qr/$expected/, $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
     };
 
     if ($@) {

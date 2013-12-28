@@ -101,13 +101,14 @@ static int proxy_stalled_timeout_cb(CALLBACK_FRAME) {
   return 0;
 }
 
-static pr_netaddr_t *proxy_backend_get_server(struct proxy_session *proxy_sess) {
+static pr_netaddr_t *get_reverse_server(struct proxy_session *proxy_sess) {
   config_rec *c;
   array_header *backend_servers;
   struct proxy_conn **conns;
   pr_netaddr_t *addr;
+  int idx;
 
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyBackendServers", FALSE);
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseServers", FALSE);
   if (c == NULL) {
     /* XXX This shouldn't happen; should be checked by proxy_reverse_init(). */
     errno = ENOENT;
@@ -117,20 +118,24 @@ static pr_netaddr_t *proxy_backend_get_server(struct proxy_session *proxy_sess) 
   backend_servers = c->argv[0];
   conns = backend_servers->elts;
 
-  /* XXX Insert selection criteria here */
+  idx = proxy_reverse_select_next_index(main_server->sid,
+    backend_servers->nelts, NULL);
+  if (idx < 0) {
+    return NULL;
+  }
 
-  addr = proxy_conn_get_addr(conns[0]);
+  addr = proxy_conn_get_addr(conns[idx]);
   return addr;
 }
 
-static conn_t *proxy_backend_get_server_conn(struct proxy_session *proxy_sess) {
+static conn_t *get_reverse_server_conn(struct proxy_session *proxy_sess) {
   pr_netaddr_t *bind_addr, *local_addr, *remote_addr;
   unsigned int remote_port;
   const char *remote_ipstr;
   conn_t *server_conn, *backend_ctrl_conn;
   int res;
 
-  remote_addr = proxy_backend_get_server(proxy_sess);
+  remote_addr = get_reverse_server(proxy_sess);
   if (remote_addr == NULL) {
     int xerrno = errno;
 
@@ -434,115 +439,6 @@ static int proxy_mkpath(pool *p, const char *path, uid_t uid, gid_t gid,
 /* Configuration handlers
  */
 
-/* usage: ProxyBackendAddress address */
-MODRET set_proxybackendaddress(cmd_rec *cmd) {
-  config_rec *c = NULL;
-  pr_netaddr_t *backend_addr = NULL;
-  unsigned int addr_flags = PR_NETADDR_GET_ADDR_FL_INCL_DEVICE;
-
-  CHECK_ARGS(cmd, 1);
-  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
-
-  backend_addr = pr_netaddr_get_addr2(cmd->server->pool, cmd->argv[1], NULL,
-    addr_flags);
-  if (backend_addr == NULL) {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to resolve '", cmd->argv[1],
-      "'", NULL));
-  }
-
-  c = add_config_param(cmd->argv[0], 1, NULL);
-  c->argv[0] = backend_addr;
-
-  return PR_HANDLED(cmd);
-}
-
-/* usage: ProxyBackendSelection [strategy] */
-MODRET set_proxybackendselection(cmd_rec *cmd) {
-
-  /* CHECK_ARGS(cmd, 1) */
-  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
-
-  return PR_HANDLED(cmd);
-}
-
-/* usage: ProxyBackendServers server1 ... server N
- *                            file://path/to/server/list.txt
- *                            sql://SQLNamedQuery
- */
-MODRET set_proxybackendservers(cmd_rec *cmd) {
-  config_rec *c;
-  array_header *backend_servers;
-
-  if (cmd->argc-1 < 1) {
-    CONF_ERROR(cmd, "wrong number of parameters");
-  }
-
-  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
-
-  c = add_config_param(cmd->argv[0], 1, NULL);
-  backend_servers = make_array(c->pool, 1, sizeof(struct proxy_conn *));
-
-  if (cmd->argc-1 == 1) {
-
-    /* We are dealing with one of the following possibilities:
-     *
-     *  file:/path/to/file.txt
-     *  sql://SQLNamedQuery/...
-     *  <server>
-     */
-
-    if (strncmp(cmd->argv[1], "file:", 5) == 0) {
-      char *path;
-
-      path = cmd->argv[1] + 5;
-    
-      /* Make sure the path is an absolute path.
-       *
-       * XXX For now, load the list of servers at sess init time.  In
-       * the future, we will want to load it at postparse time, mapped
-       * to the appropriate server_rec, and clear/reload on 'core.restart'.
-       */
-
-    } else if (strncmp(cmd->argv[1], "sql:/", 5) == 0) {
-      /* XXX Implement */
-
-      CONF_ERROR(cmd, "not yet implemented");
-
-    } else {
-      /* Treat it as a server-spec (i.e. a URI) */
-      struct proxy_conn *pconn;
-
-      pconn = proxy_conn_create(c->pool, cmd->argv[1]);
-      if (pconn == NULL) {
-        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing '", cmd->argv[1],
-          "': ", strerror(errno), NULL));
-      }
-
-      *((struct proxy_conn **) push_array(backend_servers)) = pconn;
-    }
-
-  } else {
-    register unsigned int i;
-
-    /* More than one parameter, which means they are all URIs. */
-
-    for (i = 1; i < cmd->argc; i++) {
-      struct proxy_conn *pconn;
-
-      pconn = proxy_conn_create(c->pool, cmd->argv[i]);
-      if (pconn == NULL) {
-        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing '", cmd->argv[i],
-          "': ", strerror(errno), NULL));
-      }
-
-      *((struct proxy_conn **) push_array(backend_servers)) = pconn;
-    }
-  }
-
-  c->argv[0] = backend_servers;
-  return PR_HANDLED(cmd);
-}
-
 /* usage: ProxyDataTransferPolicy "active"|"passive"|"pasv"|"epsv"|"port"|
  *          "eprt"|"client"
  */
@@ -644,23 +540,124 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
-/* usage: ProxyTimeoutConnect secs */
-MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
-  int timeout = -1;
+/* usage: ProxyReverseAddress address */
+MODRET set_proxyreverseaddress(cmd_rec *cmd) {
   config_rec *c = NULL;
+  pr_netaddr_t *backend_addr = NULL;
+  unsigned int addr_flags = PR_NETADDR_GET_ADDR_FL_INCL_DEVICE;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
-  if (pr_str_get_duration(cmd->argv[1], &timeout) < 0) {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing timeout value '",
-      cmd->argv[1], "': ", strerror(errno), NULL));
+  backend_addr = pr_netaddr_get_addr2(cmd->server->pool, cmd->argv[1], NULL,
+    addr_flags);
+  if (backend_addr == NULL) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to resolve '", cmd->argv[1],
+      "'", NULL));
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
-  c->argv[0] = pcalloc(c->pool, sizeof(int));
-  *((int *) c->argv[0]) = timeout;
+  c->argv[0] = backend_addr;
 
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxyReverseSelection [policy] */
+MODRET set_proxyreverseselection(cmd_rec *cmd) {
+  config_rec *c;
+  int select_policy = -1;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  select_policy = proxy_reverse_select_get_policy(cmd->argv[1]);
+  if (select_policy < 0) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+      "unknown/unsupported selection strategy: ", cmd->argv[1], NULL));
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = select_policy;
+
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxyReverseServers server1 ... server N
+ *                            file://path/to/server/list.txt
+ *                            sql://SQLNamedQuery
+ */
+MODRET set_proxyreverseservers(cmd_rec *cmd) {
+  config_rec *c;
+  array_header *backend_servers;
+
+  if (cmd->argc-1 < 1) {
+    CONF_ERROR(cmd, "wrong number of parameters");
+  }
+
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  backend_servers = make_array(c->pool, 1, sizeof(struct proxy_conn *));
+
+  if (cmd->argc-1 == 1) {
+
+    /* We are dealing with one of the following possibilities:
+     *
+     *  file:/path/to/file.txt
+     *  sql://SQLNamedQuery/...
+     *  <server>
+     */
+
+    if (strncmp(cmd->argv[1], "file:", 5) == 0) {
+      char *path;
+
+      path = cmd->argv[1] + 5;
+    
+      /* Make sure the path is an absolute path.
+       *
+       * XXX For now, load the list of servers at sess init time.  In
+       * the future, we will want to load it at postparse time, mapped
+       * to the appropriate server_rec, and clear/reload on 'core.restart'.
+       */
+
+    } else if (strncmp(cmd->argv[1], "sql:/", 5) == 0) {
+      /* XXX Implement */
+
+      CONF_ERROR(cmd, "not yet implemented");
+
+    } else {
+      /* Treat it as a server-spec (i.e. a URI) */
+      struct proxy_conn *pconn;
+
+      pconn = proxy_conn_create(c->pool, cmd->argv[1]);
+      if (pconn == NULL) {
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing '", cmd->argv[1],
+          "': ", strerror(errno), NULL));
+      }
+
+      *((struct proxy_conn **) push_array(backend_servers)) = pconn;
+    }
+
+  } else {
+    register unsigned int i;
+
+    /* More than one parameter, which means they are all URIs. */
+
+    for (i = 1; i < cmd->argc; i++) {
+      struct proxy_conn *pconn;
+
+      pconn = proxy_conn_create(c->pool, cmd->argv[i]);
+      if (pconn == NULL) {
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing '", cmd->argv[i],
+          "': ", strerror(errno), NULL));
+      }
+
+      *((struct proxy_conn **) push_array(backend_servers)) = pconn;
+    }
+  }
+
+  c->argv[0] = backend_servers;
   return PR_HANDLED(cmd);
 }
 
@@ -766,6 +763,11 @@ MODRET set_proxytables(cmd_rec *cmd) {
     } else {
       mode_t dir_mode, expected_mode;
 
+      if (!S_ISDIR(st.st_mode)) {
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "path '", proxy_chroot,
+          "' is not a directory as expected", NULL));
+      }
+
       dir_mode = st.st_mode;
       dir_mode &= ~S_IFMT;
       expected_mode = (S_IXUSR|S_IXGRP|S_IXOTH);
@@ -778,6 +780,26 @@ MODRET set_proxytables(cmd_rec *cmd) {
   }
 
   (void) add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxyTimeoutConnect secs */
+MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
+  int timeout = -1;
+  config_rec *c = NULL;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  if (pr_str_get_duration(cmd->argv[1], &timeout) < 0) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing timeout value '",
+      cmd->argv[1], "': ", strerror(errno), NULL));
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = pcalloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = timeout;
+
   return PR_HANDLED(cmd);
 }
 
@@ -1719,7 +1741,7 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    * we can inform the client of the address/port to which IT is to
    * connect for its part of the data transfer.
    *
-   * Note that we do NOT use the ProxyBackendAddress here, since this listening
+   * Note that we do NOT use the ProxyReverseAddress here, since this listening
    * connection is for the frontend client.
    */
 
@@ -1839,7 +1861,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    * we can inform the client of the address/port to which IT is to
    * connect for its part of the data transfer.
    *
-   * Note that we do NOT use the ProxyBackendAddress here, since this listening
+   * Note that we do NOT use the ProxyReverseAddress here, since this listening
    * connection is for the frontend client.
    */
 
@@ -2792,6 +2814,7 @@ static int proxy_sess_init(void) {
         proxy_engine = FALSE;
         return -1;
       }
+
       break;
 
     case PROXY_ROLE_PROXY:
@@ -2842,7 +2865,7 @@ static int proxy_sess_init(void) {
       "error stashing proxy session note: %s", strerror(errno));
   }
 
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyBackendAddress", FALSE);
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseAddress", FALSE);
   if (c != NULL) {
     proxy_sess->backend_addr = c->argv[0];
   }
@@ -2868,7 +2891,7 @@ static int proxy_sess_init(void) {
    * we connect to it.
    */
 
-  server_conn = proxy_backend_get_server_conn(proxy_sess);
+  server_conn = get_reverse_server_conn(proxy_sess);
   if (server_conn == NULL) {
     pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
       NULL);
@@ -2942,16 +2965,16 @@ static int proxy_sess_init(void) {
  */
 
 static conftable proxy_conftab[] = {
-  { "ProxyBackendAddress",	set_proxybackendaddress,	NULL },
-  { "ProxyBackendSelection",	set_proxybackendselection,	NULL },
-  { "ProxyBackendServers",	set_proxybackendservers,	NULL },
   { "ProxyDataTransferPolicy",	set_proxydatatransferpolicy,	NULL },
   { "ProxyEngine",		set_proxyengine,		NULL },
   { "ProxyLog",			set_proxylog,			NULL },
   { "ProxyOptions",		set_proxyoptions,		NULL },
-  { "ProxyTimeoutConnect",	set_proxytimeoutconnect,	NULL },
+  { "ProxyReverseAddress",	set_proxyreverseaddress,	NULL },
+  { "ProxyReverseSelection",	set_proxyreverseselection,	NULL },
+  { "ProxyReverseServers",	set_proxyreverseservers,	NULL },
   { "ProxyRole",		set_proxyrole,			NULL },
   { "ProxyTables",		set_proxytables,		NULL },
+  { "ProxyTimeoutConnect",	set_proxytimeoutconnect,	NULL },
 
   /* Support TransferPriority for proxied connections? */
   /* Deliberately ignore/disable HiddenStores in mod_proxy configs */
