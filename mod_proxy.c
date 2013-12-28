@@ -56,6 +56,7 @@ module proxy_module;
 int proxy_logfd = -1;
 pool *proxy_pool = NULL;
 unsigned long proxy_opts = 0UL;
+unsigned int proxy_sess_state = 0U;
 
 static int proxy_engine = FALSE;
 static int proxy_role = PROXY_ROLE_REVERSE;
@@ -315,28 +316,6 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
-/* usage: ProxyReverseAddress address */
-MODRET set_proxyreverseaddress(cmd_rec *cmd) {
-  config_rec *c = NULL;
-  pr_netaddr_t *backend_addr = NULL;
-  unsigned int addr_flags = PR_NETADDR_GET_ADDR_FL_INCL_DEVICE;
-
-  CHECK_ARGS(cmd, 1);
-  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
-
-  backend_addr = pr_netaddr_get_addr2(cmd->server->pool, cmd->argv[1], NULL,
-    addr_flags);
-  if (backend_addr == NULL) {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to resolve '", cmd->argv[1],
-      "'", NULL));
-  }
-
-  c = add_config_param(cmd->argv[0], 1, NULL);
-  c->argv[0] = backend_addr;
-
-  return PR_HANDLED(cmd);
-}
-
 /* usage: ProxyReverseSelection [policy] */
 MODRET set_proxyreverseselection(cmd_rec *cmd) {
   config_rec *c;
@@ -460,6 +439,28 @@ MODRET set_proxyrole(cmd_rec *cmd) {
   c = add_config_param(cmd->argv[0], 1, NULL);
   c->argv[0] = palloc(c->pool, sizeof(int));
   *((int *) c->argv[0]) = role;
+
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxySourceAddress address */
+MODRET set_proxysourceaddress(cmd_rec *cmd) {
+  config_rec *c = NULL;
+  pr_netaddr_t *src_addr = NULL;
+  unsigned int addr_flags = PR_NETADDR_GET_ADDR_FL_INCL_DEVICE;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  src_addr = pr_netaddr_get_addr2(cmd->server->pool, cmd->argv[1], NULL,
+    addr_flags);
+  if (src_addr == NULL) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to resolve '", cmd->argv[1],
+      "'", NULL));
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = src_addr;
 
   return PR_HANDLED(cmd);
 }
@@ -704,9 +705,9 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
      */
 
     /* Specify the specific address/interface to use as the source address for
-     * connections to the backend server.
+     * connections to the destination server.
      */
-    bind_addr = proxy_sess->backend_addr;
+    bind_addr = proxy_sess->src_addr;
     if (bind_addr == NULL) {
       bind_addr = session.c->local_addr;
     }
@@ -1516,7 +1517,7 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    * we can inform the client of the address/port to which IT is to
    * connect for its part of the data transfer.
    *
-   * Note that we do NOT use the ProxyReverseAddress here, since this listening
+   * Note that we do NOT use the ProxySourceAddress here, since this listening
    * connection is for the frontend client.
    */
 
@@ -1636,7 +1637,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    * we can inform the client of the address/port to which IT is to
    * connect for its part of the data transfer.
    *
-   * Note that we do NOT use the ProxyReverseAddress here, since this listening
+   * Note that we do NOT use the ProxySourceAddress here, since this listening
    * connection is for the frontend client.
    */
 
@@ -2138,6 +2139,7 @@ MODRET proxy_any(cmd_rec *cmd) {
     return PR_DECLINED(cmd);
   }
 
+  /* XXX TODO: the response blocking is role-specific...? */
   pr_response_block(FALSE);
   pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
  
@@ -2235,6 +2237,13 @@ MODRET proxy_any(cmd_rec *cmd) {
     case PR_CMD_PBSZ_ID:
     case PR_CMD_PROT_ID:
       return PR_DECLINED(cmd);
+  }
+
+  /* If we are not connected to a backend server, then don't try to proxy
+   * the command.
+   */
+  if (!(proxy_sess_state & PROXY_SESS_STATE_CONNECTED)) {
+    return PR_DECLINED(cmd);
   }
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
@@ -2567,10 +2576,7 @@ static void proxy_set_sess_defaults(void) {
 static int proxy_sess_init(void) {
   config_rec *c;
   int res;
-  conn_t *server_conn;
   struct proxy_session *proxy_sess;
-  pr_response_t *resp;
-  unsigned int resp_nlines = 0;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyEngine", FALSE);
   if (c != NULL) {
@@ -2662,6 +2668,43 @@ static int proxy_sess_init(void) {
     proxy_role = *((int *) c->argv[0]);
   }
 
+  /* Set defaults for directives that mod_proxy should allow. */
+  proxy_set_sess_defaults();
+
+  /* Allocate our own session structure, for tracking proxy-specific
+   * fields.  Use the session.notes table for stashing/retrieving it as
+   * needed.
+   */
+  proxy_sess = pcalloc(proxy_pool, sizeof(struct proxy_session));
+  if (pr_table_add(session.notes, "mod_proxy.proxy-session", proxy_sess,
+      sizeof(struct proxy_session)) < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error stashing proxy session note: %s", strerror(errno));
+
+    /* This is a fatal error; mod_proxy won't function without this note. */
+    errno = EPERM;
+    return -1;
+  }
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxySourceAddress", FALSE);
+  if (c != NULL) {
+    proxy_sess->src_addr = c->argv[0];
+  }
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyDataTransferPolicy",
+    FALSE);
+  if (c != NULL) {
+    proxy_sess->dataxfer_policy = *((int *) c->argv[0]);
+  }
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyTimeoutConnect", FALSE);
+  if (c != NULL) {
+    proxy_sess->connect_timeout = *((int *) c->argv[0]);
+
+  } else {
+    proxy_sess->connect_timeout = PROXY_CONNECT_DEFAULT_TIMEOUT;
+  }
+
   /* XXX All proxied connections are automatically chrooted (after auth,
    * or immediately upon connect?  Depends on the backend selection
    * mechanism...)
@@ -2679,6 +2722,12 @@ static int proxy_sess_init(void) {
         return -1;
       }
 
+      if (proxy_reverse_connect(proxy_pool, proxy_sess) < 0) {
+        /* XXX TODO: Return 530 to connecting client? */
+        pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
+          "Unable to connect to backend server");
+      }
+
       set_auth_check(proxy_reverse_have_authenticated);
       break;
 
@@ -2691,7 +2740,7 @@ static int proxy_sess_init(void) {
       }
 
       /* XXX TODO:
-       *   DisplayLogin
+       *   DisplayConnect
        */
 
       set_auth_check(proxy_forward_have_authenticated);
@@ -2721,102 +2770,6 @@ static int proxy_sess_init(void) {
    * If we do this, we should also add separate "proxy" rows to the DelayTable.
    */
 
-  /* Set defaults for directives that mod_proxy should allow. */
-  proxy_set_sess_defaults();
-
-  /* Allocate our own session structure, for tracking proxy-specific
-   * fields.  Use the session.notes table for stashing/retrieving it as
-   * needed.
-   */
-  proxy_sess = pcalloc(proxy_pool, sizeof(struct proxy_session));
-  if (pr_table_add(session.notes, "mod_proxy.proxy-session", proxy_sess,
-      sizeof(struct proxy_session)) < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error stashing proxy session note: %s", strerror(errno));
-  }
-
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseAddress", FALSE);
-  if (c != NULL) {
-    proxy_sess->backend_addr = c->argv[0];
-  }
-
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyDataTransferPolicy",
-    FALSE);
-  if (c != NULL) {
-    proxy_sess->dataxfer_policy = *((int *) c->argv[0]);
-  }
-
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyTimeoutConnect", FALSE);
-  if (c != NULL) {
-    proxy_sess->connect_timeout = *((int *) c->argv[0]);
-
-  } else {
-    proxy_sess->connect_timeout = PROXY_CONNECT_DEFAULT_TIMEOUT;
-  }
-
-  /* XXX For now, assume we're acting as a gateway. */
-
-  server_conn = proxy_reverse_server_get_conn(proxy_sess);
-  if (server_conn == NULL) {
-    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
-      NULL);
-  }
-
-  proxy_sess->frontend_ctrl_conn = session.c;
-  proxy_sess->backend_ctrl_conn = server_conn;
-
-  /* Read the response from the backend server and send it to the connected
-   * client as if it were our own banner.
-   */
-  resp = proxy_ftp_ctrl_recv_resp(proxy_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
-  if (resp == NULL) {
-    int xerrno = errno;
-
-    pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to read banner from server %s:%u: %s",
-      pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr),
-      ntohs(pr_netaddr_get_port(proxy_sess->backend_ctrl_conn->remote_addr)),
-      strerror(xerrno));
-    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
-      "Unable to connect to backend server");
-
-  } else {
-    int banner_ok = TRUE;
-
-    if (resp->num[0] != '2') {
-      banner_ok = FALSE;
-    }
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "received banner from backend %s:%u%s: %s %s",
-      pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr),
-      ntohs(pr_netaddr_get_port(proxy_sess->backend_ctrl_conn->remote_addr)),
-      banner_ok ? "" : ", DISCONNECTING", resp->num, resp->msg);
-
-    if (proxy_ftp_ctrl_send_resp(proxy_pool, session.c, resp,
-        resp_nlines) < 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "unable to send banner to client: %s", strerror(errno));
-    }
-
-    if (banner_ok == FALSE) {
-      pr_inet_close(proxy_pool, proxy_sess->backend_ctrl_conn);
-      proxy_sess->backend_ctrl_conn = NULL;
-
-      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
-        "Unable to connect to backend server");
-    }
-  }
-
-  /* Get the features supported by the backend server */
-  if (proxy_ftp_feat_get(proxy_pool, proxy_sess) < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to determine features of backend server: %s", strerror(errno));
-  }
-
-  pr_response_block(TRUE);
-
   /* We have to use our own command event loop, since we will also need to
    * watch any data transfer connections with the backend server, in addition
    * to the client control connection.
@@ -2835,10 +2788,10 @@ static conftable proxy_conftab[] = {
   { "ProxyForwardMethod",	set_proxyforwardmethod,		NULL },
   { "ProxyLog",			set_proxylog,			NULL },
   { "ProxyOptions",		set_proxyoptions,		NULL },
-  { "ProxyReverseAddress",	set_proxyreverseaddress,	NULL },
   { "ProxyReverseSelection",	set_proxyreverseselection,	NULL },
   { "ProxyReverseServers",	set_proxyreverseservers,	NULL },
   { "ProxyRole",		set_proxyrole,			NULL },
+  { "ProxySourceAddress",	set_proxysourceaddress,		NULL },
   { "ProxyTables",		set_proxytables,		NULL },
   { "ProxyTimeoutConnect",	set_proxytimeoutconnect,	NULL },
 

@@ -45,8 +45,8 @@ struct proxy_session {
   volatile int backend_sess_flags;
   pr_netaddr_t *backend_data_addr;
 
-  /* Address for connections to/from backend.  May be null. */
-  pr_netaddr_t *backend_addr;
+  /* Address for connections to/from destination server.  May be null. */
+  pr_netaddr_t *src_addr;
 
   /* Features supported by backend server */
   pr_table_t *backend_features;

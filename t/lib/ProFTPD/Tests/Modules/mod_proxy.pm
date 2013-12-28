@@ -381,25 +381,30 @@ my $TESTS = {
     test_class => [qw(forking)],
   },
 
-  proxy_forward_connect_failed_bad_addr => {
+  proxy_forward_login => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_forward_connect_failed_non2xx => {
+  proxy_forward_login_failed_bad_addr => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
+
+  proxy_forward_login_failed_non2xx => {
     order => ++$order,
     test_class => [qw(forking mod_wrap2 mod_wrap2_file)],
   },
 
-  # proxy_forward_login
   # proxy_forward_list_pasv
   # proxy_forward_list_port
   # proxy_forward_epsv
   # proxy_forward_eprt
   # proxy_forward_stor_pasv
 
+  # proxy_forward_config_displayconnect
   # proxy_forward_config_filter
-  # proxy_forward_config_type (no proxy user auth, reqd proxy user auth)
+  # proxy_forward_config_method (reqd proxy user auth)
 };
 
 sub new {
@@ -409,12 +414,11 @@ sub new {
 sub list_tests {
 #  return testsuite_get_runnable_tests($TESTS);
   return qw(
-    proxy_reverse_login
+    proxy_forward_login
   );
 
-#  proxy_forward_connect
-#  proxy_forward_connect_failed_bad_addr
-#  proxy_forward_connect_failed_non2xx
+#  proxy_forward_login_failed_bad_addr
+#  proxy_forward_login_failed_non2xx
 }
 
 sub get_reverse_proxy_config {
@@ -440,12 +444,15 @@ sub get_forward_proxy_config {
   my $log_file = shift;
   my $vhost_port = shift;
 
+  my $table_dir = File::Spec->rel2abs("$tmpdir/var/proxy");
+
   # XXX Provide necessary <Proxy>/<Limit> section?
 
   my $config = {
     ProxyEngine => 'on',
     ProxyLog => $log_file,
     ProxyRole => 'forward',
+    ProxyTables => $table_dir,
   };
 
   return $config;
@@ -12155,10 +12162,11 @@ sub proxy_forward_connect {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
     IfModules => {
@@ -12210,8 +12218,6 @@ EOC
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
 
-      # 
-
       $client->quit();
 
       my $expected;
@@ -12220,7 +12226,7 @@ EOC
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = 'Real Server';
+      $expected = 'Forward Proxy Server';
       $self->assert(qr/$expected/, $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
     };

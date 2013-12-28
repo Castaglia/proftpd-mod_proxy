@@ -55,5 +55,11 @@ extern int proxy_logfd;
 extern module proxy_module;
 extern pool *proxy_pool;
 extern unsigned long proxy_opts;
+extern unsigned int proxy_sess_state;
+
+/* mod_proxy session state flags */
+#define PROXY_SESS_STATE_PROXY_AUTHENTICATED	0x0001
+#define PROXY_SESS_STATE_CONNECTED		0x0002
+#define PROXY_SESS_STATE_BACKEND_AUTHENTICATED	0x0004
 
 #endif /* MOD_PROXY_H */

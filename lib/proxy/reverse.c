@@ -28,6 +28,8 @@
 #include "proxy/session.h"
 #include "proxy/reverse.h"
 #include "proxy/random.h"
+#include "proxy/ftp/ctrl.h"
+#include "proxy/ftp/feat.h"
 
 static int reverse_select_policy = PROXY_REVERSE_SELECT_POLICY_RANDOM;
 
@@ -124,7 +126,7 @@ int proxy_reverse_select_get_policy(const char *policy) {
   return -1;
 }
 
-int proxy_reverse_select_next_index(unsigned int sid,
+static int reverse_select_next_index(unsigned int sid,
     unsigned int backend_count, void *policy_data) {
   int next_idx = -1;
 
@@ -152,13 +154,14 @@ int proxy_reverse_select_next_index(unsigned int sid,
   return next_idx;
 }
 
-int proxy_reverse_select_used_index(unsigned int sid, unsigned int idx,
+static int reverse_select_used_index(unsigned int sid, unsigned int idx,
     unsigned long response_ms) {
   errno = ENOSYS;
   return -1;
 }
 
-static pr_netaddr_t *get_reverse_server_addr(struct proxy_session *proxy_sess) {
+static pr_netaddr_t *get_reverse_server_addr(pool *p,
+    struct proxy_session *proxy_sess) {
   config_rec *c;
   array_header *backend_servers;
   struct proxy_conn **conns;
@@ -169,7 +172,7 @@ static pr_netaddr_t *get_reverse_server_addr(struct proxy_session *proxy_sess) {
   backend_servers = c->argv[0];
   conns = backend_servers->elts;
 
-  idx = proxy_reverse_select_next_index(main_server->sid,
+  idx = reverse_select_next_index(main_server->sid,
     backend_servers->nelts, NULL);
   if (idx < 0) {
     return NULL;
@@ -182,14 +185,15 @@ static pr_netaddr_t *get_reverse_server_addr(struct proxy_session *proxy_sess) {
   return addr;
 }
 
-conn_t *proxy_reverse_server_get_conn(struct proxy_session *proxy_sess) {
+static conn_t *get_reverse_server_conn(pool *p,
+    struct proxy_session *proxy_sess) {
   pr_netaddr_t *bind_addr, *local_addr, *remote_addr;
   unsigned int remote_port;
   const char *remote_ipstr;
   conn_t *server_conn, *backend_ctrl_conn;
   int res;
 
-  remote_addr = get_reverse_server_addr(proxy_sess);
+  remote_addr = get_reverse_server_addr(p, proxy_sess);
   if (remote_addr == NULL) {
     int xerrno = errno;
 
@@ -226,21 +230,20 @@ conn_t *proxy_reverse_server_get_conn(struct proxy_session *proxy_sess) {
     /* In this scenario, the proxy has an IPv6 socket, but the remote/backend
      * server has an IPv4 (or IPv4-mapped IPv6) address.
      */
-    local_addr = pr_netaddr_v6tov4(session.pool, session.c->local_addr);
+    local_addr = pr_netaddr_v6tov4(p, session.c->local_addr);
   }
 
-  bind_addr = proxy_sess->backend_addr;
+  bind_addr = proxy_sess->src_addr;
   if (bind_addr == NULL) {
     bind_addr = local_addr;
   }
 
-  server_conn = pr_inet_create_conn(proxy_pool, -1, bind_addr, INPORT_ANY,
-    FALSE); 
+  server_conn = pr_inet_create_conn(p, -1, bind_addr, INPORT_ANY, FALSE); 
 
   pr_trace_msg(trace_channel, 11, "connecting to backend address %s:%u from %s",
     remote_ipstr, remote_port, pr_netaddr_get_ipstr(bind_addr));
 
-  res = pr_inet_connect_nowait(proxy_pool, server_conn, remote_addr,
+  res = pr_inet_connect_nowait(p, server_conn, remote_addr,
     ntohs(pr_netaddr_get_port(remote_addr)));
   if (res < 0) {
     int xerrno = errno;
@@ -267,8 +270,8 @@ conn_t *proxy_reverse_server_get_conn(struct proxy_session *proxy_sess) {
     }
 
     /* Not yet connected. */
-    nstrm = pr_netio_open(proxy_pool, PR_NETIO_STRM_OTHR,
-      server_conn->listen_fd, nstrm_mode);
+    nstrm = pr_netio_open(p, PR_NETIO_STRM_OTHR, server_conn->listen_fd,
+      nstrm_mode);
     if (nstrm == NULL) {
       int xerrno = errno;
 
@@ -277,7 +280,7 @@ conn_t *proxy_reverse_server_get_conn(struct proxy_session *proxy_sess) {
         strerror(xerrno));
 
       pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-      pr_inet_close(proxy_pool, server_conn);
+      pr_inet_close(p, server_conn);
 
       errno = xerrno;
       return NULL;
@@ -290,7 +293,7 @@ conn_t *proxy_reverse_server_get_conn(struct proxy_session *proxy_sess) {
         /* Aborted, timed out.  Note that we shouldn't reach here. */
         pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
         pr_netio_close(nstrm);
-        pr_inet_close(proxy_pool, server_conn);
+        pr_inet_close(p, server_conn);
 
         errno = ETIMEDOUT;
         return NULL;
@@ -306,7 +309,7 @@ conn_t *proxy_reverse_server_get_conn(struct proxy_session *proxy_sess) {
 
         pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
         pr_netio_close(nstrm);
-        pr_inet_close(proxy_pool, server_conn);
+        pr_inet_close(p, server_conn);
 
         errno = xerrno;
         return NULL;
@@ -327,7 +330,7 @@ conn_t *proxy_reverse_server_get_conn(struct proxy_session *proxy_sess) {
             server_conn->listen_fd, strerror(xerrno));
 
           pr_netio_close(nstrm);
-          pr_inet_close(proxy_pool, server_conn);
+          pr_inet_close(p, server_conn);
 
           errno = xerrno;
           return NULL;
@@ -343,8 +346,8 @@ conn_t *proxy_reverse_server_get_conn(struct proxy_session *proxy_sess) {
     pr_netaddr_get_ipstr(server_conn->local_addr),
     ntohs(pr_netaddr_get_port(server_conn->local_addr)));
 
-  backend_ctrl_conn = pr_inet_openrw(proxy_pool, server_conn, NULL,
-    PR_NETIO_STRM_CTRL, -1, -1, -1, FALSE);
+  backend_ctrl_conn = pr_inet_openrw(p, server_conn, NULL, PR_NETIO_STRM_CTRL,
+    -1, -1, -1, FALSE);
   if (backend_ctrl_conn == NULL) {
     int xerrno = errno;
 
@@ -352,14 +355,14 @@ conn_t *proxy_reverse_server_get_conn(struct proxy_session *proxy_sess) {
       "unable to open control connection to %s#%u: %s", remote_ipstr,
       remote_port, strerror(xerrno));
 
-    pr_inet_close(proxy_pool, server_conn);
+    pr_inet_close(p, server_conn);
 
     errno = xerrno;
     return NULL;
   }
 
   if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL) {
-    if (proxy_conn_send_proxy(proxy_pool, backend_ctrl_conn) < 0) {
+    if (proxy_conn_send_proxy(p, backend_ctrl_conn) < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "error sending PROXY message to %s#%u: %s", remote_ipstr, remote_port,
         strerror(errno));
@@ -371,5 +374,73 @@ conn_t *proxy_reverse_server_get_conn(struct proxy_session *proxy_sess) {
    */
 
   return backend_ctrl_conn;
+}
+
+int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess) {
+  conn_t *server_conn = NULL;
+  pr_response_t *resp = NULL;
+  unsigned int resp_nlines = 0;
+
+  server_conn = get_reverse_server_conn(p, proxy_sess);
+  if (server_conn == NULL) {
+    return -1;
+  }
+
+  proxy_sess->frontend_ctrl_conn = session.c;
+  proxy_sess->backend_ctrl_conn = server_conn;
+
+  /* Read the response from the backend server and send it to the connected
+   * client as if it were our own banner.
+   */
+  resp = proxy_ftp_ctrl_recv_resp(p, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
+  if (resp == NULL) {
+    int xerrno = errno;
+
+    pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to read banner from server %s:%u: %s",
+      pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr),
+      ntohs(pr_netaddr_get_port(proxy_sess->backend_ctrl_conn->remote_addr)),
+      strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+
+  } else {
+    int banner_ok = TRUE;
+
+    if (resp->num[0] != '2') {
+      banner_ok = FALSE;
+    }
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "received banner from backend %s:%u%s: %s %s",
+      pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr),
+      ntohs(pr_netaddr_get_port(proxy_sess->backend_ctrl_conn->remote_addr)),
+      banner_ok ? "" : ", DISCONNECTING", resp->num, resp->msg);
+
+    if (proxy_ftp_ctrl_send_resp(p, session.c, resp, resp_nlines) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to send banner to client: %s", strerror(errno));
+    }
+
+    if (banner_ok == FALSE) {
+      pr_inet_close(p, proxy_sess->backend_ctrl_conn);
+      proxy_sess->backend_ctrl_conn = NULL;
+      return -1;
+    }
+  }
+
+  /* Get the features supported by the backend server */
+  if (proxy_ftp_feat_get(p, proxy_sess) < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to determine features of backend server: %s", strerror(errno));
+  }
+
+  proxy_sess_state |= PROXY_SESS_STATE_CONNECTED;
+
+  pr_response_block(TRUE);
+
+  return 0;
 }
 

@@ -24,14 +24,16 @@
 
 #include "mod_proxy.h"
 
+#include "proxy/session.h"
+
 #ifndef MOD_PROXY_REVERSE_H
 #define MOD_PROXY_REVERSE_H
 
 int proxy_reverse_init(pool *p);
 int proxy_reverse_have_authenticated(cmd_rec *cmd);
+int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess);
 
 /* Backend selection policy API */
-
 #define PROXY_REVERSE_SELECT_POLICY_RANDOM			1
 #define PROXY_REVERSE_SELECT_POLICY_ROUND_ROBIN			2
 #define PROXY_REVERSE_SELECT_POLICY_LEAST_CONNS			3
@@ -44,13 +46,5 @@ int proxy_reverse_have_authenticated(cmd_rec *cmd);
  * is not recognized/supported.
  */
 int proxy_reverse_select_get_policy(const char *policy);
-
-int proxy_reverse_select_next_index(unsigned int sid,
-  unsigned int backend_count, void *policy_data);
-
-int proxy_reverse_select_used_index(unsigned int sid, unsigned int idx,
-  unsigned long response_ms);
-
-conn_t *proxy_reverse_server_get_conn(struct proxy_session *);
 
 #endif /* MOD_PROXY_REVERSE_H */
