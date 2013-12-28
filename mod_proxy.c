@@ -1892,16 +1892,20 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 }
 
 MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess) {
-  int res, xerrno;
-  pr_response_t *resp;
-  unsigned int resp_nlines = 0;
+  int ok = FALSE, res;
 
-  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    cmd);
+  switch (proxy_role) {
+    case PROXY_ROLE_REVERSE:
+      res = proxy_reverse_handle_user(cmd, proxy_sess, &ok);
+      break;
+
+    case PROXY_ROLE_FORWARD:
+      res = proxy_forward_handle_user(cmd, proxy_sess, &ok);
+      break;
+  }
+
   if (res < 0) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+    int xerrno = errno;
 
     pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
     pr_response_flush(&resp_err_list);
@@ -1910,23 +1914,7 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
-  if (resp == NULL) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", cmd->argv[0],
-      strerror(xerrno));
-
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  if (resp->num[0] == '2' ||
-      resp->num[0] == '3') {
+  if (ok) {
     config_rec *c;
     char *user, *xferlog = PR_XFERLOG_PATH;
 
@@ -1968,16 +1956,6 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       /* ASCII by default. */
       session.sf_flags |= SF_ASCII;
     }
-  }
-
-  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
-    resp, resp_nlines);
-  if (res < 0) {
-    xerrno = errno;
-
-    pr_response_block(TRUE);
-    errno = xerrno;
-    return PR_ERROR(cmd);
   }
 
   return PR_HANDLED(cmd);

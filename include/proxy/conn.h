@@ -24,6 +24,8 @@
 
 #include "mod_proxy.h"
 
+#include "proxy/session.h"
+
 #ifndef MOD_PROXY_CONN_H
 #define MOD_PROXY_CONN_H
 
@@ -32,6 +34,8 @@ struct proxy_conn;
 int proxy_conn_connect_timeout_cb(CALLBACK_FRAME);
 struct proxy_conn *proxy_conn_create(pool *p, const char *uri);
 pr_netaddr_t *proxy_conn_get_addr(struct proxy_conn *);
+conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
+  pr_netaddr_t *remote_addr);
 const char *proxy_conn_get_uri(struct proxy_conn *);
 int proxy_conn_send_proxy(pool *p, conn_t *);
 

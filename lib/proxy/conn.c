@@ -141,6 +141,174 @@ pr_netaddr_t *proxy_conn_get_addr(struct proxy_conn *pconn) {
   return pconn->pconn_addr;
 }
 
+conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
+    pr_netaddr_t *remote_addr) {
+  pr_netaddr_t *bind_addr, *local_addr;
+  const char *remote_ipstr;
+  unsigned int remote_port;
+  conn_t *server_conn, *ctrl_conn;
+  int res;
+
+  if (proxy_sess->connect_timeout > 0) {
+    proxy_sess->connect_timerno = pr_timer_add(proxy_sess->connect_timeout,
+      -1, &proxy_module, proxy_conn_connect_timeout_cb, "ProxyTimeoutConnect");
+
+    if (pr_table_add(session.notes, "mod_proxy.proxy-connect-address",
+      remote_addr, sizeof(pr_netaddr_t)) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error stashing proxy connect address note: %s", strerror(errno));
+    }
+  }
+
+  remote_ipstr = pr_netaddr_get_ipstr(remote_addr);
+  remote_port = ntohs(pr_netaddr_get_port(remote_addr));
+
+  /* Check the family of the retrieved address vs what we'll be using
+   * to connect.  If there's a mismatch, we need to get an addr with the
+   * matching family.
+   */
+
+  if (pr_netaddr_get_family(session.c->local_addr) == pr_netaddr_get_family(remote_addr)) {
+    local_addr = session.c->local_addr;
+
+  } else {
+    /* In this scenario, the proxy has an IPv6 socket, but the remote/backend
+     * server has an IPv4 (or IPv4-mapped IPv6) address.
+     */
+    local_addr = pr_netaddr_v6tov4(p, session.c->local_addr);
+  }
+
+  bind_addr = proxy_sess->src_addr;
+  if (bind_addr == NULL) {
+    bind_addr = local_addr;
+  }
+
+  server_conn = pr_inet_create_conn(p, -1, bind_addr, INPORT_ANY, FALSE);
+
+  pr_trace_msg(trace_channel, 11, "connecting to backend address %s:%u from %s",
+    remote_ipstr, remote_port, pr_netaddr_get_ipstr(bind_addr));
+
+  res = pr_inet_connect_nowait(p, server_conn, remote_addr,
+    ntohs(pr_netaddr_get_port(remote_addr)));
+  if (res < 0) {
+    int xerrno = errno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error starting connect to %s#%u: %s", remote_ipstr, remote_port,
+      strerror(xerrno));
+
+    pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
+    errno = xerrno;
+    return NULL;
+  }
+
+  if (res == 0) {
+    pr_netio_stream_t *nstrm;
+    int nstrm_mode = PR_NETIO_IO_RD;
+
+    if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL) {
+      /* Rather than waiting for the stream to be readable (because the
+       * other end sent us something), wait for the stream to be writable
+       * so that we can send something to the other end).
+       */
+      nstrm_mode = PR_NETIO_IO_WR;
+    }
+
+    /* Not yet connected. */
+    nstrm = pr_netio_open(p, PR_NETIO_STRM_OTHR, server_conn->listen_fd,
+      nstrm_mode);
+    if (nstrm == NULL) {
+      int xerrno = errno;
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error opening stream to %s#%u: %s", remote_ipstr, remote_port,
+        strerror(xerrno));
+
+      pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
+      pr_inet_close(p, server_conn);
+
+      errno = xerrno;
+      return NULL;
+    }
+
+    pr_netio_set_poll_interval(nstrm, 1);
+
+    switch (pr_netio_poll(nstrm)) {
+      case 1: {
+        /* Aborted, timed out.  Note that we shouldn't reach here. */
+        pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
+        pr_netio_close(nstrm);
+        pr_inet_close(p, server_conn);
+
+        errno = ETIMEDOUT;
+        return NULL;
+      }
+
+      case -1: {
+        /* Error */
+        int xerrno = errno;
+
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error connecting to %s#%u: %s", remote_ipstr, remote_port,
+          strerror(xerrno));
+
+        pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
+        pr_netio_close(nstrm);
+        pr_inet_close(p, server_conn);
+
+        errno = xerrno;
+        return NULL;
+      }
+
+      default: {
+        /* Connected */
+        server_conn->mode = CM_OPEN;
+        pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
+        pr_table_remove(session.notes, "mod_proxy.proxy-connect-addr", NULL);
+
+        res = pr_inet_get_conn_info(server_conn, server_conn->listen_fd);
+        if (res < 0) {
+          int xerrno = errno;
+
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "error obtaining local socket info on fd %d: %s\n",
+            server_conn->listen_fd, strerror(xerrno));
+
+          pr_netio_close(nstrm);
+          pr_inet_close(p, server_conn);
+
+          errno = xerrno;
+          return NULL;
+        }
+
+        break;
+      }
+    }
+  }
+
+  pr_trace_msg(trace_channel, 5,
+    "successfully connected to %s#%u from %s#%d", remote_ipstr, remote_port,
+    pr_netaddr_get_ipstr(server_conn->local_addr),
+    ntohs(pr_netaddr_get_port(server_conn->local_addr)));
+
+  ctrl_conn = pr_inet_openrw(p, server_conn, NULL, PR_NETIO_STRM_CTRL, -1, -1,
+    -1, FALSE);
+  if (ctrl_conn == NULL) {
+    int xerrno = errno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to open control connection to %s#%u: %s", remote_ipstr,
+      remote_port, strerror(xerrno));
+
+    pr_inet_close(p, server_conn);
+
+    errno = xerrno;
+    return NULL;
+  }
+
+  return ctrl_conn;
+}
+
 const char *proxy_conn_get_uri(struct proxy_conn *pconn) {
   if (pconn == NULL) {
     errno = EINVAL;

@@ -25,7 +25,6 @@
 #include "mod_proxy.h"
 
 #include "proxy/conn.h"
-#include "proxy/session.h"
 #include "proxy/reverse.h"
 #include "proxy/random.h"
 #include "proxy/ftp/ctrl.h"
@@ -185,186 +184,28 @@ static pr_netaddr_t *get_reverse_server_addr(pool *p,
   return addr;
 }
 
-static conn_t *get_reverse_server_conn(pool *p,
-    struct proxy_session *proxy_sess) {
-  pr_netaddr_t *bind_addr, *local_addr, *remote_addr;
-  unsigned int remote_port;
-  const char *remote_ipstr;
-  conn_t *server_conn, *backend_ctrl_conn;
-  int res;
+int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess) {
+  conn_t *server_conn = NULL;
+  pr_response_t *resp = NULL;
+  unsigned int resp_nlines = 0;
+  pr_netaddr_t *remote_addr;
 
   remote_addr = get_reverse_server_addr(p, proxy_sess);
   if (remote_addr == NULL) {
-    int xerrno = errno;
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to find suitable backend server: %s", strerror(xerrno));
-
-    errno = xerrno;
-    return NULL;
+    return -1;
   }
 
-  if (proxy_sess->connect_timeout > 0) {
-    proxy_sess->connect_timerno = pr_timer_add(proxy_sess->connect_timeout,
-      -1, &proxy_module, proxy_conn_connect_timeout_cb, "ProxyTimeoutConnect");
-
-    if (pr_table_add(session.notes, "mod_proxy.proxy-connect-address",
-      remote_addr, sizeof(pr_netaddr_t)) < 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error stashing proxy connect address note: %s", strerror(errno));
-    }
-  }
-
-  remote_ipstr = pr_netaddr_get_ipstr(remote_addr);
-  remote_port = ntohs(pr_netaddr_get_port(remote_addr));
-
-  /* Check the family of the retrieved address vs what we'll be using
-   * to connect.  If there's a mismatch, we need to get an addr with the
-   * matching family.
-   */
-
-  if (pr_netaddr_get_family(session.c->local_addr) == pr_netaddr_get_family(remote_addr)) {
-    local_addr = session.c->local_addr;
-
-  } else {
-    /* In this scenario, the proxy has an IPv6 socket, but the remote/backend
-     * server has an IPv4 (or IPv4-mapped IPv6) address.
-     */
-    local_addr = pr_netaddr_v6tov4(p, session.c->local_addr);
-  }
-
-  bind_addr = proxy_sess->src_addr;
-  if (bind_addr == NULL) {
-    bind_addr = local_addr;
-  }
-
-  server_conn = pr_inet_create_conn(p, -1, bind_addr, INPORT_ANY, FALSE); 
-
-  pr_trace_msg(trace_channel, 11, "connecting to backend address %s:%u from %s",
-    remote_ipstr, remote_port, pr_netaddr_get_ipstr(bind_addr));
-
-  res = pr_inet_connect_nowait(p, server_conn, remote_addr,
-    ntohs(pr_netaddr_get_port(remote_addr)));
-  if (res < 0) {
-    int xerrno = errno;
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error starting connect to %s#%u: %s", remote_ipstr, remote_port,
-      strerror(xerrno));
-
-    pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-    errno = xerrno;
-    return NULL;
-  } 
-
-  if (res == 0) {
-    pr_netio_stream_t *nstrm;
-    int nstrm_mode = PR_NETIO_IO_RD;
-
-    if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL) {
-      /* Rather than waiting for the stream to be readable (because the
-       * other end sent us something), wait for the stream to be writable
-       * so that we can send something to the other end).
-       */
-      nstrm_mode = PR_NETIO_IO_WR;
-    }
-
-    /* Not yet connected. */
-    nstrm = pr_netio_open(p, PR_NETIO_STRM_OTHR, server_conn->listen_fd,
-      nstrm_mode);
-    if (nstrm == NULL) {
-      int xerrno = errno;
-
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error opening stream to %s#%u: %s", remote_ipstr, remote_port,
-        strerror(xerrno));
-
-      pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-      pr_inet_close(p, server_conn);
-
-      errno = xerrno;
-      return NULL;
-    }
-
-    pr_netio_set_poll_interval(nstrm, 1);
-
-    switch (pr_netio_poll(nstrm)) {
-      case 1: {
-        /* Aborted, timed out.  Note that we shouldn't reach here. */
-        pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-        pr_netio_close(nstrm);
-        pr_inet_close(p, server_conn);
-
-        errno = ETIMEDOUT;
-        return NULL;
-      }
-
-      case -1: {
-        /* Error */
-        int xerrno = errno;
-
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "error connecting to %s#%u: %s", remote_ipstr, remote_port,
-          strerror(xerrno));
-
-        pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-        pr_netio_close(nstrm);
-        pr_inet_close(p, server_conn);
-
-        errno = xerrno;
-        return NULL;
-      }
-
-      default: {
-        /* Connected */
-        server_conn->mode = CM_OPEN;
-        pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-        pr_table_remove(session.notes, "mod_proxy.proxy-connect-addr", NULL);
-
-        res = pr_inet_get_conn_info(server_conn, server_conn->listen_fd);
-        if (res < 0) {
-          int xerrno = errno;
-
-          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "error obtaining local socket info on fd %d: %s\n",
-            server_conn->listen_fd, strerror(xerrno));
-
-          pr_netio_close(nstrm);
-          pr_inet_close(p, server_conn);
-
-          errno = xerrno;
-          return NULL;
-        }
-
-        break;
-      }
-    }
-  }
-
-  pr_trace_msg(trace_channel, 5,
-    "successfully connected to %s#%u from %s#%d", remote_ipstr, remote_port,
-    pr_netaddr_get_ipstr(server_conn->local_addr),
-    ntohs(pr_netaddr_get_port(server_conn->local_addr)));
-
-  backend_ctrl_conn = pr_inet_openrw(p, server_conn, NULL, PR_NETIO_STRM_CTRL,
-    -1, -1, -1, FALSE);
-  if (backend_ctrl_conn == NULL) {
-    int xerrno = errno;
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to open control connection to %s#%u: %s", remote_ipstr,
-      remote_port, strerror(xerrno));
-
-    pr_inet_close(p, server_conn);
-
-    errno = xerrno;
-    return NULL;
+  server_conn = proxy_conn_get_server_conn(p, proxy_sess, remote_addr);
+  if (server_conn == NULL) {
+    return -1;
   }
 
   if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL) {
-    if (proxy_conn_send_proxy(p, backend_ctrl_conn) < 0) {
+    if (proxy_conn_send_proxy(p, server_conn) < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error sending PROXY message to %s#%u: %s", remote_ipstr, remote_port,
+        "error sending PROXY message to %s#%u: %s",
+        pr_netaddr_get_ipstr(server_conn->remote_addr),
+        ntohs(pr_netaddr_get_port(server_conn->remote_addr)),
         strerror(errno));
     }
   }
@@ -372,19 +213,6 @@ static conn_t *get_reverse_server_conn(pool *p,
   /* XXX Support/send a CLNT command of our own?  Configurable via e.g.
    * "UserAgent" string?
    */
-
-  return backend_ctrl_conn;
-}
-
-int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess) {
-  conn_t *server_conn = NULL;
-  pr_response_t *resp = NULL;
-  unsigned int resp_nlines = 0;
-
-  server_conn = get_reverse_server_conn(p, proxy_sess);
-  if (server_conn == NULL) {
-    return -1;
-  }
 
   proxy_sess->frontend_ctrl_conn = session.c;
   proxy_sess->backend_ctrl_conn = server_conn;
@@ -444,3 +272,49 @@ int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess) {
   return 0;
 }
 
+int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
+    int *ok) {
+  int res, xerrno;
+  pr_response_t *resp;
+  unsigned int resp_nlines = 0;
+
+  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    cmd);
+  if (res < 0) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
+  if (resp == NULL) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error receiving %s response from backend: %s", cmd->argv[0],
+      strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  if (resp->num[0] == '2' ||
+      resp->num[0] == '3') {
+    *ok = TRUE;
+  }
+
+  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
+    resp, resp_nlines);
+  if (res < 0) {
+    xerrno = errno;
+
+    pr_response_block(TRUE);
+    errno = xerrno;
+    return -1;
+  }
+
+  return 0;
+}

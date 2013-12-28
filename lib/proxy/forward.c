@@ -23,8 +23,11 @@
  */
 
 #include "mod_proxy.h"
+
 #include "proxy/conn.h"
 #include "proxy/forward.h"
+#include "proxy/ftp/ctrl.h"
+#include "proxy/ftp/feat.h"
 
 static int proxy_method = PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH;
 
@@ -42,6 +45,8 @@ int proxy_forward_init(pool *p) {
 }
 
 int proxy_forward_have_authenticated(cmd_rec *cmd) {
+  int authd = FALSE;
+
   /* XXX Use a state variable here, which returns true when we have seen
    * a successful response to the PASS command...but only if we do NOT connect
    * to the backend at connect time (for then we are handling all FTP
@@ -53,7 +58,213 @@ int proxy_forward_have_authenticated(cmd_rec *cmd) {
    * more commands, or reject them because the client hasn't authenticated
    * yet.
    */
-  return TRUE;
+
+  switch (proxy_method) {
+    case PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH:
+      authd = TRUE;
+      break;
+
+    case PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH:
+    default:
+      /* XXX Remove this once we're better implemented */
+      authd = TRUE;
+  }
+
+  return authd;
+}
+
+static int forward_connect(pool *p, struct proxy_session *proxy_sess,
+    pr_netaddr_t *remote_addr) {
+  conn_t *server_conn = NULL;
+  pr_response_t *resp = NULL;
+  unsigned int resp_nlines = 0;
+
+  server_conn = proxy_conn_get_server_conn(p, proxy_sess, remote_addr);
+  if (server_conn == NULL) {
+    return -1;
+  }
+
+  /* XXX Support/send a CLNT command of our own?  Configurable via e.g.
+   * "UserAgent" string?
+   */
+
+  proxy_sess->frontend_ctrl_conn = session.c;
+  proxy_sess->backend_ctrl_conn = server_conn;
+
+  /* Read the response from the backend server. */
+  resp = proxy_ftp_ctrl_recv_resp(p, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
+  if (resp == NULL) {
+    int xerrno = errno;
+
+    pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to read banner from server %s:%u: %s",
+      pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr),
+      ntohs(pr_netaddr_get_port(proxy_sess->backend_ctrl_conn->remote_addr)),
+      strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+
+  } else {
+    int banner_ok = TRUE;
+
+    if (resp->num[0] != '2') {
+      banner_ok = FALSE;
+    }
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "received banner from backend %s:%u%s: %s %s",
+      pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr),
+      ntohs(pr_netaddr_get_port(proxy_sess->backend_ctrl_conn->remote_addr)),
+      banner_ok ? "" : ", DISCONNECTING", resp->num, resp->msg);
+
+    if (proxy_ftp_ctrl_send_resp(p, session.c, resp, resp_nlines) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to send banner to client: %s", strerror(errno));
+    }
+
+    if (banner_ok == FALSE) {
+      pr_inet_close(p, proxy_sess->backend_ctrl_conn);
+      proxy_sess->backend_ctrl_conn = NULL;
+      return -1;
+    }
+  }
+
+  /* Get the features supported by the backend server */
+  if (proxy_ftp_feat_get(p, proxy_sess) < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to determine features of backend server: %s", strerror(errno));
+  }
+
+  proxy_sess_state |= PROXY_SESS_STATE_CONNECTED;
+
+  pr_response_block(TRUE);
+
+  return 0;
+}
+
+static int forward_user_noproxyauth_parse(pool *p, const char *arg,
+    char **name, struct proxy_conn **pconn) {
+  const char *default_proto = NULL, *default_port = NULL, *proto = NULL,
+    *port, *uri = NULL;
+  char *host = NULL, *host_ptr = NULL, *port_ptr = NULL;
+
+  /* TODO: Revisit theses default once we start supporting other protocols. */
+  default_proto = "ftp";
+  default_port = "21";
+
+  /* First, look for the optional port. */
+  port_ptr = strrchr(arg, ':');
+  if (port_ptr == NULL) {
+    port = default_port;
+
+  } else {
+    char *tmp2 = NULL;
+    long num;
+
+    num = strtol(port_ptr+1, &tmp2, 10);
+
+    if (tmp2 && *tmp2) {
+      /* Trailing garbage found in port number. */
+      pr_trace_msg(trace_channel, 1,
+        "malformed port number '%s' found in USER '%s', rejecting",
+        port_ptr+1, arg);
+      errno = EINVAL;
+      return -1;
+    }
+
+    if (num < 0 ||
+        num > 65535) {
+      pr_trace_msg(trace_channel, 1,
+        "invalid port number %ld found in USER '%s', rejecting", num, arg);
+      errno = EINVAL;
+      return -1;
+    }
+
+    port = pstrdup(p, port_ptr + 1);
+  }
+
+  /* Find the required '@' delimiter. */
+  host_ptr = strrchr(arg, '@');
+  if (host_ptr == NULL) {
+    pr_trace_msg(trace_channel, 1,
+      "missing required '@' delimiter in USER '%s', rejecting", arg);
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (port_ptr == NULL) {
+    host = pstrdup(p, host_ptr + 1);
+
+  } else {
+    host = pstrndup(p, host_ptr + 1, (port_ptr - host_ptr - 1));
+  }
+
+  *name = pstrndup(p, arg, (host_ptr - arg));
+  proto = default_proto;
+
+  uri = pstrcat(p, proto, "//", host, ":", port, NULL);
+
+  /* Note: We deliberately use proxy_pool, rather than the given pool, here
+   * so that the created structure (especially the pr_netaddr_t) are
+   * longer-lived.
+   */
+  *pconn = proxy_conn_create(proxy_pool, uri);
+  if (*pconn == NULL) {
+    return -1;
+  }
+
+  return 0;
+}
+
+static int forward_handle_user_noproxyauth(cmd_rec *cmd,
+    struct proxy_session *proxy_sess, int *ok) {
+  int res;
+  char *user = NULL;
+  struct proxy_conn *pconn = NULL;
+  pr_netaddr_t *remote_addr = NULL;
+
+  /* Parse the remote site/port out of the USER command:
+   *
+   *  USER name@host[:port]
+   *
+   * Then connect to that host/port.  (Include server banner in USER response.)
+   * Send "USER name", proxy response.
+   */
+  
+  res = forward_user_noproxyauth_parse(cmd->tmp_pool, cmd->arg, &user, &pconn);
+  if (res < 0) {
+    return -1;
+  }
+
+  remote_addr = proxy_conn_get_addr(pconn);
+
+  res = proxy_conn_get_server_conn(proxy_pool, proxy_sess, remote_addr);
+  if (res < 0) {
+    return -1;
+  }
+ 
+  errno = ENOSYS;
+  return -1;
+}
+
+int proxy_forward_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
+    int *ok) {
+  int res = -1;
+
+  /* Look at our proxy method to see what we should do here. */
+  switch (proxy_method) {
+    case PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH:
+      res = forward_handle_user_noproxyauth(cmd, proxy_sess, ok);
+      break;
+
+    default:
+      errno = ENOSYS;
+      res = -1;
+  }
+
+  return res;
 }
 
 int proxy_forward_get_method(const char *method) {
@@ -72,4 +283,3 @@ int proxy_forward_get_method(const char *method) {
   errno = ENOENT;
   return -1;
 }
-
