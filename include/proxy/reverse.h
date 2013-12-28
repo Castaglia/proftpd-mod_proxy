@@ -50,4 +50,6 @@ int proxy_reverse_select_next_index(unsigned int sid,
 int proxy_reverse_select_used_index(unsigned int sid, unsigned int idx,
   unsigned long response_ms);
 
+conn_t *proxy_reverse_server_get_conn(struct proxy_session *);
+
 #endif /* MOD_PROXY_REVERSE_H */

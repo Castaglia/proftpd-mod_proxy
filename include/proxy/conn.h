@@ -29,6 +29,7 @@
 
 struct proxy_conn;
 
+int proxy_conn_connect_timeout_cb(CALLBACK_FRAME);
 struct proxy_conn *proxy_conn_create(pool *p, const char *uri);
 pr_netaddr_t *proxy_conn_get_addr(struct proxy_conn *);
 const char *proxy_conn_get_uri(struct proxy_conn *);

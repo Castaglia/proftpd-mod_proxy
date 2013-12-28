@@ -63,30 +63,6 @@ static const char *proxy_tables_dir = NULL;
 
 static const char *trace_channel = "proxy";
 
-static int proxy_connect_timeout_cb(CALLBACK_FRAME) {
-  struct proxy_session *proxy_sess;
-  pr_netaddr_t *server_addr;
-
-  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
-  server_addr = pr_table_get(session.notes, "mod_proxy.proxy-connect-address",
-    NULL);
-
-  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-    "timed out connecting to %s:%d after %d %s",
-    pr_netaddr_get_ipstr(server_addr), ntohs(pr_netaddr_get_port(server_addr)),
-    proxy_sess->connect_timeout,
-    proxy_sess->connect_timeout != 1 ? "seconds" : "second");
-
-  pr_event_generate("mod_proxy.timeout-connect", NULL);
-
-  pr_log_pri(PR_LOG_NOTICE, "%s", "Connect timed out, disconnected");
-  pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_TIMEOUT,
-    "ProxyTimeoutConnect");
-
-  /* Do not restart the timer (should never be reached). */
-  return 0;
-}
-
 static int proxy_stalled_timeout_cb(CALLBACK_FRAME) {
   int timeout_stalled;
 
@@ -100,220 +76,6 @@ static int proxy_stalled_timeout_cb(CALLBACK_FRAME) {
 
   /* Do not restart the timer (should never be reached). */
   return 0;
-}
-
-static pr_netaddr_t *get_reverse_server(struct proxy_session *proxy_sess) {
-  config_rec *c;
-  array_header *backend_servers;
-  struct proxy_conn **conns;
-  pr_netaddr_t *addr;
-  int idx;
-
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseServers", FALSE);
-  if (c == NULL) {
-    /* XXX This shouldn't happen; should be checked by proxy_reverse_init(). */
-    errno = ENOENT;
-    return NULL;
-  }
-
-  backend_servers = c->argv[0];
-  conns = backend_servers->elts;
-
-  idx = proxy_reverse_select_next_index(main_server->sid,
-    backend_servers->nelts, NULL);
-  if (idx < 0) {
-    return NULL;
-  }
-
-  addr = proxy_conn_get_addr(conns[idx]);
-  return addr;
-}
-
-static conn_t *get_reverse_server_conn(struct proxy_session *proxy_sess) {
-  pr_netaddr_t *bind_addr, *local_addr, *remote_addr;
-  unsigned int remote_port;
-  const char *remote_ipstr;
-  conn_t *server_conn, *backend_ctrl_conn;
-  int res;
-
-  remote_addr = get_reverse_server(proxy_sess);
-  if (remote_addr == NULL) {
-    int xerrno = errno;
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to find suitable backend server: %s", strerror(xerrno));
-
-    errno = xerrno;
-    return NULL;
-  }
-
-  if (proxy_sess->connect_timeout > 0) {
-    proxy_sess->connect_timerno = pr_timer_add(proxy_sess->connect_timeout,
-      -1, &proxy_module, proxy_connect_timeout_cb, "ProxyTimeoutConnect");
-
-    if (pr_table_add(session.notes, "mod_proxy.proxy-connect-address",
-      remote_addr, sizeof(pr_netaddr_t)) < 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error stashing proxy connect address note: %s", strerror(errno));
-    }
-  }
-
-  remote_ipstr = pr_netaddr_get_ipstr(remote_addr);
-  remote_port = ntohs(pr_netaddr_get_port(remote_addr));
-
-  /* Check the family of the retrieved address vs what we'll be using
-   * to connect.  If there's a mismatch, we need to get an addr with the
-   * matching family.
-   */
-
-  if (pr_netaddr_get_family(session.c->local_addr) == pr_netaddr_get_family(remote_addr)) {
-    local_addr = session.c->local_addr;
-
-  } else {
-    /* In this scenario, the proxy has an IPv6 socket, but the remote/backend
-     * server has an IPv4 (or IPv4-mapped IPv6) address.
-     */
-    local_addr = pr_netaddr_v6tov4(session.pool, session.c->local_addr);
-  }
-
-  bind_addr = proxy_sess->backend_addr;
-  if (bind_addr == NULL) {
-    bind_addr = local_addr;
-  }
-
-  server_conn = pr_inet_create_conn(proxy_pool, -1, bind_addr, INPORT_ANY,
-    FALSE);  
-
-  pr_trace_msg(trace_channel, 11, "connecting to backend address %s:%u from %s",
-    remote_ipstr, remote_port, pr_netaddr_get_ipstr(bind_addr));
- 
-  res = pr_inet_connect_nowait(proxy_pool, server_conn, remote_addr,
-    ntohs(pr_netaddr_get_port(remote_addr)));
-  if (res < 0) {
-    int xerrno = errno;
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error starting connect to %s#%u: %s", remote_ipstr, remote_port,
-      strerror(xerrno));
-
-    pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-    errno = xerrno;
-    return NULL;
-  }  
-
-  if (res == 0) {
-    pr_netio_stream_t *nstrm;
-    int nstrm_mode = PR_NETIO_IO_RD;
-
-    if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL) {
-      /* Rather than waiting for the stream to be readable (because the
-       * other end sent us something), wait for the stream to be writable
-       * so that we can send something to the other end).
-       */
-      nstrm_mode = PR_NETIO_IO_WR;
-    }
-
-    /* Not yet connected. */
-    nstrm = pr_netio_open(proxy_pool, PR_NETIO_STRM_OTHR,
-      server_conn->listen_fd, nstrm_mode);
-    if (nstrm == NULL) {
-      int xerrno = errno;
-
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error opening stream to %s#%u: %s", remote_ipstr, remote_port,
-        strerror(xerrno));
-
-      pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-      pr_inet_close(proxy_pool, server_conn);
-
-      errno = xerrno;
-      return NULL;
-    }
-
-    pr_netio_set_poll_interval(nstrm, 1);
-
-    switch (pr_netio_poll(nstrm)) {
-      case 1: {
-        /* Aborted, timed out.  Note that we shouldn't reach here. */
-        pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-        pr_netio_close(nstrm);
-        pr_inet_close(proxy_pool, server_conn);
-
-        errno = ETIMEDOUT;
-        return NULL;
-      }
-
-      case -1: {
-        /* Error */
-        int xerrno = errno;
-
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "error connecting to %s#%u: %s", remote_ipstr, remote_port,
-          strerror(xerrno));
-
-        pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-        pr_netio_close(nstrm);
-        pr_inet_close(proxy_pool, server_conn);
-
-        errno = xerrno;
-        return NULL;
-      }
-
-      default: {
-        /* Connected */
-        server_conn->mode = CM_OPEN;
-        pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-        pr_table_remove(session.notes, "mod_proxy.proxy-connect-addr", NULL);
-
-        res = pr_inet_get_conn_info(server_conn, server_conn->listen_fd);
-        if (res < 0) {
-          int xerrno = errno;
-
-          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "error obtaining local socket info on fd %d: %s\n",
-            server_conn->listen_fd, strerror(xerrno));
-
-          pr_netio_close(nstrm);
-          pr_inet_close(proxy_pool, server_conn);
-
-          errno = xerrno;
-          return NULL;
-        }
-
-        break;
-      }
-    }
-  }
-
-  pr_trace_msg(trace_channel, 5,
-    "successfully connected to %s#%u from %s#%d", remote_ipstr, remote_port,
-    pr_netaddr_get_ipstr(server_conn->local_addr),
-    ntohs(pr_netaddr_get_port(server_conn->local_addr)));
-
-  backend_ctrl_conn = pr_inet_openrw(proxy_pool, server_conn, NULL,
-    PR_NETIO_STRM_CTRL, -1, -1, -1, FALSE);
-  if (backend_ctrl_conn == NULL) {
-    int xerrno = errno;
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to open control connection to %s#%u: %s", remote_ipstr,
-      remote_port, strerror(xerrno));
-
-    pr_inet_close(proxy_pool, server_conn);
-
-    errno = xerrno;
-    return NULL;
-  }
-
-  if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL) {
-    if (proxy_conn_send_proxy(proxy_pool, backend_ctrl_conn) < 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error sending PROXY message to %s#%u: %s", remote_ipstr, remote_port,
-        strerror(errno));
-    }
-  }
-
-  return backend_ctrl_conn;
 }
 
 static int proxy_have_authenticated(cmd_rec *cmd) {
@@ -2966,14 +2728,9 @@ static int proxy_sess_init(void) {
     proxy_sess->connect_timeout = PROXY_CONNECT_DEFAULT_TIMEOUT;
   }
 
-  /* XXX For now, assume we're acting as a gateway.  That being the case,
-   * we need to look at our gateway backend server selection strategy.
-   *
-   * For now, we assume there's only one backend server configured, so
-   * we connect to it.
-   */
+  /* XXX For now, assume we're acting as a gateway. */
 
-  server_conn = get_reverse_server_conn(proxy_sess);
+  server_conn = proxy_reverse_server_get_conn(proxy_sess);
   if (server_conn == NULL) {
     pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
       NULL);
@@ -2982,8 +2739,8 @@ static int proxy_sess_init(void) {
   proxy_sess->frontend_ctrl_conn = session.c;
   proxy_sess->backend_ctrl_conn = server_conn;
 
-  /* XXX Read the response from the backend server and send it to the
-   * connected client as if it were our own banner.
+  /* Read the response from the backend server and send it to the connected
+   * client as if it were our own banner.
    */
   resp = proxy_ftp_ctrl_recv_resp(proxy_pool, proxy_sess->backend_ctrl_conn,
     &resp_nlines);

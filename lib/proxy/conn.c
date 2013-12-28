@@ -23,7 +23,9 @@
  */
 
 #include "mod_proxy.h"
+
 #include "proxy/conn.h"
+#include "proxy/session.h"
 #include "proxy/uri.h"
 
 struct proxy_conn {
@@ -56,6 +58,30 @@ static int supported_protocol(const char *proto) {
 
   errno = ENOENT;
   return -1;
+}
+
+int proxy_conn_connect_timeout_cb(CALLBACK_FRAME) {
+  struct proxy_session *proxy_sess;
+  pr_netaddr_t *server_addr;
+
+  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+  server_addr = pr_table_get(session.notes, "mod_proxy.proxy-connect-address",
+    NULL);
+
+  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+    "timed out connecting to %s:%d after %d %s",
+    pr_netaddr_get_ipstr(server_addr), ntohs(pr_netaddr_get_port(server_addr)),
+    proxy_sess->connect_timeout,
+    proxy_sess->connect_timeout != 1 ? "seconds" : "second");
+
+  pr_event_generate("mod_proxy.timeout-connect", NULL);
+
+  pr_log_pri(PR_LOG_NOTICE, "%s", "Connect timed out, disconnected");
+  pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_TIMEOUT,
+    "ProxyTimeoutConnect");
+
+  /* Do not restart the timer (should never be reached). */
+  return 0;
 }
 
 struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
