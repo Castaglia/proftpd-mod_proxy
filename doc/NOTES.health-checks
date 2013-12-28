@@ -38,3 +38,7 @@ All of the metrics for a given health check strategy/type are summed up.
 But is it a simple sum (all metrics are equal), or do some metrics have
 more weight?  If weighted, how are weights calculated?
 
+Examples:
+
+  https://www.varnish-cache.org/trac/wiki/BackendPolling
+  http://www.taiter.com/techlog/2012/09/ftp-load-balanced-through-haproxy.html

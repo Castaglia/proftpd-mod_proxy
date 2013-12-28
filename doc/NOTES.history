@@ -1,0 +1,18 @@
+
+Why does proftpd have the netio readers for buffering up reads?  Seems
+overengineered/too complex.
+
+  Answer: See issues like this:
+
+    http://www.greatcircle.com/firewalls/mhonarc/firewalls.199710/msg00056.html
+
+Where does the formatting for using "USER name@host" for forward proxying
+coming from?  Or using two USER/PASS commands for doing forward proxying
+with proxy auth?
+
+  Answer: From TIS' FWTK:
+
+    http://www.fwtk.org/fwtk/docs/user_guide.pdf
+    http://www.fwtk.org/fwtk/docs/manpages.pdf
+
+  See the cited example FTP sessions for both types of logins.
