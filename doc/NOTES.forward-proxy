@@ -23,6 +23,10 @@ Complications:
   What if USER is not first command?  I.e. what if we see FEAT, SYST,
     etc?
 
+  What if USER specifies a host that returns 5xx in the banner?  Should
+  the client be allowed another USER?  If so, does that count against
+  MaxLoginAttempts?
+
   IPv6 dest server?
     Support "USER user@[::1]:port".  Easy enough.
 
