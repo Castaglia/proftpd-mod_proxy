@@ -18,84 +18,84 @@ $| = 1;
 my $order = 0;
 
 my $TESTS = {
-  proxy_gateway_connect => {
+  proxy_reverse_connect => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_connect_failed_bad_addr => {
+  proxy_reverse_connect_failed_bad_addr => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_connect_failed_non2xx => {
+  proxy_reverse_connect_failed_non2xx => {
     order => ++$order,
     test_class => [qw(forking mod_wrap2 mod_wrap2_file)],
   },
 
-  proxy_gateway_login => {
+  proxy_reverse_login => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_login_failed => {
+  proxy_reverse_login_failed => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_login_chrooted => {
+  proxy_reverse_login_chrooted => {
     order => ++$order,
     test_class => [qw(forking rootprivs)],
   },
 
-  proxy_gateway_feat => {
+  proxy_reverse_feat => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_list_pasv => {
+  proxy_reverse_list_pasv => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_list_port => {
+  proxy_reverse_list_port => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_list_pasv_enoent => {
+  proxy_reverse_list_pasv_enoent => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_list_port_enoent => {
+  proxy_reverse_list_port_enoent => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_epsv => {
+  proxy_reverse_epsv => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  # TODO: proxy_gateway_epsv_all
+  # TODO: proxy_reverse_epsv_all
 
-  proxy_gateway_eprt_ipv4 => {
+  proxy_reverse_eprt_ipv4 => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_eprt_ipv6 => {
+  proxy_reverse_eprt_ipv6 => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_retr_pasv_ascii => {
+  proxy_reverse_retr_pasv_ascii => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_retr_pasv_binary => {
+  proxy_reverse_retr_pasv_binary => {
     order => ++$order,
     test_class => [qw(forking)],
   },
@@ -104,194 +104,194 @@ my $TESTS = {
   # maybe use SocketOptions to tune them differently; handle short writes
   # via outer/inner loops in data_send().
 
-  proxy_gateway_retr_large_file => {
+  proxy_reverse_retr_large_file => {
     order => ++$order,
     test_class => [qw(forking slow)],
   },
 
-  proxy_gateway_retr_empty_file => {
+  proxy_reverse_retr_empty_file => {
     order => ++$order,
     test_class => [qw(forking slow)],
   },
 
-  proxy_gateway_retr_abort => {
+  proxy_reverse_retr_abort => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_stor_pasv => {
+  proxy_reverse_stor_pasv => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_stor_port => {
+  proxy_reverse_stor_port => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_stor_large_file => {
+  proxy_reverse_stor_large_file => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_stor_empty_file => {
+  proxy_reverse_stor_empty_file => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_stor_eperm => {
+  proxy_reverse_stor_eperm => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_stor_abort => {
+  proxy_reverse_stor_abort => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_rest_retr => {
+  proxy_reverse_rest_retr => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_rest_stor => {
+  proxy_reverse_rest_stor => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_unknown_cmd => {
+  proxy_reverse_unknown_cmd => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_passiveports_pasv => {
+  proxy_reverse_config_passiveports_pasv => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_passiveports_epsv => {
+  proxy_reverse_config_passiveports_epsv => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
   # MasqueradeAddress only really applies to PASV
-  proxy_gateway_config_masqueradeaddress => {
+  proxy_reverse_config_masqueradeaddress => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_allowforeignaddress_port => {
+  proxy_reverse_config_allowforeignaddress_port => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_allowforeignaddress_eprt => {
+  proxy_reverse_config_allowforeignaddress_eprt => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
   # Normal TimeoutIdle, honored by mod_proxy (frontend and backend)
-  proxy_gateway_config_timeoutidle_frontend => {
+  proxy_reverse_config_timeoutidle_frontend => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_timeoutidle_backend => {
+  proxy_reverse_config_timeoutidle_backend => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
   # Normal TimeoutNoTransfer, honored by mod_proxy (frontend and backend)
-  proxy_gateway_config_timeoutnoxfer_frontend => {
+  proxy_reverse_config_timeoutnoxfer_frontend => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_timeoutnoxfer_backend => {
+  proxy_reverse_config_timeoutnoxfer_backend => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
   # Normal TimeoutStalled, honored by mod_proxy (frontend and backend)
-  proxy_gateway_config_timeoutstalled_frontend => {
+  proxy_reverse_config_timeoutstalled_frontend => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_timeoutstalled_backend => {
+  proxy_reverse_config_timeoutstalled_backend => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
   # XXX What about TimeoutSession, TimeoutLinger?
 
-  proxy_gateway_config_datatransferpolicy_pasv_list_pasv => {
+  proxy_reverse_config_datatransferpolicy_pasv_list_pasv => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_datatransferpolicy_pasv_list_port => {
+  proxy_reverse_config_datatransferpolicy_pasv_list_port => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_datatransferpolicy_port_list_pasv => {
+  proxy_reverse_config_datatransferpolicy_port_list_pasv => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_datatransferpolicy_port_list_port => {
+  proxy_reverse_config_datatransferpolicy_port_list_port => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_datatransferpolicy_epsv_list_pasv => {
+  proxy_reverse_config_datatransferpolicy_epsv_list_pasv => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_datatransferpolicy_epsv_list_port => {
+  proxy_reverse_config_datatransferpolicy_epsv_list_port => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_datatransferpolicy_eprt_list_pasv => {
+  proxy_reverse_config_datatransferpolicy_eprt_list_pasv => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_datatransferpolicy_eprt_list_port => {
+  proxy_reverse_config_datatransferpolicy_eprt_list_port => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_datatransferpolicy_active_list_pasv => {
+  proxy_reverse_config_datatransferpolicy_active_list_pasv => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_datatransferpolicy_active_list_port => {
+  proxy_reverse_config_datatransferpolicy_active_list_port => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_datatransferpolicy_passive_list_pasv => {
+  proxy_reverse_config_datatransferpolicy_passive_list_pasv => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_datatransferpolicy_passive_list_port => {
+  proxy_reverse_config_datatransferpolicy_passive_list_port => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_config_datatransferpolicy_client => {
+  proxy_reverse_config_datatransferpolicy_client => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
   # backend selection: random, roundrobin, shuffle, per-user, leastconns...?
-  proxy_gateway_config_selection_random => {
+  proxy_reverse_config_selection_random => {
     order => ++$order,
     test_class => [qw(forking)],
   },
@@ -301,38 +301,38 @@ my $TESTS = {
   # path of the file transferred; we can only know path as requested by
   # the client.
 
-  proxy_gateway_xferlog_retr_ascii_ok => {
+  proxy_reverse_xferlog_retr_ascii_ok => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_xferlog_retr_binary_ok => {
+  proxy_reverse_xferlog_retr_binary_ok => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_xferlog_stor_ascii_ok => {
+  proxy_reverse_xferlog_stor_ascii_ok => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_xferlog_stor_binary_ok => {
+  proxy_reverse_xferlog_stor_binary_ok => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
   # ExtendedLog entries.  The most affected will be %D/%d and %F/%f.
-  proxy_gateway_extlog_retr_var_F_f => {
+  proxy_reverse_extlog_retr_var_F_f => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_extlog_stor_var_F_f => {
+  proxy_reverse_extlog_stor_var_F_f => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  proxy_gateway_extlog_list_var_D_d => {
+  proxy_reverse_extlog_list_var_D_d => {
     order => ++$order,
     test_class => [qw(forking)],
   },
@@ -343,53 +343,63 @@ my $TESTS = {
   # TransferPriority?
   # TransferRate?
 
-  proxy_gateway_proxy_protocol_ipv4 => {
+  proxy_reverse_proxy_protocol_ipv4 => {
     order => ++$order,
     test_class => [qw(forking mod_proxy_protocol)],
   },
 
-  proxy_gateway_proxy_protocol_ipv6 => {
+  proxy_reverse_proxy_protocol_ipv6 => {
     order => ++$order,
     test_class => [qw(forking mod_proxy_protocol)],
   },
 
-  # proxy_gateway_proxy_protocol_ipv6_useipv6_off
-  # proxy_gateway_proxy_protocol_unknown
+  # proxy_reverse_proxy_protocol_ipv6_useipv6_off
+  # proxy_reverse_proxy_protocol_unknown
 
-  proxy_tls_gateway_login => {
+  proxy_tls_reverse_login => {
     order => ++$order,
     test_class => [qw(forking mod_tls)],
   },
 
-  proxy_tls_gateway_login_failed => {
+  proxy_tls_reverse_login_failed => {
     order => ++$order,
     test_class => [qw(forking mod_tls)],
   },
 
-  proxy_tls_gateway_login_tlslogin => {
+  proxy_tls_reverse_login_tlslogin => {
     order => ++$order,
     test_class => [qw(forking mod_tls)],
   },
 
-#  proxy_tls_gateway_list_pasv => {
+#  proxy_tls_reverse_list_pasv => {
 #    order => ++$order,
 #    test_class => [qw(forking mod_tls)],
 #  },
 
-  proxy_proxy_connect => {
+  proxy_forward_connect => {
     order => ++$order,
     test_class => [qw(forking)],
   },
 
-  # proxy_proxy_login
-  # proxy_proxy_list_pasv
-  # proxy_proxy_list_port
-  # proxy_proxy_epsv
-  # proxy_proxy_eprt
-  # proxy_proxy_stor_pasv
+  proxy_forward_connect_failed_bad_addr => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
 
-  # proxy_proxy_config_forward_filter
-  # proxy_proxy_config_type (no proxy user auth, reqd proxy user auth)
+  proxy_forward_connect_failed_non2xx => {
+    order => ++$order,
+    test_class => [qw(forking mod_wrap2 mod_wrap2_file)],
+  },
+
+  # proxy_forward_login
+  # proxy_forward_list_pasv
+  # proxy_forward_list_port
+  # proxy_forward_epsv
+  # proxy_forward_eprt
+  # proxy_forward_stor_pasv
+
+  # proxy_forward_config_filter
+  # proxy_forward_config_type (no proxy user auth, reqd proxy user auth)
 };
 
 sub new {
@@ -399,12 +409,15 @@ sub new {
 sub list_tests {
 #  return testsuite_get_runnable_tests($TESTS);
   return qw(
-    proxy_gateway_login_chrooted
+    proxy_reverse_login
   );
-#    proxy_proxy_connect
+
+#  proxy_forward_connect
+#  proxy_forward_connect_failed_bad_addr
+#  proxy_forward_connect_failed_non2xx
 }
 
-sub get_gateway_proxy_config {
+sub get_reverse_proxy_config {
   my $tmpdir = shift;
   my $log_file = shift;
   my $vhost_port = shift;
@@ -415,14 +428,14 @@ sub get_gateway_proxy_config {
     ProxyEngine => 'on',
     ProxyLog => $log_file,
     ProxyReverseServers => "ftp://127.0.0.1:$vhost_port",
-    ProxyRole => 'gateway',
+    ProxyRole => 'reverse',
     ProxyTables => $table_dir,
   };
 
   return $config;
 }
 
-sub get_proxy_proxy_config {
+sub get_forward_proxy_config {
   my $tmpdir = shift;
   my $log_file = shift;
   my $vhost_port = shift;
@@ -432,13 +445,13 @@ sub get_proxy_proxy_config {
   my $config = {
     ProxyEngine => 'on',
     ProxyLog => $log_file,
-    ProxyRole => 'proxy',
+    ProxyRole => 'forward',
   };
 
   return $config;
 }
 
-sub proxy_gateway_connect {
+sub proxy_reverse_connect {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -477,7 +490,7 @@ sub proxy_gateway_connect {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
@@ -584,7 +597,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_connect_bad_addr {
+sub proxy_reverse_connect_bad_addr {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -623,7 +636,7 @@ sub proxy_gateway_connect_bad_addr {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyReverseServers} = 'ftp://1.2.3.4:5678';
 
   my $config = {
@@ -716,10 +729,10 @@ EOC
     die($ex);
   }
 
-#  unlink($log_file);
+  unlink($log_file);
 }
 
-sub proxy_gateway_connect_failed_non2xx {
+sub proxy_reverse_connect_failed_non2xx {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -758,7 +771,7 @@ sub proxy_gateway_connect_failed_non2xx {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $allow_file = File::Spec->rel2abs("$tmpdir/wrap2.allow");
   if (open(my $fh, "> $allow_file")) {
@@ -875,7 +888,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_login {
+sub proxy_reverse_login {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -914,7 +927,7 @@ sub proxy_gateway_login {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
@@ -1020,7 +1033,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_login_failed {
+sub proxy_reverse_login_failed {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -1059,7 +1072,7 @@ sub proxy_gateway_login_failed {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
@@ -1179,7 +1192,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_login_chrooted {
+sub proxy_reverse_login_chrooted {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -1218,7 +1231,7 @@ sub proxy_gateway_login_chrooted {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
@@ -1321,7 +1334,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_feat {
+sub proxy_reverse_feat {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -1360,7 +1373,7 @@ sub proxy_gateway_feat {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
@@ -1472,7 +1485,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_list_pasv {
+sub proxy_reverse_list_pasv {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -1511,7 +1524,7 @@ sub proxy_gateway_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -1645,7 +1658,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_list_port {
+sub proxy_reverse_list_port {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -1684,7 +1697,7 @@ sub proxy_gateway_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -1818,7 +1831,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_list_pasv_enoent {
+sub proxy_reverse_list_pasv_enoent {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -1857,7 +1870,7 @@ sub proxy_gateway_list_pasv_enoent {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -1995,7 +2008,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_list_port_enoent {
+sub proxy_reverse_list_port_enoent {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -2034,7 +2047,7 @@ sub proxy_gateway_list_port_enoent {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -2171,7 +2184,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_epsv {
+sub proxy_reverse_epsv {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -2210,7 +2223,7 @@ sub proxy_gateway_epsv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -2330,7 +2343,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_eprt_ipv4 {
+sub proxy_reverse_eprt_ipv4 {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -2369,7 +2382,7 @@ sub proxy_gateway_eprt_ipv4 {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -2493,7 +2506,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_eprt_ipv6 {
+sub proxy_reverse_eprt_ipv6 {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -2532,7 +2545,7 @@ sub proxy_gateway_eprt_ipv6 {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -2657,7 +2670,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_retr_pasv_ascii {
+sub proxy_reverse_retr_pasv_ascii {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -2709,7 +2722,7 @@ sub proxy_gateway_retr_pasv_ascii {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -2844,7 +2857,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_retr_pasv_binary {
+sub proxy_reverse_retr_pasv_binary {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -2896,7 +2909,7 @@ sub proxy_gateway_retr_pasv_binary {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -3031,7 +3044,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_retr_large_file {
+sub proxy_reverse_retr_large_file {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -3083,7 +3096,7 @@ sub proxy_gateway_retr_large_file {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 120;
 
@@ -3223,7 +3236,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_retr_empty_file {
+sub proxy_reverse_retr_empty_file {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -3273,7 +3286,7 @@ sub proxy_gateway_retr_empty_file {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 120;
 
@@ -3413,7 +3426,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_retr_abort {
+sub proxy_reverse_retr_abort {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -3465,7 +3478,7 @@ sub proxy_gateway_retr_abort {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -3593,7 +3606,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_stor_pasv {
+sub proxy_reverse_stor_pasv {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -3635,7 +3648,7 @@ sub proxy_gateway_stor_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -3770,7 +3783,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_stor_port {
+sub proxy_reverse_stor_port {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -3812,7 +3825,7 @@ sub proxy_gateway_stor_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -3947,7 +3960,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_stor_large_file {
+sub proxy_reverse_stor_large_file {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -3989,7 +4002,7 @@ sub proxy_gateway_stor_large_file {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 120;
 
@@ -4128,7 +4141,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_stor_empty_file {
+sub proxy_reverse_stor_empty_file {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -4170,7 +4183,7 @@ sub proxy_gateway_stor_empty_file {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 120;
 
@@ -4304,7 +4317,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_stor_eperm {
+sub proxy_reverse_stor_eperm {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -4357,7 +4370,7 @@ sub proxy_gateway_stor_eperm {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -4487,7 +4500,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_stor_abort {
+sub proxy_reverse_stor_abort {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -4529,7 +4542,7 @@ sub proxy_gateway_stor_abort {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -4657,7 +4670,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_rest_retr {
+sub proxy_reverse_rest_retr {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -4710,7 +4723,7 @@ sub proxy_gateway_rest_retr {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -4854,7 +4867,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_rest_stor {
+sub proxy_reverse_rest_stor {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -4907,7 +4920,7 @@ sub proxy_gateway_rest_stor {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -5053,7 +5066,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_unknown_cmd {
+sub proxy_reverse_unknown_cmd {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -5092,7 +5105,7 @@ sub proxy_gateway_unknown_cmd {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -5219,7 +5232,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_passiveports_pasv {
+sub proxy_reverse_config_passiveports_pasv {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -5258,7 +5271,7 @@ sub proxy_gateway_config_passiveports_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -5401,7 +5414,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_passiveports_epsv {
+sub proxy_reverse_config_passiveports_epsv {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -5440,7 +5453,7 @@ sub proxy_gateway_config_passiveports_epsv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -5580,7 +5593,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_masqueradeaddress {
+sub proxy_reverse_config_masqueradeaddress {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -5619,7 +5632,7 @@ sub proxy_gateway_config_masqueradeaddress {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -5759,7 +5772,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_allowforeignaddress_port {
+sub proxy_reverse_config_allowforeignaddress_port {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -5798,7 +5811,7 @@ sub proxy_gateway_config_allowforeignaddress_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -5924,7 +5937,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_allowforeignaddress_eprt {
+sub proxy_reverse_config_allowforeignaddress_eprt {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -5963,7 +5976,7 @@ sub proxy_gateway_config_allowforeignaddress_eprt {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
 
@@ -6089,7 +6102,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_timeoutidle_frontend {
+sub proxy_reverse_config_timeoutidle_frontend {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -6128,7 +6141,7 @@ sub proxy_gateway_config_timeoutidle_frontend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $frontend_timeoutidle = 4;
   my $frontend_timeout_delay = $frontend_timeoutidle + 2;
@@ -6257,7 +6270,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_timeoutidle_backend {
+sub proxy_reverse_config_timeoutidle_backend {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -6296,7 +6309,7 @@ sub proxy_gateway_config_timeoutidle_backend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $frontend_timeoutidle = 10;
   my $frontend_timeout_delay = $frontend_timeoutidle - 2;
@@ -6425,7 +6438,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_timeoutnoxfer_frontend {
+sub proxy_reverse_config_timeoutnoxfer_frontend {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -6464,7 +6477,7 @@ sub proxy_gateway_config_timeoutnoxfer_frontend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $frontend_timeoutnoxfer = 2;
   my $frontend_timeout_delay = $frontend_timeoutnoxfer + 2;
@@ -6593,7 +6606,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_timeoutnoxfer_backend {
+sub proxy_reverse_config_timeoutnoxfer_backend {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -6632,7 +6645,7 @@ sub proxy_gateway_config_timeoutnoxfer_backend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $frontend_timeoutnoxfer = 10;
   my $frontend_timeout_delay = $frontend_timeoutnoxfer - 2;
@@ -6761,7 +6774,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_timeoutstalled_frontend {
+sub proxy_reverse_config_timeoutstalled_frontend {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -6800,7 +6813,7 @@ sub proxy_gateway_config_timeoutstalled_frontend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $frontend_timeoutstalled = 2;
   my $frontend_timeout_delay = $frontend_timeoutstalled + 2;
@@ -6942,7 +6955,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_timeoutstalled_backend {
+sub proxy_reverse_config_timeoutstalled_backend {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -6981,7 +6994,7 @@ sub proxy_gateway_config_timeoutstalled_backend {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $frontend_timeoutstalled = 12;
   my $backend_timeoutstalled = 2;
@@ -7123,7 +7136,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_datatransferpolicy_pasv_list_pasv {
+sub proxy_reverse_config_datatransferpolicy_pasv_list_pasv {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -7162,7 +7175,7 @@ sub proxy_gateway_config_datatransferpolicy_pasv_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'PASV';
 
   my $timeout_idle = 10;
@@ -7297,7 +7310,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_datatransferpolicy_pasv_list_port {
+sub proxy_reverse_config_datatransferpolicy_pasv_list_port {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -7336,7 +7349,7 @@ sub proxy_gateway_config_datatransferpolicy_pasv_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'PASV';
 
   my $timeout_idle = 10;
@@ -7471,7 +7484,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_datatransferpolicy_port_list_pasv {
+sub proxy_reverse_config_datatransferpolicy_port_list_pasv {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -7510,7 +7523,7 @@ sub proxy_gateway_config_datatransferpolicy_port_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'PORT';
 
   my $timeout_idle = 10;
@@ -7645,7 +7658,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_datatransferpolicy_port_list_port {
+sub proxy_reverse_config_datatransferpolicy_port_list_port {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -7684,7 +7697,7 @@ sub proxy_gateway_config_datatransferpolicy_port_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'PORT';
 
   my $timeout_idle = 10;
@@ -7819,7 +7832,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_datatransferpolicy_epsv_list_pasv {
+sub proxy_reverse_config_datatransferpolicy_epsv_list_pasv {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -7858,7 +7871,7 @@ sub proxy_gateway_config_datatransferpolicy_epsv_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'EPSV';
 
   my $timeout_idle = 10;
@@ -7993,7 +8006,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_datatransferpolicy_epsv_list_port {
+sub proxy_reverse_config_datatransferpolicy_epsv_list_port {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -8032,7 +8045,7 @@ sub proxy_gateway_config_datatransferpolicy_epsv_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'EPSV';
 
   my $timeout_idle = 10;
@@ -8167,7 +8180,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_datatransferpolicy_eprt_list_pasv {
+sub proxy_reverse_config_datatransferpolicy_eprt_list_pasv {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -8206,7 +8219,7 @@ sub proxy_gateway_config_datatransferpolicy_eprt_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'EPRT';
 
   my $timeout_idle = 10;
@@ -8341,7 +8354,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_datatransferpolicy_eprt_list_port {
+sub proxy_reverse_config_datatransferpolicy_eprt_list_port {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -8380,7 +8393,7 @@ sub proxy_gateway_config_datatransferpolicy_eprt_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'EPRT';
 
   my $timeout_idle = 10;
@@ -8515,7 +8528,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_datatransferpolicy_active_list_pasv {
+sub proxy_reverse_config_datatransferpolicy_active_list_pasv {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -8554,7 +8567,7 @@ sub proxy_gateway_config_datatransferpolicy_active_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'active';
 
   my $timeout_idle = 10;
@@ -8689,7 +8702,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_datatransferpolicy_active_list_port {
+sub proxy_reverse_config_datatransferpolicy_active_list_port {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -8728,7 +8741,7 @@ sub proxy_gateway_config_datatransferpolicy_active_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'active';
 
   my $timeout_idle = 10;
@@ -8863,7 +8876,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_datatransferpolicy_passive_list_pasv {
+sub proxy_reverse_config_datatransferpolicy_passive_list_pasv {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -8902,7 +8915,7 @@ sub proxy_gateway_config_datatransferpolicy_passive_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'passive';
 
   my $timeout_idle = 10;
@@ -9037,7 +9050,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_datatransferpolicy_passive_list_port {
+sub proxy_reverse_config_datatransferpolicy_passive_list_port {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -9076,7 +9089,7 @@ sub proxy_gateway_config_datatransferpolicy_passive_list_port {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'passive';
 
   my $timeout_idle = 10;
@@ -9211,7 +9224,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_datatransferpolicy_client {
+sub proxy_reverse_config_datatransferpolicy_client {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -9250,7 +9263,7 @@ sub proxy_gateway_config_datatransferpolicy_client {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyDataTransferPolicy} = 'client';
 
   my $timeout_idle = 10;
@@ -9385,7 +9398,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_config_selection_random {
+sub proxy_reverse_config_selection_random {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -9424,7 +9437,7 @@ sub proxy_gateway_config_selection_random {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyReverseSelection} = 'random';
 
   # For now, we cheat and simply repeat the same vhost three times
@@ -9562,7 +9575,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_xferlog_retr_ascii_ok {
+sub proxy_reverse_xferlog_retr_ascii_ok {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -9614,7 +9627,7 @@ sub proxy_gateway_xferlog_retr_ascii_ok {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
   my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
@@ -9800,7 +9813,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_xferlog_retr_binary_ok {
+sub proxy_reverse_xferlog_retr_binary_ok {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -9852,7 +9865,7 @@ sub proxy_gateway_xferlog_retr_binary_ok {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
   my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
@@ -10038,7 +10051,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_xferlog_stor_ascii_ok {
+sub proxy_reverse_xferlog_stor_ascii_ok {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -10080,7 +10093,7 @@ sub proxy_gateway_xferlog_stor_ascii_ok {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
   my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
@@ -10259,7 +10272,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_xferlog_stor_binary_ok {
+sub proxy_reverse_xferlog_stor_binary_ok {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -10301,7 +10314,7 @@ sub proxy_gateway_xferlog_stor_binary_ok {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
   my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
@@ -10480,7 +10493,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_extlog_retr_var_F_f {
+sub proxy_reverse_extlog_retr_var_F_f {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -10532,7 +10545,7 @@ sub proxy_gateway_extlog_retr_var_F_f {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
   my $ext_log = File::Spec->rel2abs("$tmpdir/ext.log");
@@ -10691,7 +10704,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_extlog_stor_var_F_f {
+sub proxy_reverse_extlog_stor_var_F_f {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -10733,7 +10746,7 @@ sub proxy_gateway_extlog_stor_var_F_f {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
   my $ext_log = File::Spec->rel2abs("$tmpdir/ext.log");
@@ -10885,7 +10898,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_extlog_list_var_D_d {
+sub proxy_reverse_extlog_list_var_D_d {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -10924,7 +10937,7 @@ sub proxy_gateway_extlog_list_var_D_d {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $timeout_idle = 10;
   my $ext_log = File::Spec->rel2abs("$tmpdir/ext.log");
@@ -11075,7 +11088,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_proxy_protocol_ipv4 {
+sub proxy_reverse_proxy_protocol_ipv4 {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -11114,7 +11127,7 @@ sub proxy_gateway_proxy_protocol_ipv4 {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyOptions} = 'UseProxyProtocol';
 
   my $config = {
@@ -11220,7 +11233,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_gateway_proxy_protocol_ipv6 {
+sub proxy_reverse_proxy_protocol_ipv6 {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -11259,7 +11272,7 @@ sub proxy_gateway_proxy_protocol_ipv6 {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyReverseServers} = "ftp://[::1]:$vhost_port";
   $proxy_config->{ProxyOptions} = 'UseProxyProtocol';
 
@@ -11367,7 +11380,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_tls_gateway_login {
+sub proxy_tls_reverse_login {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -11409,7 +11422,7 @@ sub proxy_tls_gateway_login {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
@@ -11539,7 +11552,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_tls_gateway_login_failed {
+sub proxy_tls_reverse_login_failed {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -11581,7 +11594,7 @@ sub proxy_tls_gateway_login_failed {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
@@ -11716,7 +11729,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_tls_gateway_login_tlslogin {
+sub proxy_tls_reverse_login_tlslogin {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -11759,7 +11772,7 @@ sub proxy_tls_gateway_login_tlslogin {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $tlslogin_file = File::Spec->rel2abs("$tmpdir/.tlslogin");
   unless (copy($client_cert_file, $tlslogin_file)) {
@@ -11915,7 +11928,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_tls_gateway_list_pasv {
+sub proxy_tls_reverse_list_pasv {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -11957,7 +11970,7 @@ sub proxy_tls_gateway_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_gateway_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
@@ -12096,7 +12109,7 @@ print STDERR "res: ", Dumper($res), "\n";
   unlink($log_file);
 }
 
-sub proxy_proxy_connect {
+sub proxy_forward_connect {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -12135,7 +12148,7 @@ sub proxy_proxy_connect {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
 
-  my $proxy_config = get_proxy_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
 
   my $config = {
     PidFile => $pid_file,
