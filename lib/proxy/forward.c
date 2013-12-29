@@ -242,6 +242,7 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
 
     remote_addr = proxy_conn_get_addr(pconn);
     proxy_sess->dst_addr = remote_addr;
+    proxy_sess->dst_pconn = pconn;
 
     /* Change the command so that it no longer includes the proxy info. */
     user_cmd = pr_cmd_alloc(cmd->pool, 2, C_USER, user);
@@ -270,12 +271,8 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
         resp_nlines = banner_nlines;
 
       } else {
-        char *host_ptr = NULL;
-
-        host_ptr = strrchr(cmd->arg, '@');
-
         resp->msg = pstrcat(cmd->tmp_pool, "Unable to connect to ",
-          host_ptr + 1, NULL);
+          proxy_conn_get_hostport(proxy_sess->dst_pconn), NULL);
         resp_nlines = 1;
       }
 
@@ -363,6 +360,7 @@ static int forward_handle_user_proxyuserwithproxyauth(cmd_rec *cmd,
 
     remote_addr = proxy_conn_get_addr(pconn);
     proxy_sess->dst_addr = remote_addr;
+    proxy_sess->dst_pconn = pconn;
 
     /* Rewrite the USER command here with the trimmed/truncated name. */
     pr_cmd_clear_cache(cmd);

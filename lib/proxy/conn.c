@@ -33,6 +33,7 @@ struct proxy_conn {
 
   const char *pconn_uri;
   const char *pconn_proto;
+  const char *pconn_hostport;
 
   pr_netaddr_t *pconn_addr;
 };
@@ -86,7 +87,7 @@ int proxy_conn_connect_timeout_cb(CALLBACK_FRAME) {
 
 struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
   int res;
-  char *proto, *remote_host;
+  char hostport[512], *proto, *remote_host;
   unsigned int remote_port;
   struct proxy_conn *pconn;
   pool *pconn_pool;
@@ -103,11 +104,15 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
     return NULL;
   }
 
+  memset(hostport, '\0', sizeof(hostport));
+  snprintf(hostport, sizeof(hostport)-1, "%s:%u", remote_host, remote_port);
+
   pconn_pool = pr_pool_create_sz(p, 128); 
   pr_pool_tag(pconn_pool, "proxy connection pool");
 
   pconn = pcalloc(pconn_pool, sizeof(struct proxy_conn));
   pconn->pconn_pool = pconn_pool;
+  pconn->pconn_hostport = pstrdup(pconn_pool, hostport);
   pconn->pconn_uri = pstrdup(pconn_pool, uri);
   pconn->pconn_proto = pstrdup(pconn_pool, proto);
 
@@ -139,6 +144,15 @@ pr_netaddr_t *proxy_conn_get_addr(struct proxy_conn *pconn) {
   }
 
   return pconn->pconn_addr;
+}
+
+const char *proxy_conn_get_hostport(struct proxy_conn *pconn) {
+  if (pconn == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  return pconn->pconn_hostport;
 }
 
 conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
@@ -189,7 +203,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
 
   server_conn = pr_inet_create_conn(p, -1, bind_addr, INPORT_ANY, FALSE);
 
-  pr_trace_msg(trace_channel, 11, "connecting to backend address %s:%u from %s",
+  pr_trace_msg(trace_channel, 11, "connecting to backend address %s#%u from %s",
     remote_ipstr, remote_port, pr_netaddr_get_ipstr(bind_addr));
 
   res = pr_inet_connect_nowait(p, server_conn, remote_addr,

@@ -27,6 +27,8 @@
 #ifndef MOD_PROXY_SESSION_H
 #define MOD_PROXY_SESSION_H
 
+struct proxy_conn;
+
 struct proxy_session {
   struct pool_rec *pool;
 
@@ -50,6 +52,7 @@ struct proxy_session {
 
   /* Address of the destination server.  May be null. */
   pr_netaddr_t *dst_addr;
+  struct proxy_conn *dst_pconn;
 
   /* Features supported by backend server */
   pr_table_t *backend_features;

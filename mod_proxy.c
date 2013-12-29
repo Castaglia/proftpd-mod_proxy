@@ -2210,16 +2210,18 @@ MODRET proxy_any(cmd_rec *cmd) {
     return PR_DECLINED(cmd);
   }
 
-  /* If we have connected to a backend server, but we have NOT authenticated
-   * to that backend server, then reject all commands as "out of sequence"
-   * errors (i.e. malicious or misinformed clients).
-   *
-   * Note that we use 500 rather than 503 here since 503 is not specifically
-   * mentioned in RFC 959 as being allowed for all commands, unfortunately.
-   */
-  if (!(proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED)) {
-    pr_response_add_err(R_500, _("Bad sequence of commands"));
-    return PR_ERROR(cmd);
+  if (pr_cmd_cmp(cmd, PR_CMD_QUIT_ID) != 0) {
+    /* If we have connected to a backend server, but we have NOT authenticated
+     * to that backend server, then reject all commands as "out of sequence"
+     * errors (i.e. malicious or misinformed clients).
+     *
+     * Note that we use 500 rather than 503 here since 503 is not specifically
+     * mentioned in RFC 959 as being allowed for all commands, unfortunately.
+     */
+    if (!(proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED)) {
+      pr_response_add_err(R_500, _("Bad sequence of commands"));
+      return PR_ERROR(cmd);
+    }
   }
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
@@ -2282,7 +2284,7 @@ MODRET proxy_any(cmd_rec *cmd) {
 /* Event handlers
  */
 
-static int restrict_session(void) {
+static void restrict_session(void) {
   const char *proxy_chroot = NULL;
   rlim_t curr_nproc, max_nproc;
 
