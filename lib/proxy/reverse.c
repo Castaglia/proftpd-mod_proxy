@@ -30,11 +30,40 @@
 #include "proxy/ftp/ctrl.h"
 #include "proxy/ftp/feat.h"
 
+/* From response.c */
+extern xaset_t *server_list;
+
 static int reverse_select_policy = PROXY_REVERSE_SELECT_POLICY_RANDOM;
 
 static const char *trace_channel = "proxy.reverse";
 
-int proxy_reverse_init(pool *p) {
+int proxy_reverse_init(pool *p, const char *tables_dir) {
+  server_rec *s;
+  unsigned int vhost_count = 0;
+
+  /* Iterate through the server_list, and count up the number of vhosts. */
+  for (s = (server_rec *) server_list->xas_list; s; s = s->next) {
+    vhost_count++;
+  }
+
+  /* XXX Create our roundrobin.dat file:
+   *
+   *  size = (sizeof(unsigned int) * 3) * vhost_count
+   *
+   * Do we do this if any of the vhosts are configured as reverse proxies,
+   * or do we do it all of the time, regardless of whether any reverse proxies
+   * are configured?
+   */
+
+  return 0;
+}
+
+int proxy_reverse_free(pool *p, const char *tables_dir) {
+  /* TODO: Implement any necessary cleanup */
+  return 0;
+}
+
+int proxy_reverse_sess_init(pool *p, const char *tables_dir) {
   config_rec *c;
   array_header *backend_servers;
 
@@ -353,6 +382,8 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
   /* XXX What about other response codes for PASS? */
   if (resp->num[0] == '2') {
     *successful = TRUE;
+
+    proxy_sess_state |= PROXY_SESS_STATE_BACKEND_AUTHENTICATED;
   }
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,

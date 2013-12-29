@@ -29,7 +29,10 @@
 #ifndef MOD_PROXY_FORWARD_H
 #define MOD_PROXY_FORWARD_H
 
-int proxy_forward_init(pool *p);
+int proxy_forward_init(pool *p, const char *tables_dir);
+int proxy_forward_free(pool *p, const char *tables_dir);
+
+int proxy_forward_sess_init(pool *p, const char *tables_dir);
 int proxy_forward_have_authenticated(cmd_rec *cmd);
 
 int proxy_forward_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,

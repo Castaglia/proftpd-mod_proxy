@@ -469,6 +469,7 @@ my $TESTS = {
   # proxy_forward_userwithproxyauth_login_failed_bad_sequence
   # proxy_forward_userwithproxyauth_login_failed_bad_proxy_passwd
   # proxy_forward_userwithproxyauth_login_failed_bad_dst_passwd
+  # proxy_forward_userwithproxyauth_bad_sequence_no_dst_login
 
   proxy_forward_proxyuserwithproxyauth_login => {
     order => ++$order,
@@ -488,10 +489,10 @@ my $TESTS = {
   # proxy_forward_proxyuserwithproxyauth_login_failed_bad_sequence
   # proxy_forward_proxyuserwithproxyauth_login_failed_bad_proxy_passwd
   # proxy_forward_proxyuserwithproxyauth_login_failed_bad_dst_passwd
+  # proxy_forward_proxyuserwithproxyauth_bad_sequence_no_dst_login
 
   # proxy_forward_config_displayconnect
   # proxy_forward_config_filter
-  # proxy_forward_config_method (reqd proxy user auth)
   # proxy_forward_config_timeoutlogin
   # proxy_forward_config_maxloginattempts
 };

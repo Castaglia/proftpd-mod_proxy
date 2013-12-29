@@ -49,7 +49,6 @@ extern module xfer_module;
 
 /* From response.c */
 extern pr_response_t *resp_list, *resp_err_list;
-extern xaset_t *server_list;
 
 module proxy_module;
 
@@ -2211,6 +2210,18 @@ MODRET proxy_any(cmd_rec *cmd) {
     return PR_DECLINED(cmd);
   }
 
+  /* If we have connected to a backend server, but we have NOT authenticated
+   * to that backend server, then reject all commands as "out of sequence"
+   * errors (i.e. malicious or misinformed clients).
+   *
+   * Note that we use 500 rather than 503 here since 503 is not specifically
+   * mentioned in RFC 959 as being allowed for all commands, unfortunately.
+   */
+  if (!(proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED)) {
+    pr_response_add_err(R_500, _("Bad sequence of commands"));
+    return PR_ERROR(cmd);
+  }
+
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
     cmd);
   if (res < 0) {
@@ -2419,8 +2430,6 @@ static void proxy_mod_unload_ev(const void *event_data, void *user_data) {
 static void proxy_postparse_ev(const void *event_data, void *user_data) {
   int engine = FALSE;
   config_rec *c;
-  server_rec *s;
-  unsigned int vhost_count = 0;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyEngine", FALSE);
   if (c) {
@@ -2443,19 +2452,21 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
 
   proxy_tables_dir = c->argv[0];
 
-  /* Iterate through the server_list, and count up the number of vhosts. */
-  for (s = (server_rec *) server_list->xas_list; s; s = s->next) {
-    vhost_count++;
+  if (proxy_forward_init(proxy_pool, proxy_tables_dir) < 0) {
+    pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
+      ": unable to initialize forward-proxy, failing to start up");
+
+    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BAD_CONFIG,
+      "Failed forward-proxy initialization");
   }
 
-  /* XXX Create our roundrobin.dat file:
-   *
-   *  size = (sizeof(unsigned int) * 3) * vhost_count
-   *
-   * Do we do this if any of the vhosts are configured as reverse proxies,
-   * or do we do it all of the time, regardless of whether any reverse proxies
-   * are configured?
-   */
+  if (proxy_reverse_init(proxy_pool, proxy_tables_dir) < 0) {
+    pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
+      ": unable to initialize reverse-proxy, failing to start up");
+
+    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BAD_CONFIG,
+      "Failed reverse-proxy initialization");
+  }
 }
 
 static void proxy_restart_ev(const void *event_data, void *user_data) {
@@ -2464,10 +2475,13 @@ static void proxy_restart_ev(const void *event_data, void *user_data) {
 }
 
 static void proxy_shutdown_ev(const void *event_data, void *user_data) {
-  destroy_pool(proxy_pool);
-  proxy_pool = NULL;
+  proxy_forward_free(proxy_pool, proxy_tables_dir);
+  proxy_reverse_free(proxy_pool, proxy_tables_dir);
 
   /* TODO: Delete ProxyTables dir, recursively. */
+
+  destroy_pool(proxy_pool);
+  proxy_pool = NULL;
 
   if (proxy_logfd >= 0) {
     (void) close(proxy_logfd);
@@ -2687,13 +2701,16 @@ static int proxy_sess_init(void) {
 
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:
-      if (proxy_reverse_init(proxy_pool) < 0) {
+      if (proxy_reverse_sess_init(proxy_pool, proxy_tables_dir) < 0) {
         proxy_engine = FALSE;
 
         /* XXX TODO: Return 530 to connecting client? */
         return -1;
       }
 
+      /* XXX TODO: Move this reverse_connect() call into the reverse module,
+       * so that e.g. we can do user-based selection.
+       */
       if (proxy_reverse_connect(proxy_pool, proxy_sess) < 0) {
         /* XXX TODO: Return 530 to connecting client? */
         pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
@@ -2704,7 +2721,7 @@ static int proxy_sess_init(void) {
       break;
 
     case PROXY_ROLE_FORWARD:
-      if (proxy_forward_init(proxy_pool) < 0) {
+      if (proxy_forward_sess_init(proxy_pool, proxy_tables_dir) < 0) {
         proxy_engine = FALSE;
 
         /* XXX TODO: Return 530 to connecting client? */

@@ -37,7 +37,16 @@ static int proxy_method = PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH;
 
 static const char *trace_channel = "proxy.forward";
 
-int proxy_forward_init(pool *p) {
+int proxy_forward_init(pool *p, const char *tables_dir) {
+  return 0;
+}
+
+int proxy_forward_free(pool *p, const char *tables_dir) {
+  /* TODO: Implement any necessary cleanup */
+  return 0;
+}
+
+int proxy_forward_sess_init(pool *p, const char *tables_dir) {
   config_rec *c;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyForwardMethod", FALSE);
@@ -625,6 +634,8 @@ static int forward_handle_pass_passthru(cmd_rec *cmd,
   /* XXX What about other response codes for PASS? */
   if (resp->num[0] == '2') {
     *successful = TRUE;
+
+    proxy_sess_state |= PROXY_SESS_STATE_BACKEND_AUTHENTICATED;
   }
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,

@@ -29,7 +29,10 @@
 #ifndef MOD_PROXY_REVERSE_H
 #define MOD_PROXY_REVERSE_H
 
-int proxy_reverse_init(pool *p);
+int proxy_reverse_init(pool *p, const char *tables_dir);
+int proxy_reverse_free(pool *p, const char *tables_dir);
+
+int proxy_reverse_sess_init(pool *p, const char *tables_dir);
 int proxy_reverse_have_authenticated(cmd_rec *cmd);
 
 int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess);
