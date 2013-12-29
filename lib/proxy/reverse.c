@@ -195,7 +195,9 @@ int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess) {
     return -1;
   }
 
-  server_conn = proxy_conn_get_server_conn(p, proxy_sess, remote_addr);
+  proxy_sess->dst_addr = remote_addr;
+
+  server_conn = proxy_conn_get_server_conn(p, proxy_sess, proxy_sess->dst_addr);
   if (server_conn == NULL) {
     return -1;
   }
@@ -273,7 +275,7 @@ int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess) {
 }
 
 int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
-    int *ok) {
+    int *successful) {
   int res, xerrno;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
@@ -303,7 +305,7 @@ int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
 
   if (resp->num[0] == '2' ||
       resp->num[0] == '3') {
-    *ok = TRUE;
+    *successful = TRUE;
   }
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
@@ -316,5 +318,52 @@ int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     return -1;
   }
 
-  return 0;
+  return 1;
+}
+
+int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
+    int *successful) {
+  int res, xerrno;
+  pr_response_t *resp;
+  unsigned int resp_nlines = 0;
+
+  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    cmd);
+  if (res < 0) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
+  if (resp == NULL) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error receiving %s response from backend: %s", cmd->argv[0],
+      strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  /* XXX What about other response codes for PASS? */
+  if (resp->num[0] == '2') {
+    *successful = TRUE;
+  }
+
+  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
+    resp, resp_nlines);
+  if (res < 0) {
+    xerrno = errno;
+
+    pr_response_block(TRUE);
+    errno = xerrno;
+    return -1;
+  }
+
+  return 1;
 }

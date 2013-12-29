@@ -33,12 +33,15 @@ int proxy_forward_init(pool *p);
 int proxy_forward_have_authenticated(cmd_rec *cmd);
 
 int proxy_forward_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
-  int *ok);
+  int *successful, int *block_responses);
+int proxy_forward_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
+  int *successful, int *block_responses);
 
 /* Forward proxy method API */
 
 #define PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH		1
 #define PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH			2
+#define PROXY_FORWARD_METHOD_PROXY_USER_WITH_PROXY_AUTH		3
 
 /* Return the method ID for the given string, or -1 if the given method
  * is not recognized/supported.

@@ -1891,16 +1891,18 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   return PR_HANDLED(cmd);
 }
 
-MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess) {
-  int ok = FALSE, res;
+MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
+    int *block_responses) {
+  int successful = FALSE, res;
 
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:
-      res = proxy_reverse_handle_user(cmd, proxy_sess, &ok);
+      res = proxy_reverse_handle_user(cmd, proxy_sess, &successful);
       break;
 
     case PROXY_ROLE_FORWARD:
-      res = proxy_forward_handle_user(cmd, proxy_sess, &ok);
+      res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
+        block_responses);
       break;
   }
 
@@ -1914,7 +1916,7 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  if (ok) {
+  if (successful) {
     config_rec *c;
     const char *notes_key = "mod_auth.orig-user";
     char *user, *xferlog = PR_XFERLOG_PATH;
@@ -1959,20 +1961,26 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     }
   }
 
-  return PR_HANDLED(cmd);
+  return (res == 0 ? PR_DECLINED(cmd) : PR_HANDLED(cmd));
 }
 
-MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess) {
-  int res, xerrno;
-  pr_response_t *resp;
-  unsigned int resp_nlines = 0;
+MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
+    int *block_responses) {
+  int successful = FALSE, res;
 
-  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    cmd);
+  switch (proxy_role) {
+    case PROXY_ROLE_REVERSE:
+      res = proxy_reverse_handle_pass(cmd, proxy_sess, &successful);
+      break;
+
+    case PROXY_ROLE_FORWARD:
+      res = proxy_forward_handle_pass(cmd, proxy_sess, &successful,
+        block_responses);
+      break;
+  }
+
   if (res < 0) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+    int xerrno = errno;
 
     pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
     pr_response_flush(&resp_err_list);
@@ -1981,23 +1989,7 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_ERROR(cmd);
   }
 
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
-  if (resp == NULL) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", cmd->argv[0],
-      strerror(xerrno));
-
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  /* XXX What about other response codes for PASS? */
-  if (resp->num[0] == '2') {
+  if (successful) {
     char *user;
 
     user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
@@ -2008,16 +2000,6 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess) {
      */
 
     fixup_dirs(main_server, CF_DEFER);
-  }
-
-  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
-    resp, resp_nlines);
-  if (res < 0) {
-    xerrno = errno;
-
-    pr_response_block(TRUE);
-    errno = xerrno;
-    return PR_ERROR(cmd);
   }
 
   /* Remove any exit handlers installed by mod_xfer.  We do this here,
@@ -2108,7 +2090,7 @@ MODRET proxy_type(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 }
 
 MODRET proxy_any(cmd_rec *cmd) {
-  int res, xerrno;
+  int block_responses = TRUE, res, xerrno;
   struct proxy_session *proxy_sess;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
@@ -2135,13 +2117,17 @@ MODRET proxy_any(cmd_rec *cmd) {
 
   switch (cmd->cmd_id) {
     case PR_CMD_USER_ID:
-      mr = proxy_user(cmd, proxy_sess);
-      pr_response_block(TRUE);
+      mr = proxy_user(cmd, proxy_sess, &block_responses);
+      if (block_responses) {
+        pr_response_block(TRUE);
+      }
       return mr;
 
     case PR_CMD_PASS_ID:
-      mr = proxy_pass(cmd, proxy_sess);
-      pr_response_block(TRUE);
+      mr = proxy_pass(cmd, proxy_sess, &block_responses);
+      if (block_responses) {
+        pr_response_block(TRUE);
+      }
       return mr;
 
     case PR_CMD_EPRT_ID:
@@ -2285,7 +2271,7 @@ MODRET proxy_any(cmd_rec *cmd) {
 /* Event handlers
  */
 
-static void proxy_ctrl_read_ev(const void *event_data, void *user_data) {
+static int restrict_session(void) {
   const char *proxy_chroot = NULL;
   rlim_t curr_nproc, max_nproc;
 
@@ -2365,9 +2351,16 @@ static void proxy_ctrl_read_ev(const void *event_data, void *user_data) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error getting nproc limits: %s", strerror(errno));
   }
+}
 
-  /* Our work here is done; we no longer need to listen for future reads. */
-  pr_event_unregister(&proxy_module, "mod_proxy.ctrl-read", proxy_ctrl_read_ev);
+static void proxy_ctrl_read_ev(const void *event_data, void *user_data) {
+  if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+    restrict_session();
+
+    /* Our work here is done; we no longer need to listen for future reads. */
+    pr_event_unregister(&proxy_module, "mod_proxy.ctrl-read",
+      proxy_ctrl_read_ev);
+  }
 }
 
 static void proxy_exit_ev(const void *event_data, void *user_data) {

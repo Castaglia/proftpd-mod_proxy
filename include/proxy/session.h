@@ -48,6 +48,9 @@ struct proxy_session {
   /* Address for connections to/from destination server.  May be null. */
   pr_netaddr_t *src_addr;
 
+  /* Address of the destination server.  May be null. */
+  pr_netaddr_t *dst_addr;
+
   /* Features supported by backend server */
   pr_table_t *backend_features;
 

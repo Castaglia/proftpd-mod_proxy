@@ -33,8 +33,11 @@ int proxy_reverse_init(pool *p);
 int proxy_reverse_have_authenticated(cmd_rec *cmd);
 
 int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess);
+
 int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
-  int *ok);
+  int *successful);
+int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
+  int *successful);
 
 /* Backend selection policy API */
 #define PROXY_REVERSE_SELECT_POLICY_RANDOM			1
