@@ -1,24 +1,25 @@
 CC=@CC@
 @SET_MAKE@
 
-proftpd_dir=/home/tj/proftpd/cvs/proftpd
-
-top_builddir=..
-top_srcdir=..
+top_builddir=../../..
+top_srcdir=../../..
+module_srcdir=..
 srcdir=@srcdir@
 VPATH=@srcdir@
 
+include $(top_srcdir)/Make.rules
+
+# Necessary redefinitions
+INCLUDES=-I. -I.. -I$(module_srdir)/include -I../../.. -I../../../include @INCLUDES@
+CPPFLAGS= $(ADDL_CPPFLAGS) -DHAVE_CONFIG_H $(DEFAULT_PATHS) $(PLATFORM) $(INCLUDES)
+LDFLAGS=-L$(top_srcdir)/lib @LIBDIRS@
+
 EXEEXT=@EXEEXT@
 
-CPPFLAGS=-I. -I.. -I$(proftpd_dir) -I$(proftpd_dir)/include
-CFLAGS=-DLINUX
-LDFLAGS=-L$(proftpd_dir)/lib
-LIBS=-lsupp
-
 TEST_API_DEPS=\
-  $(proftpd_dir)/src/pool.o \
-  $(proftpd_dir)/src/str.o \
-  $(top_srcdir)/uri.o \
+  $(top_srcdir)/src/pool.o \
+  $(top_srcdir)/src/str.o \
+  $(module_srcdir)/lib/proxy/uri.o
 
 TEST_API_LIBS=-lcheck
 
