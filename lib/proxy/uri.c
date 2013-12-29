@@ -33,7 +33,8 @@
 
 static const char *trace_channel = "proxy.uri";
 
-static char *uri_parse_host(pool *p, const char *uri, char **remaining) {
+static char *uri_parse_host(pool *p, const char *orig_uri,
+    const char *uri, char **remaining) {
   char *host = NULL, *ptr = NULL;
 
   /* We have either of:
@@ -49,7 +50,7 @@ static char *uri_parse_host(pool *p, const char *uri, char **remaining) {
     if (ptr == NULL) {
       /* If there is no ']', then it's a badly-formatted URI. */
       pr_trace_msg(trace_channel, 4,
-        "badly formatted IPv6 address in host info '%.100s'", uri);
+        "badly formatted IPv6 address in host info '%.100s'", orig_uri);
       errno = EINVAL;
       return NULL;
     }
@@ -69,7 +70,7 @@ static char *uri_parse_host(pool *p, const char *uri, char **remaining) {
     }
 
     pr_trace_msg(trace_channel, 17, "parsed host '%s' out of URI '%s'", host,
-      uri);
+      orig_uri);
     return host;
   }
 
@@ -82,7 +83,7 @@ static char *uri_parse_host(pool *p, const char *uri, char **remaining) {
     host = pstrdup(p, uri);
 
     pr_trace_msg(trace_channel, 17, "parsed host '%s' out of URI '%s'", host,
-      uri);
+      orig_uri);
     return host;
   }
 
@@ -93,7 +94,7 @@ static char *uri_parse_host(pool *p, const char *uri, char **remaining) {
   host = pstrndup(p, uri, ptr - uri);
 
   pr_trace_msg(trace_channel, 17, "parsed host '%s' out of URI '%s'", host,
-    uri);
+    orig_uri);
   return host;
 }
 
@@ -144,6 +145,14 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
 
   ptr += 3;
 
+  if (*ptr == '\0') {
+    /* The given URL looked like "scheme://". */
+    pr_trace_msg(trace_channel, 4,
+      "missing required authority following '//' in URI '%.100s'", uri);
+    errno = EINVAL;
+    return -1;
+  }
+
   /* Possible URIs at this point:
    *
    *  scheme://host:port/path/...
@@ -182,7 +191,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
 
   ptr2 = strchr(ptr, ':');
   if (ptr2 == NULL) {
-    *host = uri_parse_host(p, ptr, NULL);
+    *host = uri_parse_host(p, uri, ptr, NULL);
 
     /* XXX How to configure "implicit" FTPS, if at all? */
 
@@ -201,10 +210,14 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
     } 
 
   } else {
-    *host = uri_parse_host(p, ptr, &ptr2);
+    *host = uri_parse_host(p, uri, ptr, &ptr2);
   }
 
-  ptr2 = strchr(ptr2, ':');
+  /* Optional port field present? */
+  if (ptr2 != NULL) {
+    ptr2 = strchr(ptr2, ':');
+  }
+
   if (ptr2 == NULL) {
     /* XXX How to configure "implicit" FTPS, if at all? */
 
