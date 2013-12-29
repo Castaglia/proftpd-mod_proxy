@@ -1,5 +1,5 @@
 /*
- * ProFTPD - mod_proxy API testsuite
+ * ProFTPD - mod_proxy testsuite
  * Copyright (c) 2012-2013 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,32 +22,50 @@
  * source distribution.
  */
 
-/* Testsuite management
- * $Id: tests.h,v 1.5 2011/10/31 18:38:51 castaglia Exp $
+/* Conn API tests
+ * $Id: env.c,v 1.2 2011/05/23 20:50:31 castaglia Exp $
  */
 
-#ifndef MOD_PROXY_TESTS_H
-#define MOD_PROXY_TESTS_H
+#include "tests.h"
 
-#include "mod_proxy.h"
+static pool *p = NULL;
 
-#include "proxy/random.h"
-#include "proxy/conn.h"
-#include "proxy/uri.h"
-#include "proxy/session.h"
-#include "proxy/reverse.h"
-#include "proxy/ftp/ctrl.h"
-#include "proxy/ftp/feat.h"
+static void set_up(void) {
+  if (p == NULL) {
+    p = make_sub_pool(NULL);
+  }
+}
 
-#ifdef HAVE_CHECK_H
-# include <check.h>
-#else
-# error "Missing Check installation; necessary for ProFTPD testsuite"
-#endif
+static void tear_down(void) {
+  if (p) {
+    destroy_pool(p);
+    p = NULL;
+  } 
+}
 
-Suite *tests_get_conn_suite(void);
-Suite *tests_get_random_suite(void);
-Suite *tests_get_reverse_suite(void);
-Suite *tests_get_uri_suite(void);
+START_TEST (conn_create_test) {
 
-#endif /* MOD_PROXY_TESTS_H */
+  /* TODO: include:
+   *  get_addr
+   *  get_hostport
+   *  get_uri
+   */
+
+}
+END_TEST
+
+Suite *tests_get_conn_suite(void) {
+  Suite *suite;
+  TCase *testcase;
+
+  suite = suite_create("conn");
+
+  testcase = tcase_create("base");
+
+  tcase_add_checked_fixture(testcase, set_up, tear_down);
+
+  tcase_add_test(testcase, conn_create_test);
+
+  suite_add_tcase(suite, testcase);
+  return suite;
+}

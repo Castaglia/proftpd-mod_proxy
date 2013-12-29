@@ -30,6 +30,9 @@ struct testsuite_info {
 };
 
 static struct testsuite_info suites[] = {
+  { "conn", 		tests_get_conn_suite },
+  { "random", 		tests_get_random_suite },
+  { "reverse", 		tests_get_reverse_suite },
   { "uri", 		tests_get_uri_suite },
 
   { NULL, NULL }
@@ -38,6 +41,9 @@ static struct testsuite_info suites[] = {
 static Suite *tests_get_suite(const char *suite) { 
   if (strcmp(suite, "uri") == 0) { 
     return tests_get_uri_suite();
+
+  } else if (strcmp(suite, "reverse") == 0) {
+    return tests_get_reverse_suite();
   }
 
   return NULL;
