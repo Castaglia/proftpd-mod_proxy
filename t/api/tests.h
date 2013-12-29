@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy API testsuite
- * Copyright (c) 2012 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2012-2013 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,10 +26,11 @@
  * $Id: tests.h,v 1.5 2011/10/31 18:38:51 castaglia Exp $
  */
 
-#ifndef PROXY_TESTS_H
-#define PROXY_TESTS_H
+#ifndef MOD_PROXY_TESTS_H
+#define MOD_PROXY_TESTS_H
 
-#include "conf.h"
+#include "mod_proxy.h"
+#include "proxy/uri.h"
 
 #ifdef HAVE_CHECK_H
 # include <check.h>
@@ -39,4 +40,4 @@
 
 Suite *tests_get_uri_suite(void);
 
-#endif /* PROXY_TESTS_H */
+#endif /* MOD_PROXY_TESTS_H */

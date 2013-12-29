@@ -43,6 +43,15 @@ int pr_trace_get_level(const char *channel) {
 }
 
 int pr_trace_msg(const char *channel, int level, const char *fmt, ...) {
+  va_list msg;
+
+  fprintf(stderr, "<%s:%d>: ", channel, level);
+
+  va_start(msg, fmt);
+  vfprintf(stderr, fmt, msg);
+  va_end(msg);
+
+  fprintf(stderr, "\n");
   return 0;
 }
 
