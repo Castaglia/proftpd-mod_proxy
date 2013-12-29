@@ -2130,67 +2130,119 @@ MODRET proxy_any(cmd_rec *cmd) {
       return mr;
 
     case PR_CMD_EPRT_ID:
-      mr = proxy_eprt(cmd, proxy_sess);
-      pr_response_block(TRUE);
-      return mr;
+      if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+        mr = proxy_eprt(cmd, proxy_sess);
+        pr_response_block(TRUE);
+        return mr;
+      }
+      break;
 
     case PR_CMD_EPSV_ID:
-      mr = proxy_epsv(cmd, proxy_sess);
-      pr_response_block(TRUE);
-      return mr;
+      if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+        mr = proxy_epsv(cmd, proxy_sess);
+        pr_response_block(TRUE);
+        return mr;
+      }
+      break;
 
     case PR_CMD_PASV_ID:
-      mr = proxy_pasv(cmd, proxy_sess);
-      pr_response_block(TRUE);
-      return mr;
+      if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+        mr = proxy_pasv(cmd, proxy_sess);
+        pr_response_block(TRUE);
+        return mr;
+      }
+      break;
 
     case PR_CMD_PORT_ID:
-      mr = proxy_port(cmd, proxy_sess);
-      pr_response_block(TRUE);
-      return mr;
+      if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+        mr = proxy_port(cmd, proxy_sess);
+        pr_response_block(TRUE);
+        return mr;
+      }
+      break;
 
     case PR_CMD_TYPE_ID:
-      /* Used for setting the ASCII/binary session flag properly, e.g. for
-       * TransferLogs.
-       */
-      mr = proxy_type(cmd, proxy_sess);
-      pr_response_block(TRUE);
-      return mr;
+      if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+        /* Used for setting the ASCII/binary session flag properly, e.g. for
+         * TransferLogs.
+         */
+        mr = proxy_type(cmd, proxy_sess);
+        pr_response_block(TRUE);
+        return mr;
+      }
+      break;
 
     case PR_CMD_LIST_ID:
     case PR_CMD_MLSD_ID:
     case PR_CMD_NLST_ID:
-      session.xfer.p = make_sub_pool(session.pool);
-      mr = proxy_data(cmd, proxy_sess);
-      destroy_pool(session.xfer.p);
-      memset(&session.xfer, 0, sizeof(session.xfer));
+      if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+        session.xfer.p = make_sub_pool(session.pool);
+        mr = proxy_data(cmd, proxy_sess);
+        destroy_pool(session.xfer.p);
+        memset(&session.xfer, 0, sizeof(session.xfer));
 
-      pr_response_block(TRUE);
-      return mr;
+        pr_response_block(TRUE);
+        return mr;
+
+      } else {
+        pr_response_send(R_530, _("Access denied"));
+        return PR_ERROR(cmd);
+      }
+      break;
 
     case PR_CMD_APPE_ID:
     case PR_CMD_RETR_ID:
     case PR_CMD_STOR_ID:
     case PR_CMD_STOU_ID:
-      /* In addition to the same setup as for directory listings, we also
-       * track more things, for supporting e.g. TransferLog.
-       */
-      memset(&session.xfer, 0, sizeof(session.xfer));
-      session.xfer.p = make_sub_pool(session.pool);
-      gettimeofday(&session.xfer.start_time, NULL);
+      if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+        /* In addition to the same setup as for directory listings, we also
+         * track more things, for supporting e.g. TransferLog.
+         */
+        memset(&session.xfer, 0, sizeof(session.xfer));
+        session.xfer.p = make_sub_pool(session.pool);
+        gettimeofday(&session.xfer.start_time, NULL);
 
-      mr = proxy_data(cmd, proxy_sess);
+        mr = proxy_data(cmd, proxy_sess);
 
-      proxy_log_xfer(cmd, 'c');
-      destroy_pool(session.xfer.p);
-      memset(&session.xfer, 0, sizeof(session.xfer));
+        proxy_log_xfer(cmd, 'c');
+        destroy_pool(session.xfer.p);
+        memset(&session.xfer, 0, sizeof(session.xfer));
 
-      pr_response_block(TRUE);
-      return mr;
+        pr_response_block(TRUE);
+        return mr;
+
+      } else {
+        pr_response_send(R_530, _("Access denied"));
+        return PR_ERROR(cmd);
+      }
+      break;
 
     case PR_CMD_FEAT_ID:
-      return PR_DECLINED(cmd);
+      if (proxy_role == PROXY_ROLE_REVERSE) {
+        /* In reverse-proxy mode, we do not want to necessarily leak the
+         * capabilities of the selected backend server to the client.
+         */
+        return PR_DECLINED(cmd);
+      }
 
+    /* Directory changing commands not allowed locally. */
+    case PR_CMD_CDUP_ID:
+    case PR_CMD_CWD_ID:
+    case PR_CMD_MKD_ID:
+    case PR_CMD_PWD_ID:
+    case PR_CMD_RMD_ID:
+    case PR_CMD_XCUP_ID:
+    case PR_CMD_XCWD_ID:
+    case PR_CMD_XMKD_ID:
+    case PR_CMD_XPWD_ID:
+    case PR_CMD_XRMD_ID:
+      if ((proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED) &&
+          !(proxy_sess_state & PROXY_SESS_STATE_CONNECTED)) {
+        pr_response_send(R_530, _("Access denied"));
+        return PR_ERROR(cmd);
+      }
+      break;
+ 
     /* RFC 2228 commands */
     case PR_CMD_ADAT_ID:
     case PR_CMD_AUTH_ID:
@@ -2214,12 +2266,9 @@ MODRET proxy_any(cmd_rec *cmd) {
     /* If we have connected to a backend server, but we have NOT authenticated
      * to that backend server, then reject all commands as "out of sequence"
      * errors (i.e. malicious or misinformed clients).
-     *
-     * Note that we use 500 rather than 503 here since 503 is not specifically
-     * mentioned in RFC 959 as being allowed for all commands, unfortunately.
      */
     if (!(proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED)) {
-      pr_response_add_err(R_500, _("Bad sequence of commands"));
+      pr_response_add_err(R_530, _("Please login with USER and PASS"));
       return PR_ERROR(cmd);
     }
   }
@@ -2565,6 +2614,7 @@ static int proxy_sess_init(void) {
   config_rec *c;
   int res;
   struct proxy_session *proxy_sess;
+  const char *sess_dir = NULL;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyEngine", FALSE);
   if (c != NULL) {
@@ -2693,13 +2743,12 @@ static int proxy_sess_init(void) {
     proxy_sess->connect_timeout = PROXY_CONNECT_DEFAULT_TIMEOUT;
   }
 
-  /* XXX All proxied connections are automatically chrooted (after auth,
-   * or immediately upon connect?  Depends on the backend selection
-   * mechanism...)
-   *
-   * All proxied connections immediately have root privs dropped.  (Act as
-   * if the RootRevoke option was programmatically set?)
-   */
+  /* Every proxy session starts off in the ProxyTables/empty/ directory. */
+  sess_dir = pdircat(proxy_pool, proxy_tables_dir, "empty", NULL);
+  if (pr_fsio_chdir_canon(sess_dir, TRUE) < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error setting session directory to '%s': %s", sess_dir, strerror(errno));
+  }
 
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:

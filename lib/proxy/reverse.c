@@ -119,6 +119,16 @@ int proxy_reverse_have_authenticated(cmd_rec *cmd) {
    * more commands, or reject them because the client hasn't authenticated
    * yet.
    */
+
+#if 0
+   /* This state check will become more complex when implementing per-user
+    * reverse proxy lookups.
+    */
+   if (authd == FALSE) {
+     pr_response_send(R_530, _("Please login with USER and PASS"));
+   }
+#endif
+
   return TRUE;
 }
 
@@ -384,6 +394,7 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     *successful = TRUE;
 
     proxy_sess_state |= PROXY_SESS_STATE_BACKEND_AUTHENTICATED;
+    pr_timer_remove(PR_TIMER_LOGIN, ANY_MODULE); 
   }
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,

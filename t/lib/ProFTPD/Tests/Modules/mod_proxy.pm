@@ -20,84 +20,84 @@ my $order = 0;
 my $TESTS = {
   proxy_reverse_connect => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_connect_failed_bad_dst_addr => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_connect_failed_non2xx => {
     order => ++$order,
-    test_class => [qw(forking mod_wrap2 mod_wrap2_file)],
+    test_class => [qw(forking mod_wrap2 mod_wrap2_file reverse)],
   },
 
   proxy_reverse_login => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_login_failed => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_login_chrooted => {
     order => ++$order,
-    test_class => [qw(forking rootprivs)],
+    test_class => [qw(forking reverse rootprivs)],
   },
 
   proxy_reverse_feat => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_list_pasv => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_list_port => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_list_pasv_enoent => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_list_port_enoent => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_epsv => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   # TODO: proxy_reverse_epsv_all
 
   proxy_reverse_eprt_ipv4 => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_eprt_ipv6 => {
     order => ++$order,
-    test_class => [qw(feature_ipv6 forking)],
+    test_class => [qw(feature_ipv6 forking reverse)],
   },
 
   proxy_reverse_retr_pasv_ascii => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_retr_pasv_binary => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   # This needs to handle chunks larger than the transfer buffer size;
@@ -106,199 +106,199 @@ my $TESTS = {
 
   proxy_reverse_retr_large_file => {
     order => ++$order,
-    test_class => [qw(forking slow)],
+    test_class => [qw(forking reverse slow)],
   },
 
   proxy_reverse_retr_empty_file => {
     order => ++$order,
-    test_class => [qw(forking slow)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_retr_abort => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_stor_pasv => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_stor_port => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_stor_large_file => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse slow)],
   },
 
   proxy_reverse_stor_empty_file => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_stor_eperm => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_stor_abort => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_rest_retr => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_rest_stor => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_unknown_cmd => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_passiveports_pasv => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_passiveports_epsv => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   # MasqueradeAddress only really applies to PASV
   proxy_reverse_config_masqueradeaddress => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_allowforeignaddress_port => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_allowforeignaddress_eprt => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   # Normal TimeoutIdle, honored by mod_proxy (frontend and backend)
   proxy_reverse_config_timeoutidle_frontend => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_timeoutidle_backend => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_timeoutlogin_frontend => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   # Normal TimeoutNoTransfer, honored by mod_proxy (frontend and backend)
   proxy_reverse_config_timeoutnoxfer_frontend => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_timeoutnoxfer_backend => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   # Normal TimeoutStalled, honored by mod_proxy (frontend and backend)
   proxy_reverse_config_timeoutstalled_frontend => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_timeoutstalled_backend => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   # XXX What about TimeoutSession, TimeoutLinger?
 
   proxy_reverse_config_datatransferpolicy_pasv_list_pasv => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_datatransferpolicy_pasv_list_port => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_datatransferpolicy_port_list_pasv => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_datatransferpolicy_port_list_port => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_datatransferpolicy_epsv_list_pasv => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_datatransferpolicy_epsv_list_port => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_datatransferpolicy_eprt_list_pasv => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_datatransferpolicy_eprt_list_port => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_datatransferpolicy_active_list_pasv => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_datatransferpolicy_active_list_port => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_datatransferpolicy_passive_list_pasv => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_datatransferpolicy_passive_list_port => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_config_datatransferpolicy_client => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   # backend selection: random, roundrobin, shuffle, per-user, leastconns...?
   proxy_reverse_config_selection_random => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   # TransferLog entries (binary/ascii, upload/download, complete/aborted)
@@ -308,38 +308,38 @@ my $TESTS = {
 
   proxy_reverse_xferlog_retr_ascii_ok => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_xferlog_retr_binary_ok => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_xferlog_stor_ascii_ok => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_xferlog_stor_binary_ok => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   # ExtendedLog entries.  The most affected will be %D/%d and %F/%f.
   proxy_reverse_extlog_retr_var_F_f => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_extlog_stor_var_F_f => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_extlog_list_var_D_d => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking reverse)],
   },
 
   # LastLog?  WtmpLog?
@@ -350,12 +350,12 @@ my $TESTS = {
 
   proxy_reverse_proxy_protocol_ipv4 => {
     order => ++$order,
-    test_class => [qw(forking mod_proxy_protocol)],
+    test_class => [qw(forking mod_proxy_protocol reverse)],
   },
 
   proxy_reverse_proxy_protocol_ipv6 => {
     order => ++$order,
-    test_class => [qw(feature_ipv6 forking mod_proxy_protocol)],
+    test_class => [qw(feature_ipv6 forking mod_proxy_protocol reverse)],
   },
 
   # proxy_reverse_proxy_protocol_ipv6_useipv6_off
@@ -363,102 +363,102 @@ my $TESTS = {
 
   proxy_tls_reverse_login => {
     order => ++$order,
-    test_class => [qw(forking mod_tls)],
+    test_class => [qw(forking mod_tls reverse)],
   },
 
   proxy_tls_reverse_login_failed => {
     order => ++$order,
-    test_class => [qw(forking mod_tls)],
+    test_class => [qw(forking mod_tls reverse)],
   },
 
   proxy_tls_reverse_login_tlslogin => {
     order => ++$order,
-    test_class => [qw(forking mod_tls)],
+    test_class => [qw(forking mod_tls reverse)],
   },
 
 #  proxy_tls_reverse_list_pasv => {
 #    order => ++$order,
-#    test_class => [qw(forking mod_tls)],
+#    test_class => [qw(forking mod_tls reverse)],
 #  },
 
   proxy_forward_connect => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   proxy_forward_noproxyauth_login => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   proxy_forward_noproxyauth_login_netftp_fw_type_1 => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   proxy_forward_noproxyauth_login_failed_bad_dst_addr => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   proxy_forward_noproxyauth_login_failed_non2xx => {
     order => ++$order,
-    test_class => [qw(forking mod_wrap2 mod_wrap2_file)],
+    test_class => [qw(forking forward mod_wrap2 mod_wrap2_file)],
   },
 
   proxy_forward_noproxyauth_login_failed_login_limit => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   proxy_forward_noproxyauth_login_failed_bad_sequence => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   proxy_forward_noproxyauth_login_failed_bad_dst_passwd => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   proxy_forward_login_feat_first => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   proxy_forward_list_pasv => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   proxy_forward_list_port => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   proxy_forward_epsv => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   proxy_forward_eprt_ipv4 => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   proxy_forward_eprt_ipv6 => {
     order => ++$order,
-    test_class => [qw(feature_ipv6 forking)],
+    test_class => [qw(feature_ipv6 forking forward)],
   },
 
   proxy_forward_stor_pasv => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   proxy_forward_userwithproxyauth_login => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   # Note: The following test is disabled because Net::FTP has a bug in the
@@ -470,23 +470,42 @@ my $TESTS = {
 
   proxy_forward_userwithproxyauth_login_failed_bad_dst_addr => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   proxy_forward_userwithproxyauth_login_failed_non2xx => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
-  # proxy_forward_userwithproxyauth_login_failed_limit_login
-  # proxy_forward_userwithproxyauth_login_failed_bad_sequence
-  # proxy_forward_userwithproxyauth_login_failed_bad_proxy_passwd
-  # proxy_forward_userwithproxyauth_login_failed_bad_dst_passwd
-  # proxy_forward_userwithproxyauth_bad_sequence_no_dst_login
+  proxy_forward_userwithproxyauth_login_failed_limit_login => {
+    order => ++$order,
+    test_class => [qw(forking forward)],
+  },
+
+  proxy_forward_userwithproxyauth_login_failed_bad_sequence => {
+    order => ++$order,
+    test_class => [qw(forking forward)],
+  },
+
+  proxy_forward_userwithproxyauth_login_failed_bad_proxy_passwd => {
+    order => ++$order,
+    test_class => [qw(forking forward)],
+  },
+
+  proxy_forward_userwithproxyauth_login_failed_bad_dst_passwd => {
+    order => ++$order,
+    test_class => [qw(forking forward)],
+  },
+
+  proxy_forward_userwithproxyauth_bad_sequence_no_dst_login => {
+    order => ++$order,
+    test_class => [qw(forking forward)],
+  },
 
   proxy_forward_proxyuserwithproxyauth_login => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   # Note: The following test is disabled because Net::FTP has a bug in the
@@ -498,19 +517,38 @@ my $TESTS = {
 
   proxy_forward_proxyuserwithproxyauth_login_failed_bad_dst_addr => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
   proxy_forward_proxyuserwithproxyauth_login_failed_non2xx => {
     order => ++$order,
-    test_class => [qw(forking)],
+    test_class => [qw(forking forward)],
   },
 
-  # proxy_forward_proxyuserwithproxyauth_login_failed_limit_login
-  # proxy_forward_proxyuserwithproxyauth_login_failed_bad_sequence
-  # proxy_forward_proxyuserwithproxyauth_login_failed_bad_proxy_passwd
-  # proxy_forward_proxyuserwithproxyauth_login_failed_bad_dst_passwd
-  # proxy_forward_proxyuserwithproxyauth_bad_sequence_no_dst_login
+  proxy_forward_proxyuserwithproxyauth_login_failed_limit_login => {
+    order => ++$order,
+    test_class => [qw(forking forward)],
+  },
+
+  proxy_forward_proxyuserwithproxyauth_login_failed_bad_sequence => {
+    order => ++$order,
+    test_class => [qw(forking forward)],
+  },
+
+  proxy_forward_proxyuserwithproxyauth_login_failed_bad_proxy_passwd => {
+    order => ++$order,
+    test_class => [qw(forking forward)],
+  },
+
+  proxy_forward_proxyuserwithproxyauth_login_failed_bad_dst_passwd => {
+    order => ++$order,
+    test_class => [qw(forking forward)],
+  },
+
+  proxy_forward_proxyuserwithproxyauth_bad_sequence_no_dst_login => {
+    order => ++$order,
+    test_class => [qw(forking forward)],
+  },
 
   # proxy_forward_config_displayconnect
   # proxy_forward_config_filter
@@ -524,13 +562,7 @@ sub new {
 }
 
 sub list_tests {
-#  return testsuite_get_runnable_tests($TESTS);
-  return qw(
-    proxy_forward_proxyuserwithproxyauth_login_failed_non2xx
-  );
-
-# after proxy_reverse_config_timeoutidle_backend
-#    proxy_reverse_config_timeoutlogin_frontend
+  return testsuite_get_runnable_tests($TESTS);
 }
 
 sub get_reverse_proxy_config {
@@ -6523,6 +6555,167 @@ EOC
       $expected = "Idle timeout ($backend_timeoutidle seconds): closing control connection";
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh, $frontend_timeoutidle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_reverse_config_timeoutlogin_frontend {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
+
+  my $frontend_timeoutidle = 10;
+  my $frontend_timeoutlogin = 2;
+  my $frontend_timeout_delay = $frontend_timeoutlogin + 2;
+
+  my $backend_timeoutidle = 10;
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+
+    TimeoutIdle => $frontend_timeoutidle,
+    TimeoutLogin => $frontend_timeoutlogin,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $backend_timeoutidle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+
+      # Wait for more than the frontend TimeoutLogin period
+      if ($ENV{TEST_VERBOSE}) {
+        print STDOUT " + sleeping for $frontend_timeout_delay secs for TimeoutLogin\n";
+      }
+      sleep($frontend_timeout_delay);
+
+      # Since we've authenticated to the backend, the frontend's TimeoutLogin
+      # should not kick in; mod_proxy should have removed it.  Which means
+      # that this NOOP should work.
+      $client->noop();
+
+      $client->quit();
     };
 
     if ($@) {
@@ -12779,7 +12972,7 @@ EOC
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "Unable to connect to $bad_addr";
+      $expected = "Unable to connect to $bad_addr: Network is unreachable";
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
@@ -13114,7 +13307,7 @@ EOC
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "Unable to connect to 127.0.0.1:$vhost_port";
+      $expected = "Unable to connect to 127.0.0.1:$vhost_port: Operation not permitted";
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
@@ -14854,7 +15047,7 @@ EOC
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "Unable to connect to $bad_addr";
+      $expected = "Unable to connect to $bad_addr: Network is unreachable";
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
@@ -15033,6 +15226,956 @@ EOC
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_forward_userwithproxyauth_login_failed_limit_login {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vhost.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vhost.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  # Have separate Auth files for the proxy
+  my $proxy_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $proxy_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $proxy_user = 'proxy-user';
+  my $proxy_passwd = 'proxy-test';
+
+  auth_user_write($proxy_user_file, $proxy_user, $proxy_passwd, $uid, $gid,
+    $home_dir, '/bin/bash');
+  auth_group_write($proxy_group_file, $group, $gid, $proxy_user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 17;
+
+  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyForwardMethod} = 'proxyuser,user@host';
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $proxy_user_file,
+    AuthGroupFile => $proxy_group_file,
+    AuthOrder => 'mod_auth_file.c',
+    ServerIdent => 'on "Forward Proxy Server"',
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+
+  <Limit LOGIN>
+    DenyAll
+  </Limit>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($proxy_user, $proxy_passwd);
+
+      eval { $client->login("$user\@127.0.0.1:$vhost_port", $passwd) };
+      unless ($@) {
+        die("Destination login succeeded unexpectedly");
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+
+      my $expected;
+
+      $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = "Unable to connect to 127.0.0.1:$vhost_port: Operation not permitted";
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_forward_userwithproxyauth_login_failed_bad_sequence {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vhost.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vhost.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  # Have separate Auth files for the proxy
+  my $proxy_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $proxy_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $proxy_user = 'proxy-user';
+  my $proxy_passwd = 'proxy-test';
+
+  auth_user_write($proxy_user_file, $proxy_user, $proxy_passwd, $uid, $gid,
+    $home_dir, '/bin/bash');
+  auth_group_write($proxy_group_file, $group, $gid, $proxy_user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 17;
+
+  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyForwardMethod} = 'proxyuser,user@host';
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $proxy_user_file,
+    AuthGroupFile => $proxy_group_file,
+    AuthOrder => 'mod_auth_file.c',
+    ServerIdent => 'on "Forward Proxy Server"',
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+
+      $client->user($proxy_user);
+
+      eval { $client->pwd() };
+      unless ($@) {
+        die("PWD after proxy USER succeeded unexpectedly");
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+
+      my $expected;
+
+      $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Please login with USER and PASS';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      # Finish frontend authentication
+      $client->pass($proxy_passwd);
+
+      eval { $client->cwd("/") };
+      unless ($@) {
+        die("CWD after proxy PASS succeeded unexpectedly");
+      }
+
+      $resp_code = $client->response_code();
+      $resp_msg = $client->response_msg();
+
+      $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Access denied';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      eval { $client->list() };
+      unless ($@) {
+        die("LIST after proxy PASS succeeded unexpectedly");
+      }
+
+      $resp_code = $client->response_code();
+      $resp_msg = $client->response_msg();
+
+      $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Access denied';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      eval { $client->pwd() };
+      unless ($@) {
+        die("PWD after proxy PASS succeeded unexpectedly");
+      }
+
+      $resp_code = $client->response_code();
+      $resp_msg = $client->response_msg();
+
+      $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Access denied';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      $client->user("$user\@127.0.0.1:$vhost_port");
+
+      eval { $client->pwd() };
+      unless ($@) {
+        die("PWD after destination USER succeeded unexpectedly");
+      }
+
+      $resp_code = $client->response_code();
+      $resp_msg = $client->response_msg();
+
+      $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Please login with USER and PASS';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      # Finish target authentication
+      $client->pass($passwd);
+
+      ($resp_code, $resp_msg) = $client->pwd();
+
+      $expected = 257;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_forward_userwithproxyauth_login_failed_bad_proxy_passwd {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vhost.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vhost.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  # Have separate Auth files for the proxy
+  my $proxy_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $proxy_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $proxy_user = 'proxy-user';
+  my $proxy_passwd = 'proxy-test';
+
+  auth_user_write($proxy_user_file, $proxy_user, $proxy_passwd, $uid, $gid,
+    $home_dir, '/bin/bash');
+  auth_group_write($proxy_group_file, $group, $gid, $proxy_user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 17;
+
+  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyForwardMethod} = 'proxyuser,user@host';
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $proxy_user_file,
+    AuthGroupFile => $proxy_group_file,
+    AuthOrder => 'mod_auth_file.c',
+    ServerIdent => 'on "Forward Proxy Server"',
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+
+      my $bad_passwd = "BadPassword";
+      eval { $client->login($proxy_user, $bad_passwd) };
+      unless ($@) {
+        die("Proxy login succeeded unexpectedly");
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+
+      my $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Login incorrect.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      eval { $client->login("$user\@127.0.0.1:$vhost_port", $passwd) };
+      unless ($@) {
+        die("Second login succeeded unexpectedly");
+      }
+
+      $resp_code = $client->response_code();
+      $resp_msg = $client->response_msg();
+
+      $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+      
+      $expected = 'Login incorrect.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+      
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_forward_userwithproxyauth_login_failed_bad_dst_passwd {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vhost.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vhost.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  # Have separate Auth files for the proxy
+  my $proxy_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $proxy_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $proxy_user = 'proxy-user';
+  my $proxy_passwd = 'proxy-test';
+
+  auth_user_write($proxy_user_file, $proxy_user, $proxy_passwd, $uid, $gid,
+    $home_dir, '/bin/bash');
+  auth_group_write($proxy_group_file, $group, $gid, $proxy_user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 17;
+
+  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyForwardMethod} = 'proxyuser,user@host';
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $proxy_user_file,
+    AuthGroupFile => $proxy_group_file,
+    AuthOrder => 'mod_auth_file.c',
+    ServerIdent => 'on "Forward Proxy Server"',
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($proxy_user, $proxy_passwd);
+
+      my $bad_passwd = "BadPassword";
+      eval { $client->login("$user\@127.0.0.1:$vhost_port", $bad_passwd) };
+      unless ($@) {
+        die("Destination login succeeded unexpectedly");
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+
+      my $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+      
+      $expected = 'Login incorrect.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+      
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_forward_userwithproxyauth_bad_sequence_no_dst_login {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vhost.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vhost.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  # Have separate Auth files for the proxy
+  my $proxy_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $proxy_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $proxy_user = 'proxy-user';
+  my $proxy_passwd = 'proxy-test';
+
+  auth_user_write($proxy_user_file, $proxy_user, $proxy_passwd, $uid, $gid,
+    $home_dir, '/bin/bash');
+  auth_group_write($proxy_group_file, $group, $gid, $proxy_user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 17;
+
+  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyForwardMethod} = 'proxyuser,user@host';
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $proxy_user_file,
+    AuthGroupFile => $proxy_group_file,
+    AuthOrder => 'mod_auth_file.c',
+    ServerIdent => 'on "Forward Proxy Server"',
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($proxy_user, $proxy_passwd);
+
+      my $bad_user = "BadUser";
+      eval { $client->login("$bad_user\@127.0.0.1:$vhost_port", $passwd) };
+      unless ($@) {
+        die("Destination login succeeded unexpectedly");
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+
+      my $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+      
+      $expected = 'Login incorrect.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+      
       $client->quit();
     };
 
@@ -15355,7 +16498,7 @@ EOC
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "Unable to connect to $bad_addr";
+      $expected = "Unable to connect to $bad_addr: Network is unreachable";
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
@@ -15534,6 +16677,956 @@ EOC
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_forward_proxyuserwithproxyauth_login_failed_limit_login {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vhost.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vhost.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  # Have separate Auth files for the proxy
+  my $proxy_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $proxy_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $proxy_user = 'proxy-user';
+  my $proxy_passwd = 'proxy-test';
+
+  auth_user_write($proxy_user_file, $proxy_user, $proxy_passwd, $uid, $gid,
+    $home_dir, '/bin/bash');
+  auth_group_write($proxy_group_file, $group, $gid, $proxy_user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 17;
+
+  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyForwardMethod} = 'proxyuser@host,user';
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $proxy_user_file,
+    AuthGroupFile => $proxy_group_file,
+    AuthOrder => 'mod_auth_file.c',
+    ServerIdent => 'on "Forward Proxy Server"',
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+
+  <Limit LOGIN>
+    DenyAll
+  </Limit>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login("$proxy_user\@127.0.0.1:$vhost_port", $proxy_passwd);
+
+      eval { $client->login($user, $passwd) };
+      unless ($@) {
+        die("Destination login succeeded unexpectedly");
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+
+      my $expected;
+
+      $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = "Unable to connect to 127.0.0.1:$vhost_port: Operation not permitted";
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_forward_proxyuserwithproxyauth_login_failed_bad_sequence {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vhost.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vhost.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  # Have separate Auth files for the proxy
+  my $proxy_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $proxy_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $proxy_user = 'proxy-user';
+  my $proxy_passwd = 'proxy-test';
+
+  auth_user_write($proxy_user_file, $proxy_user, $proxy_passwd, $uid, $gid,
+    $home_dir, '/bin/bash');
+  auth_group_write($proxy_group_file, $group, $gid, $proxy_user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 17;
+
+  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyForwardMethod} = 'proxyuser@host,user';
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $proxy_user_file,
+    AuthGroupFile => $proxy_group_file,
+    AuthOrder => 'mod_auth_file.c',
+    ServerIdent => 'on "Forward Proxy Server"',
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+
+      $client->user("$proxy_user\@127.0.0.1:$vhost_port");
+
+      eval { $client->pwd() };
+      unless ($@) {
+        die("PWD after proxy USER succeeded unexpectedly");
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+
+      my $expected;
+
+      $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Please login with USER and PASS';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      # Finish frontend authentication
+      $client->pass($proxy_passwd);
+
+      eval { $client->cwd("/") };
+      unless ($@) {
+        die("CWD after proxy PASS succeeded unexpectedly");
+      }
+
+      $resp_code = $client->response_code();
+      $resp_msg = $client->response_msg();
+
+      $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Access denied';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      eval { $client->list() };
+      unless ($@) {
+        die("LIST after proxy PASS succeeded unexpectedly");
+      }
+
+      $resp_code = $client->response_code();
+      $resp_msg = $client->response_msg();
+
+      $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Access denied';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      eval { $client->pwd() };
+      unless ($@) {
+        die("PWD after proxy PASS succeeded unexpectedly");
+      }
+
+      $resp_code = $client->response_code();
+      $resp_msg = $client->response_msg();
+
+      $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Access denied';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      $client->user($user);
+
+      eval { $client->pwd() };
+      unless ($@) {
+        die("PWD after destination USER succeeded unexpectedly");
+      }
+
+      $resp_code = $client->response_code();
+      $resp_msg = $client->response_msg();
+
+      $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Please login with USER and PASS';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      # Finish target authentication
+      $client->pass($passwd);
+
+      ($resp_code, $resp_msg) = $client->pwd();
+
+      $expected = 257;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_forward_proxyuserwithproxyauth_login_failed_bad_proxy_passwd {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vhost.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vhost.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  # Have separate Auth files for the proxy
+  my $proxy_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $proxy_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $proxy_user = 'proxy-user';
+  my $proxy_passwd = 'proxy-test';
+
+  auth_user_write($proxy_user_file, $proxy_user, $proxy_passwd, $uid, $gid,
+    $home_dir, '/bin/bash');
+  auth_group_write($proxy_group_file, $group, $gid, $proxy_user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 17;
+
+  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyForwardMethod} = 'proxyuser@host,user';
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $proxy_user_file,
+    AuthGroupFile => $proxy_group_file,
+    AuthOrder => 'mod_auth_file.c',
+    ServerIdent => 'on "Forward Proxy Server"',
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+
+      my $bad_passwd = "BadPassword";
+      eval { $client->login("$proxy_user\@127.0.0.1:$vhost_port", $bad_passwd) };
+      unless ($@) {
+        die("Proxy login succeeded unexpectedly");
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+
+      my $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Login incorrect.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      eval { $client->login($user, $passwd) };
+      unless ($@) {
+        die("Second login succeeded unexpectedly");
+      }
+
+      $resp_code = $client->response_code();
+      $resp_msg = $client->response_msg();
+
+      $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+      
+      $expected = 'Login incorrect.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+      
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_forward_proxyuserwithproxyauth_login_failed_bad_dst_passwd {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vhost.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vhost.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  # Have separate Auth files for the proxy
+  my $proxy_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $proxy_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $proxy_user = 'proxy-user';
+  my $proxy_passwd = 'proxy-test';
+
+  auth_user_write($proxy_user_file, $proxy_user, $proxy_passwd, $uid, $gid,
+    $home_dir, '/bin/bash');
+  auth_group_write($proxy_group_file, $group, $gid, $proxy_user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 17;
+
+  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyForwardMethod} = 'proxyuser@host,user';
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $proxy_user_file,
+    AuthGroupFile => $proxy_group_file,
+    AuthOrder => 'mod_auth_file.c',
+    ServerIdent => 'on "Forward Proxy Server"',
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login("$proxy_user\@127.0.0.1:$vhost_port", $proxy_passwd);
+
+      my $bad_passwd = "BadPassword";
+      eval { $client->login($user, $bad_passwd) };
+      unless ($@) {
+        die("Destination login succeeded unexpectedly");
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+
+      my $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+      
+      $expected = 'Login incorrect.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+      
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_forward_proxyuserwithproxyauth_bad_sequence_no_dst_login {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vhost.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vhost.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  # Have separate Auth files for the proxy
+  my $proxy_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $proxy_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $proxy_user = 'proxy-user';
+  my $proxy_passwd = 'proxy-test';
+
+  auth_user_write($proxy_user_file, $proxy_user, $proxy_passwd, $uid, $gid,
+    $home_dir, '/bin/bash');
+  auth_group_write($proxy_group_file, $group, $gid, $proxy_user);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 17;
+
+  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyForwardMethod} = 'proxyuser@host,user';
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $proxy_user_file,
+    AuthGroupFile => $proxy_group_file,
+    AuthOrder => 'mod_auth_file.c',
+    ServerIdent => 'on "Forward Proxy Server"',
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login("$proxy_user\@127.0.0.1:$vhost_port", $proxy_passwd);
+
+      my $bad_user = "BadUser";
+      eval { $client->login($bad_user, $passwd) };
+      unless ($@) {
+        die("Destination login succeeded unexpectedly");
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+
+      my $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+      
+      $expected = 'Login incorrect.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+      
       $client->quit();
     };
 

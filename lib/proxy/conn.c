@@ -289,7 +289,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
           int xerrno = errno;
 
           (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "error obtaining local socket info on fd %d: %s\n",
+            "error obtaining local socket info on fd %d: %s",
             server_conn->listen_fd, strerror(xerrno));
 
           pr_netio_close(nstrm);

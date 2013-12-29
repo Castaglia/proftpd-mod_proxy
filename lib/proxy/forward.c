@@ -81,6 +81,10 @@ int proxy_forward_have_authenticated(cmd_rec *cmd) {
       authd = FALSE;
   }
 
+  if (authd == FALSE) {
+    pr_response_send(R_530, _("Please login with USER and PASS"));
+  }
+
   return authd;
 }
 
@@ -91,6 +95,11 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
 
   server_conn = proxy_conn_get_server_conn(p, proxy_sess, proxy_sess->dst_addr);
   if (server_conn == NULL) {
+    /* EINVALs lead to strange-looking error responses; change them to EPERM. */
+    if (errno == EINVAL) {
+      errno = EPERM;
+    }
+
     return -1;
   }
 
@@ -113,7 +122,7 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
       ntohs(pr_netaddr_get_port(proxy_sess->backend_ctrl_conn->remote_addr)),
       strerror(xerrno));
 
-    errno = xerrno;
+    errno = EPERM;
     return -1;
   }
 
@@ -130,6 +139,8 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
   if (banner_ok == FALSE) {
     pr_inet_close(p, proxy_sess->backend_ctrl_conn);
     proxy_sess->backend_ctrl_conn = NULL;
+
+    errno = EPERM;
     return -1;
   }
 
@@ -166,7 +177,7 @@ static int forward_cmd_parse_dst(pool *p, const char *arg, char **name,
 
     if (tmp2 && *tmp2) {
       /* Trailing garbage found in port number. */
-      pr_trace_msg(trace_channel, 1,
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "malformed port number '%s' found in USER '%s', rejecting",
         port_ptr+1, arg);
       errno = EINVAL;
@@ -175,7 +186,7 @@ static int forward_cmd_parse_dst(pool *p, const char *arg, char **name,
 
     if (num < 0 ||
         num > 65535) {
-      pr_trace_msg(trace_channel, 1,
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "invalid port number %ld found in USER '%s', rejecting", num, arg);
       errno = EINVAL;
       return -1;
@@ -187,7 +198,7 @@ static int forward_cmd_parse_dst(pool *p, const char *arg, char **name,
   /* Find the required '@' delimiter. */
   host_ptr = strrchr(arg, '@');
   if (host_ptr == NULL) {
-    pr_trace_msg(trace_channel, 1,
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "missing required '@' delimiter in USER '%s', rejecting", arg);
     errno = EINVAL;
     return -1;
@@ -237,7 +248,8 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
 
     res = forward_cmd_parse_dst(cmd->tmp_pool, cmd->arg, &user, &pconn);
     if (res < 0) {
-      return -1;
+      pr_response_send(R_530, _("Login incorrect."));
+      return 1;
     }
 
     remote_addr = proxy_conn_get_addr(pconn);
@@ -258,6 +270,8 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
 
     res = forward_connect(proxy_pool, proxy_sess, &banner, &banner_nlines);
     if (res < 0) {
+      xerrno = errno;
+
       *successful = FALSE;
 
       /* Send a failed USER response to our waiting frontend client, but do
@@ -272,7 +286,8 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
 
       } else {
         resp->msg = pstrcat(cmd->tmp_pool, "Unable to connect to ",
-          proxy_conn_get_hostport(proxy_sess->dst_pconn), NULL);
+          proxy_conn_get_hostport(proxy_sess->dst_pconn), ": ",
+          strerror(xerrno), NULL);
         resp_nlines = 1;
       }
 
@@ -355,7 +370,8 @@ static int forward_handle_user_proxyuserwithproxyauth(cmd_rec *cmd,
 
     res = forward_cmd_parse_dst(cmd->pool, cmd->arg, &user, &pconn);
     if (res < 0) {
-      return -1;
+      pr_response_send(R_530, _("Login incorrect."));
+      return 1;
     }
 
     remote_addr = proxy_conn_get_addr(pconn);
@@ -660,12 +676,14 @@ static int forward_handle_pass_userwithproxyauth(cmd_rec *cmd,
 
     res = check_passwd(cmd->pool, user, cmd->arg);
     if (res < 0) {
-      return -1;
+      pr_response_send(R_530, _("Login incorrect."));
+      return 1;
     }
 
     res = setup_env(proxy_pool, user);
     if (res < 0) {
-      return -1;
+      pr_response_send(R_530, _("Login incorrect."));
+      return 1;
     }
 
     if (session.auth_mech) {
