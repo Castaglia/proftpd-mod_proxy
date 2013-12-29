@@ -150,11 +150,15 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
   int res;
 
   if (proxy_sess->connect_timeout > 0) {
+    const char *notes_key = "mod_proxy.proxy-connect-address";
+
     proxy_sess->connect_timerno = pr_timer_add(proxy_sess->connect_timeout,
       -1, &proxy_module, proxy_conn_connect_timeout_cb, "ProxyTimeoutConnect");
 
-    if (pr_table_add(session.notes, "mod_proxy.proxy-connect-address",
-      remote_addr, sizeof(pr_netaddr_t)) < 0) {
+    (void) pr_table_remove(session.notes, notes_key, NULL);
+
+    if (pr_table_add(session.notes, notes_key, remote_addr,
+        sizeof(pr_netaddr_t)) < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "error stashing proxy connect address note: %s", strerror(errno));
     }
