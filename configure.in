@@ -28,6 +28,7 @@ AC_PROG_CPP
 AC_AIX
 AC_ISC_POSIX
 AC_MINIX
+AC_PROG_MAKE_SET
 
 AC_HEADER_STDC
 AC_CHECK_HEADERS(stdlib.h unistd.h limits.h fcntl.h sys/sysctl.h sys/sysinfo.h)
@@ -73,4 +74,7 @@ AC_SUBST(INCLUDES)
 AC_SUBST(LIBDIRS)
 
 AC_CONFIG_HEADER(mod_proxy.h)
-AC_OUTPUT(Makefile)
+AC_OUTPUT(
+  t/Makefile
+  Makefile
+)
