@@ -10,7 +10,7 @@ VPATH=@srcdir@
 include $(top_srcdir)/Make.rules
 
 # Necessary redefinitions
-INCLUDES=-I. -I.. -I$(module_srdir)/include -I../../.. -I../../../include @INCLUDES@
+INCLUDES=-I. -I.. -I$(module_srcdir)/include -I../../.. -I../../../include @INCLUDES@
 CPPFLAGS= $(ADDL_CPPFLAGS) -DHAVE_CONFIG_H $(DEFAULT_PATHS) $(PLATFORM) $(INCLUDES)
 LDFLAGS=-L$(top_srcdir)/lib @LIBDIRS@
 
@@ -18,13 +18,26 @@ EXEEXT=@EXEEXT@
 
 TEST_API_DEPS=\
   $(top_srcdir)/src/pool.o \
+  $(top_srcdir)/src/privs.o \
   $(top_srcdir)/src/str.o \
-  $(module_srcdir)/lib/proxy/uri.o
+  $(top_srcdir)/src/sets.o \
+  $(top_srcdir)/src/table.o \
+  $(top_srcdir)/src/event.o \
+  $(top_srcdir)/src/timers.o \
+  $(top_srcdir)/src/netaddr.o \
+  $(top_srcdir)/src/inet.o \
+  $(module_srcdir)/lib/proxy/random.o \
+  $(module_srcdir)/lib/proxy/conn.o \
+  $(module_srcdir)/lib/proxy/uri.o \
+  $(module_srcdir)/lib/proxy/reverse.o
 
 TEST_API_LIBS=-lcheck
 
 TEST_API_OBJS=\
+  api/random.o \
+  api/conn.o \
   api/uri.o \
+  api/reverse.o \
   api/stubs.o \
   api/tests.o
 
