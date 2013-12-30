@@ -24,6 +24,7 @@ TEST_API_DEPS=\
   $(top_srcdir)/src/table.o \
   $(top_srcdir)/src/event.o \
   $(top_srcdir)/src/timers.o \
+  $(top_srcdir)/src/fsio.o \
   $(top_srcdir)/src/netaddr.o \
   $(top_srcdir)/src/inet.o \
   $(module_srcdir)/lib/proxy/random.o \
