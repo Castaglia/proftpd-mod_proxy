@@ -42,6 +42,8 @@ int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
 int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
   int *successful);
 
+array_header *proxy_reverse_file_parse_uris(pool *p, const char *path);
+
 /* Backend selection policy API */
 #define PROXY_REVERSE_SELECT_POLICY_RANDOM			1
 #define PROXY_REVERSE_SELECT_POLICY_ROUND_ROBIN			2

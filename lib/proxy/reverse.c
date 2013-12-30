@@ -132,6 +132,267 @@ int proxy_reverse_have_authenticated(cmd_rec *cmd) {
   return TRUE;
 }
 
+static int check_parent_dir_perms(pool *p, const char *path) {
+  struct stat st;
+  int res;
+  char *dir_path, *ptr = NULL;
+
+  ptr = strrchr(path, '/');
+  if (ptr != path) {
+    dir_path = pstrndup(p, path, ptr - path);
+
+  } else {
+    dir_path = "/";
+  }
+
+  res = stat(dir_path, &st);
+  if (res < 0) {
+    int xerrno = errno;
+
+    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+      ": unable to stat ProxyReverseServers %s directory '%s': %s",
+      path, dir_path, strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  if (st.st_mode & S_IWOTH) {
+    int xerrno = EPERM;
+
+    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+      ": unable to use ProxyReverseServers %s from world-writable "
+      "directory '%s' (perms %04o): %s", path, dir_path,
+      st.st_mode & ~S_IFMT, strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  return 0;
+}
+
+static int check_file_perms(pool *p, const char *path) {
+  struct stat st;
+  int res;
+  const char *orig_path;
+
+  orig_path = path;
+
+  res = lstat(path, &st);
+  if (res < 0) {
+    int xerrno = errno;
+
+    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+      ": unable to lstat ProxyReverseServers '%s': %s", path, strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  if (S_ISLNK(st.st_mode)) {
+    char buf[PR_TUNABLE_PATH_MAX+1];
+
+    /* Check the permissions on the parent directory; if they're world-writable,
+     * then this symlink can be deleted/pointed somewhere else.
+     */
+    res = check_parent_dir_perms(p, path);
+    if (res < 0) {
+      return -1;
+    }
+
+    /* Follow the link to the target path; that path will then have its
+     * parent directory checked.
+     */
+    memset(buf, '\0', sizeof(buf));
+    res = readlink(path, buf, sizeof(buf)-1);
+    if (res > 0) {
+      path = pstrdup(p, buf);
+    }
+
+    res = stat(orig_path, &st);
+    if (res < 0) {
+      int xerrno = errno;
+
+      pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+        ": unable to stat ProxyReverseServers '%s': %s", orig_path,
+        strerror(xerrno));
+
+      errno = xerrno;
+      return -1;
+    }
+  }
+
+  if (S_ISDIR(st.st_mode)) {
+    int xerrno = EISDIR;
+
+    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+      ": unable to use ProxyReverseServers '%s': %s", orig_path,
+      strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  /* World-writable files are insecure, and are thus not usable/trusted. */
+  if (st.st_mode & S_IWOTH) {
+    int xerrno = EPERM;
+
+    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+      ": unable to use world-writable ProxyReverseServers '%s' "
+      "(perms %04o): %s", orig_path, st.st_mode & ~S_IFMT, strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  /* TODO: This will warn about files such as FIFOs, BUT will leave them
+   * usable.  Good idea, or bad idea?
+   */
+  if (!S_ISREG(st.st_mode)) {
+    pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
+      ": ProxyReverseServers '%s' is not a regular file", orig_path);
+  }
+
+  /* Check the parent directory of this file.  If the parent directory
+   * is world-writable, that too is insecure.
+   */
+  res = check_parent_dir_perms(p, path);
+  if (res < 0) {
+    return -1;
+  }
+
+  return 0;
+}
+
+array_header *proxy_reverse_file_parse_uris(pool *p, const char *path) {
+  int res;
+  pool *tmp_pool;
+  char *buf;
+  size_t bufsz;
+  pr_fh_t *fh;
+  unsigned int lineno = 0;
+  array_header *uris = NULL;
+  struct stat st;
+
+  if (p == NULL ||
+      path == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  if (*path != '/') {
+    /* A relative path?  Unacceptable. */
+    errno = EINVAL;
+    return NULL;
+  }
+
+  res = check_file_perms(p, path);
+  if (res < 0) {
+    return NULL;
+  }
+
+  /* Use a nonblocking open() for the path; it could be a FIFO, and we don't
+   * want to block forever if the other end of the FIFO is not running.
+   */
+  fh = pr_fsio_open(path, O_RDONLY|O_NONBLOCK);
+  if (fh == NULL) {
+    int xerrno = errno;
+
+    pr_trace_msg(trace_channel, 7,
+      "error opening ProxyReverseServers file '%s': %s", path,
+      strerror(xerrno));
+
+    errno = xerrno;
+    return NULL;
+  }
+
+  pr_fsio_set_block(fh);
+
+  /* Stat the file to find the optimal buffer size for reading. */
+  res = pr_fsio_fstat(fh, &st);
+  if (res < 0) {
+    int xerrno = errno;
+
+    pr_trace_msg(trace_channel, 3,
+      "unable to fstat '%s': %s", path, strerror(xerrno));
+
+    errno = xerrno;
+    return NULL;
+  }
+
+  tmp_pool = make_sub_pool(p);
+  bufsz = st.st_blksize;
+  buf = palloc(tmp_pool, bufsz + 1);
+  buf[bufsz] = '\0';
+  fh->fh_iosz = bufsz;
+
+  memset(buf, '\0', bufsz);
+  uris = make_array(p, 1, sizeof(struct proxy_conn *));
+
+  while ((pr_fsio_getline(buf, bufsz, fh, &lineno) != NULL)) {
+    int have_eol = FALSE;
+    char *bufp = NULL;
+    size_t buflen;
+    struct proxy_conn *pconn;
+
+    pr_signals_handle();
+
+    buflen = strlen(buf);
+
+    /* Trim off the trailing newline, if present. */
+    if (buflen &&
+        buf[buflen - 1] == '\n') {
+      have_eol = TRUE;
+      buf[buflen-1] = '\0';
+      buflen--;
+    }
+
+    while (buflen &&
+           buf[buflen - 1] == '\r') {
+      pr_signals_handle();
+      buf[buflen-1] = '\0';
+      buflen--;
+    }
+
+    if (!have_eol) {
+      pr_trace_msg(trace_channel, 3,
+        "warning: skipping possibly truncated ProxyReverseServers data (%s:%u)",
+        path, lineno);
+      memset(buf, '\0', bufsz);
+      continue;
+    }
+
+    /* Advance past any leading whitespace. */
+    for (bufp = buf; *bufp && PR_ISSPACE(*bufp); bufp++);
+
+    /* Check for commented or blank lines at this point, and just continue on
+     * to the next configuration line if found.
+     */
+    if (*bufp == '#' || !*bufp) {
+      pr_trace_msg(trace_channel, 9,
+        "skipping commented/empty line (%s:%u)", path, lineno);
+      memset(buf, '\0', bufsz);
+      continue;
+    }
+
+    pconn = proxy_conn_create(p, bufp);
+    if (pconn == NULL) {
+      pr_trace_msg(trace_channel, 9,
+        "skipping malformed URL '%s' (%s:%u)", bufp, path, lineno);
+      memset(buf, '\0', bufsz);
+      continue;
+    }
+
+    *((struct proxy_conn **) push_array(uris)) = pconn; 
+    memset(buf, '\0', bufsz);
+  }
+
+  destroy_pool(tmp_pool);
+  (void) pr_fsio_close(fh);
+  return uris;
+}
+
 int proxy_reverse_select_get_policy(const char *policy) {
   if (policy == NULL) {
     errno = EINVAL;

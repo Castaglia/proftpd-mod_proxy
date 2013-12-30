@@ -364,21 +364,34 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
 
     if (strncmp(cmd->argv[1], "file:", 5) == 0) {
       char *path;
+      int xerrno;
 
       path = cmd->argv[1] + 5;
     
-      /* Make sure the path is an absolute path.
-       *
-       * XXX For now, load the list of servers at sess init time.  In
+      /* For now, load the list of servers at sess init time.  In
        * the future, we will want to load it at postparse time, mapped
        * to the appropriate server_rec, and clear/reload on 'core.restart'.
        */
 
-      CONF_ERROR(cmd, "not yet implemented");
+      PRIVS_ROOT
+      backend_servers = proxy_reverse_file_parse_uris(cmd->server->pool,
+        path);
+      xerrno = errno;
+      PRIVS_RELINQUISH
+
+      if (backend_servers == NULL) {
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+          "error reading ProxyReverseServers file '", path, "': ",
+          strerror(xerrno), NULL));
+      }
+
+      if (backend_servers->nelts == 0) {
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+          "no usable URLs found in file '", path, NULL));
+      }
 
     } else if (strncmp(cmd->argv[1], "sql:/", 5) == 0) {
       /* XXX Implement */
-
       CONF_ERROR(cmd, "not yet implemented");
 
     } else {
@@ -2462,8 +2475,6 @@ static void proxy_exit_ev(const void *event_data, void *user_data) {
 #if defined(PR_SHARED_MODULE)
 static void proxy_mod_unload_ev(const void *event_data, void *user_data) {
   if (strncmp((const char *) event_data, "mod_proxy.c", 12) == 0) {
-    register unsigned int i;
-
     /* Unregister ourselves from all events. */
     pr_event_unregister(&proxy_module, NULL, NULL);
 
