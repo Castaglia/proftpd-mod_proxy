@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2012-2013 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2013 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -44,13 +44,113 @@ static void tear_down(void) {
 }
 
 START_TEST (conn_create_test) {
+  struct proxy_conn *pconn;
+  const char *url;
 
-  /* TODO: include:
-   *  get_addr
-   *  get_hostport
-   *  get_uri
+  pconn = proxy_conn_create(NULL, NULL);
+  fail_unless(pconn == NULL, "Failed to handle null arguments");
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+
+  url = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(NULL, url);
+  fail_unless(pconn == NULL, "Failed to handle null pool argument");
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+
+  pconn = proxy_conn_create(p, NULL);
+  fail_unless(pconn == NULL, "Failed to handle null URL argument");
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+
+  /* We're already testing URL parsing elsewhere, so we only need to
+   * supply well-formed URLs in these tests.
    */
 
+  url = "http://127.0.0.1:80";
+  pconn = proxy_conn_create(p, url);
+  fail_unless(pconn == NULL, "Failed to handle unsupported protocol/scheme");
+  fail_unless(errno == EPERM, "Failed to set errno to EPERM");
+
+  url = "ftp://foo.bar.baz";
+  pconn = proxy_conn_create(p, url);
+  fail_unless(pconn == NULL, "Failed to handle unresolvable host");
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+
+  url = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+}
+END_TEST
+
+START_TEST (conn_get_addr_test) {
+  struct proxy_conn *pconn;
+  const char *ipstr, *url;
+  pr_netaddr_t *pconn_addr;
+ 
+  pconn_addr = proxy_conn_get_addr(NULL);
+  fail_unless(pconn_addr == NULL, "Failed to handle null argument");
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+ 
+  url = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  pconn_addr = proxy_conn_get_addr(pconn);
+  fail_if(pconn_addr == NULL, "Failed to get address for pconn");
+  ipstr = pr_netaddr_get_ipstr(pconn_addr);
+  fail_unless(strcmp(ipstr, "127.0.0.1") == 0,
+    "Expected IP address '127.0.0.1', got '%s'", ipstr);
+}
+END_TEST
+
+START_TEST (conn_get_hostport_test) {
+  struct proxy_conn *pconn;
+  const char *hostport, *url;
+
+  hostport = proxy_conn_get_hostport(NULL);
+  fail_unless(hostport == NULL, "Failed to handle null argument");
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+ 
+  url = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  hostport = proxy_conn_get_hostport(pconn);
+  fail_if(hostport == NULL, "Failed to get host/port for pconn");
+  fail_unless(strcmp(hostport, "127.0.0.1:21") == 0,
+    "Expected host/port '127.0.0.1:21', got '%s'", hostport);
+
+  /* Implicit/assumed ports */
+  url = "ftp://127.0.0.1";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  hostport = proxy_conn_get_hostport(pconn);
+  fail_if(hostport == NULL, "Failed to get host/port for pconn");
+  fail_unless(strcmp(hostport, "127.0.0.1:21") == 0,
+    "Expected host/port '127.0.0.1:21', got '%s'", hostport);
+}
+END_TEST
+
+START_TEST (conn_get_url_test) {
+  struct proxy_conn *pconn;
+  const char *pconn_url, *url;
+
+  pconn_url = proxy_conn_get_uri(NULL);
+  fail_unless(pconn_url == NULL, "Failed to handle null argument");
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+ 
+  url = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  pconn_url = proxy_conn_get_uri(pconn);
+  fail_if(pconn_url == NULL, "Failed to get URL for pconn");
+  fail_unless(strcmp(pconn_url, url) == 0,
+    "Expected URL '%s', got '%s'", url, pconn_url);
 }
 END_TEST
 
@@ -65,6 +165,9 @@ Suite *tests_get_conn_suite(void) {
   tcase_add_checked_fixture(testcase, set_up, tear_down);
 
   tcase_add_test(testcase, conn_create_test);
+  tcase_add_test(testcase, conn_get_addr_test);
+  tcase_add_test(testcase, conn_get_hostport_test);
+  tcase_add_test(testcase, conn_get_url_test);
 
   suite_add_tcase(suite, testcase);
   return suite;

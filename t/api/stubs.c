@@ -37,6 +37,11 @@ module proxy_module;
 unsigned long proxy_opts = 0UL;
 unsigned int proxy_sess_state = 0;
 
+char *dir_realpath(pool *p, const char *path) {
+  errno = ENOSYS;
+  return NULL;
+}
+
 config_rec *find_config(xaset_t *set, int type, const char *name, int recurse) {
   return NULL;
 }
@@ -46,7 +51,22 @@ void *get_param_ptr(xaset_t *set, const char *name, int recurse) {
   return NULL;
 }
 
+struct passwd *pr_auth_getpwnam(pool *p, const char *name) {
+  return getpwnam(name);
+}
+
 void pr_log_debug(int level, const char *fmt, ...) {
+  va_list msg;
+
+  if (getenv("TEST_VERBOSE") != NULL) {
+    fprintf(stderr, "DEBUG%d: ", level);
+
+    va_start(msg, fmt);
+    vfprintf(stderr, fmt, msg);
+    va_end(msg);
+
+    fprintf(stderr, "\n");
+  }
 }
 
 void pr_log_pri(int prio, const char *fmt, ...) {
@@ -107,13 +127,16 @@ int pr_trace_get_level(const char *channel) {
 int pr_trace_msg(const char *channel, int level, const char *fmt, ...) {
   va_list msg;
 
-  fprintf(stderr, "<%s:%d>: ", channel, level);
+  if (getenv("TEST_VERBOSE") != NULL) {
+    fprintf(stderr, "<%s:%d>: ", channel, level);
 
-  va_start(msg, fmt);
-  vfprintf(stderr, fmt, msg);
-  va_end(msg);
+    va_start(msg, fmt);
+    vfprintf(stderr, fmt, msg);
+    va_end(msg);
 
-  fprintf(stderr, "\n");
+    fprintf(stderr, "\n");
+  }
+
   return 0;
 }
 

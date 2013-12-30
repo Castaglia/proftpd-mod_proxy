@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2012-2013 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2013 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -45,7 +45,49 @@ static void tear_down(void) {
   } 
 }
 
-START_TEST (random_next_test) {
+START_TEST (random_next_range_10_test) {
+  register unsigned int i;
+  long min, max;
+
+  min = -4;
+  max = 5;
+
+  for (i = 0; i < 10; i++) {
+    long num;
+
+    num = proxy_random_next(min, max);
+    fail_if(num < min, "random number %ld less than minimum %ld", num, min);
+    fail_if(num > max, "random number %ld greater than maximum %ld", num, max);
+  }
+}
+END_TEST
+
+START_TEST (random_next_range_1000_test) {
+  register unsigned int i;
+  long min, max;
+  int count = 10, seen[10];
+
+  min = 0;
+  max = count-1;
+
+  memset(seen, 0, sizeof(seen));
+
+  for (i = 0; i < 1000; i++) {
+    long num;
+
+    num = proxy_random_next(min, max);
+    fail_if(num < min, "random number %ld less than minimum %ld", num, min);
+    fail_if(num > max, "random number %ld greater than maximum %ld", num, max);
+
+    seen[num] = 1;
+  }
+
+  /* In 1000 rounds, the chances of seeing all 10 possible numbers is pretty
+   * good, right?
+   */
+  for (i = 0; i < count; i++) {
+    fail_unless(seen[i] == 1, "Expected to have generated number %d", i);
+  }
 }
 END_TEST
 
@@ -59,7 +101,8 @@ Suite *tests_get_random_suite(void) {
 
   tcase_add_checked_fixture(testcase, set_up, tear_down);
 
-  tcase_add_test(testcase, random_next_test);
+  tcase_add_test(testcase, random_next_range_10_test);
+  tcase_add_test(testcase, random_next_range_1000_test);
 
   suite_add_tcase(suite, testcase);
   return suite;
