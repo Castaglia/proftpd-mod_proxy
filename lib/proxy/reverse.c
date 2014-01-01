@@ -268,8 +268,7 @@ static int check_file_perms(pool *p, const char *path) {
 array_header *proxy_reverse_file_parse_uris(pool *p, const char *path) {
   int res;
   pool *tmp_pool;
-  char *buf;
-  size_t bufsz;
+  char buf[PR_TUNABLE_BUFFER_SIZE+1];
   pr_fh_t *fh;
   unsigned int lineno = 0;
   array_header *uris = NULL;
@@ -321,16 +320,12 @@ array_header *proxy_reverse_file_parse_uris(pool *p, const char *path) {
     return NULL;
   }
 
-  tmp_pool = make_sub_pool(p);
-  bufsz = st.st_blksize;
-  buf = palloc(tmp_pool, bufsz + 1);
-  buf[bufsz] = '\0';
-  fh->fh_iosz = bufsz;
+  fh->fh_iosz = st.st_blksize;
 
-  memset(buf, '\0', bufsz);
+  memset(buf, '\0', sizeof(buf));
   uris = make_array(p, 1, sizeof(struct proxy_conn *));
 
-  while ((pr_fsio_getline(buf, bufsz, fh, &lineno) != NULL)) {
+  while ((pr_fsio_getline(buf, sizeof(buf)-1, fh, &lineno) != NULL)) {
     int have_eol = FALSE;
     char *bufp = NULL;
     size_t buflen;
@@ -359,7 +354,7 @@ array_header *proxy_reverse_file_parse_uris(pool *p, const char *path) {
       pr_trace_msg(trace_channel, 3,
         "warning: skipping possibly truncated ProxyReverseServers data (%s:%u)",
         path, lineno);
-      memset(buf, '\0', bufsz);
+      memset(buf, '\0', sizeof(buf));
       continue;
     }
 
@@ -372,7 +367,7 @@ array_header *proxy_reverse_file_parse_uris(pool *p, const char *path) {
     if (*bufp == '#' || !*bufp) {
       pr_trace_msg(trace_channel, 9,
         "skipping commented/empty line (%s:%u)", path, lineno);
-      memset(buf, '\0', bufsz);
+      memset(buf, '\0', sizeof(buf));
       continue;
     }
 
@@ -380,15 +375,14 @@ array_header *proxy_reverse_file_parse_uris(pool *p, const char *path) {
     if (pconn == NULL) {
       pr_trace_msg(trace_channel, 9,
         "skipping malformed URL '%s' (%s:%u)", bufp, path, lineno);
-      memset(buf, '\0', bufsz);
+      memset(buf, '\0', sizeof(buf));
       continue;
     }
 
     *((struct proxy_conn **) push_array(uris)) = pconn; 
-    memset(buf, '\0', bufsz);
+    memset(buf, '\0', sizeof(buf));
   }
 
-  destroy_pool(tmp_pool);
   (void) pr_fsio_close(fh);
   return uris;
 }
