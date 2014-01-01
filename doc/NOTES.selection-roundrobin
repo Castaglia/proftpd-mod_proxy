@@ -99,3 +99,11 @@ Where policy could be:
 If that backend is chosen/used successfully, then:
 
   int policy_reverse_select_used_index(main_server->sid, idx, response_ms);
+
+Note when we would need to maintain an fd on the database until the
+session ended (e.g. for leastConns), so that we could decrement the number
+of connections to a given SID when that connection ended.  This is not
+necessary for roundRobin, which doesn't care about number of current
+connections per sid, only next SID to index.  LeastConns, on the other hand,
+DOES care about number of current connections.
+

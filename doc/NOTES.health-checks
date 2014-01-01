@@ -42,3 +42,19 @@ Examples:
 
   https://www.varnish-cache.org/trac/wiki/BackendPolling
   http://www.taiter.com/techlog/2012/09/ftp-load-balanced-through-haproxy.html
+
+Notes:
+
+  Notion of "quarantined", where the server is no longer considered "healthy",
+  BUT there should continue to be periodic checks on its state to see if
+  it has recovered.
+
+  Consider how something like roundRobin or leastConns would work for an
+  "FTP accelerator" type of client, which might open several concurrent
+  sessions?  Will it matter if those connections go to different servers?
+
+  "RoundRobin is suitable where all available servers are assumed to be
+   largely similar in functionality.  Weighed/ratio'd RoundRobin builds
+   weights into the system to deal with heterogenous capacity of the
+   servers.  (This is harder, since the "weight" factor is admin-assigned,
+   and how exactly is it computed?  2x CPU?  4x memory?  6x network?)
