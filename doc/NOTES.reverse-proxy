@@ -1,6 +1,3 @@
-
-  http://blog.loadbalancer.org/load-balancing-windows-terminal-server-haproxy-and-rdp-cookies/
-
 Selection Strategies: Balancing vs Stickiness
 
   Balancing strategies:
@@ -14,3 +11,77 @@ Selection Strategies: Balancing vs Stickiness
     USER
     HOST
     SSL session ID
+
+What's better for FTP, SFTP connections?  RoundRobin or LeastConns?  And
+why?  The HAproxy docs for the 'balance' keyword say that 'leastconn' is
+best for long-lived connections:
+
+  leastconn   The server with the lowest number of connections receives the
+              connection. Round-robin is performed within groups of servers
+              of the same load to ensure that all servers will be used. Use
+              of this algorithm is recommended where very long sessions are
+              expected, such as LDAP, SQL, TSE, etc... but is not very well
+              suited for protocols using short sessions such as HTTP. This
+              algorithm is dynamic, which means that server weights may be
+              adjusted on the fly for slow starts for instance.
+
+    (from http://haproxy.1wt.eu/download/1.4/doc/configuration.txt)
+
+Is this true?  Corroboration or statistics showing the relationship?
+
+Dangers of LeastConns
+
+  Consider that you are bringing up a new server, or restarting a server.
+  Being new, it will have no connections -- and the load balancer sees
+  this.  Thus in a short period of time, ALL new connections may end up
+  slamming that server.  If the server can handle this type of workload,
+  then you are good.  If, on the other hand, the server performs warm-up
+  tasks (e.g. filling caches, performing discovery of necessary downstream
+  resources, etc), then this is quite undesirable.
+
+  This is why HAproxy has a "warm up" period.
+
+Links/References
+
+  http://www.timgalyean.com/2011/03/load-balancing-with-haproxy-and-apache/
+  http://blog.loadbalancer.org/load-balancing-windows-terminal-server-haproxy-and-rdp-cookies/
+
+  http://blogs.citrix.com/2010/09/02/load-balancing-least-connections/
+
+  http://www.brocade.com/support/Product_Manuals/ServerIron_SLBGuide/health.4.19.html#49842
+
+  https://kb.wisc.edu/ns/page.php?id=13201
+
+  http://serverfault.com/questions/457506/ha-proxy-roundrobin-vs-leastconn
+
+  http://blog.exceliance.fr/2011/08/03/layer-7-load-balancing-proxy-mode/
+
+  https://devcentral.f5.com/articles/intro-to-load-balancing-for-developers-ndash-the-algorithms#.UsPAPY3TNe4
+    Nice description of methods, and quite a variety of them.
+
+  https://devcentral.f5.com/articles/intro-to-load-balancing-for-developers-ndash-how-they-work#.UsT6cI3TNe4
+    Reuse the JPG/pic there?
+
+  https://devcentral.f5.com/articles/intro-load-balancing-for-developers-ndash-the-architect-rsquos-view#.UsT6dI3TNe4
+
+  https://devcentral.f5.com/articles/advanced-load-balancing-for-developers-ndash-adcs-what-rsquos-the-difference#.UsT6XY3TNe4
+    The 'Programmability' bit is a good point.  mod_proxy might need some
+    ftpdctl actions implemented for altering things on-the-fly.
+
+  https://devcentral.f5.com/articles/advanced-load-balancers-for-developers-adcs-the-code#.UsT6Y43TNe4
+
+  http://www.onjava.com/pub/a/onjava/2001/09/26/load.html
+    Nice discussion of DNS round robin
+
+  http://www.javaworld.com/article/2077921/architecture-scalability/server-load-balancing-architectures--part-1--transport-level-load-balancing.html
+  http://www.javaworld.com/article/2077922/architecture-scalability/server-load-balancing-architectures--part-2--application-level-load-balanci.html
+
+  http://www.infoq.com/articles/scalability-principles
+  http://www.infoq.com/articles/ebay-scalability-best-practices
+    Note Best Practice #4, and how that pertains to Black Pearl (think
+    intra-service messaging/notifications)
+
+  Aside: Software Architect Role
+    http://www.codingthearchitecture.com/2008/02/11/the_key_difference_between_developer_and_architect_roles.html
+    http://www.infoq.com/presentations/Role-of-the-Architect
+      Need to watch this!
