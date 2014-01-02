@@ -1,0 +1,16 @@
+
+  http://blog.loadbalancer.org/load-balancing-windows-terminal-server-haproxy-and-rdp-cookies/
+
+Selection Strategies: Balancing vs Stickiness
+
+  Balancing strategies:
+    leastConns
+    random
+    roundRobin
+    shuffle
+
+  Sticky strategies:
+    client IP
+    USER
+    HOST
+    SSL session ID
