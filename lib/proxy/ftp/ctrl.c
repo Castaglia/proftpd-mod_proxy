@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP control conn routines
- * Copyright (c) 2012-2013 TJ Saunders
+ * Copyright (c) 2012-2014 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
  */
 
 #include "mod_proxy.h"
-#include "proxy/ftp/buffer.h"
+
 #include "proxy/ftp/ctrl.h"
 
 static const char *trace_channel = "proxy.ftp.ctrl";
@@ -46,7 +46,7 @@ static char *ftp_telnet_gets(char *buf, size_t buflen,
     pbuf = nstrm->strm_buf;
 
   } else {
-    pbuf = proxy_ftp_buffer_alloc(nstrm);
+    pbuf = pr_netio_buffer_alloc(nstrm);
   }
 
   while (buflen > 0) {

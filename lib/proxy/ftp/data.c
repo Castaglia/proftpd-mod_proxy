@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP data conn routines
- * Copyright (c) 2012-2013 TJ Saunders
+ * Copyright (c) 2012-2014 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
  */
 
 #include "mod_proxy.h"
-#include "proxy/ftp/buffer.h"
+
 #include "proxy/ftp/data.h"
 
 static const char *trace_channel = "proxy.ftp.data";
@@ -38,7 +38,7 @@ pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn) {
     pbuf = data_conn->instrm->strm_buf;
 
   } else {
-    pbuf = proxy_ftp_buffer_alloc(data_conn->instrm);
+    pbuf = pr_netio_buffer_alloc(data_conn->instrm);
   }
 
   nread = pr_netio_read(data_conn->instrm, pbuf->buf, pbuf->buflen, 1);
