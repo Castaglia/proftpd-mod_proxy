@@ -2,6 +2,7 @@
 Issues for ProxyBackendSelection 'roundRobin':
 
   1.  Selection strategy is per-vhost.
+
   2.  Selection lists are per-vhost.
 
      This means that a 'core.fork' event, before the vhost is known,
@@ -43,8 +44,8 @@ ordering.  That could then be the reference server/index for round robin.
 Basic data structure:
 
   vhost1
-    curr index
-    max index
+    index (into 'configured' list) of current/selected backend server
+    max index value (i.e. length of 'configured' list minus 1)
 
    ...
   vhostN
@@ -74,8 +75,37 @@ OR:
   locking, and a "row" would be:
 
     unsigned int sid
-    unsigned int max_idx
-    unsigned int curr_idx
+    unsigned int server_count
+    unsigned int curr_server
+
+  This would be the "select.dat" file/table, the basis for backend
+  selection.
+
+  For health checks:
+
+    unsigned int sid;
+    unsigned int server_count
+    unsigned int live_servers[server_count]
+    unsigned int dead_servers[server_count]
+
+    ...
+
+  Note: Would be nice, given the above format, to NOT have to scan the
+  entire file to find the vhost in question, given the variable length
+  of the server lists per vhost.
+
+  Could deal with that by having a header, which would be the offset of
+  that SID into the file.  I.e.:
+
+    off_t sid_offs[vhost_count];
+
+      sid 1: off = 0
+      sid 2: off = 42
+
+    and remember that vhost SIDs start at 1!
+
+  When writing out the file initially, scan each vhost, figure out its
+  position, then write out header, then vhost entry.
 
 And, to support the leastConns, equalConns, and leastResponseTime policies,
 we'll need a separate table (also mmap'd):
@@ -83,6 +113,20 @@ we'll need a separate table (also mmap'd):
     unsigned int idx
     unsigned long curr_conns
     unsigned long curr_response_ms
+
+OR, even better, to handle the leastConns/leastResponseTime etc strategies,
+use a fourth list:
+
+  configured
+  ranked
+  live
+  dead
+
+Where "ranked" is a list of indices (into the configured list) in
+preference/ranked order.  In the case of least conns, this ranking is done
+by number of current connections.  Hmm, no, we'd still need to know that
+number of current connections somewhere, not just the relative rank of
+that server versus others.
 
 To make this more general (e.g. for other selection policies), maybe:
 

@@ -1,0 +1,25 @@
+
+Balancing vs Stickiness
+
+  Balancing:
+    random
+    roundRobin
+    leastConns
+
+  Sticky:
+    per USER
+    per HOST
+    per SSL session ID 
+
+Work on implementing just the balancing strategies, for now.
+
+Note: The state files used for the balancing strategies, especially once
+health checks are added, could be externally cached/managed, e.g. via
+memcache/redis, using JSON.
+
+  Issues there: if each mod_proxy is doing its own health checks of the
+  servers, it's possible for individual mod_proxy instances to disagree
+  about the health of a given backend (think split-brain syndrome).
+
+  When each mod_proxy instance is managing its own view, this is OK;
+  when they all share that persisted view, it could be a problem.
