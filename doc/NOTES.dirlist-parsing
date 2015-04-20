@@ -1,0 +1,21 @@
+
+At some point, especially for protocol conversions, mod_proxy may need to
+parse the directory listing from the backend server to give to the frontend
+client.  Thus we'll need some dirlist-parsing code.
+
+Here's a fun one, from the lftp changes:
+
+  fixed MLSD parsing for semicolons in file names. 
+
+See:
+
+  http://lftp.yar.ru/news.html
+
+Maybe lftp has MLSD parsing code to reuse?
+
+It does indeed; see lftp-N.N.N/src/FtpListInfo.{h,cc}.  Purportedly parses
+Unix, MLSD, OS/2, NT, AS400, and EPLF.  Could write proxy module that does
+this.  Note that FtpListInfo iterates through list of parsers to find the one
+which handles the current format; do same, but remember the parser which
+worked, per session/connection, so that such iteration isn't necessary
+per-dirlist.

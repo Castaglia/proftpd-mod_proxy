@@ -217,6 +217,8 @@ Other Proxy Implementations
 
   http://www.loadbalancer.org/
 
+  http://www.tomkleinpeter.com/2008/03/17/programmers-toolbox-part-3-consistent-hashing/
+
   http://cr.yp.to/ftpparse.html
     Use for parsing FTP lists into SFTP dirlist
     What about MLSD, though?  Need to find parser for that, if avail

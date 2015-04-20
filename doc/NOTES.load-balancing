@@ -77,3 +77,28 @@ Complex/adaptive balancing:
   SSL/TLS protocol version (AUTH time selection)
   SSL/TLS ciphersuite (AUTH time selection)
   Backend response time (connect time selection)
+
+Balancing Versus Stickiness
+
+For reverse proxy configurations, there is a choice between "balancing"
+strategies and "sticky" strategies when it comes to selecting the backend 
+server that will handle the incoming connection.
+
+Which should you use, and why?
+
+All of the "balancing" strategies are able to select the backend server *at
+connect time*.  Most of the "sticky" strategies, on the other hand, require
+more knowledge about the user (e.g. USER name, HOST name, SSL session ID),
+thus backend server selection is delayed until that information is obtained.
+
+Balancing is best when all of your backend severs are identical with regard to
+the content they have, AND when it doesn't matter which server handles a
+particular client.  Maybe all of your backend servers use a shared filesystem
+via NFS or similar, thus directory listings will be the same for a user no
+matter which backend server is used, and uploading files to one server means
+that those files can be downloaded/seen by the other servers.
+
+Stickiness is best when your backend servers are NOT identical, and some
+users/clients should only ever go to some particular set of backend servers.
+Thus the user/client needs to be "sticky" to a given backend server(s) --
+that's when you need the sticky selection strategies.

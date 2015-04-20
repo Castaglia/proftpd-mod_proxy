@@ -295,8 +295,8 @@ my $TESTS = {
     test_class => [qw(forking reverse)],
   },
 
-  # backend selection: random, roundrobin, shuffle, per-user, leastconns...?
-  proxy_reverse_config_selection_random => {
+  # backend selection: random, shuffle, roundrobin, per-user, leastconns...?
+  proxy_reverse_config_policy_random => {
     order => ++$order,
     test_class => [qw(forking reverse)],
   },
@@ -590,7 +590,7 @@ sub get_reverse_proxy_config {
   my $config = {
     ProxyEngine => 'on',
     ProxyLog => $log_file,
-    ProxyReverseServers => "ftp://127.0.0.1:$vhost_port",
+    ProxyReverseHosts => "ftp://127.0.0.1:$vhost_port",
     ProxyRole => 'reverse',
     ProxyTables => $table_dir,
   };
@@ -803,7 +803,7 @@ sub proxy_reverse_connect_failed_bad_dst_addr {
   $vhost_port += 12;
 
   my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
-  $proxy_config->{ProxyReverseServers} = 'ftp://1.2.3.4:5678';
+  $proxy_config->{ProxyReverseHosts} = 'ftp://1.2.3.4:5678';
 
   my $config = {
     PidFile => $pid_file,
@@ -9725,7 +9725,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_reverse_config_selection_random {
+sub proxy_reverse_config_policy_random {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -9765,10 +9765,10 @@ sub proxy_reverse_config_selection_random {
   $vhost_port += 12;
 
   my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
-  $proxy_config->{ProxyReverseSelection} = 'random';
+  $proxy_config->{ProxyReversePolicy} = 'Random';
 
   # For now, we cheat and simply repeat the same vhost three times
-  $proxy_config->{ProxyReverseServers} = "ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port";
+  $proxy_config->{ProxyReverseHosts} = "ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port";
 
   my $timeout_idle = 10;
 
@@ -11600,7 +11600,7 @@ sub proxy_reverse_proxy_protocol_ipv6 {
   $vhost_port += 12;
 
   my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
-  $proxy_config->{ProxyReverseServers} = "ftp://[::1]:$vhost_port";
+  $proxy_config->{ProxyReverseHosts} = "ftp://[::1]:$vhost_port";
   $proxy_config->{ProxyOptions} = 'UseProxyProtocol';
 
   my $config = {
@@ -12477,21 +12477,21 @@ sub proxy_reverse_config_reverseservers_file {
 
   my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
-  my $proxy_servers_file = File::Spec->rel2abs("$tmpdir/backends.txt");
-  if (open(my $fh, "> $proxy_servers_file")) {
+  my $proxy_hosts_file = File::Spec->rel2abs("$tmpdir/backends.txt");
+  if (open(my $fh, "> $proxy_hosts_file")) {
     print $fh "ftp://127.0.0.1:$vhost_port\n";
 
     unless (close($fh)) {
-      die("Can't write $proxy_servers_file: $!");
+      die("Can't write $proxy_hosts_file: $!");
     }
 
   } else {
-    die("Can't open $proxy_servers_file: $!");
+    die("Can't open $proxy_hosts_file: $!");
   }
 
   # Make sure that mod_proxy correctly handles a list of backend servers
   # read from a file.
-  $proxy_config->{ProxyReverseServers} = "file:$proxy_servers_file";
+  $proxy_config->{ProxyReverseHosts} = "file:$proxy_hosts_file";
 
   my $config = {
     PidFile => $pid_file,
