@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy
- * Copyright (c) 2012-2013 TJ Saunders
+ * Copyright (c) 2012-2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -188,6 +188,50 @@ static int proxy_mkpath(pool *p, const char *path, uid_t uid, gid_t gid,
   }
 
   return 0;
+}
+
+static void proxy_remove_symbols(void) {
+  int res;
+
+  /* Remove mod_xfer's PRE_CMD handlers; they will only interfere
+   * with proxied data transfers (see GitHub issue #3).
+   */
+
+  res = pr_stash_remove_cmd(C_APPE, &xfer_module, PRE_CMD, NULL, -1);
+  if (res < 0) {
+    pr_trace_msg(trace_channel, 1,
+      "error removing PRE_CMD APPE mod_xfer handler: %s", strerror(errno));
+
+  } else {
+    pr_trace_msg(trace_channel, 9, "removed PRE_CMD APPE mod_xfer handlers");
+  }
+ 
+  res = pr_stash_remove_cmd(C_RETR, &xfer_module, PRE_CMD, NULL, -1);
+  if (res < 0) {
+    pr_trace_msg(trace_channel, 1,
+      "error removing PRE_CMD RETR mod_xfer handler: %s", strerror(errno));
+
+  } else {
+    pr_trace_msg(trace_channel, 9, "removed PRE_CMD RETR mod_xfer handlers");
+  }
+
+  res = pr_stash_remove_cmd(C_STOR, &xfer_module, PRE_CMD, NULL, -1);
+  if (res < 0) {
+    pr_trace_msg(trace_channel, 1,
+      "error removing PRE_CMD STOR mod_xfer handler: %s", strerror(errno));
+
+  } else {
+    pr_trace_msg(trace_channel, 9, "removed PRE_CMD STOR mod_xfer handlers");
+  }
+
+  res = pr_stash_remove_cmd(C_STOU, &xfer_module, PRE_CMD, NULL, -1);
+  if (res < 0) {
+    pr_trace_msg(trace_channel, 1,
+      "error removing PRE_CMD STOU mod_xfer handler: %s", strerror(errno));
+
+  } else {
+    pr_trace_msg(trace_channel, 9, "removed PRE_CMD STOU mod_xfer handlers");
+  }
 }
 
 /* Configuration handlers
@@ -600,7 +644,7 @@ static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
 
     pr_signals_handle();
 
-    /* XXX Insert select(2) call here, where we wait for readability on
+    /* TODO: Insert select(2) call here, where we wait for readability on
      * the client control connection.
      *
      * Bonus points for handling aborts on either control connection,
@@ -633,11 +677,12 @@ static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
        */
       pr_response_block(FALSE);
 
-      /* XXX If we need to, we can exert finer-grained control over
+      /* TODO: If we need to, we can exert finer-grained control over
        * command dispatching/routing here.  For example, this is where we
        * could block responses for PRE_CMD handlers, or skip certain
        * modules' handlers.
        */
+
       pr_cmd_dispatch(cmd);
       destroy_pool(cmd->pool);
 
@@ -2534,6 +2579,7 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
 static void proxy_restart_ev(const void *event_data, void *user_data) {
 
   /* TODO: Remove/clean up state files (e.g. roundrobin.dat). */
+
 }
 
 static void proxy_shutdown_ev(const void *event_data, void *user_data) {
@@ -2827,6 +2873,7 @@ static int proxy_sess_init(void) {
    */
   pr_cmd_set_handler(proxy_cmd_loop);
 
+  proxy_remove_symbols();
   return 0;
 }
 
