@@ -74,6 +74,7 @@ Complex/adaptive balancing:
   Client IP address/class (connect time selection)
   FTP USER (i.e. user affinity to specific server(s)) (USER time selection)
     lookup AND hashed (algo?  Same algo used by Table API?)
+  SSL/TLS session ID/resumption/ticket
   SSL/TLS protocol version (AUTH time selection)
   SSL/TLS ciphersuite (AUTH time selection)
   Backend response time (connect time selection)

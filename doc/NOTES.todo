@@ -1,4 +1,5 @@
 
   default low (1 sec) ConnectTimeout; consider many slow backends
+  MODE Z proxying (mod_deflate)
 
   setjmp/longjmp for -X command-line option

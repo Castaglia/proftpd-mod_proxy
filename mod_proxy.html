@@ -67,7 +67,19 @@ The <code>ProxyDataTransferPolicy</code> directive configures with
 <strong>Compatibility:</strong> 1.3.6rc1 and later
 
 <p>
-The <code>ProxyEngine</code> directive enables the
+The <code>ProxyEngine</code> directive
+
+<p>
+<hr>
+<h2><a name="ProxyForwardMethod">ProxyForwardMethod</a></h2>
+<strong>Syntax:</strong> ProxyForwardMethod <em>method</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc1 and later
+
+<p>
+The <code>ProxyForwardMethod</code> directive
 
 <p>
 <hr>
@@ -118,6 +130,54 @@ The currently implemented options are:
 
 <p>
 <hr>
+<h2><a name="ProxyReverseSelection">ProxyReverseSelection</a></h2>
+<strong>Syntax:</strong> ProxyReverseSelection <em>policy</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc1 and later
+
+<p>
+The <code>ProxyReverseSelection</code> directive
+
+<p>
+<hr>
+<h2><a name="ProxyReverseServers">ProxyReverseServers</a></h2>
+<strong>Syntax:</strong> ProxyReverseServers <em>server-info</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc1 and later
+
+<p>
+The <code>ProxyReverseServers</code> directive
+
+<p>
+<hr>
+<h2><a name="ProxyRole">ProxyRole</a></h2>
+<strong>Syntax:</strong> ProxyRole <em>role</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc1 and later
+
+<p>
+The <code>ProxyRole</code> directive
+
+<p>
+<hr>
+<h2><a name="ProxySourceAddress">ProxySourceAddress</a></h2>
+<strong>Syntax:</strong> ProxySourceAddress <em>address</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc1 and later
+
+<p>
+The <code>ProxySourceAddress</code> directive
+
+<p>
+<hr>
 <h2><a name="ProxyTables">ProxyTables</a></h2>
 <strong>Syntax:</strong> ProxyTables <em>table-info</em><br>
 <strong>Default:</strong> None<br>
@@ -127,6 +187,18 @@ The currently implemented options are:
 
 <p>
 The <code>ProxyTables</code> directive configures
+
+<p>
+<hr>
+<h2><a name="ProxyTimeoutConnect">ProxyTimeoutConnect</a></h2>
+<strong>Syntax:</strong> ProxyTimeoutConnect <em>timeout</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc1 and later
+
+<p>
+The <code>ProxyTimeoutConnect</code> directive
 
 <p>
 <hr>
@@ -157,6 +229,8 @@ The <code>ProxyTables</code> directive configures
 
 <p>
 <b>Secure/Paranoid Configurations</b><br>
+
+Automatically chroots to ProxyTables/empty/ directory
 
 <p>
 <b>SFTP/SCP Support</b><br>

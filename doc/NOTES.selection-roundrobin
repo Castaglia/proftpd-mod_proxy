@@ -22,6 +22,7 @@ To implement round robin, we need:
 
   2.  Knowledge of what the "next" server should be (or, conversely,
       what the previous server was) 
+
   3.  Persistence of #2 in some storage accessible across connections to
       that vhost (i.e. vhost-specific storage).
 
@@ -34,9 +35,9 @@ To implement round robin, we need:
 
 What if there are THREE backend server lists:
 
-  configured
-  live
-  dead
+  configured:	conf/
+  live		live/
+  dead		dead/
 
 The "configured" list would be static, wouldn't change, would have stable
 ordering.  That could then be the reference server/index for round robin.
@@ -74,21 +75,24 @@ OR:
   With this arrangement, an on-disk mmap'd file would have range
   locking, and a "row" would be:
 
-    unsigned int sid
-    unsigned int server_count
-    unsigned int curr_server
+    uint32_t sid
+    uint32_t backend_server_count
+    uint32_t backend_server_idx
 
   This would be the "select.dat" file/table, the basis for backend
   selection.
 
   For health checks:
 
-    unsigned int sid;
-    unsigned int server_count
-    unsigned int live_servers[server_count]
-    unsigned int dead_servers[server_count]
+    uint32_t sid;
+    uint32_t backend_server_count
+    uint32_t live_servers[backend_server_count]
+    uint32_t dead_servers[backend_server_count]
 
     ...
+
+  Note: Use big-endian values for all numeric values on disk, as if writing
+    to the network, for file "reuse" on other servers?
 
   Note: Would be nice, given the above format, to NOT have to scan the
   entire file to find the vhost in question, given the variable length
@@ -103,6 +107,22 @@ OR:
       sid 2: off = 42
 
     and remember that vhost SIDs start at 1!
+
+      off_t sid_off = sid_offs[main_server->sid-1];
+      lseek(fd, sid_off, SEEK_SET);
+      readv(...)
+      readv(...)
+
+  Note: have ftpdctl proxy action for dumping out (as JSON) the contents of
+   the select.dat file?
+
+  Note: files/structure:
+
+    select.c
+    select-random.c
+    select-roundrobin.c
+    select-shuffle.c
+    ...
 
   When writing out the file initially, scan each vhost, figure out its
   position, then write out header, then vhost entry.
@@ -130,7 +150,7 @@ that server versus others.
 
 To make this more general (e.g. for other selection policies), maybe:
 
-  int proxy_reverse_select_next_index(main_server->sid, &idx, policy);
+  int proxy_reverse_select_index_next(main_server->sid, &idx, policy);
 
 Where policy could be:
 
@@ -142,7 +162,7 @@ Where policy could be:
 
 If that backend is chosen/used successfully, then:
 
-  int policy_reverse_select_used_index(main_server->sid, idx, response_ms);
+  int policy_reverse_select_index_used(main_server->sid, idx, response_ms);
 
 Note when we would need to maintain an fd on the database until the
 session ended (e.g. for leastConns), so that we could decrement the number

@@ -1,0 +1,3 @@
+
+Need Proxy* directives for setting the client certificate/key/CA to use,
+ciphersuites/protocol version, etc.

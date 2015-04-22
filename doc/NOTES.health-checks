@@ -28,6 +28,8 @@ interpretation/policy) metrics:
     number of retries
     retry interval
 
+  TLS handshake
+
   SSH key exchange
 
   SSH login
