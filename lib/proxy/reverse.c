@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse-proxy implementation
- * Copyright (c) 2012-2013 TJ Saunders
+ * Copyright (c) 2012-2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -70,8 +70,11 @@ int proxy_reverse_sess_init(pool *p, const char *tables_dir) {
   c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseServers",
     FALSE);
   if (c == NULL) {
+    pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "gateway mode enabled, but no ProxyReverseServers configured");
     pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
       ": gateway mode enabled, but no ProxyReverseServers configured");
+    errno = EPERM;
     return -1;
   }
 
@@ -393,33 +396,38 @@ int proxy_reverse_select_get_policy(const char *policy) {
     return -1;
   }
 
-  if (strncmp(policy, "random", 7) == 0) {
+  if (strncasecmp(policy, "Random", 7) == 0) {
     return PROXY_REVERSE_SELECT_POLICY_RANDOM;
 
-  } else if (strncmp(policy, "roundRobin", 11) == 0) {
+  } else if (strncasecmp(policy, "RoundRobin", 11) == 0) {
     return PROXY_REVERSE_SELECT_POLICY_ROUND_ROBIN;
 
-  } else if (strncmp(policy, "leastConns", 11) == 0) {
-    return PROXY_REVERSE_SELECT_POLICY_LEAST_CONNS;
-
-  } else if (strncmp(policy, "equalConns", 11) == 0) {
-    return PROXY_REVERSE_SELECT_POLICY_EQUAL_CONNS;
-
-  } else if (strncmp(policy, "lowestResponseTime", 19) == 0) {
-    return PROXY_REVERSE_SELECT_POLICY_LOWEST_RESPONSE_TIME;
-
-  } else if (strncmp(policy, "shuffle", 8) == 0) {
+#if 0
+  } else if (strncasecmp(policy, "Shuffle", 8) == 0) {
     return PROXY_REVERSE_SELECT_POLICY_SHUFFLE;
 
-  } else if (strncmp(policy, "perUser", 8) == 0) {
+  } else if (strncasecmp(policy, "LeastConns", 11) == 0) {
+    return PROXY_REVERSE_SELECT_POLICY_LEAST_CONNS;
+
+  } else if (strncasecmp(policy, "EqualConns", 11) == 0) {
+    return PROXY_REVERSE_SELECT_POLICY_EQUAL_CONNS;
+
+  } else if (strncasecmp(policy, "LowestResponseTime", 19) == 0) {
+    return PROXY_REVERSE_SELECT_POLICY_LOWEST_RESPONSE_TIME;
+
+  } else if (strncasecmp(policy, "PerHost", 8) == 0) {
+    return PROXY_REVERSE_SELECT_POLICY_PER_HOST;
+
+  } else if (strncasecmp(policy, "PerUser", 8) == 0) {
     return PROXY_REVERSE_SELECT_POLICY_PER_USER;
+#endif
   }
 
   errno = ENOENT;
   return -1;
 }
 
-static int reverse_select_next_index(unsigned int sid,
+static int reverse_select_index_next(unsigned int sid,
     unsigned int backend_count, void *policy_data) {
   int next_idx = -1;
 
@@ -447,7 +455,7 @@ static int reverse_select_next_index(unsigned int sid,
   return next_idx;
 }
 
-static int reverse_select_used_index(unsigned int sid, unsigned int idx,
+static int reverse_select_index_used(unsigned int sid, unsigned int idx,
     unsigned long response_ms) {
   errno = ENOSYS;
   return -1;
@@ -465,7 +473,7 @@ static pr_netaddr_t *get_reverse_server_addr(pool *p,
   backend_servers = c->argv[0];
   conns = backend_servers->elts;
 
-  idx = reverse_select_next_index(main_server->sid,
+  idx = reverse_select_index_next(main_server->sid,
     backend_servers->nelts, NULL);
   if (idx < 0) {
     return NULL;

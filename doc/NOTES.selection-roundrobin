@@ -79,6 +79,16 @@ OR:
     uint32_t backend_server_count
     uint32_t backend_server_idx
 
+  Alternatively, the entire selection database could be a single JSON file;
+  the "locking" would be done on the basis of the entire file.
+
+  OR, alternatively, the selection database could be a SQL database (e.g.
+  SQLite), a la mod_auth_otp.
+
+  Store these databases in a policy-specific, vhost-specific file (to reduce
+  contention)?  This would make it easy for each policy to have its own
+  format, as needed.
+
   This would be the "select.dat" file/table, the basis for backend
   selection.
 
@@ -113,6 +123,9 @@ OR:
       readv(...)
       readv(...)
 
+  Note: have a version uint32_t as first value in value, for indicating file
+    format version.
+
   Note: have ftpdctl proxy action for dumping out (as JSON) the contents of
    the select.dat file?
 
@@ -124,6 +137,14 @@ OR:
     select-shuffle.c
     ...
 
+    policy/
+      random/
+        {sid}.json
+      roundrobin/
+        {sid}.json
+      shuffle/
+        {sid}.json 
+       
   When writing out the file initially, scan each vhost, figure out its
   position, then write out header, then vhost entry.
 

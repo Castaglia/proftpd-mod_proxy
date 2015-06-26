@@ -3,6 +3,7 @@ Balancing vs Stickiness
 
   Balancing:
     random
+    shuffle
     roundRobin
     leastConns
 
@@ -10,6 +11,7 @@ Balancing vs Stickiness
     per USER
     per HOST
     per SSL session ID 
+    per SSL SNI
 
 Work on implementing just the balancing strategies, for now.
 

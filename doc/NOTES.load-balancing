@@ -1,5 +1,5 @@
 
-ProxyBackendSelection random roundRobin leastConns perUser per
+ProxyBackendSelection random roundRobin leastConns perUser perHost
 
   lib/proxy/filetable.c
     for reading a pr_table_t from file on disk.  Overkill?
@@ -68,6 +68,8 @@ Advanced balancing (selection at USER time):
   equal distribution
 
   user-specific (lookup per user)
+
+  host-specific (lookup per HOST/SNI)
 
 Complex/adaptive balancing:
 

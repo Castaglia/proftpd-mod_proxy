@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse-proxy API
- * Copyright (c) 2012-2013 TJ Saunders
+ * Copyright (c) 2012-2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -52,6 +52,7 @@ array_header *proxy_reverse_file_parse_uris(pool *p, const char *path);
 #define PROXY_REVERSE_SELECT_POLICY_LOWEST_RESPONSE_TIME	5
 #define PROXY_REVERSE_SELECT_POLICY_SHUFFLE			6
 #define PROXY_REVERSE_SELECT_POLICY_PER_USER			7
+#define PROXY_REVERSE_SELECT_POLICY_PER_HOST			8
 
 /* Return the policy ID for the given string, or -1 if the given policy
  * is not recognized/supported.
