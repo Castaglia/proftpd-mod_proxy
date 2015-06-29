@@ -42,6 +42,25 @@ What if there are THREE backend server lists:
 The "configured" list would be static, wouldn't change, would have stable
 ordering.  That could then be the reference server/index for round robin.
 
+  proxy_select_backends:
+    vhost_sid INTEGER,
+    name TEXT, // e.g. "server1.example.com"
+    backend_id INTEGER, // used for ordering
+    healthy BOOLEAN // used for healthchecks
+    nconns INTEGER  // used for least conns
+
+  SELECT name FROM proxy_backends WHERE vhost_sid = {...} ORDER BY position ASC;
+
+  proxy_select_roundrobin:
+    vhost_sid INTEGER,
+    current_backend_id INTEGER (FK into proxy_select_backends.backend_id?)
+
+  proxy_select_shuffle:
+    insert rows for used backend IDs; delete them all on _reset()
+    (OR insert rows for UNUSED backend IDs; delete as used)
+
+  a selection policy object, with callbacks into the database
+
 Basic data structure:
 
   vhost1
@@ -88,6 +107,20 @@ OR:
   Store these databases in a policy-specific, vhost-specific file (to reduce
   contention)?  This would make it easy for each policy to have its own
   format, as needed.
+
+    CONF_ROOT|CONF_VIRTUAL, NO <Global>.
+    Leaning toward SQLite.
+      SELECT ...
+      INSERT sid, ...
+      UPDATE ...
+
+       Per Policy!  Hrm.  Maybe have mod_proxy create its own tables, etc.
+       (just configure a path).  That'd work nicely.  On startup, delete
+       table if it exists (warn about this!), create needed schema.  Much
+       less fuss for the admin.
+
+      Make lib/db/sqlite.c file, use sqlite3 directly (NOT via
+      mod_sql+mod_sql_sqlite). 
 
   This would be the "select.dat" file/table, the basis for backend
   selection.
@@ -167,7 +200,9 @@ Where "ranked" is a list of indices (into the configured list) in
 preference/ranked order.  In the case of least conns, this ranking is done
 by number of current connections.  Hmm, no, we'd still need to know that
 number of current connections somewhere, not just the relative rank of
-that server versus others.
+that server versus others -- consider that the number of connections may
+change, changing the relative ranking, and we'd need to know the number of
+current connections in order to do the re-ranking.
 
 To make this more general (e.g. for other selection policies), maybe:
 

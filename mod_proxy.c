@@ -23,10 +23,12 @@
  *
  * ---DO NOT EDIT BELOW THIS LINE---
  * $Archive: mod_proxy.a $
+ * $Libraries: -lsqlite3 $
  */
 
 #include "mod_proxy.h"
 #include "proxy/random.h"
+#include "proxy/db.h"
 #include "proxy/session.h"
 #include "proxy/conn.h"
 #include "proxy/forward.h"
@@ -2511,6 +2513,8 @@ static void proxy_exit_ev(const void *event_data, void *user_data) {
     pr_table_remove(session.notes, "mod_proxy.proxy-session", NULL);
   }
 
+  proxy_reverse_sess_exit(session.pool);
+
   if (proxy_logfd >= 0) {
     (void) close(proxy_logfd);
     proxy_logfd = -1;
@@ -2635,6 +2639,10 @@ static int proxy_init(void) {
   pr_event_register(&proxy_module, "core.postparse", proxy_postparse_ev, NULL);
   pr_event_register(&proxy_module, "core.restart", proxy_restart_ev, NULL);
   pr_event_register(&proxy_module, "core.shutdown", proxy_shutdown_ev, NULL);
+
+  if (proxy_db_init(proxy_pool) < 0) {
+    return -1;
+  }
 
   return 0;
 }

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy URI API
- * Copyright (c) 2012 TJ Saunders
+ * Copyright (c) 2012-2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,4 +30,4 @@
 int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
   unsigned int *port);
 
-#endif /* MOD_PROXY_CLIENT_H */
+#endif /* MOD_PROXY_URI_H */

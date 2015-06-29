@@ -14,6 +14,7 @@ MODULE_NAME=mod_proxy
 MODULE_OBJS=mod_proxy.o \
   lib/proxy/stacktrace.o \
   lib/proxy/random.o \
+  lib/proxy/db.o \
   lib/proxy/session.o \
   lib/proxy/conn.o \
   lib/proxy/uri.o \
@@ -29,6 +30,7 @@ MODULE_OBJS=mod_proxy.o \
 SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/stacktrace.lo \
   lib/proxy/random.lo \
+  lib/proxy/db.lo \
   lib/proxy/session.lo \
   lib/proxy/conn.lo \
   lib/proxy/uri.lo \
