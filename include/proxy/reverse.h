@@ -37,6 +37,7 @@ int proxy_reverse_sess_init(pool *p, const char *tables_dir);
 int proxy_reverse_sess_exit(pool *p);
 
 int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess);
+#define PROXY_REVERSE_DEFAULT_RETRY_COUNT	5
 
 int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
   int *successful);

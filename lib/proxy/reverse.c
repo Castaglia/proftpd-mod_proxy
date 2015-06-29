@@ -1181,7 +1181,7 @@ static pr_netaddr_t *get_reverse_server_addr(pool *p,
   return addr;
 }
 
-int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess) {
+static int reverse_connect(pool *p, struct proxy_session *proxy_sess) {
   int backend_id = -1;
   conn_t *server_conn = NULL;
   pr_response_t *resp = NULL;
@@ -1199,6 +1199,21 @@ int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess) {
   pr_gettimeofday_millis(&connecting_ms);
   server_conn = proxy_conn_get_server_conn(p, proxy_sess, proxy_sess->dst_addr);
   if (server_conn == NULL) {
+    int xerrno = errno;
+
+    /* TODO: Under what errno values will we mark this backend/idx as
+     * "unhealthy"?  When we do, how will that unhealthy flag be taken into
+     * account with the existing queries?  JOIN the index on the backend table
+     * to get that unhealthy flag?
+     */
+
+    if (reverse_select_index_used(p, main_server->sid, backend_id, 0) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error updating database for backend server index %d: %s", backend_id,
+        strerror(errno));
+    }
+
+    errno = xerrno;
     return -1;
   }
 
@@ -1272,7 +1287,7 @@ int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess) {
   if (reverse_select_index_used(p, main_server->sid, backend_id,
     (unsigned long) connected_ms - connecting_ms) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error updating databased for backend server index %d: %s", backend_id,
+      "error updating database for backend server index %d: %s", backend_id,
       strerror(errno));
   }
 
@@ -1280,6 +1295,34 @@ int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess) {
   pr_response_block(TRUE);
 
   return 0;
+}
+
+int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess) {
+  register unsigned int i;
+  int res, retry_count;
+  config_rec *c;
+
+  retry_count = PROXY_REVERSE_DEFAULT_RETRY_COUNT;
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseRetryCount",
+    FALSE);
+  if (c != NULL) {
+    retry_count = *((int *) c->argv[0]);
+  }
+
+  for (i = 0; i < retry_count; i++) {
+    pr_signals_handle();
+
+    res = reverse_connect(p, proxy_sess);
+    if (res == 0) {
+      return 0;
+    }
+  }
+
+  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+    "ProxyReverseRetryCount %d reached with no successful connection, failing",
+    retry_count);
+  errno = EPERM;
+  return -1;
 }
 
 int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,

@@ -361,6 +361,26 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
+/* usage: ProxyReverseRetryCount count */
+MODRET set_proxyreverseretrycount(cmd_rec *cmd) {
+  config_rec *c;
+  int retry_count = -1;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  retry_count = atoi(cmd->argv[1]);
+  if (retry_count < 1) {
+    CONF_ERROR(cmd, "retry count must be one or more");
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = retry_count;
+
+  return PR_HANDLED(cmd);
+}
+
 /* usage: ProxyReverseSelection [policy] */
 MODRET set_proxyreverseselection(cmd_rec *cmd) {
   config_rec *c;
@@ -2894,6 +2914,7 @@ static conftable proxy_conftab[] = {
   { "ProxyForwardMethod",	set_proxyforwardmethod,		NULL },
   { "ProxyLog",			set_proxylog,			NULL },
   { "ProxyOptions",		set_proxyoptions,		NULL },
+  { "ProxyReverseRetryCount",	set_proxyreverseretrycount,	NULL },
   { "ProxyReverseSelection",	set_proxyreverseselection,	NULL },
   { "ProxyReverseServers",	set_proxyreverseservers,	NULL },
   { "ProxyRole",		set_proxyrole,			NULL },
