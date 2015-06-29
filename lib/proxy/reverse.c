@@ -1302,9 +1302,8 @@ int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess) {
   int res, retry_count;
   config_rec *c;
 
-  retry_count = PROXY_REVERSE_DEFAULT_RETRY_COUNT;
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseRetryCount",
-    FALSE);
+  retry_count = PROXY_DEFAULT_RETRY_COUNT;
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyRetryCount", FALSE);
   if (c != NULL) {
     retry_count = *((int *) c->argv[0]);
   }
@@ -1319,7 +1318,7 @@ int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess) {
   }
 
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-    "ProxyReverseRetryCount %d reached with no successful connection, failing",
+    "ProxyRetryCount %d reached with no successful connection, failing",
     retry_count);
   errno = EPERM;
   return -1;

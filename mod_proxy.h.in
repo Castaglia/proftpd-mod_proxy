@@ -62,4 +62,8 @@ extern unsigned int proxy_sess_state;
 #define PROXY_SESS_STATE_CONNECTED		0x0002
 #define PROXY_SESS_STATE_BACKEND_AUTHENTICATED	0x0004
 
+#ifndef PROXY_DEFAULT_RETRY_COUNT
+# define PROXY_DEFAULT_RETRY_COUNT		5 
+#endif
+
 #endif /* MOD_PROXY_H */

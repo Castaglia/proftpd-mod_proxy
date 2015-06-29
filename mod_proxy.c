@@ -361,8 +361,8 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
-/* usage: ProxyReverseRetryCount count */
-MODRET set_proxyreverseretrycount(cmd_rec *cmd) {
+/* usage: ProxyRetryCount count */
+MODRET set_proxyretrycount(cmd_rec *cmd) {
   config_rec *c;
   int retry_count = -1;
 
@@ -2914,7 +2914,7 @@ static conftable proxy_conftab[] = {
   { "ProxyForwardMethod",	set_proxyforwardmethod,		NULL },
   { "ProxyLog",			set_proxylog,			NULL },
   { "ProxyOptions",		set_proxyoptions,		NULL },
-  { "ProxyReverseRetryCount",	set_proxyreverseretrycount,	NULL },
+  { "ProxyRetryCount",		set_proxyretrycount,		NULL },
   { "ProxyReverseSelection",	set_proxyreverseselection,	NULL },
   { "ProxyReverseServers",	set_proxyreverseservers,	NULL },
   { "ProxyRole",		set_proxyrole,			NULL },
