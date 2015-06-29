@@ -38,7 +38,7 @@ extern xaset_t *server_list;
 
 static array_header *reverse_backends = NULL;
 static int reverse_backend_id = -1;
-static int reverse_select_policy = PROXY_REVERSE_SELECT_POLICY_RANDOM;
+static int reverse_select_policy = PROXY_REVERSE_SELECT_POLICY_ROUND_ROBIN;
 
 static const char *trace_channel = "proxy.reverse";
 
