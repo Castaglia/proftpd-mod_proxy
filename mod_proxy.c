@@ -2601,9 +2601,13 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
 }
 
 static void proxy_restart_ev(const void *event_data, void *user_data) {
+  int res;
 
-  /* TODO: Remove/clean up state files (e.g. roundrobin.dat). */
-
+  res = proxy_db_close(proxy_pool);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error closing database: %s", strerror(errno));
+  }
 }
 
 static void proxy_shutdown_ev(const void *event_data, void *user_data) {
