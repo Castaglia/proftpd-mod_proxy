@@ -414,6 +414,10 @@ int proxy_db_close(pool *p) {
     proxy_dbh = NULL;
   }
 
+  destroy_pool(db_pool);
+  db_pool = NULL;
+  prepared_stmts = NULL;
+
   return 0;
 }
 
@@ -438,5 +442,12 @@ int proxy_db_init(pool *p) {
 }
 
 int proxy_db_free(void) {
+
+  if (db_pool != NULL) {
+    destroy_pool(db_pool);
+    db_pool = NULL;
+    prepared_stmts = NULL;
+  }
+
   return 0;
 }
