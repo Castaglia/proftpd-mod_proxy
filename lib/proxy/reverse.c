@@ -38,7 +38,7 @@ extern xaset_t *server_list;
 
 static array_header *reverse_backends = NULL;
 static int reverse_backend_id = -1;
-static int reverse_select_policy = PROXY_REVERSE_SELECT_POLICY_ROUND_ROBIN;
+static int reverse_connect_policy = PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN;
 
 static const char *trace_channel = "proxy.reverse";
 
@@ -270,7 +270,7 @@ static int reverse_db_update_backend(pool *p, unsigned vhost_id,
   return 0;
 }
 
-/* ProxyReverseSelection: Shuffle */
+/* ProxyReverseConnectPolicy: Shuffle */
 
 static int reverse_db_add_shuffle(pool *p, unsigned int vhost_id,
     int backend_id) {
@@ -415,7 +415,7 @@ static int reverse_db_shuffle_used(pool *p, unsigned int vhost_id,
   return 0;
 }
 
-/* ProxyReverseSelection: RoundRobin */
+/* ProxyReverseConnectPolicy: RoundRobin */
 
 static int reverse_db_roundrobin_update(pool *p, unsigned int vhost_id,
     int backend_id) {
@@ -656,33 +656,33 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
         return -1;
       }
 
-      c = find_config(s->conf, CONF_PARAM, "ProxyReverseSelection", FALSE);
+      c = find_config(s->conf, CONF_PARAM, "ProxyReverseConnectPolicy", FALSE);
       if (c != NULL) {
-        int select_policy;
+        int connect_policy;
 
-        select_policy = *((int *) c->argv[0]);
-        switch (select_policy) {
-          case PROXY_REVERSE_SELECT_POLICY_RANDOM:
-          case PROXY_REVERSE_SELECT_POLICY_LEAST_CONNS:
+        connect_policy = *((int *) c->argv[0]);
+        switch (connect_policy) {
+          case PROXY_REVERSE_CONNECT_POLICY_RANDOM:
+          case PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS:
             /* No preparation needed. */
             break;
 
-          case PROXY_REVERSE_SELECT_POLICY_ROUND_ROBIN:
+          case PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN:
             res = reverse_db_roundrobin_init(p, s->sid, backends->nelts-1);
             if (res < 0) {
               xerrno = errno;
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-                "error preparing database for ProxyReverseSelection "
+                "error preparing database for ProxyReverseConnectPolicy "
                 "RoundRobin: %s", strerror(xerrno));
             }
             break;
 
-          case PROXY_REVERSE_SELECT_POLICY_SHUFFLE:
+          case PROXY_REVERSE_CONNECT_POLICY_SHUFFLE:
             res = reverse_db_shuffle_init(p, s->sid, backends);
             if (res < 0) {
               xerrno = errno;
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-                "error preparing database for ProxyReverseSelection "
+                "error preparing database for ProxyReverseConnectPolicy "
                 "Shuffle: %s", strerror(xerrno));
             }
             break;
@@ -735,10 +735,10 @@ int proxy_reverse_sess_init(pool *p, const char *tables_dir) {
 
   reverse_backends = c->argv[0];
 
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseSelection",
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseConnectPolicy",
     FALSE);
   if (c != NULL) {
-    reverse_select_policy = *((int *) c->argv[0]);
+    reverse_connect_policy = *((int *) c->argv[0]);
   }
 
   return 0;
@@ -1023,36 +1023,33 @@ array_header *proxy_reverse_file_parse_uris(pool *p, const char *path) {
   return uris;
 }
 
-int proxy_reverse_select_get_policy(const char *policy) {
+int proxy_reverse_connect_get_policy(const char *policy) {
   if (policy == NULL) {
     errno = EINVAL;
     return -1;
   }
 
   if (strncasecmp(policy, "Random", 7) == 0) {
-    return PROXY_REVERSE_SELECT_POLICY_RANDOM;
+    return PROXY_REVERSE_CONNECT_POLICY_RANDOM;
 
   } else if (strncasecmp(policy, "RoundRobin", 11) == 0) {
-    return PROXY_REVERSE_SELECT_POLICY_ROUND_ROBIN;
+    return PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN;
 
   } else if (strncasecmp(policy, "Shuffle", 8) == 0) {
-    return PROXY_REVERSE_SELECT_POLICY_SHUFFLE;
+    return PROXY_REVERSE_CONNECT_POLICY_SHUFFLE;
 
   } else if (strncasecmp(policy, "LeastConns", 11) == 0) {
-    return PROXY_REVERSE_SELECT_POLICY_LEAST_CONNS;
+    return PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS;
 
 #if 0
-  } else if (strncasecmp(policy, "EqualConns", 11) == 0) {
-    return PROXY_REVERSE_SELECT_POLICY_EQUAL_CONNS;
-
   } else if (strncasecmp(policy, "LowestResponseTime", 19) == 0) {
-    return PROXY_REVERSE_SELECT_POLICY_LOWEST_RESPONSE_TIME;
+    return PROXY_REVERSE_CONNECT_POLICY_LOWEST_RESPONSE_TIME;
 
   } else if (strncasecmp(policy, "PerHost", 8) == 0) {
-    return PROXY_REVERSE_SELECT_POLICY_PER_HOST;
+    return PROXY_REVERSE_CONNECT_POLICY_PER_HOST;
 
   } else if (strncasecmp(policy, "PerUser", 8) == 0) {
-    return PROXY_REVERSE_SELECT_POLICY_PER_USER;
+    return PROXY_REVERSE_CONNECT_POLICY_PER_USER;
 #endif
   }
 
@@ -1060,7 +1057,7 @@ int proxy_reverse_select_get_policy(const char *policy) {
   return -1;
 }
 
-static int reverse_select_index_next(pool *p, unsigned int vhost_id,
+static int reverse_connect_index_next(pool *p, unsigned int vhost_id,
     void *policy_data) {
   int next_idx = -1;
 
@@ -1068,32 +1065,32 @@ static int reverse_select_index_next(pool *p, unsigned int vhost_id,
     return 0;
   }
 
-  switch (reverse_select_policy) {
-    case PROXY_REVERSE_SELECT_POLICY_RANDOM:
+  switch (reverse_connect_policy) {
+    case PROXY_REVERSE_CONNECT_POLICY_RANDOM:
       next_idx = (int) proxy_random_next(0, reverse_backends->nelts-1);      
       pr_trace_msg(trace_channel, 11,
-        "RANDOM selection: selected index %d of %u", next_idx,
+        "RANDOM policy: selected index %d of %u", next_idx,
         reverse_backends->nelts-1);
       break;
 
-    case PROXY_REVERSE_SELECT_POLICY_ROUND_ROBIN:
+    case PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN:
       next_idx = reverse_db_roundrobin_next(p, vhost_id);
       pr_trace_msg(trace_channel, 11,
-        "ROUND_ROBIN selection: selected index %d of %u", next_idx,
+        "ROUND_ROBIN policy: selected index %d of %u", next_idx,
         reverse_backends->nelts-1);
       break;
 
-    case PROXY_REVERSE_SELECT_POLICY_SHUFFLE:
+    case PROXY_REVERSE_CONNECT_POLICY_SHUFFLE:
       next_idx = reverse_db_shuffle_next(p, vhost_id);
       pr_trace_msg(trace_channel, 11,
-        "SHUFFLE selection: selected index %d of %u", next_idx,
+        "SHUFFLE policy: selected index %d of %u", next_idx,
         reverse_backends->nelts-1);
       break;
 
-    case PROXY_REVERSE_SELECT_POLICY_LEAST_CONNS:
+    case PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS:
       next_idx = reverse_db_leastconns_next(p, vhost_id);
       pr_trace_msg(trace_channel, 11,
-        "LEAST_CONNS selection: selected index %d of %u", next_idx,
+        "LEAST_CONNS policy: selected index %d of %u", next_idx,
         reverse_backends->nelts-1);
       break;
 
@@ -1105,7 +1102,7 @@ static int reverse_select_index_next(pool *p, unsigned int vhost_id,
   return next_idx;
 }
 
-static int reverse_select_index_used(pool *p, unsigned int vhost_id,
+static int reverse_connect_index_used(pool *p, unsigned int vhost_id,
     int idx, unsigned long response_ms) {
   int res;
 
@@ -1125,19 +1122,20 @@ static int reverse_select_index_used(pool *p, unsigned int vhost_id,
     return -1;
   }
 
-  switch (reverse_select_policy) {
-    case PROXY_REVERSE_SELECT_POLICY_RANDOM:
+  switch (reverse_connect_policy) {
+    case PROXY_REVERSE_CONNECT_POLICY_RANDOM:
+      res = 0;
       break;
 
-    case PROXY_REVERSE_SELECT_POLICY_ROUND_ROBIN:
+    case PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN:
       res = reverse_db_roundrobin_used(p, vhost_id, idx);
       break;
 
-    case PROXY_REVERSE_SELECT_POLICY_SHUFFLE:
+    case PROXY_REVERSE_CONNECT_POLICY_SHUFFLE:
       res = reverse_db_shuffle_used(p, vhost_id, idx);
       break;
 
-    case PROXY_REVERSE_SELECT_POLICY_LEAST_CONNS:
+    case PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS:
       res = reverse_db_leastconns_used(p, vhost_id, idx);
       break;
 
@@ -1162,7 +1160,7 @@ static pr_netaddr_t *get_reverse_server_addr(pool *p,
   pr_netaddr_t *addr;
   int idx;
 
-  idx = reverse_select_index_next(p, main_server->sid, NULL);
+  idx = reverse_connect_index_next(p, main_server->sid, NULL);
   if (idx < 0) {
     int xerrno = errno;
 
@@ -1207,7 +1205,7 @@ static int reverse_connect(pool *p, struct proxy_session *proxy_sess) {
      * to get that unhealthy flag?
      */
 
-    if (reverse_select_index_used(p, main_server->sid, backend_id, 0) < 0) {
+    if (reverse_connect_index_used(p, main_server->sid, backend_id, 0) < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "error updating database for backend server index %d: %s", backend_id,
         strerror(errno));
@@ -1284,7 +1282,7 @@ static int reverse_connect(pool *p, struct proxy_session *proxy_sess) {
       "unable to determine features of backend server: %s", strerror(errno));
   }
 
-  if (reverse_select_index_used(p, main_server->sid, backend_id,
+  if (reverse_connect_index_used(p, main_server->sid, backend_id,
     (unsigned long) connected_ms - connecting_ms) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error updating database for backend server index %d: %s", backend_id,

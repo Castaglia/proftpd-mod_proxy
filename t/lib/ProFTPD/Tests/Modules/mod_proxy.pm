@@ -295,22 +295,22 @@ my $TESTS = {
     test_class => [qw(forking reverse)],
   },
 
-  proxy_reverse_config_policy_random => {
+  proxy_reverse_config_connect_policy_random => {
     order => ++$order,
     test_class => [qw(forking reverse)],
   },
 
-  proxy_reverse_config_policy_shuffle => {
+  proxy_reverse_config_connect_policy_shuffle => {
     order => ++$order,
     test_class => [qw(forking reverse)],
   },
 
-  proxy_reverse_config_policy_roundrobin => {
+  proxy_reverse_config_connect_policy_roundrobin => {
     order => ++$order,
     test_class => [qw(forking reverse)],
   },
 
-  proxy_reverse_config_policy_leastconns => {
+  proxy_reverse_config_connect_policy_leastconns => {
     order => ++$order,
     test_class => [qw(forking reverse)],
   },
@@ -585,6 +585,8 @@ my $TESTS = {
   },
 
   # proxy_forward_config_displayconnect
+
+  # Note: For limiting the destinations to which we will forward proxy
   # proxy_forward_config_filter
   # proxy_forward_config_timeoutlogin_frontend
   # proxy_forward_config_timeoutlogin_backend
@@ -9774,7 +9776,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_reverse_config_policy_random {
+sub proxy_reverse_config_connect_policy_random {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -9814,7 +9816,7 @@ sub proxy_reverse_config_policy_random {
   $vhost_port += 12;
 
   my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
-  $proxy_config->{ProxyReverseSelection} = 'Random';
+  $proxy_config->{ProxyReverseConnectPolicy} = 'Random';
 
   # For now, we cheat and simply repeat the same vhost three times
   $proxy_config->{ProxyReverseServers} = "ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port";
@@ -9932,7 +9934,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_reverse_config_policy_shuffle {
+sub proxy_reverse_config_connect_policy_shuffle {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -9972,7 +9974,7 @@ sub proxy_reverse_config_policy_shuffle {
   $vhost_port += 12;
 
   my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
-  $proxy_config->{ProxyReverseSelection} = 'Shuffle';
+  $proxy_config->{ProxyReverseConnectPolicy} = 'Shuffle';
 
   # For now, we cheat and simply repeat the same vhost three times
   $proxy_config->{ProxyReverseServers} = "ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port";
@@ -10090,7 +10092,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_reverse_config_policy_roundrobin {
+sub proxy_reverse_config_connect_policy_roundrobin {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -10130,7 +10132,7 @@ sub proxy_reverse_config_policy_roundrobin {
   $vhost_port += 12;
 
   my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
-  $proxy_config->{ProxyReverseSelection} = 'RoundRobin';
+  $proxy_config->{ProxyReverseConnectPolicy} = 'RoundRobin';
 
   # For now, we cheat and simply repeat the same vhost three times
   $proxy_config->{ProxyReverseServers} = "ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port";
@@ -10248,7 +10250,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_reverse_config_policy_leastconns {
+sub proxy_reverse_config_connect_policy_leastconns {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -10288,7 +10290,7 @@ sub proxy_reverse_config_policy_leastconns {
   $vhost_port += 12;
 
   my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
-  $proxy_config->{ProxyReverseSelection} = 'LeastConns';
+  $proxy_config->{ProxyReverseConnectPolicy} = 'LeastConns';
 
   # For now, we cheat and simply repeat the same vhost three times
   $proxy_config->{ProxyReverseServers} = "ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port";

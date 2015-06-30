@@ -37,7 +37,7 @@ questions, concerns, or suggestions regarding this module.
   <li><a href="#ProxyForwardMethod">ProxyForwardMethod</a>
   <li><a href="#ProxyLog">ProxyLog</a>
   <li><a href="#ProxyOptions">ProxyOptions</a>
-  <li><a href="#ProxyReverseSelection">ProxyReverseSelection</a>
+  <li><a href="#ProxyReverseConnectPolicy">ProxyReverseConnectPolicy</a>
   <li><a href="#ProxyReverseServers">ProxyReverseServers</a>
   <li><a href="#ProxyRetryCount">ProxyRetryCount</a>
   <li><a href="#ProxyRole">ProxyRole</a>
@@ -143,15 +143,15 @@ The <code>ProxyRetryCount</code> directive
 
 <p>
 <hr>
-<h2><a name="ProxyReverseSelection">ProxyReverseSelection</a></h2>
-<strong>Syntax:</strong> ProxyReverseSelection <em>policy</em><br>
+<h2><a name="ProxyReverseConnectPolicy">ProxyReverseConnectPolicy</a></h2>
+<strong>Syntax:</strong> ProxyReverseConnectPolicy <em>policy</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
 <strong>Module:</strong> mod_proxy<br>
 <strong>Compatibility:</strong> 1.3.6rc1 and later
 
 <p>
-The <code>ProxyReverseSelection</code> directive
+The <code>ProxyReverseConnectPolicy</code> directive
 
 <p>
 <hr>
@@ -236,7 +236,7 @@ The <code>ProxyTimeoutConnect</code> directive
     ProxyLog /path/to/proxy.log
 
     ProxyReverseServers ...
-    ProxyReverseSelection ...
+    ProxyReverseConnectPolicy ...
   &lt;/IfModule&gt;
 </pre>
 

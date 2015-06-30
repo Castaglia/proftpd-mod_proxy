@@ -45,19 +45,18 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
 
 array_header *proxy_reverse_file_parse_uris(pool *p, const char *path);
 
-/* Backend selection policy API */
-#define PROXY_REVERSE_SELECT_POLICY_RANDOM			1
-#define PROXY_REVERSE_SELECT_POLICY_ROUND_ROBIN			2
-#define PROXY_REVERSE_SELECT_POLICY_LEAST_CONNS			3
-#define PROXY_REVERSE_SELECT_POLICY_EQUAL_CONNS			4
-#define PROXY_REVERSE_SELECT_POLICY_LOWEST_RESPONSE_TIME	5
-#define PROXY_REVERSE_SELECT_POLICY_SHUFFLE			6
-#define PROXY_REVERSE_SELECT_POLICY_PER_USER			7
-#define PROXY_REVERSE_SELECT_POLICY_PER_HOST			8
+/* Connect policy API */
+#define PROXY_REVERSE_CONNECT_POLICY_RANDOM			1
+#define PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN		2
+#define PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS		3
+#define PROXY_REVERSE_CONNECT_POLICY_LOWEST_RESPONSE_TIME	4
+#define PROXY_REVERSE_CONNECT_POLICY_SHUFFLE			5
+#define PROXY_REVERSE_SELECT_POLICY_PER_USER			6
+#define PROXY_REVERSE_SELECT_POLICY_PER_HOST			7
 
 /* Return the policy ID for the given string, or -1 if the given policy
  * is not recognized/supported.
  */
-int proxy_reverse_select_get_policy(const char *policy);
+int proxy_reverse_connect_get_policy(const char *policy);
 
 #endif /* MOD_PROXY_REVERSE_H */

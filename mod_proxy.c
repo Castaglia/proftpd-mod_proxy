@@ -381,23 +381,23 @@ MODRET set_proxyretrycount(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
-/* usage: ProxyReverseSelection [policy] */
-MODRET set_proxyreverseselection(cmd_rec *cmd) {
+/* usage: ProxyReverseConnectPolicy [policy] */
+MODRET set_proxyreverseconnectpolicy(cmd_rec *cmd) {
   config_rec *c;
-  int select_policy = -1;
+  int connect_policy = -1;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
-  select_policy = proxy_reverse_select_get_policy(cmd->argv[1]);
-  if (select_policy < 0) {
+  connect_policy = proxy_reverse_connect_get_policy(cmd->argv[1]);
+  if (connect_policy < 0) {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
-      "unknown/unsupported selection policy: ", cmd->argv[1], NULL));
+      "unknown/unsupported connect policy: ", cmd->argv[1], NULL));
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
   c->argv[0] = palloc(c->pool, sizeof(int));
-  *((int *) c->argv[0]) = select_policy;
+  *((int *) c->argv[0]) = connect_policy;
 
   return PR_HANDLED(cmd);
 }
@@ -2919,7 +2919,7 @@ static conftable proxy_conftab[] = {
   { "ProxyLog",			set_proxylog,			NULL },
   { "ProxyOptions",		set_proxyoptions,		NULL },
   { "ProxyRetryCount",		set_proxyretrycount,		NULL },
-  { "ProxyReverseSelection",	set_proxyreverseselection,	NULL },
+  { "ProxyReverseConnectPolicy",set_proxyreverseconnectpolicy,	NULL },
   { "ProxyReverseServers",	set_proxyreverseservers,	NULL },
   { "ProxyRole",		set_proxyrole,			NULL },
   { "ProxySourceAddress",	set_proxysourceaddress,		NULL },
