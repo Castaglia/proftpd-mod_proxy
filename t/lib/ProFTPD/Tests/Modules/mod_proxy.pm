@@ -8,7 +8,8 @@ use File::Copy;
 use File::Path qw(mkpath);
 use File::Spec;
 use IO::Handle;
-use Time::HiRes qw(usleep);
+use IO::Socket::INET;
+use Time::HiRes qw(gettimeofday tv_interval usleep);
 
 use ProFTPD::TestSuite::FTP;
 use ProFTPD::TestSuite::Utils qw(:auth :config :running :test :testsuite);
@@ -31,6 +32,11 @@ my $TESTS = {
   proxy_reverse_connect_failed_non2xx => {
     order => ++$order,
     test_class => [qw(forking mod_wrap2 mod_wrap2_file reverse)],
+  },
+
+  proxy_reverse_connect_failed_timeout => {
+    order => ++$order,
+    test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_login => {
@@ -405,6 +411,11 @@ my $TESTS = {
     test_class => [qw(forking forward)],
   },
 
+  proxy_forward_connect_failed_timeout => {
+    order => ++$order,
+    test_class => [qw(forking forward)],
+  },
+
   proxy_forward_noproxyauth_login => {
     order => ++$order,
     test_class => [qw(forking forward)],
@@ -634,7 +645,7 @@ sub get_forward_proxy_config {
 
   my $table_dir = File::Spec->rel2abs("$tmpdir/var/proxy");
 
-  # XXX Provide necessary <Proxy>/<Limit> section?
+  # TODO/XXX Provide necessary <Proxy>/<Limit> section?
 
   my $config = {
     ProxyEngine => 'on',
@@ -1073,6 +1084,124 @@ EOC
   }
 
   unlink($log_file);
+}
+
+sub proxy_reverse_connect_failed_timeout {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  
+  my $dst_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  my $listening = IO::Socket::INET->new(
+    LocalHost => '127.0.0.1',
+    LocalPort => $dst_port,
+    Proto => 'tcp',
+    Type => SOCK_STREAM,
+    Listen => 5,
+    ReuseAddr => 1,
+    ReusePort => 1,
+  );
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyReverseServers} = "ftp://127.0.0.1:$dst_port";
+  $proxy_config->{ProxyTimeoutConnect} = 1;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.db:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  WtmpLog off
+  TransferLog none
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $start = [gettimeofday()];
+      eval { ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1) };
+      my $elapsed = tv_interval($start);
+      unless ($@) {
+        die("Connection to 127.0.0.1:$port succeeded unexpectedly");
+      }
+
+      $self->assert($elapsed < 4,
+        test_msg("ProxyTimeoutConnect 1 not honored (elapsed $elapsed)"));
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  eval { $listening->close() };
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_reverse_login {
@@ -13076,53 +13205,23 @@ EOC
 sub proxy_forward_connect {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'proxy');
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
 
-  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_forward_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -13135,9 +13234,10 @@ sub proxy_forward_connect {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
@@ -13148,11 +13248,11 @@ sub proxy_forward_connect {
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   # Open pipes, for use between the parent and child processes.  Specifically,
@@ -13196,7 +13296,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -13206,18 +13306,129 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
+}
 
-    die($ex);
+sub proxy_forward_connect_failed_timeout {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 17;
+
+  my $proxy_config = get_forward_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyForwardMethod} = 'user@host';
+  $proxy_config->{ProxyTimeoutConnect} = 1;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    ServerIdent => 'on "Forward Proxy Server"',
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  WtmpLog off
+  TransferLog none
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
   }
 
-  unlink($log_file);
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $dst_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+      my $listening = IO::Socket::INET->new(
+        LocalHost => '127.0.0.1',
+        LocalPort => $dst_port,
+        Proto => 'tcp',
+        Type => SOCK_STREAM,
+        Listen => 5,
+        ReuseAddr => 1,
+        ReusePort => 1,
+      );
+
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $start = [gettimeofday()];
+      eval { $client->login("$setup->{user}\@127.0.0.1:$dst_port", $setup->{passwd}) };
+      my $elapsed = tv_interval($start);
+      unless ($@) {
+        die("Login succeeded unexpectedly");
+      }
+
+      eval { $listening->close() };
+
+      $self->assert($elapsed < 2,
+        test_msg("ProxyTimeoutConnect 1 not honored (elapsed $elapsed)"));
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_forward_noproxyauth_login {

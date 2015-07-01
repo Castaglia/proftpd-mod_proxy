@@ -45,7 +45,7 @@
 #define PROXY_ROLE_FORWARD		2
 
 /* How long (in secs) to wait to connect to real server? */
-#define PROXY_CONNECT_DEFAULT_TIMEOUT	2
+#define PROXY_CONNECT_DEFAULT_TIMEOUT	5
 
 extern module xfer_module;
 
