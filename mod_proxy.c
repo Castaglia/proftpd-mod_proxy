@@ -302,6 +302,26 @@ MODRET set_proxyengine(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
+/* usage: ProxyForwardEnabled on|off */
+MODRET set_proxyforwardenabled(cmd_rec *cmd) {
+  config_rec *c;
+  int enabled = -1;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  enabled = get_boolean(cmd, 1);
+  if (enabled < 0) {
+    CONF_ERROR(cmd, "expected Boolean parameter");
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = enabled;
+
+  return PR_HANDLED(cmd);
+}
+
 /* usage: ProxyForwardMethod method */
 MODRET set_proxyforwardmethod(cmd_rec *cmd) {
   config_rec *c;
@@ -2915,6 +2935,7 @@ static int proxy_sess_init(void) {
 static conftable proxy_conftab[] = {
   { "ProxyDataTransferPolicy",	set_proxydatatransferpolicy,	NULL },
   { "ProxyEngine",		set_proxyengine,		NULL },
+  { "ProxyForwardEnabled",	set_proxyforwardenabled,	NULL },
   { "ProxyForwardMethod",	set_proxyforwardmethod,		NULL },
   { "ProxyLog",			set_proxylog,			NULL },
   { "ProxyOptions",		set_proxyoptions,		NULL },

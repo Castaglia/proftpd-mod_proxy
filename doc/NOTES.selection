@@ -25,5 +25,3 @@ memcache/redis, using JSON.
 
   When each mod_proxy instance is managing its own view, this is OK;
   when they all share that persisted view, it could be a problem.
-
-int proxy_reverse_select_init(const char *db_path);

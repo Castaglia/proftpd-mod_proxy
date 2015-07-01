@@ -10,7 +10,7 @@ To work around this, while the core NetIO API is redesigned, mod_proxy has
 its own version.  Will this even work, given how the core NetIO API might
 be called transitively, e.g. via pr_data_xfer?
 
-The key difference in the Proxy NetIO AP is that the underlying NetIO object
+The key difference in the Proxy NetIO API is that the underlying NetIO object
 to use is explicitly specified, rather than being assumed.
 
   pr_netio_stream_t *proxy_netio_open(pool *, int strm_type, int mode,

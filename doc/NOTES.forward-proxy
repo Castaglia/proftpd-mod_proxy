@@ -67,3 +67,7 @@ Net::Config:
     USER user
     PASS pass
 
+Limiting the proxied hosts:
+  ProxyBlock:
+    http://httpd.apache.org/docs/2.4/mod/mod_proxy.html#proxyblock
+

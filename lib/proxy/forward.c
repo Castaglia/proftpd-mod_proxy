@@ -48,10 +48,43 @@ int proxy_forward_free(pool *p, const char *tables_dir) {
 
 int proxy_forward_sess_init(pool *p, const char *tables_dir) {
   config_rec *c;
+  int allowed = FALSE;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyForwardMethod", FALSE);
   if (c != NULL) {
     proxy_method = *((int *) c->argv[0]);
+  }
+
+  /* By default, only allow connections from RFC1918 addresses to use
+   * forward proxying.  Otherwise, it must be from an explicitly allowed
+   * class.
+   */
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyForwardEnabled",
+    FALSE);
+  if (c != NULL) {
+    allowed = *((int *) c->argv[0]);
+    if (allowed == FALSE) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "forward proxying not allowed for client address %s "
+        "(see ProxyForwardEnabled)",
+        pr_netaddr_get_ipstr(session.c->remote_addr));
+    }
+
+  } else {
+    if (pr_netaddr_is_rfc1918(session.c->remote_addr) == TRUE) {
+      allowed = TRUE;
+
+    } else {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "forward proxying not allowed for non-RFC1918 client address %s",
+        pr_netaddr_get_ipstr(session.c->remote_addr));
+    }
+  }
+
+  if (allowed == FALSE) {
+    errno = EPERM;
+    return -1;
   }
 
   return 0;

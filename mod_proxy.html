@@ -34,6 +34,7 @@ questions, concerns, or suggestions regarding this module.
 <ul>
   <li><a href="#ProxyDataTransferPolicy">ProxyDataTransferPolicy</a>
   <li><a href="#ProxyEngine">ProxyEngine</a>
+  <li><a href="#ProxyForwardEnabled">ProxyForwardEnabled</a>
   <li><a href="#ProxyForwardMethod">ProxyForwardMethod</a>
   <li><a href="#ProxyLog">ProxyLog</a>
   <li><a href="#ProxyOptions">ProxyOptions</a>
@@ -69,6 +70,19 @@ The <code>ProxyDataTransferPolicy</code> directive configures with
 
 <p>
 The <code>ProxyEngine</code> directive
+
+<p>
+<hr>
+<h2><a name="ProxyForwardEnabled">ProxyForwardEnabled</a></h2>
+<strong>Syntax:</strong> ProxyForwardEnabled <em>on|off</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc1 and later
+
+<p>
+The <code>ProxyForwardEnabled</code> directive...
+<Class>, mod_ifsession's <IfClass>
 
 <p>
 <hr>
@@ -213,6 +227,9 @@ The <code>ProxyTables</code> directive configures
 <p>
 The <code>ProxyTimeoutConnect</code> directive
 
+Benefits of having a low timeout, e.g. "ProxyTimeoutConnect 1": guard against
+slow backend servers.
+
 <p>
 <hr>
 <h2><a name="Usage">Usage</a></h2>
@@ -227,6 +244,17 @@ The <code>ProxyTimeoutConnect</code> directive
     ProxyForwardMethod ...
   &lt;/IfModule&gt;
 </pre>
+
+From http://httpd.apache.org/docs/2.4/mod/mod_proxy.html#access:
+
+You can control who can access your proxy via the <Proxy> control block as in the following example:
+
+<Proxy "*">
+  Require ip 192.168.0
+</Proxy>
+For more information on access control directives, see mod_authz_host.
+
+Strictly limiting access is essential if you are using a forward proxy (using the ProxyRequests directive). Otherwise, your server can be used by any client to access arbitrary hosts while hiding his or her true identity. This is dangerous both for your network and for the Internet at large. When using a reverse proxy (using the ProxyPass directive with ProxyRequests Off), access control is less critical because clients can only contact the hosts that you have specifically configured.
 
 <p>
 <b>Example Reverse Proxy Configuration</b><br>
@@ -246,9 +274,48 @@ The <code>ProxyTimeoutConnect</code> directive
 Automatically chroots to ProxyTables/empty/ directory
 
 <p>
+<b>Balancing vs Stickiness</b><br>
+For reverse proxy configurations, there is a choice between <em>balancing</em>
+and <em>sticky</em> <code>ProxyReverseConnectPolicy</code> parameters, when it
+comes to selecting the backend server that will handle the incoming connection.
+
+<p>
+Which should you use, and why?
+
+<p>
+All of the <em>balancing</em> policies are able to select the backend server
+<em>when the FTP client connects to the proxy, before sending any commands</em>.
+Most of the "sticky" policies, on the other hand, require more knowledge about
+the user (<i>e.g.</i> USER name, HOST name, SSL session ID) <em>before the
+backend server can be determined</em>, thus backend server selection is
+delayed until that information is obtained.
+
+<p>
+<em>Balancing</em> is best when all of your backend severs are identical with
+regard to the content they have, <b>and</b> when it does not matter which
+server handles a particular client.  Maybe all of your backend servers use a
+shared filesystem via NFS or similar, thus directory listings will be the same
+for a user no matter which backend server is used, and uploading files to one
+server means that those files can be downloaded/seen by the other servers.
+The <em>balancing</em> policies are:
+<ul>
+  <li><code>LeastConns</code>
+  <li><code>Random</code>
+  <li><code>RoundRobin</code>
+  <li><code>Shuffle</code>
+</ul>
+
+<p>
+<em>Stickiness</em> is best when your backend servers are <b>not</b> identical,
+and some users/clients should only ever go to some particular set of backend
+servers.  Thus the user/client needs to be "sticky" to a given backend
+server(s) -- that's when you need the sticky connect policies such as
+<em>PerUser</em>, <em>PerHost</em>, and similar.
+
+<p>
 <b>SFTP/SCP Support</b><br>
 The <code>mod_proxy</code> module only works for FTP/FTPS sessions; it does
-not currently support/handle SFTP/SCP sessions.
+<b>not</b> currently support/handle SFTP/SCP sessions.
 
 <p>
 <b>Logging</b><br>
@@ -258,6 +325,7 @@ debugging purposes, the module also uses <a href="http://www.proftpd.org/docs/ho
 <ul>
   <li>proxy
   <li>proxy.conn
+  <li>proxy.db
   <li>proxy.forward
   <li>proxy.ftp.conn
   <li>proxy.ftp.ctrl
