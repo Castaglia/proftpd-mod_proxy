@@ -290,6 +290,22 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
     }
 
     remote_addr = proxy_conn_get_addr(pconn);
+
+    /* Ensure that the requested remote address is NOT (blatantly) ourselves,
+     * i.e. the proxy itself.  This prevents easy-to-detect proxy loops.
+     */
+    if (pr_netaddr_cmp(remote_addr, session.c->local_addr) == 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "requested destination %s#%u is local address %s#%u, rejecting",
+        pr_netaddr_get_ipstr(remote_addr),
+        ntohs(pr_netaddr_get_port(remote_addr)),
+        pr_netaddr_get_ipstr(session.c->local_addr),
+        ntohs(pr_netaddr_get_port(session.c->local_addr)));
+      pr_response_send(R_530, _("Unable to connect to %s: %s"),
+        proxy_conn_get_hostport(pconn), strerror(EPERM));
+      return 1;
+    }
+
     proxy_sess->dst_addr = remote_addr;
     proxy_sess->dst_pconn = pconn;
 
