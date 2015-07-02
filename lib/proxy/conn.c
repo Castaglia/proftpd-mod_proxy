@@ -157,8 +157,8 @@ const char *proxy_conn_get_hostport(struct proxy_conn *pconn) {
 
 conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     pr_netaddr_t *remote_addr) {
-  pr_netaddr_t *bind_addr, *local_addr;
-  const char *remote_ipstr;
+  pr_netaddr_t *bind_addr = NULL, *local_addr = NULL;
+  const char *remote_ipstr = NULL;
   unsigned int remote_port;
   conn_t *server_conn, *ctrl_conn;
   int res;
@@ -191,9 +191,31 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
 
   } else {
     /* In this scenario, the proxy has an IPv6 socket, but the remote/backend
-     * server has an IPv4 (or IPv4-mapped IPv6) address.
+     * server has an IPv4 (or IPv4-mapped IPv6) address.  OR it's the proxy
+     * which has an IPv4 socket, and the remote/backend server has an IPv6
+     * address.
      */
-    local_addr = pr_netaddr_v6tov4(p, session.c->local_addr);
+    if (pr_netaddr_get_family(session.c->local_addr) == AF_INET) {
+      char *ip_str;
+
+      /* Convert the local address from an IPv4 to an IPv6 addr. */
+      ip_str = pcalloc(p, INET6_ADDRSTRLEN + 1);
+      snprintf(ip_str, INET6_ADDRSTRLEN, "::ffff:%s",
+        pr_netaddr_get_ipstr(session.c->local_addr));
+      local_addr = pr_netaddr_get_addr(p, ip_str, NULL);
+
+    } else {
+      local_addr = pr_netaddr_v6tov4(p, session.c->local_addr);
+      if (local_addr == NULL) {
+        pr_trace_msg(trace_channel, 4,
+          "error converting IPv6 local address %s to IPv4 address: %s",
+          pr_netaddr_get_ipstr(session.c->local_addr), strerror(errno));
+      }
+    }
+
+    if (local_addr == NULL) {
+      local_addr = session.c->local_addr;
+    }
   }
 
   bind_addr = proxy_sess->src_addr;
