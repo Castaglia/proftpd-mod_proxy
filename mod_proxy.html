@@ -76,13 +76,23 @@ The <code>ProxyEngine</code> directive
 <h2><a name="ProxyForwardEnabled">ProxyForwardEnabled</a></h2>
 <strong>Syntax:</strong> ProxyForwardEnabled <em>on|off</em><br>
 <strong>Default:</strong> None<br>
-<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Context:</strong> <code>&lt;Class&gt;</code><br>
 <strong>Module:</strong> mod_proxy<br>
-<strong>Compatibility:</strong> 1.3.6rc1 and later
+<strong>Compatibility:</strong> 1.3.6rc2 and later
 
 <p>
 The <code>ProxyForwardEnabled</code> directive...
-<Class>, mod_ifsession's <IfClass>
+
+<p>
+Example:
+<pre>
+  &lt;Class forward-proxy&gt;
+    From ...
+
+    # Allow clients from this class to use FTP forward proxying
+    ProxyForwardEnabled on
+  &lt;/Class&gt;
+</pre>
 
 <p>
 <hr>

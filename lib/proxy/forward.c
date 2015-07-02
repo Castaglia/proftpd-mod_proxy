@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy forward-proxy implementation
- * Copyright (c) 2012-2013 TJ Saunders
+ * Copyright (c) 2012-2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -49,6 +49,7 @@ int proxy_forward_free(pool *p, const char *tables_dir) {
 int proxy_forward_sess_init(pool *p, const char *tables_dir) {
   config_rec *c;
   int allowed = FALSE;
+  void *enabled = NULL;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyForwardMethod", FALSE);
   if (c != NULL) {
@@ -57,18 +58,21 @@ int proxy_forward_sess_init(pool *p, const char *tables_dir) {
 
   /* By default, only allow connections from RFC1918 addresses to use
    * forward proxying.  Otherwise, it must be from an explicitly allowed
-   * class.
+   * connection class, via the class notes.
    */
+  if (session.conn_class != NULL) {
+    enabled = pr_table_get(session.conn_class->cls_notes,
+      PROXY_FORWARD_ENABLED_NOTE, NULL);
+  }
 
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyForwardEnabled",
-    FALSE);
-  if (c != NULL) {
-    allowed = *((int *) c->argv[0]);
+  if (enabled != NULL) {
+    allowed = *((int *) enabled);
     if (allowed == FALSE) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "forward proxying not allowed for client address %s "
+        "forward proxying not allowed for client address %s in <Class %s>"
         "(see ProxyForwardEnabled)",
-        pr_netaddr_get_ipstr(session.c->remote_addr));
+        pr_netaddr_get_ipstr(session.c->remote_addr),
+        session.conn_class->cls_name);
     }
 
   } else {

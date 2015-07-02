@@ -645,13 +645,18 @@ sub get_forward_proxy_config {
 
   my $table_dir = File::Spec->rel2abs("$tmpdir/var/proxy");
 
-  # TODO/XXX Provide necessary <Proxy>/<Limit> section?
-
   my $config = {
     ProxyEngine => 'on',
     ProxyLog => $log_file,
     ProxyRole => 'forward',
     ProxyTables => $table_dir,
+
+    Class => {
+      'forward-proxy' => {
+        From => '127.0.0.1',
+        ProxyForwardEnabled => 'on',
+      },
+    },
   };
 
   return $config;

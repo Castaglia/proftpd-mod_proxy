@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy forward-proxy API
- * Copyright (c) 2012-2013 TJ Saunders
+ * Copyright (c) 2012-2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,6 +28,8 @@
 
 #ifndef MOD_PROXY_FORWARD_H
 #define MOD_PROXY_FORWARD_H
+
+#define PROXY_FORWARD_ENABLED_NOTE	"mod_proxy.forward-enabled"
 
 int proxy_forward_init(pool *p, const char *tables_dir);
 int proxy_forward_free(pool *p, const char *tables_dir);

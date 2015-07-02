@@ -304,20 +304,22 @@ MODRET set_proxyengine(cmd_rec *cmd) {
 
 /* usage: ProxyForwardEnabled on|off */
 MODRET set_proxyforwardenabled(cmd_rec *cmd) {
-  config_rec *c;
-  int enabled = -1;
+  int enabled = -1, res;
 
   CHECK_ARGS(cmd, 1);
-  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+  CHECK_CONF(cmd, CONF_CLASS);
 
   enabled = get_boolean(cmd, 1);
   if (enabled < 0) {
     CONF_ERROR(cmd, "expected Boolean parameter");
   }
 
-  c = add_config_param(cmd->argv[0], 1, NULL);
-  c->argv[0] = palloc(c->pool, sizeof(int));
-  *((int *) c->argv[0]) = enabled;
+  /* Stash this setting in the notes for this class. */
+  res = pr_class_add_note(PROXY_FORWARD_ENABLED_NOTE, &enabled, sizeof(int));
+  if (res < 0) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error storing parameter: ",
+      strerror(errno), NULL));
+  }
 
   return PR_HANDLED(cmd);
 }
