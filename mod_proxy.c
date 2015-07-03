@@ -2824,7 +2824,7 @@ static int proxy_sess_init(void) {
    * fields.  Use the session.notes table for stashing/retrieving it as
    * needed.
    */
-  proxy_sess = pcalloc(proxy_pool, sizeof(struct proxy_session));
+  proxy_sess = proxy_session_alloc(proxy_pool);
   if (pr_table_add(session.notes, "mod_proxy.proxy-session", proxy_sess,
       sizeof(struct proxy_session)) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,

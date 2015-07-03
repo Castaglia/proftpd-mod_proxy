@@ -294,7 +294,8 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
     /* Ensure that the requested remote address is NOT (blatantly) ourselves,
      * i.e. the proxy itself.  This prevents easy-to-detect proxy loops.
      */
-    if (pr_netaddr_cmp(remote_addr, session.c->local_addr) == 0) {
+    if (pr_netaddr_cmp(remote_addr, session.c->local_addr) == 0 &&
+        pr_netaddr_get_port(remote_addr) == pr_netaddr_get_port(session.c->local_addr)) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "requested destination %s#%u is local address %s#%u, rejecting",
         pr_netaddr_get_ipstr(remote_addr),

@@ -224,6 +224,17 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
   }
 
   server_conn = pr_inet_create_conn(p, -1, bind_addr, INPORT_ANY, FALSE);
+  if (server_conn == NULL) {
+    int xerrno = errno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error creating connection to %s: %s", pr_netaddr_get_ipstr(bind_addr),
+      strerror(xerrno));
+
+    pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
+    errno = xerrno;
+    return NULL;
+  }
 
   pr_trace_msg(trace_channel, 11, "connecting to backend address %s#%u from %s",
     remote_ipstr, remote_port, pr_netaddr_get_ipstr(bind_addr));
