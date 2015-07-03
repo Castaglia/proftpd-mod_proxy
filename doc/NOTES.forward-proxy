@@ -67,6 +67,9 @@ Net::Config:
     USER user
     PASS pass
 
+See also this, which has *9* methods:
+  http://www.mcknight.de/jftpgw/config.html#loginstyle
+
 Limiting the proxied hosts:
   ProxyBlock:
     http://httpd.apache.org/docs/2.4/mod/mod_proxy.html#proxyblock
