@@ -1158,6 +1158,7 @@ static pr_netaddr_t *get_reverse_server_addr(pool *p,
     struct proxy_session *proxy_sess, int *backend_id) {
   struct proxy_conn **conns;
   pr_netaddr_t *addr;
+  array_header *other_addrs = NULL;
   int idx;
 
   idx = reverse_connect_index_next(p, main_server->sid, NULL);
@@ -1175,7 +1176,9 @@ static pr_netaddr_t *get_reverse_server_addr(pool *p,
     "selected backend server '%s'", proxy_conn_get_uri(conns[idx]));
 
   *backend_id = reverse_backend_id = idx;
-  addr = proxy_conn_get_addr(conns[idx]);
+
+  /* TODO: Handle the other_addrs list, if any. */
+  addr = proxy_conn_get_addr(conns[idx], &other_addrs);
   return addr;
 }
 

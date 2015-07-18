@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2013 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2013-2015 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,9 +22,7 @@
  * source distribution.
  */
 
-/* Conn API tests
- * $Id: env.c,v 1.2 2011/05/23 20:50:31 castaglia Exp $
- */
+/* Conn API tests */
 
 #include "tests.h"
 
@@ -85,8 +83,9 @@ START_TEST (conn_get_addr_test) {
   struct proxy_conn *pconn;
   const char *ipstr, *url;
   pr_netaddr_t *pconn_addr;
+  array_header *other_addrs = NULL;
  
-  pconn_addr = proxy_conn_get_addr(NULL);
+  pconn_addr = proxy_conn_get_addr(NULL, NULL);
   fail_unless(pconn_addr == NULL, "Failed to handle null argument");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
  
@@ -95,7 +94,7 @@ START_TEST (conn_get_addr_test) {
   fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
     url);
 
-  pconn_addr = proxy_conn_get_addr(pconn);
+  pconn_addr = proxy_conn_get_addr(pconn, &other_addrs);
   fail_if(pconn_addr == NULL, "Failed to get address for pconn");
   ipstr = pr_netaddr_get_ipstr(pconn_addr);
   fail_unless(strcmp(ipstr, "127.0.0.1") == 0,

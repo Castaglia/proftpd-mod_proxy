@@ -282,6 +282,7 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
   if (flags & PROXY_FORWARD_USER_PASSTHRU_FL_PARSE_DSTADDR) {
     struct proxy_conn *pconn = NULL;
     pr_netaddr_t *remote_addr = NULL;
+    array_header *other_addrs = NULL;
 
     res = forward_cmd_parse_dst(cmd->tmp_pool, cmd->arg, &user, &pconn);
     if (res < 0) {
@@ -289,7 +290,8 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
       return 1;
     }
 
-    remote_addr = proxy_conn_get_addr(pconn);
+    /* TODO: Need to handle the other_addrs list, if any. */
+    remote_addr = proxy_conn_get_addr(pconn, &other_addrs);
 
     /* Ensure that the requested remote address is NOT (blatantly) ourselves,
      * i.e. the proxy itself.  This prevents easy-to-detect proxy loops.
@@ -421,6 +423,7 @@ static int forward_handle_user_proxyuserwithproxyauth(cmd_rec *cmd,
     char *user = NULL;
     struct proxy_conn *pconn = NULL;
     pr_netaddr_t *remote_addr = NULL;
+    array_header *other_addrs = NULL;
 
     res = forward_cmd_parse_dst(cmd->pool, cmd->arg, &user, &pconn);
     if (res < 0) {
@@ -428,7 +431,8 @@ static int forward_handle_user_proxyuserwithproxyauth(cmd_rec *cmd,
       return 1;
     }
 
-    remote_addr = proxy_conn_get_addr(pconn);
+    /* TODO: Need to handle the other_addrs list, if any. */
+    remote_addr = proxy_conn_get_addr(pconn, &other_addrs);
     proxy_sess->dst_addr = remote_addr;
     proxy_sess->dst_pconn = pconn;
 

@@ -36,6 +36,7 @@ struct proxy_conn {
   const char *pconn_hostport;
 
   pr_netaddr_t *pconn_addr;
+  array_header *pconn_addrs;
 };
 
 static const char *supported_protocols[] = {
@@ -116,7 +117,8 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
   pconn->pconn_uri = pstrdup(pconn_pool, uri);
   pconn->pconn_proto = pstrdup(pconn_pool, proto);
 
-  pconn->pconn_addr = pr_netaddr_get_addr(pconn_pool, remote_host, NULL);
+  pconn->pconn_addr = pr_netaddr_get_addr(pconn_pool, remote_host,
+    &(pconn->pconn_addrs));
   if (pconn->pconn_addr == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "unable to resolve '%s' from URI '%s'", remote_host, uri);
@@ -137,10 +139,15 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
   return pconn;
 }
 
-pr_netaddr_t *proxy_conn_get_addr(struct proxy_conn *pconn) {
+pr_netaddr_t *proxy_conn_get_addr(struct proxy_conn *pconn,
+    array_header **addrs) {
   if (pconn == NULL) {
     errno = EINVAL;
     return NULL;
+  }
+
+  if (addrs != NULL) {
+    *addrs = pconn->pconn_addrs;
   }
 
   return pconn->pconn_addr;
