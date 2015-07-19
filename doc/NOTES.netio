@@ -97,3 +97,10 @@ NOT stream-scoped (e.g. tls_data_adaptive_bytes, when to renegotiate et al)!
 AND mod_proxy will want to be able to use mod_tls' tls_connect() functions
 (OR will have to re-implement them itself; sigh).  And what about session
 caching, tickets?  Renegotiations?
+
+Note, however, that for:
+
+  client -- (ftps) --> proxy -- (ftp) --> server
+
+The above approach could work very well; this would work for mod_proxy when
+reverse proxying, providing a FTPS frontend to legacy FTP servers, for example.
