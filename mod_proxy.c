@@ -235,6 +235,83 @@ static void proxy_remove_symbols(void) {
   }
 }
 
+static void proxy_restrict_session(void) {
+  const char *proxy_chroot = NULL;
+  rlim_t curr_nproc, max_nproc;
+
+  PRIVS_ROOT
+
+  if (getuid() == PR_ROOT_UID) {
+    int res;
+
+    /* Chroot to the ProxyTables/empty/ directory before dropping root privs. */
+    proxy_chroot = pdircat(proxy_pool, proxy_tables_dir, "empty", NULL);
+    res = chroot(proxy_chroot);
+    if (res < 0) {
+      int xerrno = errno;
+
+      PRIVS_RELINQUISH
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to chroot to ProxyTables/empty/ directory '%s': %s",
+        proxy_chroot, strerror(xerrno));
+      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_MODULE_ACL,
+       "Unable to chroot proxy session");
+    }
+
+    if (chdir("/") < 0) {
+      int xerrno = errno;
+
+      PRIVS_RELINQUISH
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to chdir to root directory within chroot: %s",
+        strerror(xerrno));
+      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_MODULE_ACL,
+       "Unable to chroot proxy session");
+    }
+  }
+
+  /* Make the proxy session process have the identity of the configured daemon
+   * User/Group.
+   */
+  PRIVS_REVOKE
+
+  if (proxy_chroot != NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "proxy session running as UID %lu, GID %lu, restricted to '%s'",
+      (unsigned long) getuid(), (unsigned long) getgid(), proxy_chroot);
+
+  } else {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "proxy session running as UID %lu, GID %lu, located in '%s'",
+      (unsigned long) getuid(), (unsigned long) getgid(), getcwd(NULL, 0));
+  }
+
+  /* Once we have chrooted, and dropped root privs completely, we can now
+   * lower our nproc resource limit, so that we cannot fork any new
+   * processed.  We should not be doing so, and we want to mitigate any
+   * possible exploitation.
+   */
+  if (pr_rlimit_get_nproc(&curr_nproc, NULL) == 0) {
+    max_nproc = curr_nproc;
+
+    if (pr_rlimit_set_nproc(curr_nproc, max_nproc) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error setting nproc resource limits to %lu: %s",
+        (unsigned long) max_nproc, strerror(errno));
+
+    } else {
+      pr_trace_msg(trace_channel, 13,
+        "set nproc resource limits to %lu", (unsigned long) max_nproc);
+    }
+
+  } else {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error getting nproc limits: %s", strerror(errno));
+  }
+}
+
 /* Configuration handlers
  */
 
@@ -2173,6 +2250,9 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
      */
 
     fixup_dirs(main_server, CF_DEFER);
+    if (proxy_role == PROXY_ROLE_FORWARD) {
+      proxy_restrict_session();
+    }
   }
 
   /* Remove any exit handlers installed by mod_xfer.  We do this here,
@@ -2507,95 +2587,23 @@ MODRET proxy_any(cmd_rec *cmd) {
 /* Event handlers
  */
 
-static void restrict_session(void) {
-  const char *proxy_chroot = NULL;
-  rlim_t curr_nproc, max_nproc;
-
-  /* XXX TODO: If we are a forward proxy, AND we require proxy auth, THEN
-   * this chroot/privdrop should not happen until AFTER successful
-   * authentication.  Right?
-   */
-
-  PRIVS_ROOT
-
-  if (getuid() == PR_ROOT_UID) {
-    int res;
-
-    /* Chroot to the ProxyTables/empty/ directory before dropping root privs. */
-    proxy_chroot = pdircat(proxy_pool, proxy_tables_dir, "empty", NULL);
-    res = chroot(proxy_chroot);
-    if (res < 0) {
-      int xerrno = errno;
-
-      PRIVS_RELINQUISH
-
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "unable to chroot to ProxyTables/empty/ directory '%s': %s",
-        proxy_chroot, strerror(xerrno));
-      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_MODULE_ACL,
-       "Unable to chroot proxy session");
-    }
-
-    if (chdir("/") < 0) {
-      int xerrno = errno;
-
-      PRIVS_RELINQUISH
-
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "unable to chdir to root directory within chroot: %s",
-        strerror(xerrno));
-      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_MODULE_ACL,
-       "Unable to chroot proxy session");
-    }
-  }
-
-  /* Make the proxy session process have the identity of the configured daemon
-   * User/Group.
-   */
-  PRIVS_REVOKE
-
-  if (proxy_chroot != NULL) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "proxy session running as UID %lu, GID %lu, restricted to '%s'",
-      (unsigned long) getuid(), (unsigned long) getgid(), proxy_chroot);
-
-  } else {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "proxy session running as UID %lu, GID %lu, located in '%s'",
-      (unsigned long) getuid(), (unsigned long) getgid(), getcwd(NULL, 0));
-  }
-
-  /* Once we have chrooted, and dropped root privs completely, we can now
-   * lower our nproc resource limit, so that we cannot fork any new
-   * processed.  We should not be doing so, and we want to mitigate any
-   * possible exploitation.
-   */
-  if (pr_rlimit_get_nproc(&curr_nproc, NULL) == 0) {
-    max_nproc = curr_nproc;
-
-    if (pr_rlimit_set_nproc(curr_nproc, max_nproc) < 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error setting nproc resource limits to %lu: %s",
-        (unsigned long) max_nproc, strerror(errno));
-
-    } else {
-      pr_trace_msg(trace_channel, 13,
-        "set nproc resource limits to %lu", (unsigned long) max_nproc);
-    }
-
-  } else {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error getting nproc limits: %s", strerror(errno));
-  }
-}
-
 static void proxy_ctrl_read_ev(const void *event_data, void *user_data) {
-  if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
-    restrict_session();
+  switch (proxy_role) {
+    case PROXY_ROLE_REVERSE:
+      if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+        proxy_restrict_session();
 
-    /* Our work here is done; we no longer need to listen for future reads. */
-    pr_event_unregister(&proxy_module, "mod_proxy.ctrl-read",
-      proxy_ctrl_read_ev);
+        /* Our work here is done; we no longer need to listen for future reads. */
+        pr_event_unregister(&proxy_module, "mod_proxy.ctrl-read",
+          proxy_ctrl_read_ev);
+      }
+      break;
+
+    case PROXY_ROLE_FORWARD:
+      /* We don't really need this event listener for forward proxying. */
+      pr_event_unregister(&proxy_module, "mod_proxy.ctrl-read",
+        proxy_ctrl_read_ev);
+      break;
   }
 }
 
