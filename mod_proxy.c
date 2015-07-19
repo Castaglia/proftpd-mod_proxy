@@ -21,7 +21,7 @@
  * resulting executable, without including the source code for OpenSSL in the
  * source distribution.
  *
- * ---DO NOT EDIT BELOW THIS LINE---
+ * -----DO NOT EDIT BELOW THIS LINE-----
  * $Archive: mod_proxy.a $
  * $Libraries: -lsqlite3 $
  */
@@ -37,7 +37,6 @@
 #include "proxy/ftp/ctrl.h"
 #include "proxy/ftp/data.h"
 #include "proxy/ftp/msg.h"
-#include "proxy/ftp/feat.h"
 #include "proxy/ftp/xfer.h"
 
 /* Proxy role */
@@ -343,6 +342,74 @@ MODRET set_proxyforwardmethod(cmd_rec *cmd) {
   *((int *) c->argv[0]) = forward_method;
 
   return PR_HANDLED(cmd);
+}
+
+/* usage: ProxyForwardTo [!]pattern [flags] */
+MODRET set_proxyforwardto(cmd_rec *cmd) {
+#ifdef PR_USE_REGEX
+  config_rec *c;
+  pr_regex_t *pre = NULL;
+  int negated = FALSE, regex_flags = REG_EXTENDED|REG_NOSUB, res = 0;
+  char *pattern;
+
+  if (cmd->argc-1 < 1 ||
+      cmd->argc-1 > 2) {
+    CONF_ERROR(cmd, "bad number of parameters");
+  }
+
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  /* Make sure that, if present, the flags parameter is correctly formatted. */
+  if (cmd->argc-1 == 2) {
+    int flags = 0;
+
+    /* We need to parse the flags parameter here, to see if any flags which
+     * affect the compilation of the regex (e.g. NC) are present.
+     */
+
+    flags = pr_filter_parse_flags(cmd->tmp_pool, cmd->argv[2]);
+    if (flags < 0) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+        ": badly formatted flags parameter: '", cmd->argv[2], "'", NULL));
+    }
+
+    if (flags == 0) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+        ": unknown filter flags '", cmd->argv[2], "'", NULL));
+    }
+
+    regex_flags |= flags;
+  }
+
+  pre = pr_regexp_alloc(&proxy_module);
+
+  pattern = cmd->argv[1];
+  if (*pattern == '!') {
+    negated = TRUE;
+    pattern++;
+  }
+
+  res = pr_regexp_compile(pre, pattern, regex_flags);
+  if (res != 0) {
+    char errstr[200] = {'\0'};
+
+    pr_regexp_error(res, pre, errstr, sizeof(errstr));
+    pr_regexp_free(NULL, pre);
+
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", pattern, "' failed regex "
+      "compilation: ", errstr, NULL));
+  }
+
+  c = add_config_param(cmd->argv[0], 2, pre, NULL);
+  c->argv[1] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[1]) = negated;
+  return PR_HANDLED(cmd);
+
+#else /* no regular expression support at the moment */
+  CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "The ", param, " directive cannot be "
+    "used on this system, as you do not have POSIX compliant regex support",
+    NULL));
+#endif
 }
 
 /* usage: ProxyLog path|"none" */
@@ -2939,6 +3006,7 @@ static conftable proxy_conftab[] = {
   { "ProxyEngine",		set_proxyengine,		NULL },
   { "ProxyForwardEnabled",	set_proxyforwardenabled,	NULL },
   { "ProxyForwardMethod",	set_proxyforwardmethod,		NULL },
+  { "ProxyForwardTo",		set_proxyforwardto,		NULL },
   { "ProxyLog",			set_proxylog,			NULL },
   { "ProxyOptions",		set_proxyoptions,		NULL },
   { "ProxyRetryCount",		set_proxyretrycount,		NULL },

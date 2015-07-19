@@ -1,6 +1,6 @@
 /*
- * ProFTPD - mod_proxy FTP FEAT routines
- * Copyright (c) 2013 TJ Saunders
+ * ProFTPD - mod_proxy FTP session routines
+ * Copyright (c) 2013-2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,14 +24,15 @@
 
 #include "mod_proxy.h"
 
-#include "proxy/ftp/feat.h"
+#include "proxy/conn.h"
+#include "proxy/ftp/sess.h"
 #include "proxy/ftp/ctrl.h"
 
 static const char *feat_crlf = "\r\n";
 
-static const char *trace_channel = "proxy.ftp.feat";
+static const char *trace_channel = "proxy.ftp.sess";
 
-int proxy_ftp_feat_get(pool *p, struct proxy_session *proxy_sess) {
+int proxy_ftp_sess_get_feat(pool *p, struct proxy_session *proxy_sess) {
   pool *tmp_pool;
   int res, xerrno = 0;
   cmd_rec *cmd;
@@ -61,7 +62,8 @@ int proxy_ftp_feat_get(pool *p, struct proxy_session *proxy_sess) {
     xerrno = errno;
 
     pr_trace_msg(trace_channel, 4,
-      "error receiving %s from backend: %s", cmd->argv[0], strerror(xerrno));
+      "error receiving %s response from backend: %s", cmd->argv[0],
+      strerror(xerrno));
     destroy_pool(tmp_pool);
 
     errno = xerrno;
@@ -108,6 +110,64 @@ int proxy_ftp_feat_get(pool *p, struct proxy_session *proxy_sess) {
 
     feats = token + token_len + 1;
     token = pr_str_get_token2(&feats, (char *) feat_crlf, &token_len);
+  }
+
+  destroy_pool(tmp_pool);
+  return 0;
+}
+
+int proxy_ftp_sess_send_host(pool *p, struct proxy_session *proxy_sess) {
+  pool *tmp_pool;
+  int res, xerrno = 0;
+  cmd_rec *cmd;
+  pr_response_t *resp;
+  unsigned int resp_nlines = 0;
+  const char *hostport;
+
+  if (pr_table_get(proxy_sess->backend_features, C_HOST, NULL) == NULL) {
+    pr_trace_msg(trace_channel, 9,
+      "HOST not supported by backend server, ignoring");
+    return 0;
+  }
+
+  tmp_pool = make_sub_pool(p);
+
+  hostport = proxy_conn_get_hostport(proxy_sess->dst_pconn);
+  cmd = pr_cmd_alloc(tmp_pool, 2, C_HOST, hostport);
+  res = proxy_ftp_ctrl_send_cmd(tmp_pool, proxy_sess->backend_ctrl_conn, cmd);
+  if (res < 0) {
+    xerrno = errno;
+
+    pr_trace_msg(trace_channel, 4,
+      "error sending '%s %s' to backend: %s", cmd->argv[0], hostport,
+      strerror(xerrno));
+    destroy_pool(tmp_pool);
+
+    errno = xerrno;
+    return -1;
+  }
+
+  resp = proxy_ftp_ctrl_recv_resp(tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
+  if (resp == NULL) {
+    xerrno = errno;
+
+    pr_trace_msg(trace_channel, 4,
+      "error receiving %s response from backend: %s", cmd->argv[0],
+      strerror(xerrno));
+    destroy_pool(tmp_pool);
+
+    errno = xerrno;
+    return -1;
+  }
+
+  if (resp->num[0] != '2') {
+    pr_trace_msg(trace_channel, 4,
+      "received unexpected %s response code %s from backend", cmd->argv[0],
+      resp->num);
+    destroy_pool(tmp_pool);
+    errno = EPERM;
+    return -1;
   }
 
   destroy_pool(tmp_pool);

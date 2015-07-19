@@ -27,7 +27,7 @@
 #include "proxy/conn.h"
 #include "proxy/forward.h"
 #include "proxy/ftp/ctrl.h"
-#include "proxy/ftp/feat.h"
+#include "proxy/ftp/sess.h"
 
 static int proxy_method = PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH;
 
@@ -182,12 +182,54 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
   }
 
   /* Get the features supported by the backend server */
-  if (proxy_ftp_feat_get(p, proxy_sess) < 0) {
+  if (proxy_ftp_sess_get_feat(p, proxy_sess) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "unable to determine features of backend server: %s", strerror(errno));
   }
 
+  (void) proxy_ftp_sess_send_host(p, proxy_sess);
+
   proxy_sess_state |= PROXY_SESS_STATE_CONNECTED;
+  return 0;
+}
+
+static int forward_dst_filter(pool *p, const char *hostport) {
+#ifdef PR_USE_REGEX
+  config_rec *c;
+  pr_regex_t *pre;
+  int negated = FALSE, res;
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyForwardTo", FALSE);
+  if (c == NULL) {
+    return 0;
+  }
+
+  pre = c->argv[0];
+  negated = *((int *) c->argv[1]);
+
+  res = pr_regexp_exec(pre, hostport, 0, NULL, 0, 0, 0);
+  if (res == 0) {
+    /* Pattern matched */
+    if (negated == TRUE) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "host/port '%.100s' matched ProxyForwardTo !%s, rejecting",
+        hostport, pr_regexp_get_pattern(pre));
+
+      errno = EPERM;
+      return -1;
+    }
+
+  } else {
+    /* Pattern NOT matched */
+    if (negated == FALSE) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "host/port '%.100s' did not match ProxyForwardTo %s, rejecting",
+        hostport, pr_regexp_get_pattern(pre));
+      errno = EPERM;
+      return -1;
+    }
+  }
+#endif /* PR_USE_REGEX */
   return 0;
 }
 
@@ -195,7 +237,7 @@ static int forward_cmd_parse_dst(pool *p, const char *arg, char **name,
     struct proxy_conn **pconn) {
   const char *default_proto = NULL, *default_port = NULL, *proto = NULL,
     *port, *uri = NULL;
-  char *host = NULL, *host_ptr = NULL, *port_ptr = NULL;
+  char *host = NULL, *hostport = NULL, *host_ptr = NULL, *port_ptr = NULL;
 
   /* TODO: Revisit theses default once we start supporting other protocols. */
   default_proto = "ftp";
@@ -251,7 +293,12 @@ static int forward_cmd_parse_dst(pool *p, const char *arg, char **name,
   *name = pstrndup(p, arg, (host_ptr - arg));
   proto = default_proto;
 
-  uri = pstrcat(p, proto, "://", host, ":", port, NULL);
+  hostport = pstrcat(p, host, ":", port, NULL);
+  if (forward_dst_filter(p, hostport) < 0) {
+    return -1;
+  }
+
+  uri = pstrcat(p, proto, "://", hostport, NULL);
 
   /* Note: We deliberately use proxy_pool, rather than the given pool, here
    * so that the created structure (especially the pr_netaddr_t) are

@@ -1,6 +1,6 @@
 /*
- * ProFTPD - mod_proxy FTP FEAT API
- * Copyright (c) 2013 TJ Saunders
+ * ProFTPD - mod_proxy FTP session API
+ * Copyright (c) 2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,9 +25,10 @@
 #include "mod_proxy.h"
 #include "proxy/session.h"
 
-#ifndef MOD_PROXY_FEAT_BUFFER_H
-#define MOD_PROXY_FEAT_BUFFER_H
+#ifndef MOD_PROXY_FTP_SESS_H
+#define MOD_PROXY_FTP_SESS_H
 
-int proxy_ftp_feat_get(pool *, struct proxy_session *);
+int proxy_ftp_sess_get_feat(pool *, struct proxy_session *);
+int proxy_ftp_sess_send_host(pool *, struct proxy_session *);
 
-#endif /* MOD_PROXY_FEAT_BUFFER_H */
+#endif /* MOD_PROXY_FTP_SESS_H */

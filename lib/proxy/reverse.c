@@ -29,7 +29,7 @@
 #include "proxy/reverse.h"
 #include "proxy/random.h"
 #include "proxy/ftp/ctrl.h"
-#include "proxy/ftp/feat.h"
+#include "proxy/ftp/sess.h"
 
 #include <sqlite3.h>
 
@@ -1279,18 +1279,20 @@ static int reverse_connect(pool *p, struct proxy_session *proxy_sess) {
     }
   }
 
-  /* Get the features supported by the backend server */
-  if (proxy_ftp_feat_get(p, proxy_sess) < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to determine features of backend server: %s", strerror(errno));
-  }
-
   if (reverse_connect_index_used(p, main_server->sid, backend_id,
     (unsigned long) connected_ms - connecting_ms) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error updating database for backend server index %d: %s", backend_id,
       strerror(errno));
   }
+
+  /* Get the features supported by the backend server */
+  if (proxy_ftp_sess_get_feat(p, proxy_sess) < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to determine features of backend server: %s", strerror(errno));
+  }
+
+  (void) proxy_ftp_sess_send_host(p, proxy_sess);
 
   proxy_sess_state |= PROXY_SESS_STATE_CONNECTED;
   pr_response_block(TRUE);

@@ -36,6 +36,7 @@ questions, concerns, or suggestions regarding this module.
   <li><a href="#ProxyEngine">ProxyEngine</a>
   <li><a href="#ProxyForwardEnabled">ProxyForwardEnabled</a>
   <li><a href="#ProxyForwardMethod">ProxyForwardMethod</a>
+  <li><a href="#ProxyForwardTo">ProxyForwardTo</a>
   <li><a href="#ProxyLog">ProxyLog</a>
   <li><a href="#ProxyOptions">ProxyOptions</a>
   <li><a href="#ProxyReverseConnectPolicy">ProxyReverseConnectPolicy</a>
@@ -107,6 +108,18 @@ Example:
 
 <p>
 The <code>ProxyForwardMethod</code> directive
+
+<p>
+<hr>
+<h2><a name="ProxyForwardTo">ProxyForwardTo</a></h2>
+<strong>Syntax:</strong> ProxyForwardTo <em>[!]pattern [flags]</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc1 and later
+
+<p>
+The <code>ProxyForwardTo</code> directive
 
 <p>
 <hr>
@@ -254,6 +267,7 @@ slow backend servers.
     ProxyLog /path/to/proxy.log
 
     ProxyForwardMethod ...
+    ProxyForwardTo ...
   &lt;/IfModule&gt;
 </pre>
 
@@ -342,8 +356,8 @@ debugging purposes, the module also uses <a href="http://www.proftpd.org/docs/ho
   <li>proxy.ftp.conn
   <li>proxy.ftp.ctrl
   <li>proxy.ftp.data
-  <li>proxy.ftp.feat
   <li>proxy.ftp.msg
+  <li>proxy.ftp.sess
   <li>proxy.ftp.xfer
   <li>proxy.reverse
   <li>proxy.session

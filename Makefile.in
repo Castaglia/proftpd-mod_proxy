@@ -24,7 +24,7 @@ MODULE_OBJS=mod_proxy.o \
   lib/proxy/ftp/ctrl.o \
   lib/proxy/ftp/data.o \
   lib/proxy/ftp/msg.o \
-  lib/proxy/ftp/feat.o \
+  lib/proxy/ftp/sess.o \
   lib/proxy/ftp/xfer.o
 
 SHARED_MODULE_OBJS=mod_proxy.lo \
@@ -40,7 +40,7 @@ SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/ftp/ctrl.lo \
   lib/proxy/ftp/data.lo \
   lib/proxy/ftp/msg.lo \
-  lib/proxy/ftp/feat.lo \
+  lib/proxy/ftp/sess.lo \
   lib/proxy/ftp/xfer.lo
 
 # Necessary redefinitions
