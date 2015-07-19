@@ -333,8 +333,8 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
 
     res = forward_cmd_parse_dst(cmd->tmp_pool, cmd->arg, &user, &pconn);
     if (res < 0) {
-      pr_response_send(R_530, _("Login incorrect."));
-      return 1;
+      errno = EINVAL;
+      return -1;
     }
 
     /* TODO: Need to handle the other_addrs list, if any. */
@@ -463,7 +463,7 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
 
 static int forward_handle_user_proxyuserwithproxyauth(cmd_rec *cmd,
     struct proxy_session *proxy_sess, int *successful, int *block_responses) {
-  int flags = 0;
+  int flags = 0, res;
 
   if (!(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED)) {
     int res;
@@ -474,8 +474,8 @@ static int forward_handle_user_proxyuserwithproxyauth(cmd_rec *cmd,
 
     res = forward_cmd_parse_dst(cmd->pool, cmd->arg, &user, &pconn);
     if (res < 0) {
-      pr_response_send(R_530, _("Login incorrect."));
-      return 1;
+      errno = EINVAL;
+      return -1;
     }
 
     /* TODO: Need to handle the other_addrs list, if any. */
@@ -496,12 +496,13 @@ static int forward_handle_user_proxyuserwithproxyauth(cmd_rec *cmd,
   }
 
   flags = PROXY_FORWARD_USER_PASSTHRU_FL_CONNECT_DSTADDR;
-  return forward_handle_user_passthru(cmd, proxy_sess, successful, flags);
+  res = forward_handle_user_passthru(cmd, proxy_sess, successful, flags);
+  return res;
 }
 
 static int forward_handle_user_userwithproxyauth(cmd_rec *cmd,
     struct proxy_session *proxy_sess, int *successful, int *block_responses) {
-  int flags = 0;
+  int flags = 0, res;
 
   if (!(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED)) {
     /* By returning zero here, we let the rest of the proftpd internals
@@ -512,7 +513,8 @@ static int forward_handle_user_userwithproxyauth(cmd_rec *cmd,
   }
 
   flags = PROXY_FORWARD_USER_PASSTHRU_FL_PARSE_DSTADDR|PROXY_FORWARD_USER_PASSTHRU_FL_CONNECT_DSTADDR;
-  return forward_handle_user_passthru(cmd, proxy_sess, successful, flags);
+  res = forward_handle_user_passthru(cmd, proxy_sess, successful, flags);
+  return res;
 }
 
 int proxy_forward_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
@@ -781,14 +783,14 @@ static int forward_handle_pass_userwithproxyauth(cmd_rec *cmd,
 
     res = check_passwd(cmd->pool, user, cmd->arg);
     if (res < 0) {
-      pr_response_send(R_530, _("Login incorrect."));
-      return 1;
+      errno = EINVAL;
+      return -1;
     }
 
     res = setup_env(proxy_pool, user);
     if (res < 0) {
-      pr_response_send(R_530, _("Login incorrect."));
-      return 1;
+      errno = EINVAL;
+      return -1;
     }
 
     if (session.auth_mech) {

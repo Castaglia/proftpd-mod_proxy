@@ -2077,7 +2077,12 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
   if (res < 0) {
     int xerrno = errno;
 
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    if (xerrno != EINVAL) {
+      pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    } else {
+      pr_response_add_err(R_530, _("Login incorrect."));
+    }
+
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
