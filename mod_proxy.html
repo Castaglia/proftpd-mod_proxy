@@ -160,7 +160,14 @@ can use <code>mod_proxy</code> for forward proxying, based on that client's
 
 <p>
 By default, <code>mod_proxy</code> rejects any forward proxy request from
-<b>any</b> client.  This is done as a security measure: <b>open/unrestricted
+<b>any</b> client, with the exception of clients connecting from
+<a href="http://www.faqs.org/rfcs/rfc1918.html">RFC 1918</a> addresses:
+<pre>
+  192.168.0.0/16
+  172.16.0.0/12
+  10.0.0.0/8
+</pre>
+This is done as a security measure: <b>open/unrestricted
 proxy servers are dangerous both to your network and to the Internet at
 large</b>.  Thus to make it possible for clients to use your server for
 forward proxying, they must be <b>explicitly</b> enabled to do so.
@@ -169,10 +176,7 @@ forward proxying, they must be <b>explicitly</b> enabled to do so.
 Example:
 <pre>
   &lt;Class forward-proxy&gt;
-    From 127.0.0.1
-    From 192.168.0.0/16
-    From 172.16.0.0/12
-    From 10.0.0.0/8
+    From 1.2.3.4/12
 
     # Allow clients from this class to use FTP forward proxying
     ProxyForwardEnabled on
@@ -193,63 +197,73 @@ See also: <a href="#ProxyForwardTo"><code>ProxyForwardTo</code></a>
 
 <p>
 The <code>ProxyForwardMethod</code> directive configures the <em>method</em>
-that clients can use for requesting forward proxying.  The currently supported
-methods are:
+that clients can use for requesting forward proxying.  Some methods require
+that the client authenticate <em>to the proxy first</em>, and then separately
+authenticate to the destination server; these methods differ on just when
+the client specifies the destination server.  Other methods do not require
+proxy authentication.  There are many variations on a theme with these methods.
+
+<p>
+The currently supported methods are:
 <ul>
   <li><code>proxyuser,user@host</code>
     <p>
-    USER_WITH_PROXY_AUTH
+    This method indicates that proxy authentication is <b>required</b>.  The
+    client first authenticates to the proxy via <code>USER/PASS</code> commands:
 <pre>
   USER <em>proxy-user</em>
   PASS <em>proxy-passwd</em>
+</pre>
+    Then the client authenticates <i>again</i>, this time including the
+    address (and optionally port) of the destination server as part of the
+    second <code>USER</code> command:
+<pre>
   USER <em>real-user</em>@ftp.example.com
   PASS <em>real-passwd</em>
 </pre>
-
-FZ:
-  https://www3.trustwave.com/support/kb/article.aspx?id=13497
-
-See <a href="https://winscp.net/eng/docs/ui_login_proxy">WinSCP</a>
-this is what <code>lftp</code> calls "user" for its <code>ftp:proxy-auth-type</code> setting.
+    The <code>mod_proxy</code> module will remove the destination address
+    portion of the second <code>USER</code> command before proxying it to
+    the destination server.
   </li>
 
   <p>
   <li><code>proxyuser@host,user</code>
     <p>
-    PROXY_USER_WITH_PROXY_AUTH
+    This method indicates that proxy authentication is <b>required</b>.  The
+    client first authenticates to the proxy via <code>USER/PASS</code> commands;
+    note that the destination address (and optionally port) is included as part
+    of the first <code>USER</code> command:
 <pre>
   USER <em>proxy-user</em>@ftp.example.com
   PASS <em>proxy-passwd</em>
+</pre>
+    Then the client authenticates <i>again</i>, this time sending the
+    <code>USER/PASS</code> commands to authenticate to the destination server:
+<pre>
   USER <em>real-user</em>
   PASS <em>real-passwd</em>
 </pre>
-
-Chrome: uses system proxy settings (on Mac, at least?)
-
-FF:
-  http://www.wikihow.com/Enter-Proxy-Settings-in-Firefox
-
-FZ:
-  https://www3.trustwave.com/support/kb/article.aspx?id=13497
-
-See <a href="https://winscp.net/eng/docs/ui_login_proxy">WinSCP</a>
-this is what <code>lftp</code> calls "proxy-user@host" for its <code>ftp:proxy-auth-type</code> setting.
   </li>
 
   <p>
   <li><code>user@host</code>
     <p>
-    USER_NO_PROXY_AUTH
+    This methods indicates that <i>no proxy authentication</i> is used.  The
+    client indicates the destination address (and optionally port) of the
+    server as part of the <code>USER</code> command:
 <pre>
-  USER <em>user</em>@ftp.example.com
+  USER <em>real-user</em>@ftp.example.com
+  PASS <em>real-passwd</em>
 </pre>
-<pre>
-  USER <em>user</em>@ftp.example.com:2121
-</pre>
-    PASS command is then proxied to <em>ftp.example.com</em>, which authenticates
-    the user
+    The <code>mod_proxy</code> module will remove the destination address
+    portion of the <code>USER</code> command before proxying it to the
+    destination server.
   </li>
 </ul>
+
+<p>
+Configuring the FTP client's proxy settings to match the above methods varies
+greatly, depending on the FTP client.
 
 <p>
 <hr>
@@ -362,6 +376,7 @@ The <code>ProxyReverseConnectPolicy</code> directive configures the
 <em>policy</em> that <code>mod_proxy</code> will use for selecting the backend
 server when reverse proxying.
 
+<p>
 The currently supported policies are:
 <ul>
   <li><code>LeastConns</code>
@@ -519,7 +534,7 @@ servers, a more aggressively short timeout can be used:
 <h2><a name="Usage">Usage</a></h2>
 
 <p>
-<b>Capabilities</b><br>
+<b>Benefits</b><br>
 
   Front servers which can't do: PASV, EPRT/EPSV, FTPS
   Can use to do your logging: TransferLog, ExtendedLog, mod_log_zmq, etc.
@@ -684,9 +699,11 @@ use only, and should be removed from any production configuration.
 The following lists the features I hope to add to <code>mod_proxy</code>,
 according to need, demand, inclination, and time:
 <ul>
+  <li>Sticky load balancing policies
   <li>FTPS connections to backend/destination servers
   <li>SFTP/SCP support
 </ul>
+See the GitHub <a href="https://github.com/Castaglia/proftpd-mod_proxy/issues">issues</a> page for current bugs and feature requests, and to report issues.
 
 <p><a name="FAQ">
 <b>Frequently Asked Questions</b><br>
