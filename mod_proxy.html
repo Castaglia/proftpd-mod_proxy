@@ -167,10 +167,10 @@ By default, <code>mod_proxy</code> rejects any forward proxy request from
   172.16.0.0/12
   10.0.0.0/8
 </pre>
-This is done as a security measure: <b>open/unrestricted
-proxy servers are dangerous both to your network and to the Internet at
-large</b>.  Thus to make it possible for clients to use your server for
-forward proxying, they must be <b>explicitly</b> enabled to do so.
+This is done as a security measure: <b>open/unrestricted proxy servers are
+dangerous both to your network and to the Internet at large</b>.  Thus to make
+it possible for clients to use your server for forward proxying, they <b>must
+be explicitly</b> enabled to do so.
 
 <p>
 Example:
@@ -506,6 +506,11 @@ are used for tracking the various load balancing/healthcheck statistics used
 for proxying.
 
 <p>
+<b>Note</b> that the <code>ProxyTables</code> directive is <b>required</b>
+for <code>mod_proxy</code> to function.  If this directive is not configured,
+connections to <code>mod_proxy</code> will fail.
+
+<p>
 <hr>
 <h2><a name="ProxyTimeoutConnect">ProxyTimeoutConnect</a></h2>
 <strong>Syntax:</strong> ProxyTimeoutConnect <em>timeout</em><br>
@@ -534,74 +539,134 @@ servers, a more aggressively short timeout can be used:
 <h2><a name="Usage">Usage</a></h2>
 
 <p>
-<b>Benefits</b><br>
-
-  Front servers which can't do: PASV, EPRT/EPSV, FTPS
-  Can use to do your logging: TransferLog, ExtendedLog, mod_log_zmq, etc.
-  Can use to do your monitoring: mod_snmp, etc
-
-  use mod_proxy with an active data transfer only client with passive only
-  servers
-
-  use mod_proxy in forward mode to add "IPv6" capability, i.e. talk to IPv6
-  server, for IPv4-only client.
-
-NOT YET:
-  use mod_proxy in forward mode to add SSL/TLS capability, i.e. to talk to
-  FTPS server, for non-SSL/TLS clients?
+<b>Benefits of Proxying</b><br>
+The benefits of using a module like <code>mod_proxy</code> depend mostly
+on the type of proxying, forward or reverse, that <code>mod_proxy</code>
+is configured to perform.  There are some benefit, however, that the module
+can bring, regardless of the type of proxying:
+<ul>
+  <li>Add ProFTPD's logging power (<code>TransferLog</code>, <code>ExtendedLog</code>, <i>etc</i>) for FTP servers which do not provide such versatile logging
+  <li>Use ProFTPD's monitoring capabilities (<i>e.g.</i> <code>mod_snmp</code>) for FTP servers which do not have such features
+</ul>
 
 <p>
-<b>Handling Proxied Sessions</b><br>
-
-automatically <b>chroot</b> itself to a subdirectory of the
-<code>ProxyTables</code> directory, after which all root privileges are
-permanently dropped.
+<i>Forward Proxying</i><br>
+One of the most common benefits of a forward proxy is having controlled access,
+by clients within an internal LAN, to outside servers.  FTP makes this sort
+of thing notoriously difficult for firewalls/routers due to its multi-TCP
+connection nature; this, in turn, makes proxying of FTP more difficult.  But
+<code>mod_proxy</code> makes this possible; it understands FTP, and thus
+provides the access control needed for such use cases.
 
 <p>
-<b>Example Forward Proxy Configuration</b><br>
+When using <code>mod_proxy</code> as a forward proxy, FTP clients which can
+only perform active data transfers can use <code>mod_proxy</code> as a way
+to use passive data transfers with the destination FTP server.
+
+<p>
+Similarly, FTP clients which do not support IPv6 can proxy through
+<code>mod_proxy</code> to reach a destination FTP server with an IPv6 address;
+<code>mod_proxy</code> handles IPv4 and IPv6 addresses transparently.
+
+<p>
+<i>Reverse Proxying</i><br>
+Just as <code>mod_proxy</code> can aid naive/legacy FTP clients via forward
+proxying, <code>mod_proxy</code> can similarly front legacy FTP servers.
+For example, <code>mod_proxy</code> can sit in front of FTP servers which
+do not handle IPv6 addresses, and provide this functionality transparently
+to IPv6-capable FTP clients.
+
+<p>
+When performing reverse proxying, <code>mod_proxy</code> can also perform
+load balancing in various ways.  The common methods of "round robin" and
+"least connections" are implemented; soon <code>mod_proxy</code> will provide
+"sticky session" load balancing of clients as well.
+
+<p>
+<b>Handling of Proxied Sessions</b><br>
+Once a proxied session has authenticated with the backend/destination server,
+the <code>mod_proxy</code> module automatically chroots itself to a
+subdirectory of the <a href="#ProxyTables"><code>ProxyTables</code></a>
+directory, after which all root privileges are permanently dropped.
+
+<p>
+<b>Forward Proxy Configuration</b><br>
+Before discussing example forward proxy configurations for
+<code>mod_proxy</code>, it is very important to understand the consequences
+of providing forward proxy capabilities.
 
 <p>
 <b>Important Security Considerations</b><br>
-Strictly limiting access is essential if you are using a forward proxy (using the ProxyRequests directive). Otherwise, your server can be used by any client to access arbitrary hosts while hiding his or her true identity. This is dangerous both for your network and for the Internet at large. When using a reverse proxy (using the ProxyPass directive with ProxyRequests Off), access control is less critical because clients can only contact the hosts that you have specifically configured.
+A forward proxy can be used by <b>any</b> client to have <em>the proxy</em>
+connect to <b>any</b> arbitrary host, while hiding the client's true identity.
+Malicious behavior, hacking or denial-of-service attempts, <i>etc</i> will
+appear to be coming from <em>your proxy</em>; this is dangerous for your
+network, and for the Internet at large.  Think of the damage that has been
+done, <em>and continues to happen</em>, due to open/unrestricted proxies/relays
+such as open DNS or SMTP/email proxies.
 
-  ProxyForwardEnabled
-  ProxyForwardTo
+<p>
+This is the reason that <code>mod_proxy</code> does not allow just <b>any</b>
+client to use its forward proxy capabilities by default; instead, only
+clients connecting from the LAN are allowed by default.  Allowing trusted
+outside clients is done using the
+<a href="#ProxyForwardEnabled"><code>ProxyForwardEnabled</code></a> directive.
+Even allowing internal clients to use your forward proxy can be troublesome,
+depending on the destination hosts selected by the clients.  To ensure that
+your clients are using the forward proxy to connect only to the hosts allowed,
+you can use the <a href="#ProxyForwardTo"><code>ProxyForwardTo</code></a>
+directive to configure a regular expression-based whitelist of allowed
+destination/target hosts; <b>this is strongly recommended</b>.
 
-  Keep this restricted, as it can be used to "hide" the origin of attacks,
-  using your proxy as the jumping off point.  Think of open email relays.
-
+<p>
+With all that said, here's an example <code>mod_proxy</code> configuration
+for supporting forward proxying:
 <pre>
   &lt;IfModule mod_proxy.c&gt;
     ProxyEngine on
     ProxyLog /path/to/proxy.log
+    ProxyTables /var/ftp/proxy
 
-    ProxyForwardMethod ...
-    ProxyForwardTo ...
+    ProxyRole forward
+    ProxyForwardMethod user@host
+    ProxyForwardTo ^ftp\.example\.com [NC]
   &lt;/IfModule&gt;
 </pre>
 
 <p>
-<b>Example Reverse Proxy Configuration</b><br>
+<b>Reverse Proxy Configuration</b><br>
+Reverse proxies (also known as "gateways") are often used to provide access
+to FTP resources, located with internal networks, to the outside world.  The
+reverse proxy can perform load balancing, provide functionality that the
+internal servers may not be able to do, and even perform things like caching.
+
+<p>
+Access control for reverse proxies is less critical than for forward proxies
+because clients can only reach, via the reverse proxy, the backend servers
+that the reverse proxy has been configured to use; the clients do <b>not</b>
+get to choose arbitrary hosts for the reverse proxy to use.
+
+<p>
+Here's an example <code>mod_proxy</code> configuration for supporting reverse
+proxying:
 <pre>
   &lt;IfModule mod_proxy.c&gt;
     ProxyEngine on
     ProxyLog /path/to/proxy.log
+    ProxyTables /var/ftp/proxy
 
-    ProxyReverseServers ...
-    ProxyReverseConnectPolicy ...
+    ProxyRole reverse
+    ProxyReverseServers ftp://ftp-backend1.example.com:2121 ftp://ftp-backend2.example.com:2121 ...
+    ProxyReverseConnectPolicy RoundRobin
   &lt;/IfModule&gt;
 </pre>
 
 <p>
-<b>Secure/Paranoid Configurations</b><br>
-
-Automatically chroots to ProxyTables/empty/ directory
-
-<p>
-<b>Balancing vs Stickiness</b><br>
-For reverse proxy configurations, there is a choice between <em>balancing</em>
-and <em>sticky</em> <code>ProxyReverseConnectPolicy</code> parameters, when it
-comes to selecting the backend server that will handle the incoming connection.
+<b>Load Balancing versus Session Stickiness</b><br>
+For reverse proxy configurations, there is a choice between
+<em>load balancing</em> and <em>sticky session</em>
+<code>ProxyReverseConnectPolicy</code> parameters; these parameters determine
+the selection of the backend server that will handle the incoming connection.
 
 <p>
 Which should you use, and why?
@@ -621,6 +686,11 @@ server handles a particular client.  Maybe all of your backend servers use a
 shared filesystem via NFS or similar, thus directory listings will be the same
 for a user no matter which backend server is used, and uploading files to one
 server means that those files can be downloaded/seen by the other servers.
+Balancing policies are also best when all of your backend servers have similar
+processing power (memory, CPU, network, disk), so that all backend servers
+are equally capable of providing the same service to the connecting client.
+
+<p>
 The <em>balancing</em> policies are:
 <ul>
   <li><code>LeastConns</code>
@@ -629,35 +699,13 @@ The <em>balancing</em> policies are:
   <li><code>Shuffle</code>
 </ul>
 
-  "RoundRobin is suitable where all available servers are assumed to be
-   largely similar in functionality.  Weighed/ratio'd RoundRobin builds
-   weights into the system to deal with heterogenous capacity of the
-   servers.  (This is harder, since the "weight" factor is admin-assigned,
-   and how exactly is it computed?  2x CPU?  4x memory?  6x network?)
-
-RoundRobin Vs LeastConns; Which is better?
-
-What's better for FTP, SFTP connections?  RoundRobin or LeastConns?  And
-why?  The HAproxy docs for the 'balance' keyword say that 'leastconn' is
-best for long-lived connections:
-    
-  leastconn   The server with the lowest number of connections receives the
-              connection. Round-robin is performed within groups of servers
-              of the same load to ensure that all servers will be used. Use
-              of this algorithm is recommended where very long sessions are
-              expected, such as LDAP, SQL, TSE, etc... but is not very well
-              suited for protocols using short sessions such as HTTP. This
-              algorithm is dynamic, which means that server weights may be
-              adjusted on the fly for slow starts for instance.
-
-    (from http://haproxy.1wt.eu/download/1.4/doc/configuration.txt)
-
 <p>
 <em>Stickiness</em> is best when your backend servers are <b>not</b> identical,
-and some users/clients should only ever go to some particular set of backend
-servers.  Thus the user/client needs to be "sticky" to a given backend
-server(s) -- that's when you need the sticky connect policies such as
-<em>PerUser</em>, <em>PerHost</em>, and similar.
+and some users/clients <em>should only ever go to the same set of backend
+servers</em>.  Thus the user/client needs to be "sticky" to a given backend
+server(s); that's when you need the sticky
+<code>ProxyReverseConnectPolicy</code> parameters such as <em>PerUser</em>,
+<em>PerHost</em>, <i>etc</i>.
 
 <p>
 <b>SFTP/SCP Support</b><br>
@@ -694,19 +742,40 @@ your <code>proftpd.conf</code>:
 This trace logging can generate large files; it is intended for debugging
 use only, and should be removed from any production configuration.
 
-<p>
+<p><a name="Wishlist">
 <b>Suggested Future Features</b><br>
 The following lists the features I hope to add to <code>mod_proxy</code>,
 according to need, demand, inclination, and time:
 <ul>
   <li>Sticky load balancing policies
   <li>FTPS connections to backend/destination servers
+  <li>Directory format translation (<i>e.g.</i> <code>LIST</code> to <code>MLSD</code>)
   <li>SFTP/SCP support
 </ul>
 See the GitHub <a href="https://github.com/Castaglia/proftpd-mod_proxy/issues">issues</a> page for current bugs and feature requests, and to report issues.
 
 <p><a name="FAQ">
 <b>Frequently Asked Questions</b><br>
+
+<p><a name="ProxyRoundRobinVsLeastConns">
+<font color=red>Question</font>: I have heard a lot about both "round robin"
+and "least conns" for load balancing.  Which is better for FTP connections?><br>
+<font color=blue>Answer</font>:  There is not an easy answer to this, because
+it really comes down to the type of traffic that your FTP servers will see.
+
+<p>
+<b><i>If</i></b> your FTP sessions tend to be long-lived (<i>e.g.</i> on the
+order of minutes to hours), then using <code>ProxyReverseConnectPolicy
+LeastConns</code> will tend to provide the best distribution of those sessions
+across your pool of backend servers.  The assumption here is that <b>new</b>
+connections arrive infrequently <em>relative to the number of existing
+connections</em>.
+
+<p>
+On the other hand, <b><i>if</i></b> your FTP sessions tend to be shorter
+(<i>e.g.</i> minutes at most), then using <code>ProxyReverseConnectPolicy
+RoundRobin</code> might provide a more even distribution of connections
+across your pool of backend servers.
 
 <p>
 <hr>
