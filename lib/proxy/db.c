@@ -93,23 +93,18 @@ int proxy_db_prepare_stmt(pool *p, const char *stmt) {
     return -1;
   }
 
-  if (prepared_stmts != NULL) {
-    pstmt = pr_table_get(prepared_stmts, stmt, NULL);
-    if (pstmt != NULL) {
-      res = sqlite3_reset(pstmt);
-      if (res != SQLITE_OK) {
-        pr_trace_msg(trace_channel, 3,
-          "error resetting prepared statement '%s': %s", stmt,
-          sqlite3_errmsg(proxy_dbh));
-        errno = EPERM;
-        return -1;
-      }
-
-      return 0;
+  pstmt = pr_table_get(prepared_stmts, stmt, NULL);
+  if (pstmt != NULL) {
+    res = sqlite3_reset(pstmt);
+    if (res != SQLITE_OK) {
+      pr_trace_msg(trace_channel, 3,
+        "error resetting prepared statement '%s': %s", stmt,
+        sqlite3_errmsg(proxy_dbh));
+      errno = EPERM;
+      return -1;
     }
 
-  } else {
-    prepared_stmts = pr_table_nalloc(db_pool, 0, 4);
+    return 0;
   }
 
   res = sqlite3_prepare_v2(proxy_dbh, stmt, -1, &pstmt, NULL);
@@ -374,6 +369,7 @@ int proxy_db_open(pool *p, const char *table_path) {
     return -1;
   }
 
+  prepared_stmts = pr_table_nalloc(db_pool, 0, 4);
   return 0;
 }
 
@@ -414,8 +410,8 @@ int proxy_db_close(pool *p) {
     proxy_dbh = NULL;
   }
 
-  destroy_pool(db_pool);
-  db_pool = NULL;
+  pr_table_empty(prepared_stmts);
+  pr_table_free(prepared_stmts);
   prepared_stmts = NULL;
 
   return 0;

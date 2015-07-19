@@ -32,7 +32,7 @@
 #define PROXY_FORWARD_ENABLED_NOTE	"mod_proxy.forward-enabled"
 
 int proxy_forward_init(pool *p, const char *tables_dir);
-int proxy_forward_free(pool *p, const char *tables_dir);
+int proxy_forward_free(pool *p);
 
 int proxy_forward_sess_init(pool *p, const char *tables_dir);
 int proxy_forward_have_authenticated(cmd_rec *cmd);

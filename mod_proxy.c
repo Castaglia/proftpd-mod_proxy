@@ -256,6 +256,68 @@ static int proxy_mkpath(pool *p, const char *path, uid_t uid, gid_t gid,
   return 0;
 }
 
+static int proxy_rmpath(pool *p, const char *path) {
+  void *dirh;
+  struct dirent *dent;
+  int res, xerrno = 0;
+
+  dirh = pr_fsio_opendir(path);
+  if (dirh == NULL) {
+    xerrno = errno;
+    pr_trace_msg(trace_channel, 9,
+      "error opening '%s': %s", path, strerror(xerrno));
+    errno = xerrno;
+    return -1;
+  }
+
+  while ((dent = pr_fsio_readdir(dirh)) != NULL) {
+    struct stat st;
+    char *file;
+
+    pr_signals_handle();
+
+    if (strncmp(dent->d_name, ".", 2) == 0 ||
+        strncmp(dent->d_name, "..", 3) == 0) {
+      continue;
+    }
+
+    file = pdircat(p, path, dent->d_name, NULL);
+
+    if (pr_fsio_stat(file, &st) < 0) {
+      pr_trace_msg(trace_channel, 9,
+        "unable to stat '%s': %s", file, strerror(errno));
+      continue;
+    }
+
+    if (S_ISDIR(st.st_mode)) {
+      res = proxy_rmpath(p, file);
+      if (res < 0) {
+        pr_trace_msg(trace_channel, 9,
+          "error removing directory '%s': %s", file, strerror(errno));
+      }
+
+    } else {
+      res = pr_fsio_unlink(file);
+      if (res < 0) {
+        pr_trace_msg(trace_channel, 9,
+          "error removing file '%s': %s", file, strerror(errno));
+      }
+    }
+  }
+
+  pr_fsio_closedir(dirh);
+
+  res = pr_fsio_rmdir(path);
+  if (res < 0) {
+    xerrno = errno;
+    pr_trace_msg(trace_channel, 9,
+      "error removing directory '%s': %s", path, strerror(xerrno));
+    errno = xerrno;
+  }
+
+  return res;
+}
+
 static void proxy_remove_symbols(void) {
   int res;
 
@@ -2422,10 +2484,8 @@ MODRET proxy_type(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 }
 
 MODRET proxy_any(cmd_rec *cmd) {
-  int block_responses = TRUE, res, xerrno;
+  int block_responses = TRUE;
   struct proxy_session *proxy_sess;
-  pr_response_t *resp;
-  unsigned int resp_nlines = 0;
   modret_t *mr = NULL;
 
   if (proxy_engine == FALSE) {
@@ -2674,7 +2734,9 @@ static void proxy_mod_unload_ev(const void *event_data, void *user_data) {
     /* Unregister ourselves from all events. */
     pr_event_unregister(&proxy_module, NULL, NULL);
 
-    /* TODO: Remove/clean up state files (e.g. roundrobin.dat). */
+    PRIVS_ROOT
+    (void) proxy_rmpath(proxy_pool, proxy_tables_dir);
+    PRIVS_RELINQUISH
 
     destroy_pool(proxy_pool);
     proxy_pool = NULL;
@@ -2712,23 +2774,28 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
 
   if (proxy_forward_init(proxy_pool, proxy_tables_dir) < 0) {
     pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
-      ": unable to initialize forward-proxy, failing to start up");
+      ": unable to initialize forward proxy, failing to start up: %s",
+      strerror(errno));
 
     pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BAD_CONFIG,
-      "Failed forward-proxy initialization");
+      "Failed forward proxy initialization");
   }
 
   if (proxy_reverse_init(proxy_pool, proxy_tables_dir) < 0) {
     pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
-      ": unable to initialize reverse-proxy, failing to start up");
+      ": unable to initialize reverse proxy, failing to start up: %s",
+      strerror(errno));
 
     pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BAD_CONFIG,
-      "Failed reverse-proxy initialization");
+      "Failed reverse proxy initialization");
   }
 }
 
 static void proxy_restart_ev(const void *event_data, void *user_data) {
   int res;
+
+  proxy_forward_free(proxy_pool);
+  proxy_reverse_free(proxy_pool);
 
   res = proxy_db_close(proxy_pool);
   if (res < 0) {
@@ -2738,10 +2805,13 @@ static void proxy_restart_ev(const void *event_data, void *user_data) {
 }
 
 static void proxy_shutdown_ev(const void *event_data, void *user_data) {
-  proxy_forward_free(proxy_pool, proxy_tables_dir);
-  proxy_reverse_free(proxy_pool, proxy_tables_dir);
+  proxy_forward_free(proxy_pool);
+  proxy_reverse_free(proxy_pool);
+  proxy_db_free();
 
-  /* TODO: Delete ProxyTables dir, recursively. */
+  PRIVS_ROOT
+  (void) proxy_rmpath(proxy_pool, proxy_tables_dir);
+  PRIVS_RELINQUISH
 
   destroy_pool(proxy_pool);
   proxy_pool = NULL;

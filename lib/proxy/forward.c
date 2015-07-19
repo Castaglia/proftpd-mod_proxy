@@ -41,7 +41,7 @@ int proxy_forward_init(pool *p, const char *tables_dir) {
   return 0;
 }
 
-int proxy_forward_free(pool *p, const char *tables_dir) {
+int proxy_forward_free(pool *p) {
   /* TODO: Implement any necessary cleanup */
   return 0;
 }

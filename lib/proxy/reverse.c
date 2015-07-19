@@ -697,7 +697,7 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
   return 0;
 }
 
-int proxy_reverse_free(pool *p, const char *tables_dir) {
+int proxy_reverse_free(pool *p) {
   /* TODO: Implement any necessary cleanup */
   return 0;
 }

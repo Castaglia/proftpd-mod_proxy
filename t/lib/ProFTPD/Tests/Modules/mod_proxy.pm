@@ -4,6 +4,7 @@ use lib qw(t/lib);
 use base qw(ProFTPD::TestSuite::Child);
 use strict;
 
+use Carp;
 use File::Copy;
 use File::Path qw(mkpath);
 use File::Spec;
@@ -19,6 +20,11 @@ $| = 1;
 my $order = 0;
 
 my $TESTS = {
+  proxy_sighup => {
+    order => ++$order,
+    test_class => [qw(forking os_linux)],
+  },
+
   proxy_reverse_connect => {
     order => ++$order,
     test_class => [qw(forking reverse)],
@@ -754,6 +760,140 @@ sub ftp_list {
     test_msg("Expected response message '$expected', got '$resp_msg'"));
 
   1;
+}
+
+sub get_server_pid {
+  my $pid_file = shift;
+
+  my $pid;
+  if (open(my $fh, "< $pid_file")) {
+    $pid = <$fh>;
+    chomp($pid);
+    close($fh);
+
+  } else {
+    croak("Can't read $pid_file: $!");
+  }
+
+  return $pid;
+}
+
+sub server_open_fds {
+  my $pid_file = shift;
+
+  my $pid = get_server_pid($pid_file);
+
+  my $proc_dir = "/proc/$pid/fd";
+  if (opendir(my $dirh, $proc_dir)) {
+    my $count = 0;
+
+    # Only count entries whose names are numbers
+    while (my $dent = readdir($dirh)) {
+      if ($dent =~ /^\d+$/) {
+        $count++;
+      }
+    }
+
+    closedir($dirh);
+    return $count;
+
+  } else {
+    croak("Can't open directory '$proc_dir': $!");
+  }
+}
+
+sub proxy_sighup {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:10 lock:0 scoreboard:0 signal:0 proxy:20 proxy.db:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  WtmpLog off
+  TransferLog none
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Start the server
+  server_start($setup->{config_file});
+  sleep(1);
+
+  # Use proc(5) filesystem to count the number of open fds in the daemon
+  my $orig_nfds = server_open_fds($setup->{pid_file});
+  if ($ENV{TEST_VERBOSE}) {
+    print STDERR "Found $orig_nfds open fds after server startup\n";
+  }
+
+  # Restart the server
+  server_restart($setup->{pid_file});
+  sleep(1);
+
+  # Count the open fds again, make sure we haven't leaked any
+  my $restart_nfds = server_open_fds($setup->{pid_file});
+  if ($ENV{TEST_VERBOSE}) {
+    print STDERR "Found $restart_nfds open fds after server restart #1\n";
+  }
+
+  $self->assert($orig_nfds == $restart_nfds,
+    test_msg("Expected $orig_nfds open fds, found $restart_nfds"));
+
+  # Restart the server
+  server_restart($setup->{pid_file});
+  sleep(1);
+
+  # And count the open fds one more time, to make doubly sure we are not
+  # leaking fds.
+  $restart_nfds = server_open_fds($setup->{pid_file});
+  if ($ENV{TEST_VERBOSE}) {
+    print STDERR "Found $restart_nfds open fds after server restart #2\n";
+  }
+
+  $self->assert($orig_nfds == $restart_nfds,
+    test_msg("Expected $orig_nfds open fds, found $restart_nfds"));
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  unlink($setup->{log_file});
 }
 
 sub proxy_reverse_connect {
