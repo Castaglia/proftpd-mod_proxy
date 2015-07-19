@@ -4,6 +4,7 @@ config.log
 config.status
 autom4te.cache
 mod_proxy.h
+tests.log
 .libs
 .*.swp
 *.la
