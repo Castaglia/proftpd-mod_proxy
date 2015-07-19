@@ -64,6 +64,71 @@ static const char *proxy_tables_dir = NULL;
 
 static const char *trace_channel = "proxy";
 
+MODRET proxy_cmd(cmd_rec *cmd) {
+  int res, xerrno;
+  struct proxy_session *proxy_sess;
+  pr_response_t *resp;
+  unsigned int resp_nlines = 0;
+
+  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+
+  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    cmd);
+  if (res < 0) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+
+    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
+  if (resp == NULL) {
+    xerrno = errno;
+
+    /* For a certain number of conditions, if we cannot read the response
+     * from the backend, then we should just close the frontend, otherwise
+     * we might "leak" to the client the fact that we are fronting some
+     * backend server rather than being the server.
+     */
+    if (xerrno == ECONNRESET ||
+        xerrno == ECONNABORTED ||
+        xerrno == ENOENT ||
+        xerrno == EPIPE) {
+      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
+        "Backend control connection lost");
+    }
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error receiving %s response from backend: %s", cmd->argv[0],
+      strerror(xerrno));
+
+    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
+    resp, resp_nlines);
+  if (res < 0) {
+    xerrno = errno;
+
+    pr_response_block(TRUE);
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  pr_response_block(TRUE);
+  return PR_HANDLED(cmd);
+}
+
 static int proxy_stalled_timeout_cb(CALLBACK_FRAME) {
   int timeout_stalled;
 
@@ -2146,6 +2211,13 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
       break;
 
     case PROXY_ROLE_FORWARD:
+      if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
+        /* If we've already authenticated, then let the backend server
+         * deal with this.
+         */
+        return proxy_cmd(cmd);
+      }
+
       res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
         block_responses);
       break;
@@ -2224,6 +2296,13 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
       break;
 
     case PROXY_ROLE_FORWARD:
+      if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
+        /* If we've already authenticated, then let the backend server
+         * deal with this.
+         */
+        return proxy_cmd(cmd);
+      }
+
       res = proxy_forward_handle_pass(cmd, proxy_sess, &successful,
         block_responses);
       break;
@@ -2527,61 +2606,7 @@ MODRET proxy_any(cmd_rec *cmd) {
     }
   }
 
-  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    cmd);
-  if (res < 0) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
-
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
-  if (resp == NULL) {
-    xerrno = errno;
-
-    /* For a certain number of conditions, if we cannot read the response
-     * from the backend, then we should just close the frontend, otherwise
-     * we might "leak" to the client the fact that we are fronting some
-     * backend server rather than being the server.
-     */
-    if (xerrno == ECONNRESET ||
-        xerrno == ECONNABORTED ||
-        xerrno == ENOENT ||
-        xerrno == EPIPE) {
-      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
-        "Backend control connection lost");
-    }
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", cmd->argv[0],
-      strerror(xerrno));
-
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
-    resp, resp_nlines);
-  if (res < 0) {
-    xerrno = errno;
-
-    pr_response_block(TRUE);
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
-
-  pr_response_block(TRUE);
-  return PR_HANDLED(cmd);
+  return proxy_cmd(cmd);
 }
 
 /* Event handlers
