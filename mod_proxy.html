@@ -12,7 +12,9 @@
 <hr><br>
 
 <p>
-The purpose of the <code>mod_proxy</code> module is to
+The purpose of the <code>mod_proxy</code> module is to provide FTP proxying
+capabilities in <code>proftpd</code>, both <em>reverse</em> (or "gateway")
+proxying and <em>forward</em> proxying.
 
 <p>
 Installation instructions are discussed <a href="#Installation">here</a>;
@@ -51,14 +53,80 @@ questions, concerns, or suggestions regarding this module.
 <p>
 <hr>
 <h2><a name="ProxyDataTransferPolicy">ProxyDataTransferPolicy</a></h2>
-<strong>Syntax:</strong> ProxyDataTransferPolicy <em>active|passive|pasv|epsv|port|eprt|client</em><br>
+<strong>Syntax:</strong> ProxyDataTransferPolicy <em>client|active|passive|pasv|epsv|port|eprt</em><br>
 <strong>Default:</strong> ProxyDataTransferPolicy client<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
 <strong>Module:</strong> mod_proxy<br>
 <strong>Compatibility:</strong> 1.3.6rc1 and later
 
 <p>
-The <code>ProxyDataTransferPolicy</code> directive configures with
+The <code>ProxyDataTransferPolicy</code> directive configures the data
+transfer <em>policy</em> that <code>mod_proxy</code> uses when performing
+data transfers (<i>e.g.</i> file uploads/downloads, directory listings) with
+the backend/destination server.
+
+<p>
+The currently supported policies are:
+<ul>
+  <li><code>client</code>
+    <p>
+    This policy indicates that <code>mod_proxy</code> will use whatever
+    the connected client uses.  Thus if the client sends <code>PORT</code>,
+    <code>mod_proxy</code> will send <code>PORT</code> to the
+    backend/destination server.
+
+    <p>
+    This is the <em>recommended policy</em> in most cases.
+  </li>
+
+  <p>
+  <li><code>active</code>
+    <p>
+    Regardless of the commands sent by the client, <code>mod_proxy</code>
+    will use only <em>active</em> data transfers (<i>i.e.</i> using
+    <code>PORT</code> commands) with the backend/destination server.
+  </li>
+
+  <p>
+  <li><code>passive<code>
+    <p>
+    Regardless of the commands sent by the client, <code>mod_proxy</code>
+    will use only <em>passive</em> data transfers (<i>i.e.</i> using
+    <code>PASV</code> commands) with the backend/destination server.
+  </li>
+
+  <p>
+  <li><code>PASV</code>
+    <p>
+    Regardless of the commands sent by the client, <code>mod_proxy</code>
+    will use only <code>PASV</code> commands with the backend/destination
+    server.
+  </li>
+
+  <p>
+  <li><code>PORT</code>
+    <p>
+    Regardless of the commands sent by the client, <code>mod_proxy</code>
+    will use only <code>PORT</code> commands with the backend/destination
+    server.
+  </li>
+
+  <p>
+  <li><code>EPSV</code>
+    <p>
+    Regardless of the commands sent by the client, <code>mod_proxy</code>
+    will use only <code>EPSV</code> commands with the backend/destination
+    server.
+  </li>
+
+  <p>
+  <li><code>EPRT</code>
+    <p>
+    Regardless of the commands sent by the client, <code>mod_proxy</code>
+    will use only <code>EPRT</code> commands with the backend/destination
+    server.
+  </li>
+</ul>
 
 <p>
 <hr>
@@ -70,7 +138,11 @@ The <code>ProxyDataTransferPolicy</code> directive configures with
 <strong>Compatibility:</strong> 1.3.6rc1 and later
 
 <p>
-The <code>ProxyEngine</code> directive
+The <code>ProxyEngine</code> directive toggles the support for proxying by
+<code>mod_proxy</code>.  This is usually used inside a
+<code>&lt;VirtualHost&gt;</code> section to enable proxying of FTP sessions for
+a particular virtual host. By default <code>mod_proxy</code> is disabled for
+both the main server and all configured virtual hosts.
 
 <p>
 <hr>
@@ -82,20 +154,33 @@ The <code>ProxyEngine</code> directive
 <strong>Compatibility:</strong> 1.3.6rc2 and later
 
 <p>
-The <code>ProxyForwardEnabled</code> directive...
+The <code>ProxyForwardEnabled</code> directive determines whether a client
+can use <code>mod_proxy</code> for forward proxying, based on that client's
+<a href="http://www.proftpd.org/docs/howto/Classes.html">class</a>.
 
-Open proxy servers are dangerous both to your network and to the Internet at large.
+<p>
+By default, <code>mod_proxy</code> rejects any forward proxy request from
+<b>any</b> client.  This is done as a security measure: <b>open/unrestricted
+proxy servers are dangerous both to your network and to the Internet at
+large</b>.  Thus to make it possible for clients to use your server for
+forward proxying, they must be <b>explicitly</b> enabled to do so.
 
 <p>
 Example:
 <pre>
   &lt;Class forward-proxy&gt;
-    From ...
+    From 127.0.0.1
+    From 192.168.0.0/16
+    From 172.16.0.0/12
+    From 10.0.0.0/8
 
     # Allow clients from this class to use FTP forward proxying
     ProxyForwardEnabled on
   &lt;/Class&gt;
 </pre>
+
+<p>
+See also: <a href="#ProxyForwardTo"><code>ProxyForwardTo</code></a>
 
 <p>
 <hr>
@@ -107,7 +192,64 @@ Example:
 <strong>Compatibility:</strong> 1.3.6rc1 and later
 
 <p>
-The <code>ProxyForwardMethod</code> directive
+The <code>ProxyForwardMethod</code> directive configures the <em>method</em>
+that clients can use for requesting forward proxying.  The currently supported
+methods are:
+<ul>
+  <li><code>proxyuser,user@host</code>
+    <p>
+    USER_WITH_PROXY_AUTH
+<pre>
+  USER <em>proxy-user</em>
+  PASS <em>proxy-passwd</em>
+  USER <em>real-user</em>@ftp.example.com
+  PASS <em>real-passwd</em>
+</pre>
+
+FZ:
+  https://www3.trustwave.com/support/kb/article.aspx?id=13497
+
+See <a href="https://winscp.net/eng/docs/ui_login_proxy">WinSCP</a>
+this is what <code>lftp</code> calls "user" for its <code>ftp:proxy-auth-type</code> setting.
+  </li>
+
+  <p>
+  <li><code>proxyuser@host,user</code>
+    <p>
+    PROXY_USER_WITH_PROXY_AUTH
+<pre>
+  USER <em>proxy-user</em>@ftp.example.com
+  PASS <em>proxy-passwd</em>
+  USER <em>real-user</em>
+  PASS <em>real-passwd</em>
+</pre>
+
+Chrome: uses system proxy settings (on Mac, at least?)
+
+FF:
+  http://www.wikihow.com/Enter-Proxy-Settings-in-Firefox
+
+FZ:
+  https://www3.trustwave.com/support/kb/article.aspx?id=13497
+
+See <a href="https://winscp.net/eng/docs/ui_login_proxy">WinSCP</a>
+this is what <code>lftp</code> calls "proxy-user@host" for its <code>ftp:proxy-auth-type</code> setting.
+  </li>
+
+  <p>
+  <li><code>user@host</code>
+    <p>
+    USER_NO_PROXY_AUTH
+<pre>
+  USER <em>user</em>@ftp.example.com
+</pre>
+<pre>
+  USER <em>user</em>@ftp.example.com:2121
+</pre>
+    PASS command is then proxied to <em>ftp.example.com</em>, which authenticates
+    the user
+  </li>
+</ul>
 
 <p>
 <hr>
@@ -119,7 +261,27 @@ The <code>ProxyForwardMethod</code> directive
 <strong>Compatibility:</strong> 1.3.6rc1 and later
 
 <p>
-The <code>ProxyForwardTo</code> directive
+The <code>ProxyForwardTo</code> directive is used to restrict which
+hosts/domains can be requested for forward proxying.  The destination host/port
+for forward proxying <b>must</b> match the configured <em>pattern</em>
+regular expression, or the forward proxying request will fail.
+
+<p>
+The optional <em>flags</em> parameter, if present, modifies how the given
+<em>pattern</em> will be evaludated.  The supported flags are:
+<ul>
+  <li><b>nocase|NC</b> (<b>n</b>o <b>c</b>ase)<br>
+      This makes the <em>pattern</em> case-insensitive, <i>i.e.</i> there is
+      no difference between 'A-Z' and 'a-z' when <em>pattern</em> is matched
+      against the path
+  </li>
+</ul>
+
+<p>
+<code>ProxyForwardTo</code> limits the destination hosts <b>to</b> which
+clients can request forward proxying; by contrast,
+<a href="#ProxyForwardEnabled"><code>ProxyForwardEnabled</code></a> controls
+forward proxying based on where clients connect <b>from</b>.
 
 <p>
 <hr>
@@ -151,10 +313,7 @@ unless <code>AllowLogSymlinks</code> is explicitly set to <em>on</em>
 
 <p>
 The <code>ProxyOptions</code> directive is used to configure various optional
-behavior of <code>mod_proxy</code>.
-
-<p>
-For example:
+behavior of <code>mod_proxy</code>.  For example:
 <pre>
   ProxyOptions UseProxyProtocol
 </pre>
@@ -164,7 +323,14 @@ The currently implemented options are:
 <ul>
   <li><code>UseProxyProtocol</code><br>
     <p>
-    When <code>mod_proxy</code> connects ...
+    When <code>mod_proxy</code> connects to the backend/destination server,
+    it will use the <a href="http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt"><code>PROXY</code></a> protocol, sending the human-readable
+    <code>PROXY</code> command to the destination server.  This allows
+    backend servers to implement access controls/logging, based on the
+    IP address of the connecting (and proxied) client.  The <a href="https://github.com/Castaglia/proftpd-mod_proxy_protocol"><code>mod_proxy_protocol</code></a>
+    ProFTPD module can be used to handle the <code>PROXY</code> command on
+    the receiving side, <i>i.e.</i> when using <code>proftpd</code> as the
+    backend/destination server.
   </li>
 </ul>
 
@@ -172,13 +338,15 @@ The currently implemented options are:
 <hr>
 <h2><a name="ProxyRetryCount">ProxyRetryCount</a></h2>
 <strong>Syntax:</strong> ProxyRetryCount <em>count</em><br>
-<strong>Default:</strong> None<br>
+<strong>Default:</strong> ProxyRetryCount 5<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
 <strong>Module:</strong> mod_proxy<br>
 <strong>Compatibility:</strong> 1.3.6rc1 and later
 
 <p>
-The <code>ProxyRetryCount</code> directive
+The <code>ProxyRetryCount</code> directive configures the number of times
+<code>mod_proxy</code> will attempt to connect to the backend/destination
+server.  The default is <em>5</em> attempts.
 
 <p>
 <hr>
@@ -190,19 +358,73 @@ The <code>ProxyRetryCount</code> directive
 <strong>Compatibility:</strong> 1.3.6rc1 and later
 
 <p>
-The <code>ProxyReverseConnectPolicy</code> directive
+The <code>ProxyReverseConnectPolicy</code> directive configures the
+<em>policy</em> that <code>mod_proxy</code> will use for selecting the backend
+server when reverse proxying.
+
+The currently supported policies are:
+<ul>
+  <li><code>LeastConns</code>
+    <p>
+    Select the backend server with the lowest number of proxied connections.
+  </li>
+
+  <p>
+  <li><code>Random</code>
+    <p>
+    Randomly select any of the backend servers.
+  </li>
+
+  <p>
+  <li><code>RoundRobin</code>
+    <p>
+    Select the next backend server in the list.
+  </li>
+
+  <p>
+  <li><code>Shuffle</code>
+    <p>
+    Similar to the <code>Random</code> policy, except the selection happens
+    from the not-yet-chosed backend servers.  This means that <b>all</b>
+    backend servers will eventually be used evenly, just in a random order.
+  </li>
+</li>
 
 <p>
 <hr>
 <h2><a name="ProxyReverseServers">ProxyReverseServers</a></h2>
-<strong>Syntax:</strong> ProxyReverseServers <em>server-info</em><br>
+<strong>Syntax:</strong> ProxyReverseServers <em>servers</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
 <strong>Module:</strong> mod_proxy<br>
 <strong>Compatibility:</strong> 1.3.6rc1 and later
 
 <p>
-The <code>ProxyReverseServers</code> directive
+The <code>ProxyReverseServers</code> directive configures the list of servers
+to be used as the backend servers for reverse proxying.
+
+<p>
+Each server <b>must</b> be configured as a <i>URL</i>.  Only the "ftp" scheme
+is currently supported.  If not specified, the port will be 21.  IPv6 addresses
+<b>must</b> be enclosed within square brackets.  Thus, for example, the
+following are all valid URLs:
+<pre>
+  ftp://<em>ftp1.example.com:2121</em>
+  ftp://<em>1.2.3.4</em>
+  ftp://<em>[::ffff:6.7.8.9]:2121</em>
+</pre>
+And using them all in the configuration would look like:
+<pre>
+  ProxyReverseServers ftp://ftp1.example.com:2121 ftp://1.2.3.4 ftp://[::ffff:6.7.8.9]:2121
+</pre>
+
+<p>
+In addition, the list of backend servers can be contained in a simple text
+file, one URL per line; you then only need to configure the path to that
+text file:
+<pre>
+  ProxyReverseServers file:/path/to/backends.txt
+</pre>
 
 <p>
 <hr>
@@ -214,7 +436,26 @@ The <code>ProxyReverseServers</code> directive
 <strong>Compatibility:</strong> 1.3.6rc1 and later
 
 <p>
-The <code>ProxyRole</code> directive
+The <code>ProxyRole</code> directive configures whether <code>mod_proxy</code>
+will perform forward or reverse proxying.  The list of supported <em>roles</em>
+are thus:
+<ul>
+  <li><code>forward</code>
+    <p>
+    Perform forward proxying.
+  </li>
+
+  <p>
+  <li><code>reverse</code>
+    <p>
+    Perform reverse proxying.
+  </li>
+</ul>
+
+<p>
+<b>Note</b> that the <code>ProxyRole</code> directive is <b>required</b>
+for <code>mod_proxy</code> to function.  If this directive is not configured,
+connections to <code>mod_proxy</code> will fail.
 
 <p>
 <hr>
@@ -226,7 +467,13 @@ The <code>ProxyRole</code> directive
 <strong>Compatibility:</strong> 1.3.6rc1 and later
 
 <p>
-The <code>ProxySourceAddress</code> directive
+The <code>ProxySourceAddress</code> directive configures the <em>address</em>
+(or <em>device name</em>) of a network interface on the host machine, to
+be used when connecting to the backend/destination server.  This directive
+is most useful on a multi-homed (or DMZ) host; frontend connections can
+be received on one network interface, and the backend connections can use
+a different network interface.  Imagine <i>e.g.</i> separate WAN/LAN interfaces
+on a proxying host.
 
 <p>
 <hr>
@@ -238,7 +485,10 @@ The <code>ProxySourceAddress</code> directive
 <strong>Compatibility:</strong> 1.3.6rc1 and later
 
 <p>
-The <code>ProxyTables</code> directive configures
+The <code>ProxyTables</code> directive is used to specify a directory that
+<code>mod_proxy</code> will use for storing its database files; these files
+are used for tracking the various load balancing/healthcheck statistics used
+for proxying.
 
 <p>
 <hr>
@@ -250,17 +500,61 @@ The <code>ProxyTables</code> directive configures
 <strong>Compatibility:</strong> 1.3.6rc1 and later
 
 <p>
-The <code>ProxyTimeoutConnect</code> directive
+The <code>ProxyTimeoutConnect</code> directive configures the amount of time
+that <code>mod_proxy</code> will wait for the backend/destination server to
+accept a TCP connection, before giving up.
 
-Benefits of having a low timeout, e.g. "ProxyTimeoutConnect 1": guard against
-slow backend servers.
+<p>
+Note that if there are many different backend/destination servers to try
+(due to <i>e.g.</i> <code>ProxyRetryCount</code>), <i>and</i> if those
+backend servers are slow, the connecting client might itself see connection
+timeouts to <code>mod_proxy</code>.  To guard against such slow backend
+servers, a more aggressively short timeout can be used:
+<pre>
+  ProxyTimeoutConnect 1sec
+</pre>
 
 <p>
 <hr>
 <h2><a name="Usage">Usage</a></h2>
 
 <p>
+<b>Capabilities</b><br>
+
+  Front servers which can't do: PASV, EPRT/EPSV, FTPS
+  Can use to do your logging: TransferLog, ExtendedLog, mod_log_zmq, etc.
+  Can use to do your monitoring: mod_snmp, etc
+
+  use mod_proxy with an active data transfer only client with passive only
+  servers
+
+  use mod_proxy in forward mode to add "IPv6" capability, i.e. talk to IPv6
+  server, for IPv4-only client.
+
+NOT YET:
+  use mod_proxy in forward mode to add SSL/TLS capability, i.e. to talk to
+  FTPS server, for non-SSL/TLS clients?
+
+<p>
+<b>Handling Proxied Sessions</b><br>
+
+automatically <b>chroot</b> itself to a subdirectory of the
+<code>ProxyTables</code> directory, after which all root privileges are
+permanently dropped.
+
+<p>
 <b>Example Forward Proxy Configuration</b><br>
+
+<p>
+<b>Important Security Considerations</b><br>
+Strictly limiting access is essential if you are using a forward proxy (using the ProxyRequests directive). Otherwise, your server can be used by any client to access arbitrary hosts while hiding his or her true identity. This is dangerous both for your network and for the Internet at large. When using a reverse proxy (using the ProxyPass directive with ProxyRequests Off), access control is less critical because clients can only contact the hosts that you have specifically configured.
+
+  ProxyForwardEnabled
+  ProxyForwardTo
+
+  Keep this restricted, as it can be used to "hide" the origin of attacks,
+  using your proxy as the jumping off point.  Think of open email relays.
+
 <pre>
   &lt;IfModule mod_proxy.c&gt;
     ProxyEngine on
@@ -270,17 +564,6 @@ slow backend servers.
     ProxyForwardTo ...
   &lt;/IfModule&gt;
 </pre>
-
-From http://httpd.apache.org/docs/2.4/mod/mod_proxy.html#access:
-
-You can control who can access your proxy via the <Proxy> control block as in the following example:
-
-<Proxy "*">
-  Require ip 192.168.0
-</Proxy>
-For more information on access control directives, see mod_authz_host.
-
-Strictly limiting access is essential if you are using a forward proxy (using the ProxyRequests directive). Otherwise, your server can be used by any client to access arbitrary hosts while hiding his or her true identity. This is dangerous both for your network and for the Internet at large. When using a reverse proxy (using the ProxyPass directive with ProxyRequests Off), access control is less critical because clients can only contact the hosts that you have specifically configured.
 
 <p>
 <b>Example Reverse Proxy Configuration</b><br>
@@ -331,6 +614,29 @@ The <em>balancing</em> policies are:
   <li><code>Shuffle</code>
 </ul>
 
+  "RoundRobin is suitable where all available servers are assumed to be
+   largely similar in functionality.  Weighed/ratio'd RoundRobin builds
+   weights into the system to deal with heterogenous capacity of the
+   servers.  (This is harder, since the "weight" factor is admin-assigned,
+   and how exactly is it computed?  2x CPU?  4x memory?  6x network?)
+
+RoundRobin Vs LeastConns; Which is better?
+
+What's better for FTP, SFTP connections?  RoundRobin or LeastConns?  And
+why?  The HAproxy docs for the 'balance' keyword say that 'leastconn' is
+best for long-lived connections:
+    
+  leastconn   The server with the lowest number of connections receives the
+              connection. Round-robin is performed within groups of servers
+              of the same load to ensure that all servers will be used. Use
+              of this algorithm is recommended where very long sessions are
+              expected, such as LDAP, SQL, TSE, etc... but is not very well
+              suited for protocols using short sessions such as HTTP. This
+              algorithm is dynamic, which means that server weights may be
+              adjusted on the fly for slow starts for instance.
+
+    (from http://haproxy.1wt.eu/download/1.4/doc/configuration.txt)
+
 <p>
 <em>Stickiness</em> is best when your backend servers are <b>not</b> identical,
 and some users/clients should only ever go to some particular set of backend
@@ -346,8 +652,9 @@ The <code>mod_proxy</code> module only works for FTP/FTPS sessions; it does
 <p>
 <b>Logging</b><br>
 The <code>mod_proxy</code> module supports different forms of logging.  The
-main module logging is done via the <code>ProxyLog</code> directive.  For
-debugging purposes, the module also uses <a href="http://www.proftpd.org/docs/howto/Tracing.html">trace logging</a>, via the module-specific channels:
+main module logging is done via the
+<a href="#ProxyLog"><code>ProxyLog</code></a> directive.  For debugging
+purposes, the module also uses <a href="http://www.proftpd.org/docs/howto/Tracing.html">trace logging</a>, via the module-specific channels:
 <ul>
   <li>proxy
   <li>proxy.conn
@@ -377,7 +684,7 @@ use only, and should be removed from any production configuration.
 The following lists the features I hope to add to <code>mod_proxy</code>,
 according to need, demand, inclination, and time:
 <ul>
-  <li>FTPS connections to backend servers
+  <li>FTPS connections to backend/destination servers
   <li>SFTP/SCP support
 </ul>
 
