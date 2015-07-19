@@ -52,6 +52,25 @@ Supporting this means not connecting to the real server until pre-USER time;
 mod_proxy needs to be modified to deal with this case.  It's work needed
 for USER-based backend selection in the reverse proxy case, anyway.
 
+Client configuration:
+
+  <li><code>proxyuser,user@host</code>
+FZ:
+  https://www3.trustwave.com/support/kb/article.aspx?id=13497
+See <a href="https://winscp.net/eng/docs/ui_login_proxy">WinSCP</a>
+this is what <code>lftp</code> calls "user" for its <code>ftp:proxy-auth-type</code> setting.
+  </li>
+
+  <li><code>proxyuser@host,user</code>
+Chrome: uses system proxy settings (on Mac, at least?)
+FF:
+  http://www.wikihow.com/Enter-Proxy-Settings-in-Firefox
+FZ:
+  https://www3.trustwave.com/support/kb/article.aspx?id=13497
+See <a href="https://winscp.net/eng/docs/ui_login_proxy">WinSCP</a>
+this is what <code>lftp</code> calls "proxy-user@host" for its <code>ftp:proxy-auth-type</code> setting.
+
+
 Future methods:
 
 Net::Config:
@@ -69,6 +88,7 @@ Net::Config:
 
 See also this, which has *9* methods:
   http://www.mcknight.de/jftpgw/config.html#loginstyle
+
 
 Limiting the proxied hosts:
   ProxyBlock:
