@@ -122,7 +122,7 @@ int proxy_ftp_sess_send_host(pool *p, struct proxy_session *proxy_sess) {
   cmd_rec *cmd;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
-  const char *hostport;
+  const char *host;
 
   if (pr_table_get(proxy_sess->backend_features, C_HOST, NULL) == NULL) {
     pr_trace_msg(trace_channel, 9,
@@ -132,14 +132,15 @@ int proxy_ftp_sess_send_host(pool *p, struct proxy_session *proxy_sess) {
 
   tmp_pool = make_sub_pool(p);
 
-  hostport = proxy_conn_get_hostport(proxy_sess->dst_pconn);
-  cmd = pr_cmd_alloc(tmp_pool, 2, C_HOST, hostport);
+  host = pr_netaddr_get_ipstr(proxy_sess->dst_addr);
+  cmd = pr_cmd_alloc(tmp_pool, 2, C_HOST, host);
+  cmd->arg = pstrdup(tmp_pool, host);
   res = proxy_ftp_ctrl_send_cmd(tmp_pool, proxy_sess->backend_ctrl_conn, cmd);
   if (res < 0) {
     xerrno = errno;
 
     pr_trace_msg(trace_channel, 4,
-      "error sending '%s %s' to backend: %s", cmd->argv[0], hostport,
+      "error sending '%s %s' to backend: %s", cmd->argv[0], host,
       strerror(xerrno));
     destroy_pool(tmp_pool);
 
