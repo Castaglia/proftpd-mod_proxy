@@ -684,8 +684,29 @@ proxying:
     ProxyTables /var/ftp/proxy
 
     ProxyRole reverse
-    ProxyReverseServers ftp://ftp-backend1.example.com:2121 ftp://ftp-backend2.example.com:2121 ...
     ProxyReverseConnectPolicy RoundRobin
+    ProxyReverseServers ftp://ftp-backend1.example.com:2121 ftp://ftp-backend2.example.com:2121 ...
+  &lt;/IfModule&gt;
+</pre>
+
+<p>
+Here's an example <code>mod_proxy</code> configuration for reverse proxying,
+with lookup of per-user backend servers:
+<pre>
+<pre>
+  &lt;IfModule mod_proxy.c&gt;
+    ProxyEngine on
+    ProxyLog /path/to/proxy.log
+    ProxyTables /var/ftp/proxy
+
+    ProxyRole reverse
+    ProxyReverseConnectPolicy PerUser
+
+    # We need to provide a pool of backend servers as a fallback
+    ProxyReverseServers ftp://ftp-backend1.example.com:2121 ftp://ftp-backend2.example.com:2121 ...
+
+    # Look up per-user backend servers from user-specific files
+    ProxyReverseServers file:/var/ftp/proxy/backends/%U.txt
   &lt;/IfModule&gt;
 </pre>
 
@@ -703,9 +724,9 @@ Which should you use, and why?
 All of the <em>balancing</em> policies are able to select the backend server
 <em>when the FTP client connects to the proxy, before sending any commands</em>.
 Most of the "sticky" policies, on the other hand, require more knowledge about
-the user (<i>e.g.</i> USER name, HOST name, SSL session ID) <em>before the
-backend server can be determined</em>, thus backend server selection is
-delayed until that information is obtained.
+the user (<i>e.g.</i> <code>USER</code> name, <code>HOST</code> name, SSL
+session ID) <em>before the backend server can be determined</em>, thus backend
+server selection is delayed until that information is obtained.
 
 <p>
 <em>Balancing</em> is best when all of your backend severs are identical with
@@ -808,6 +829,35 @@ On the other hand, <b><i>if</i></b> your FTP sessions tend to be shorter
 (<i>e.g.</i> minutes at most), then using <code>ProxyReverseConnectPolicy
 RoundRobin</code> might provide a more even distribution of connections
 across your pool of backend servers.
+
+<p><a name="ProxyPerHostBackendServers">
+<font color=red>Question</font>: I am using:
+<pre>
+  ProxyReverseConnectPolicy PerHost
+</pre>
+and would like to configure different pools of backend servers for different
+incoming clients.  How do I do this?<br>
+<font color=blue>Answer</font>:  The best way to achieve this would be
+to use <a href="http://www.proftpd.org/docs/howto/Classes.html">classes</a>
+and <code>mod_ifsession</code>'s <code>&lt;IfClass&gt;</code> sections.  For
+example:
+<pre>
+  &lt;Class proxied-clients&gt;
+  &lt;/Class&gt;
+
+  ProxyRole reverse
+  ProxyReverseConnectPolicy PerHost
+
+  &lt;IfClass proxied-clients&gt;
+    ProxyReverseServers ftp://ftp-special1.example.com:2121 ftp://ftp-special2.example.com:2121 ...
+  &lt;/IfClass&gt;
+
+  # Don't forget to configure the backend server pool for clients coming
+  # from other networks!
+  &lt;IfClass !proxied-clients&gt;
+    ProxyReverseServers ftp://ftp-backend1.example.com:2121 ftp://ftp-backend2.example.com:2121 ...
+  &lt;/IfClass&gt;
+</pre>
 
 <p>
 <hr>
