@@ -316,16 +316,18 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, const char *stmt,
       stmt, ncols);
 
     for (i = 0; i < ncols; i++) {
-      const unsigned char *val;
+      char *val = NULL;
+
+      pr_signals_handle();
 
       /* By using sqlite3_column_text, SQLite will coerce the column value
        * into a string.
        */
-      val = sqlite3_column_text(pstmt, i);
+      val = pstrdup(p, (const char *) sqlite3_column_text(pstmt, i));
 
       pr_trace_msg(trace_channel, 17,
         "column %s [%u]: %s", sqlite3_column_name(pstmt, i), i, val);
-      *((char **) push_array(results)) = pstrdup(p, (const char *) val);
+      *((char **) push_array(results)) = val;
     }
 
     res = sqlite3_step(pstmt);
@@ -367,6 +369,18 @@ int proxy_db_open(pool *p, const char *table_path) {
       sqlite3_errmsg(proxy_dbh));
     errno = EPERM;
     return -1;
+  }
+
+  /* Tell SQLite to only use in-memory journals.  This is necessary for
+   * working properly when a chroot is used.  Note that the MEMORY journal mode
+   * of SQLite is supported only for SQLite-3.6.5 and later.
+   */
+  res = sqlite3_exec(proxy_dbh, "PRAGMA journal_mode = MEMORY;", NULL, NULL,
+    NULL);
+  if (res != SQLITE_OK) {
+    pr_trace_msg(trace_channel, 2,
+      "error setting MEMORY journal mode on SQLite database '%s': %s", table_path,
+      sqlite3_errmsg(proxy_dbh));
   }
 
   prepared_stmts = pr_table_nalloc(db_pool, 0, 4);

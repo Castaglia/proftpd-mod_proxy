@@ -335,13 +335,25 @@ behavior of <code>mod_proxy</code>.  For example:
 <p>
 The currently implemented options are:
 <ul>
+  <li><code>ShowFeatures</code><br>
+    <p>
+    When reverse proxing, <code>mod_proxy</code> defaults to not responding to
+    the FTP <code>FEAT</code> command, which is used to determine the supported
+    features/capabilities of the FTP server; this is done to prevent leaking
+    of information about internal FTP servers to the outside world.  However,
+    some clients rely on the <code>FEAT</code> data.  For such clients/use
+    cases, use this option to tell <code>mod_proxy</code> to proxy the
+    <code>FEAT</code> command/response to the backend server.
+  </li>
+
+  <p>
   <li><code>UseProxyProtocol</code><br>
     <p>
     When <code>mod_proxy</code> connects to the backend/destination server,
-    it will use the <a href="http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt"><code>PROXY</code></a> protocol, sending the human-readable
-    <code>PROXY</code> command to the destination server.  This allows
-    backend servers to implement access controls/logging, based on the
-    IP address of the connecting (and proxied) client.  The <a href="https://github.com/Castaglia/proftpd-mod_proxy_protocol"><code>mod_proxy_protocol</code></a>
+    use the <a href="http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt"><code>PROXY</code></a> protocol, sending the human-readable <code>PROXY</code>
+    command to the destination server.  This allows backend servers to implement
+    access controls/logging, based on the IP address of the connecting client.
+    The <a href="https://github.com/Castaglia/proftpd-mod_proxy_protocol"><code>mod_proxy_protocol</code></a>
     ProFTPD module can be used to handle the <code>PROXY</code> command on
     the receiving side, <i>i.e.</i> when using <code>proftpd</code> as the
     backend/destination server.
@@ -382,6 +394,22 @@ The currently supported policies are:
   <li><code>LeastConns</code>
     <p>
     Select the backend server with the lowest number of proxied connections.
+  </li>
+
+  <p>
+  <li><code>PerHost</code>
+    <p>
+    Select a backend server based on the IP address of the connecting client;
+    any future connections from that IP address will be routed to the same
+    backend server.
+  </li>
+
+  <p>
+  <li><code>PerUser</code>
+    <p>
+    Select a backend server based on the <code>USER</code> name used by the
+    connecting client; any future connections using that same <code>USER</code>
+    name will be routed to the same backend server.
   </li>
 
   <p>
@@ -579,7 +607,7 @@ to IPv6-capable FTP clients.
 <p>
 When performing reverse proxying, <code>mod_proxy</code> can also perform
 load balancing in various ways.  The common methods of "round robin" and
-"least connections" are implemented; soon <code>mod_proxy</code> will provide
+"least connections" are implemented; <code>mod_proxy</code> also provides
 "sticky session" load balancing of clients as well.
 
 <p>
@@ -703,9 +731,14 @@ The <em>balancing</em> policies are:
 <em>Stickiness</em> is best when your backend servers are <b>not</b> identical,
 and some users/clients <em>should only ever go to the same set of backend
 servers</em>.  Thus the user/client needs to be "sticky" to a given backend
-server(s); that's when you need the sticky
-<code>ProxyReverseConnectPolicy</code> parameters such as <em>PerUser</em>,
-<em>PerHost</em>, <i>etc</i>.
+server.
+
+<p>
+The <em>sticky</em> policies are:
+<ul>
+  <li><code>PerHost</code>
+  <li><code>PerUser</code>
+</ul>
 
 <p>
 <b>SFTP/SCP Support</b><br>
@@ -747,7 +780,6 @@ use only, and should be removed from any production configuration.
 The following lists the features I hope to add to <code>mod_proxy</code>,
 according to need, demand, inclination, and time:
 <ul>
-  <li>Sticky load balancing policies
   <li>FTPS connections to backend/destination servers
   <li>Directory format translation (<i>e.g.</i> <code>LIST</code> to <code>MLSD</code>)
   <li>SFTP/SCP support

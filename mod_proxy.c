@@ -64,13 +64,10 @@ static const char *proxy_tables_dir = NULL;
 
 static const char *trace_channel = "proxy";
 
-MODRET proxy_cmd(cmd_rec *cmd) {
+MODRET proxy_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res, xerrno;
-  struct proxy_session *proxy_sess;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
-
-  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
     cmd);
@@ -194,10 +191,8 @@ static int proxy_mkdir(const char *dir, uid_t uid, gid_t gid, mode_t mode) {
   struct stat st;
   int res = -1;
 
-  pr_fs_clear_cache();
-  res = pr_fsio_stat(dir, &st);
-
-  if (res == -1 &&
+  res = stat(dir, &st);
+  if (res < 0 &&
       errno != ENOENT) {
     return -1;
   }
@@ -210,7 +205,7 @@ static int proxy_mkdir(const char *dir, uid_t uid, gid_t gid, mode_t mode) {
   /* The given mode is absolute, not subject to any Umask setting. */
   prev_mask = umask(0);
 
-  if (pr_fsio_mkdir(dir, mode) < 0) {
+  if (mkdir(dir, mode) < 0) {
     int xerrno = errno;
 
     (void) umask(prev_mask);
@@ -220,7 +215,7 @@ static int proxy_mkdir(const char *dir, uid_t uid, gid_t gid, mode_t mode) {
 
   umask(prev_mask);
 
-  if (pr_fsio_chown(dir, uid, gid) < 0) {
+  if (chown(dir, uid, gid) < 0) {
     return -1;
   }
 
@@ -232,8 +227,7 @@ static int proxy_mkpath(pool *p, const char *path, uid_t uid, gid_t gid,
   char *currpath = NULL, *tmppath = NULL;
   struct stat st;
 
-  pr_fs_clear_cache();
-  if (pr_fsio_stat(path, &st) == 0) {
+  if (stat(path, &st) == 0) {
     /* Path already exists, nothing to be done. */
     errno = EEXIST;
     return -1;
@@ -257,20 +251,28 @@ static int proxy_mkpath(pool *p, const char *path, uid_t uid, gid_t gid,
 }
 
 static int proxy_rmpath(pool *p, const char *path) {
-  void *dirh;
+  DIR *dirh;
   struct dirent *dent;
   int res, xerrno = 0;
 
-  dirh = pr_fsio_opendir(path);
+  dirh = opendir(path);
   if (dirh == NULL) {
     xerrno = errno;
-    pr_trace_msg(trace_channel, 9,
-      "error opening '%s': %s", path, strerror(xerrno));
-    errno = xerrno;
-    return -1;
+
+    /* Change the permissions in the directory, and try again. */
+    if (chmod(path, (mode_t) 0755) == 0) {
+      dirh = opendir(path);
+    }
+
+    if (dirh == NULL) {
+      pr_trace_msg(trace_channel, 9,
+        "error opening '%s': %s", path, strerror(xerrno));
+      errno = xerrno;
+      return -1;
+    }
   }
 
-  while ((dent = pr_fsio_readdir(dirh)) != NULL) {
+  while ((dent = readdir(dirh)) != NULL) {
     struct stat st;
     char *file;
 
@@ -283,7 +285,7 @@ static int proxy_rmpath(pool *p, const char *path) {
 
     file = pdircat(p, path, dent->d_name, NULL);
 
-    if (pr_fsio_stat(file, &st) < 0) {
+    if (stat(file, &st) < 0) {
       pr_trace_msg(trace_channel, 9,
         "unable to stat '%s': %s", file, strerror(errno));
       continue;
@@ -297,7 +299,7 @@ static int proxy_rmpath(pool *p, const char *path) {
       }
 
     } else {
-      res = pr_fsio_unlink(file);
+      res = unlink(file);
       if (res < 0) {
         pr_trace_msg(trace_channel, 9,
           "error removing file '%s': %s", file, strerror(errno));
@@ -305,9 +307,9 @@ static int proxy_rmpath(pool *p, const char *path) {
     }
   }
 
-  pr_fsio_closedir(dirh);
+  closedir(dirh);
 
-  res = pr_fsio_rmdir(path);
+  res = rmdir(path);
   if (res < 0) {
     xerrno = errno;
     pr_trace_msg(trace_channel, 9,
@@ -364,7 +366,6 @@ static void proxy_remove_symbols(void) {
 
 static void proxy_restrict_session(void) {
   const char *proxy_chroot = NULL;
-  rlim_t curr_nproc, max_nproc;
 
   PRIVS_ROOT
 
@@ -413,29 +414,6 @@ static void proxy_restrict_session(void) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "proxy session running as UID %lu, GID %lu, located in '%s'",
       (unsigned long) getuid(), (unsigned long) getgid(), getcwd(NULL, 0));
-  }
-
-  /* Once we have chrooted, and dropped root privs completely, we can now
-   * lower our nproc resource limit, so that we cannot fork any new
-   * processed.  We should not be doing so, and we want to mitigate any
-   * possible exploitation.
-   */
-  if (pr_rlimit_get_nproc(&curr_nproc, NULL) == 0) {
-    max_nproc = curr_nproc;
-
-    if (pr_rlimit_set_nproc(curr_nproc, max_nproc) < 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error setting nproc resource limits to %lu: %s",
-        (unsigned long) max_nproc, strerror(errno));
-
-    } else {
-      pr_trace_msg(trace_channel, 13,
-        "set nproc resource limits to %lu", (unsigned long) max_nproc);
-    }
-
-  } else {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error getting nproc limits: %s", strerror(errno));
   }
 }
 
@@ -642,6 +620,9 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
     if (strncmp(cmd->argv[i], "UseProxyProtocol", 17) == 0) {
       opts |= PROXY_OPT_USE_PROXY_PROTOCOL;
 
+    } else if (strncmp(cmd->argv[i], "ShowFeatures", 13) == 0) {
+      opts |= PROXY_OPT_SHOW_FEATURES;
+
     } else {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxyOption '",
         cmd->argv[i], "'", NULL));
@@ -696,12 +677,13 @@ MODRET set_proxyreverseconnectpolicy(cmd_rec *cmd) {
 }
 
 /* usage: ProxyReverseServers server1 ... server N
- *                            file://path/to/server/list.txt
- *                            sql://SQLNamedQuery
+ *                            file:/path/to/server/list.txt
+ *                            sql:/SQLNamedQuery
  */
 MODRET set_proxyreverseservers(cmd_rec *cmd) {
   config_rec *c;
   array_header *backend_servers;
+  char *uri = NULL;
 
   if (cmd->argc-1 < 1) {
     CONF_ERROR(cmd, "wrong number of parameters");
@@ -709,11 +691,10 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
 
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
-  c = add_config_param(cmd->argv[0], 1, NULL);
+  c = add_config_param(cmd->argv[0], 2, NULL, NULL);
   backend_servers = make_array(c->pool, 1, sizeof(struct proxy_conn *));
 
   if (cmd->argc-1 == 1) {
-
     /* We are dealing with one of the following possibilities:
      *
      *  file:/path/to/file.txt
@@ -723,35 +704,50 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
 
     if (strncmp(cmd->argv[1], "file:", 5) == 0) {
       char *path;
-      int xerrno;
 
       path = cmd->argv[1] + 5;
-    
-      /* For now, load the list of servers at sess init time.  In
-       * the future, we will want to load it at postparse time, mapped
-       * to the appropriate server_rec, and clear/reload on 'core.restart'.
+
+      /* If the path contains the %U variable, then defer loading of
+       * this file until the USER name is known.
        */
+      if (strstr(path, "%U") == NULL) {    
+        int xerrno;
 
-      PRIVS_ROOT
-      backend_servers = proxy_reverse_file_parse_uris(cmd->server->pool,
-        path);
-      xerrno = errno;
-      PRIVS_RELINQUISH
+        /* For now, load the list of servers at sess init time.  In
+         * the future, we will want to load it at postparse time, mapped
+         * to the appropriate server_rec, and clear/reload on 'core.restart'.
+         */
 
-      if (backend_servers == NULL) {
-        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
-          "error reading ProxyReverseServers file '", path, "': ",
-          strerror(xerrno), NULL));
+        PRIVS_ROOT
+        backend_servers = proxy_reverse_file_parse_uris(cmd->server->pool,
+          path);
+        xerrno = errno;
+        PRIVS_RELINQUISH
+
+        if (backend_servers == NULL) {
+          CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+            "error reading ProxyReverseServers file '", path, "': ",
+            strerror(xerrno), NULL));
+        }
+
+        if (backend_servers->nelts == 0) {
+          CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+            "no usable URLs found in file '", path, NULL));
+        }
       }
 
-      if (backend_servers->nelts == 0) {
-        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
-          "no usable URLs found in file '", path, NULL));
-      }
+      uri = cmd->argv[1];
 
     } else if (strncmp(cmd->argv[1], "sql:/", 5) == 0) {
-      /* XXX Implement */
-      CONF_ERROR(cmd, "not yet implemented");
+
+      /* Unfortunately there's not very much we can do to validate these
+       * SQL URIs at the moment.  They point to a SQLNamedQuery, which
+       * may not have been parsed yet from the config file, or which may be
+       * in a <Global> scope.  Thus we simply store them for now, and
+       * let the lookup routines do the necessary validation.
+       */
+
+      uri = cmd->argv[1];
 
     } else {
       /* Treat it as a server-spec (i.e. a URI) */
@@ -785,6 +781,10 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
   }
 
   c->argv[0] = backend_servers;
+  if (uri != NULL) {
+    c->argv[1] = pstrdup(c->pool, uri);
+  }
+
   return PR_HANDLED(cmd);
 }
 
@@ -803,7 +803,7 @@ MODRET set_proxyrole(cmd_rec *cmd) {
     role = PROXY_ROLE_REVERSE;
 
   } else {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown proxy type '", cmd->argv[1],
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown proxy role '", cmd->argv[1],
       "'", NULL));
   }
 
@@ -2269,6 +2269,13 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
 
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:
+      if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
+        /* If we've already authenticated, then let the backend server
+         * deal with this.
+         */
+        return proxy_cmd(cmd, proxy_sess);
+      }
+
       res = proxy_reverse_handle_user(cmd, proxy_sess, &successful);
       break;
 
@@ -2277,7 +2284,7 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
         /* If we've already authenticated, then let the backend server
          * deal with this.
          */
-        return proxy_cmd(cmd);
+        return proxy_cmd(cmd, proxy_sess);
       }
 
       res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
@@ -2354,6 +2361,13 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
 
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:
+      if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
+        /* If we've already authenticated, then let the backend server
+         * deal with this.
+         */
+        return proxy_cmd(cmd, proxy_sess);
+      }
+
       res = proxy_reverse_handle_pass(cmd, proxy_sess, &successful);
       break;
 
@@ -2362,7 +2376,7 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
         /* If we've already authenticated, then let the backend server
          * deal with this.
          */
-        return proxy_cmd(cmd);
+        return proxy_cmd(cmd, proxy_sess);
       }
 
       res = proxy_forward_handle_pass(cmd, proxy_sess, &successful,
@@ -2445,7 +2459,7 @@ MODRET proxy_type(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   if (resp->num[0] == '2') {
     char *type;
 
-    /* This code is duplicated from mod_xfer.c:xfer_type().  Would be nice
+    /* This code is duplicated from mod_xfer.c#xfer_type().  Would be nice
      * to factor it out somewhere reusable, i.e. some pr_str_ function.
      */
 
@@ -2492,7 +2506,6 @@ MODRET proxy_any(cmd_rec *cmd) {
     return PR_DECLINED(cmd);
   }
 
-  /* XXX TODO: the response blocking is role-specific...? */
   pr_response_block(FALSE);
   pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
  
@@ -2612,9 +2625,17 @@ MODRET proxy_any(cmd_rec *cmd) {
 
     case PR_CMD_FEAT_ID:
       if (proxy_role == PROXY_ROLE_REVERSE) {
-        /* In reverse-proxy mode, we do not want to necessarily leak the
-         * capabilities of the selected backend server to the client.
+        /* In reverse proxy mode, we do not want to necessarily leak the
+         * capabilities of the selected backend server to the client.  Or
+         * do we?
          */
+        if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+          if (proxy_opts & PROXY_OPT_SHOW_FEATURES) {
+            mr = proxy_cmd(cmd, proxy_sess);
+            return mr;
+          }
+        }
+
         return PR_DECLINED(cmd);
       }
 
@@ -2666,7 +2687,7 @@ MODRET proxy_any(cmd_rec *cmd) {
     }
   }
 
-  return proxy_cmd(cmd);
+  return proxy_cmd(cmd, proxy_sess);
 }
 
 /* Event handlers
@@ -2677,8 +2698,6 @@ static void proxy_ctrl_read_ev(const void *event_data, void *user_data) {
     case PROXY_ROLE_REVERSE:
       if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
         proxy_restrict_session();
-
-        /* Our work here is done; we no longer need to listen for future reads. */
         pr_event_unregister(&proxy_module, "mod_proxy.ctrl-read",
           proxy_ctrl_read_ev);
       }
@@ -3039,17 +3058,11 @@ static int proxy_sess_init(void) {
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:
       if (proxy_reverse_sess_init(proxy_pool, proxy_tables_dir) < 0) {
-        proxy_engine = FALSE;
-
-        /* XXX TODO: Return 530 to connecting client? */
-        return -1;
+        pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
+          "Unable to initialize reverse proxy API");
       }
 
-      /* XXX TODO: Move this reverse_connect() call into the reverse module,
-       * so that e.g. we can do user-based selection.
-       */
       if (proxy_reverse_connect(proxy_pool, proxy_sess) < 0) {
-        /* XXX TODO: Return 530 to connecting client? */
         pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
           "Unable to connect to backend server");
       }
@@ -3059,10 +3072,8 @@ static int proxy_sess_init(void) {
 
     case PROXY_ROLE_FORWARD:
       if (proxy_forward_sess_init(proxy_pool, proxy_tables_dir) < 0) {
-        proxy_engine = FALSE;
-
-        /* XXX TODO: Return 530 to connecting client? */
-        return -1; 
+        pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
+          "Unable to initialize forward proxy API");
       }
 
       /* XXX TODO:
@@ -3072,20 +3083,6 @@ static int proxy_sess_init(void) {
       set_auth_check(proxy_forward_have_authenticated);
       break;
   }
-
-  /* XXX DisplayLogin? Only if we do the gateway selection at USER time... */
-
-  /* XXX block responses?
-   *
-   * If we are to connect to the backend right now, then yes, block responses:
-   * we will proxy the connect banner back to the client.  Otherwise, no, do
-   * not block responses.  By using:
-   *
-   *  pr_response_block(TRUE);
-   *
-   * here, as mod_sftp does, we can prevent the client from receiving
-   * the normal FTP banner later.
-   */
 
   /* XXX set protocol?  What about ssh2 proxying?  How to interact
    * with mod_sftp, which doesn't have the same pipeline of request

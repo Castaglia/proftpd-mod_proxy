@@ -1,5 +1,5 @@
 /*
- * ProFTPD - mod_proxy forward-proxy implementation
+ * ProFTPD - mod_proxy forward proxy implementation
  * Copyright (c) 2012-2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
@@ -30,6 +30,7 @@
 #include "proxy/ftp/sess.h"
 
 static int proxy_method = PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH;
+static int forward_retry_count = PROXY_DEFAULT_RETRY_COUNT;
 
 /* handle_user_passthru flags */
 #define PROXY_FORWARD_USER_PASSTHRU_FL_PARSE_DSTADDR	0x001
@@ -69,7 +70,7 @@ int proxy_forward_sess_init(pool *p, const char *tables_dir) {
     allowed = *((int *) enabled);
     if (allowed == FALSE) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "forward proxying not allowed for client address %s in <Class %s>"
+        "forward proxying not allowed from client address %s in <Class %s> "
         "(see ProxyForwardEnabled)",
         pr_netaddr_get_ipstr(session.c->remote_addr),
         session.conn_class->cls_name);
@@ -81,7 +82,7 @@ int proxy_forward_sess_init(pool *p, const char *tables_dir) {
 
     } else {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "forward proxying not allowed for non-RFC1918 client address %s",
+        "forward proxying not allowed from non-RFC1918 client address %s",
         pr_netaddr_get_ipstr(session.c->remote_addr));
     }
   }
@@ -89,6 +90,11 @@ int proxy_forward_sess_init(pool *p, const char *tables_dir) {
   if (allowed == FALSE) {
     errno = EPERM;
     return -1;
+  }
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyRetryCount", FALSE);
+  if (c != NULL) {
+    forward_retry_count = *((int *) c->argv[0]);
   }
 
   return 0;
@@ -129,14 +135,47 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
     pr_response_t **resp, unsigned int *resp_nlines) {
   conn_t *server_conn = NULL;
   int banner_ok = TRUE;
+  pr_netaddr_t *dst_addr;
+  array_header *other_addrs = NULL;
 
-  server_conn = proxy_conn_get_server_conn(p, proxy_sess, proxy_sess->dst_addr);
+  dst_addr = proxy_sess->dst_addr;
+  other_addrs = proxy_sess->other_addrs;
+
+  server_conn = proxy_conn_get_server_conn(p, proxy_sess, dst_addr);
   if (server_conn == NULL) {
-    /* EINVALs lead to strange-looking error responses; change them to EPERM. */
-    if (errno == EINVAL) {
-      errno = EPERM;
+    int xerrno = errno;
+
+    if (other_addrs != NULL) {
+      register unsigned int i;
+
+      /* Try the other IP addresses for the requested name (if any) as well. */
+      for (i = 0; i < other_addrs->nelts; i++) {
+        dst_addr = ((pr_netaddr_t **) other_addrs->elts)[i];
+
+        pr_trace_msg(trace_channel, 8,
+          "attempting to connect to other address #%u (%s) for requested "
+          "URI '%.100s'", i+1, pr_netaddr_get_ipstr(dst_addr),
+          proxy_conn_get_uri(proxy_sess->dst_pconn));
+        server_conn = proxy_conn_get_server_conn(p, proxy_sess, dst_addr);
+        if (server_conn != NULL) {
+          proxy_sess->dst_addr = dst_addr;
+          break;
+        }
+      }
     }
 
+    if (server_conn == NULL) {
+      xerrno = errno;
+
+      /* EINVALs lead to strange-looking error responses; change them to
+       * EPERM.
+       */
+      if (xerrno == EINVAL) {
+        xerrno = EPERM;
+      }
+    }
+
+    errno = xerrno;
     return -1;
   }
 
@@ -337,7 +376,6 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
       return -1;
     }
 
-    /* TODO: Need to handle the other_addrs list, if any. */
     remote_addr = proxy_conn_get_addr(pconn, &other_addrs);
 
     /* Ensure that the requested remote address is NOT (blatantly) ourselves,
@@ -357,6 +395,7 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
     }
 
     proxy_sess->dst_addr = remote_addr;
+    proxy_sess->other_addrs = other_addrs;
     proxy_sess->dst_pconn = pconn;
 
     /* Change the command so that it no longer includes the proxy info. */
@@ -466,7 +505,6 @@ static int forward_handle_user_proxyuserwithproxyauth(cmd_rec *cmd,
   int flags = 0, res;
 
   if (!(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED)) {
-    int res;
     char *user = NULL;
     struct proxy_conn *pconn = NULL;
     pr_netaddr_t *remote_addr = NULL;
@@ -478,9 +516,9 @@ static int forward_handle_user_proxyuserwithproxyauth(cmd_rec *cmd,
       return -1;
     }
 
-    /* TODO: Need to handle the other_addrs list, if any. */
     remote_addr = proxy_conn_get_addr(pconn, &other_addrs);
     proxy_sess->dst_addr = remote_addr;
+    proxy_sess->other_addrs = other_addrs;
     proxy_sess->dst_pconn = pconn;
 
     /* Rewrite the USER command here with the trimmed/truncated name. */
