@@ -1,8 +1,5 @@
 
-ProxyBackendSelection random roundRobin leastConns perUser perHost
-
-  lib/proxy/filetable.c
-    for reading a pr_table_t from file on disk.  Overkill?
+ProxyReverseConnectPolicy Random RoundRobin LeastConns PerUser PerHost
 
   on startup event, iterate through configured backend servers, mark which
   ones cannot be connected to as "dead".
@@ -35,41 +32,36 @@ ProxyBackendSelection random roundRobin leastConns perUser perHost
     Some platforms have a timersub(3) macro for this, but it'll be more
     portable to do our own.
 
-Simple balancing (selection at connect time):
-
-  random
-
-  round robin
-    (requires pre-fork event to be added to core)
-    Note: For "ServerType inetd", roundrobin cannot be supported (no process
-      for tracking state)
-
-  least conns
-    (requires pre-fork event to be added to core, state to be maintained by
-     mod_proxy)
-
-  equal distribution (all servers have same number of conns)
-    (requires pre-fork event to be added to core, state to be maintained by
-     mod_proxy)
-
-  Note: for any of these, if the initially selected backend refuses the
-  connection (tcp connect fails, or response code non-2xxx returned), then
-  need to select next from "live" list, and so on.  Should the number of
-  "retry nexts" be configurable?
-
 Advanced balancing (selection at USER time):
 
-  random
-
-  round robin
-
-  least conns
-
-  equal distribution
-
   user-specific (lookup per user)
-
+    Randomly select N backend servers for user if not already assigned?
+ 
   host-specific (lookup per HOST/SNI)
+    Randomly select N backend servers for host if not already assigned?
+
+
+For stickiness, we have two cases: one where the backend(s) are administratively
+assigned, and one where they are randomly chosen/assigned.  Assume the former
+is the more common case.
+
+  Could do:
+    ConnectPolicy PerUser/PerHost
+    Servers ...
+
+    with no specific assignments.  In this case, the username/client IP
+    is hashed into an index of one of the servers, and kept that way.  Let's
+    start with that as the first iteration.
+
+  Next:
+    ConnectPolicy PerUser/PerHost
+
+    <IfUser>
+      ReverseServers ...
+    </IfUser>
+
+FAQ: Why no PerClass stickiness?
+A: It's the same as PerHost, with the added use of <IfClass>+ReverseServers
 
 Complex/adaptive balancing:
 
