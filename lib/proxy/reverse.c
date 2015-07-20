@@ -43,6 +43,139 @@ static int reverse_retry_count = PROXY_DEFAULT_RETRY_COUNT;
 
 static const char *trace_channel = "proxy.reverse";
 
+static int check_parent_dir_perms(pool *p, const char *path) {
+  struct stat st;
+  int res;
+  char *dir_path, *ptr = NULL;
+
+  ptr = strrchr(path, '/');
+  if (ptr != path) {
+    dir_path = pstrndup(p, path, ptr - path);
+
+  } else {
+    dir_path = "/";
+  }
+
+  res = stat(dir_path, &st);
+  if (res < 0) {
+    int xerrno = errno;
+
+    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+      ": unable to stat ProxyReverseServers %s directory '%s': %s",
+      path, dir_path, strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  if (st.st_mode & S_IWOTH) {
+    int xerrno = EPERM;
+
+    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+      ": unable to use ProxyReverseServers %s from world-writable "
+      "directory '%s' (perms %04o): %s", path, dir_path,
+      st.st_mode & ~S_IFMT, strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  return 0;
+}
+
+static int check_file_perms(pool *p, const char *path) {
+  struct stat st;
+  int res;
+  const char *orig_path;
+
+  orig_path = path;
+
+  res = lstat(path, &st);
+  if (res < 0) {
+    int xerrno = errno;
+
+    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+      ": unable to lstat ProxyReverseServers '%s': %s", path, strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  if (S_ISLNK(st.st_mode)) {
+    char buf[PR_TUNABLE_PATH_MAX+1];
+
+    /* Check the permissions on the parent directory; if they're world-writable,
+     * then this symlink can be deleted/pointed somewhere else.
+     */
+    res = check_parent_dir_perms(p, path);
+    if (res < 0) {
+      return -1;
+    }
+
+    /* Follow the link to the target path; that path will then have its
+     * parent directory checked.
+     */
+    memset(buf, '\0', sizeof(buf));
+    res = readlink(path, buf, sizeof(buf)-1);
+    if (res > 0) {
+      path = pstrdup(p, buf);
+    }
+
+    res = stat(orig_path, &st);
+    if (res < 0) {
+      int xerrno = errno;
+
+      pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+        ": unable to stat ProxyReverseServers '%s': %s", orig_path,
+        strerror(xerrno));
+
+      errno = xerrno;
+      return -1;
+    }
+  }
+
+  if (S_ISDIR(st.st_mode)) {
+    int xerrno = EISDIR;
+
+    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+      ": unable to use ProxyReverseServers '%s': %s", orig_path,
+      strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  /* World-writable files are insecure, and are thus not usable/trusted. */
+  if (st.st_mode & S_IWOTH) {
+    int xerrno = EPERM;
+
+    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+      ": unable to use world-writable ProxyReverseServers '%s' "
+      "(perms %04o): %s", orig_path, st.st_mode & ~S_IFMT, strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  /* TODO: This will warn about files such as FIFOs, BUT will leave them
+   * usable.  Good idea, or bad idea?
+   */
+  if (!S_ISREG(st.st_mode)) {
+    pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
+      ": ProxyReverseServers '%s' is not a regular file", orig_path);
+  }
+
+  /* Check the parent directory of this file.  If the parent directory
+   * is world-writable, that too is insecure.
+   */
+  res = check_parent_dir_perms(p, path);
+  if (res < 0) {
+    return -1;
+  }
+
+  return 0;
+}
+
 /* Copied from src/table.c#key_hash. */
 static unsigned int str2hash(const void *key, size_t keysz) {
   unsigned int i = 0;
@@ -640,7 +773,7 @@ static int reverse_db_leastconns_used(pool *p, unsigned int vhost_id,
 static array_header *reverse_db_peruser_get(pool *p, unsigned int vhost_id,
     const char *user) {
   int res;
-  const char *stmt, *errstr = NULL, *ip;
+  const char *stmt, *errstr = NULL;
   array_header *results;
 
   stmt = "SELECT backend_uri FROM proxy_vhost_reverse_per_user WHERE vhost_id = ? AND user = ?;";
@@ -671,25 +804,324 @@ static array_header *reverse_db_peruser_get(pool *p, unsigned int vhost_id,
   return results;
 }
 
-static struct proxy_conn *reverse_db_peruser_init(pool *p,
-    unsigned int vhost_id, const char *user) {
+/* SQL support routines. */
 
-/* XXX load the list of backends for this user: from SQL, from file, etc.
- * Randomly choose one, use it.
- *
- * Support %U (user) in file:// URIs, SQL queries?
- *
- * If no user-specific backends are found, use the existing ones!
+static cmd_rec *reverse_db_sql_cmd_create(pool *parent_pool, int argc, ...) {
+  pool *cmd_pool = NULL;
+  cmd_rec *cmd = NULL;
+  register unsigned int i = 0;
+  va_list argp;
+
+  cmd_pool = make_sub_pool(parent_pool);
+  cmd = (cmd_rec *) pcalloc(cmd_pool, sizeof(cmd_rec));
+  cmd->pool = cmd_pool;
+
+  cmd->argc = argc;
+  cmd->argv = (char **) pcalloc(cmd->pool, argc * sizeof(char *));
+
+  /* Hmmm... */
+  cmd->tmp_pool = cmd->pool;
+
+  va_start(argp, argc);
+  for (i = 0; i < argc; i++)
+    cmd->argv[i] = va_arg(argp, char *);
+  va_end(argp);
+
+  return cmd;
+}
+
+static const char *reverse_db_sql_quote_str(pool *p, char *str) {
+  size_t len;
+  cmdtable *cmdtab;
+  cmd_rec *cmd;
+  modret_t *res;
+
+  len = strlen(str);
+  if (len == 0) {
+    return str;
+  }
+
+  cmdtab = pr_stash_get_symbol2(PR_SYM_HOOK, "sql_escapestr", NULL, NULL, NULL);
+  if (cmdtab == NULL) {
+    return str;
+  }
+
+  cmd = reverse_db_sql_cmd_create(p, 1, pr_str_strip(p, str));
+  res = pr_module_call(cmdtab->m, cmdtab->handler, cmd);
+  if (MODRET_ISDECLINED(res) ||
+      MODRET_ISERROR(res)) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing 'sql_escapestr'");
+    return str;
+  }
+
+  return res->data;
+}
+
+/* Look for any user-specific ProxyReverseServers and load them, either
+ * from file or SQL or whateever.  Randomly choose from one of those
+ * backends.  If no user-specific backends are found, use the existing
+ * "global" list.
  */
 
+static array_header *reverse_db_peruser_parse_uris(pool *p,
+    array_header *uris) {
+  array_header *pconns = NULL;
+  register unsigned int i;
+
+  pconns = make_array(p, 0, sizeof(struct proxy_conn *));
+
+  for (i = 0; i < uris->nelts; i++) {
+    char *uri;
+    struct proxy_conn *pconn;
+
+    pr_signals_handle();
+    uri = ((char **) uris->elts)[i];
+
+    /* Skip blank/empty URIs. */
+    if (*uri == '\0') {
+      continue;
+    }
+
+    pconn = proxy_conn_create(p, uri);
+    if (pconn == NULL) {
+      pr_trace_msg(trace_channel, 9, "skipping malformed URL '%s'", uri);
+      continue;
+    }
+
+    *((struct proxy_conn **) push_array(pconns)) = pconn;
+  }
+
+  return pconns;
+}
+
+static array_header *reverse_db_peruser_sql_parse_uris(pool *p,
+    cmdtable *sql_cmdtab, const char *user, const char *named_query) {
+  array_header *backends, *results;
+  pool *tmp_pool;
+  cmd_rec *cmd;
+  modret_t *res;
+
+  tmp_pool = make_sub_pool(p);
+  cmd = reverse_db_sql_cmd_create(tmp_pool, 3, "sql_lookup", named_query, user);
+  res = pr_module_call(sql_cmdtab->m, sql_cmdtab->handler, cmd);
+  if (res == NULL ||
+      MODRET_ISERROR(res)) {
+    destroy_pool(tmp_pool);
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error processing SQLNamedQuery '%s'", named_query);
+    errno = EPERM;
+    return NULL;
+  }
+
+  results = res->data;
+  if (results->nelts == 0) {
+    destroy_pool(tmp_pool);
+    pr_trace_msg(trace_channel, 10,
+      "SQLNamedQuery '%s' returned zero rows for user '%s'", named_query, user);
+    errno = ENOENT;
+    return NULL;
+  }
+
+  backends = reverse_db_peruser_parse_uris(p, results);
+  destroy_pool(tmp_pool);
+
+  if (backends != NULL) {
+    if (backends->nelts == 0) {
+      errno = ENOENT;
+      return NULL;
+    }
+
+    pr_trace_msg(trace_channel, 10,
+      "SQLNamedQuery '%s' returned %d URLs for user '%s'", named_query,
+       backends->nelts, user);
+  }
+
+  return backends;
+}
+
+static array_header *reverse_db_peruser_backends_by_sql(pool *p,
+    const char *user) {
+  config_rec *c;
+  array_header *sql_backends = NULL;
+  const char *quoted_user = NULL;
+  cmdtable *sql_cmdtab;
+
+  sql_cmdtab = pr_stash_get_symbol2(PR_SYM_HOOK, "sql_lookup", NULL, NULL,
+    NULL);
+  if (sql_cmdtab == NULL) {
+    /* No mod_sql backend loaded; no lookups to do. */
+    pr_trace_msg(trace_channel, 18,
+      "no 'sql_lookup' symbol found (mod_sql not loaded?), skipping "
+      "per-user SQL lookups");
+    errno = EPERM;
+    return NULL;
+  }
+
+  while (c != NULL) {
+    const char *named_query, *uri;
+    array_header *backends = NULL;
+
+    pr_signals_handle();
+
+    uri = c->argv[1];
+    if (uri == NULL) {
+      c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
+        FALSE);
+      continue;
+    }
+
+    if (strncmp(uri, "sql:/", 5) != 0) {
+      c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
+        FALSE);
+      continue;
+    }
+
+    if (quoted_user == NULL) {
+      quoted_user = reverse_db_sql_quote_str(p, (char *) user);
+    }
+
+    pr_trace_msg(trace_channel, 17,
+      "loading user-specific ProxyReverseServers SQLNamedQuery '%s'",
+      named_query);
+
+    backends = reverse_db_peruser_sql_parse_uris(p, sql_cmdtab, quoted_user,
+      named_query);
+    if (backends == NULL) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error reading ProxyReverseServers SQLNamedQuery '%s': %s", named_query,
+        strerror(errno));
+      c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
+        FALSE);
+      continue;
+    }
+
+    if (backends->nelts == 0) {
+      pr_trace_msg(trace_channel, 3,
+        "no usable URLs found by ProxyReverseServers SQLNamedQuery '%s', "
+        "ignoring", named_query);
+
+    } else {
+      if (sql_backends == NULL) {
+        sql_backends = backends;
+
+      } else {
+        (void) array_cat2(sql_backends, backends);
+      }
+    }
+
+    c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers", FALSE);
+  }
+
+  return sql_backends;
+}
+
+static array_header *reverse_db_peruser_backends_by_file(pool *p,
+    const char *user) {
+  config_rec *c;
+  array_header *file_backends = NULL;
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseServers", FALSE);
+  while (c != NULL) {
+    const char *path, *uri;
+    int xerrno;
+    array_header *backends = NULL;
+
+    pr_signals_handle();
+
+    uri = c->argv[1];
+    if (uri == NULL ||
+        strstr(uri, "%U") == NULL) {
+      c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
+        FALSE);
+      continue;
+    }
+
+    if (strncmp(uri, "file:", 5) != 0) {
+      c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
+        FALSE);
+      continue;
+    }
+
+    path = sreplace(p, (char *) (uri + 5), "%U", user, NULL);
+
+    pr_trace_msg(trace_channel, 17,
+      "loading user-specific ProxyReverseServers file '%s'", path);
+
+    PRIVS_ROOT
+    backends = proxy_reverse_file_parse_uris(p, path);
+    xerrno = errno;
+    PRIVS_RELINQUISH
+
+    if (backends == NULL) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error reading ProxyReverseServers file '%s': %s", path,
+        strerror(xerrno));
+      c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
+        FALSE);
+      continue;
+    }
+
+    if (backends->nelts == 0) {
+      pr_trace_msg(trace_channel, 3,
+        "no usable URLs found in ProxyReverseServers file '%s', ignoring",
+        path); 
+
+    } else {
+      if (file_backends == NULL) {
+        file_backends = backends;
+
+      } else {
+        (void) array_cat2(file_backends, backends);
+      }
+    }
+
+    c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers", FALSE);
+  }
+
+  return file_backends;
+}
+
+static array_header *reverse_db_peruser_backends(pool *p, const char *user) {
+  array_header *file_backends, *sql_backends, *user_backends = NULL;
+
+  file_backends = reverse_db_peruser_backends_by_file(p, user);
+  if (file_backends != NULL) {
+    user_backends = file_backends;
+  }
+
+  sql_backends = reverse_db_peruser_backends_by_sql(p, user);
+  if (sql_backends != NULL) {
+    if (user_backends != NULL) {
+      (void) array_cat2(user_backends, sql_backends);
+    } else {
+      user_backends = sql_backends;
+    }
+  }
+
+  return user_backends;
+}
+
+static struct proxy_conn *reverse_db_peruser_init(pool *p,
+    unsigned int vhost_id, const char *user) {
   struct proxy_conn **conns, *pconn = NULL;
-  int res;
+  int backend_count = 0, res;
   const char *stmt, *uri, *errstr = NULL;
-  array_header *results;
+  array_header *user_backends = NULL, *results;
 
-  conns = reverse_backends->elts;
+  user_backends = reverse_db_peruser_backends(p, user);
+  if (user_backends != NULL) {
+    backend_count = user_backends->nelts;
+    conns = user_backends->elts;
 
-  if (reverse_backends->nelts == 1) {
+  } else {
+    pr_trace_msg(trace_channel, 11,
+      "using global ProxyReverseServers list for user '%s'", user);
+    backend_count = reverse_backends->nelts;
+    conns = reverse_backends->elts;
+  }
+
+  if (backend_count == 1) {
     pconn = conns[0];
 
   } else {
@@ -699,10 +1131,16 @@ static struct proxy_conn *reverse_db_peruser_init(pool *p,
 
     user_len = strlen(user);
     h = str2hash(user, user_len);
-    idx = h % reverse_backends->nelts;
+    idx = h % backend_count;
 
     pconn = conns[idx];
   }
+
+  /* TODO: What happens if the chosen backend URI cannot be used, e.g.
+   * because it is down/unreachable?  In reverse_connect(), we'll know that it
+   * failed to connect, but how to tunnel that back down here, to choose
+   * another?
+   */
 
   stmt = "INSERT INTO proxy_vhost_reverse_per_user (vhost_id, user, backend_uri) VALUES (?, ?, ?);";
   res = proxy_db_prepare_stmt(p, stmt);
@@ -959,23 +1397,55 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
 
   for (s = (server_rec *) server_list->xas_list; s; s = s->next) {
     config_rec *c;
+    array_header *backends = NULL;
+
+    res = reverse_db_add_vhost(p, s);
+    if (res < 0) {
+      xerrno = errno;
+      (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+        ": error adding database entry for server '%s': %s", s->ServerName,
+        strerror(xerrno));
+      (void) proxy_db_close(p);
+      errno = xerrno;
+      return -1;
+    }
 
     c = find_config(s->conf, CONF_PARAM, "ProxyReverseServers", FALSE);
-    if (c != NULL) {
-      array_header *backends;
+    while (c != NULL) {
+      const char *uri;
 
-      res = reverse_db_add_vhost(p, s);
-      if (res < 0) {
-        xerrno = errno;
-        (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-          ": error adding database entry for server '%s': %s", s->ServerName,
-          strerror(xerrno));
-        (void) proxy_db_close(p);
-        errno = xerrno;
-        return -1;
+      pr_signals_handle();
+
+      uri = c->argv[1];
+      if (uri != NULL) {
+        int defer = FALSE;
+
+        /* Handling of sql:// URIs is done later, in the session init
+         * call, assuming we've connected to a SQL server.
+         */
+        if (strncmp(uri, "sql:/", 5) == 0) {
+          defer = TRUE;
+        }
+
+        /* Skip any %U-bearing URIs. */
+        if (defer == FALSE &&
+            strstr(uri, "%U") != NULL) {
+          defer = TRUE;
+        }
+
+        if (defer) {
+          c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
+            FALSE);
+          continue;
+        }
       }
 
-      backends = c->argv[0];
+      if (backends == NULL) {
+        backends = c->argv[0];
+
+      } else {
+        array_cat2(backends, c->argv[0]);
+      }
 
       res = reverse_db_add_backends(p, s->sid, backends);
       if (res < 0) {
@@ -987,42 +1457,45 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
         return -1;
       }
 
-      c = find_config(s->conf, CONF_PARAM, "ProxyReverseConnectPolicy", FALSE);
-      if (c != NULL) {
-        int connect_policy;
+      c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
+        FALSE);
+    }
 
-        connect_policy = *((int *) c->argv[0]);
-        switch (connect_policy) {
-          case PROXY_REVERSE_CONNECT_POLICY_RANDOM:
-          case PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS:
-          case PROXY_REVERSE_CONNECT_POLICY_PER_USER:
-          case PROXY_REVERSE_CONNECT_POLICY_PER_HOST:
-            /* No preparation needed at this time. */
-            break;
+    c = find_config(s->conf, CONF_PARAM, "ProxyReverseConnectPolicy", FALSE);
+    if (c != NULL) {
+      int connect_policy;
 
-          case PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN:
-            res = reverse_db_roundrobin_init(p, s->sid, backends->nelts-1);
-            if (res < 0) {
-              xerrno = errno;
-              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-                "error preparing database for ProxyReverseConnectPolicy "
-                "RoundRobin: %s", strerror(xerrno));
-            }
-            break;
+      connect_policy = *((int *) c->argv[0]);
+      switch (connect_policy) {
+        case PROXY_REVERSE_CONNECT_POLICY_RANDOM:
+        case PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS:
+        case PROXY_REVERSE_CONNECT_POLICY_PER_USER:
+        case PROXY_REVERSE_CONNECT_POLICY_PER_HOST:
+          /* No preparation needed at this time. */
+          break;
 
-          case PROXY_REVERSE_CONNECT_POLICY_SHUFFLE:
-            res = reverse_db_shuffle_init(p, s->sid, backends);
-            if (res < 0) {
-              xerrno = errno;
-              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-                "error preparing database for ProxyReverseConnectPolicy "
-                "Shuffle: %s", strerror(xerrno));
-            }
-            break;
+        case PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN:
+          res = reverse_db_roundrobin_init(p, s->sid, backends->nelts-1);
+          if (res < 0) {
+            xerrno = errno;
+            (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+              "error preparing database for ProxyReverseConnectPolicy "
+              "RoundRobin: %s", strerror(xerrno));
+          }
+          break;
 
-          default:
-            break;
-        }
+        case PROXY_REVERSE_CONNECT_POLICY_SHUFFLE:
+          res = reverse_db_shuffle_init(p, s->sid, backends);
+          if (res < 0) {
+            xerrno = errno;
+            (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+              "error preparing database for ProxyReverseConnectPolicy "
+              "Shuffle: %s", strerror(xerrno));
+          }
+          break;
+
+        default:
+          break;
       }
     }
   }
@@ -1099,139 +1572,6 @@ int proxy_reverse_have_authenticated(cmd_rec *cmd) {
   }
 
   return authd;
-}
-
-static int check_parent_dir_perms(pool *p, const char *path) {
-  struct stat st;
-  int res;
-  char *dir_path, *ptr = NULL;
-
-  ptr = strrchr(path, '/');
-  if (ptr != path) {
-    dir_path = pstrndup(p, path, ptr - path);
-
-  } else {
-    dir_path = "/";
-  }
-
-  res = stat(dir_path, &st);
-  if (res < 0) {
-    int xerrno = errno;
-
-    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-      ": unable to stat ProxyReverseServers %s directory '%s': %s",
-      path, dir_path, strerror(xerrno));
-
-    errno = xerrno;
-    return -1;
-  }
-
-  if (st.st_mode & S_IWOTH) {
-    int xerrno = EPERM;
-
-    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-      ": unable to use ProxyReverseServers %s from world-writable "
-      "directory '%s' (perms %04o): %s", path, dir_path,
-      st.st_mode & ~S_IFMT, strerror(xerrno));
-
-    errno = xerrno;
-    return -1;
-  }
-
-  return 0;
-}
-
-static int check_file_perms(pool *p, const char *path) {
-  struct stat st;
-  int res;
-  const char *orig_path;
-
-  orig_path = path;
-
-  res = lstat(path, &st);
-  if (res < 0) {
-    int xerrno = errno;
-
-    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-      ": unable to lstat ProxyReverseServers '%s': %s", path, strerror(xerrno));
-
-    errno = xerrno;
-    return -1;
-  }
-
-  if (S_ISLNK(st.st_mode)) {
-    char buf[PR_TUNABLE_PATH_MAX+1];
-
-    /* Check the permissions on the parent directory; if they're world-writable,
-     * then this symlink can be deleted/pointed somewhere else.
-     */
-    res = check_parent_dir_perms(p, path);
-    if (res < 0) {
-      return -1;
-    }
-
-    /* Follow the link to the target path; that path will then have its
-     * parent directory checked.
-     */
-    memset(buf, '\0', sizeof(buf));
-    res = readlink(path, buf, sizeof(buf)-1);
-    if (res > 0) {
-      path = pstrdup(p, buf);
-    }
-
-    res = stat(orig_path, &st);
-    if (res < 0) {
-      int xerrno = errno;
-
-      pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-        ": unable to stat ProxyReverseServers '%s': %s", orig_path,
-        strerror(xerrno));
-
-      errno = xerrno;
-      return -1;
-    }
-  }
-
-  if (S_ISDIR(st.st_mode)) {
-    int xerrno = EISDIR;
-
-    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-      ": unable to use ProxyReverseServers '%s': %s", orig_path,
-      strerror(xerrno));
-
-    errno = xerrno;
-    return -1;
-  }
-
-  /* World-writable files are insecure, and are thus not usable/trusted. */
-  if (st.st_mode & S_IWOTH) {
-    int xerrno = EPERM;
-
-    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-      ": unable to use world-writable ProxyReverseServers '%s' "
-      "(perms %04o): %s", orig_path, st.st_mode & ~S_IFMT, strerror(xerrno));
-
-    errno = xerrno;
-    return -1;
-  }
-
-  /* TODO: This will warn about files such as FIFOs, BUT will leave them
-   * usable.  Good idea, or bad idea?
-   */
-  if (!S_ISREG(st.st_mode)) {
-    pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
-      ": ProxyReverseServers '%s' is not a regular file", orig_path);
-  }
-
-  /* Check the parent directory of this file.  If the parent directory
-   * is world-writable, that too is insecure.
-   */
-  res = check_parent_dir_perms(p, path);
-  if (res < 0) {
-    return -1;
-  }
-
-  return 0;
 }
 
 array_header *proxy_reverse_file_parse_uris(pool *p, const char *path) {
@@ -1399,9 +1739,14 @@ static struct proxy_conn *reverse_connect_next_backend(pool *p,
 
   conns = reverse_backends->elts;
 
-  if (reverse_backends->nelts == 1) {
-    reverse_backend_id = 0;
-    return conns[0];
+  /* Sticky policies such as PerUser might have their own ways of looking up
+   * other backends to use.
+   */
+  if (reverse_connect_policy != PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
+    if (reverse_backends->nelts == 1) {
+      reverse_backend_id = 0;
+      return conns[0];
+    }
   }
 
   switch (reverse_connect_policy) {
@@ -1643,9 +1988,8 @@ static int reverse_connect(pool *p, struct proxy_session *proxy_sess,
   proxy_sess->frontend_ctrl_conn = session.c;
   proxy_sess->backend_ctrl_conn = server_conn;
 
-  /* Read the response from the backend server and send it to the connected
-   * client as if it were our own banner.
-   */
+  /* Read the response from the backend server. */
+
   resp = proxy_ftp_ctrl_recv_resp(p, proxy_sess->backend_ctrl_conn,
     &resp_nlines);
   if (resp == NULL) {
@@ -1675,9 +2019,16 @@ static int reverse_connect(pool *p, struct proxy_session *proxy_sess,
       ntohs(pr_netaddr_get_port(proxy_sess->backend_ctrl_conn->remote_addr)),
       banner_ok ? "" : ", DISCONNECTING", resp->num, resp->msg);
 
-    if (proxy_ftp_ctrl_send_resp(p, session.c, resp, resp_nlines) < 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "unable to send banner to client: %s", strerror(errno));
+    /* Send the banner to the connected client as if it were our own banner --
+     * but only if the ConnectPolicy is NOT PerUser.  For the PerUser
+     * ConnectPolicy, if we echo the banner now, we will only confuse the
+     * client.
+     */
+    if (reverse_connect_policy != PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
+      if (proxy_ftp_ctrl_send_resp(p, session.c, resp, resp_nlines) < 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "unable to send banner to client: %s", strerror(errno));
+      }
     }
 
     if (banner_ok == FALSE) {
@@ -1764,6 +2115,8 @@ int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
       errno = EPERM;
       return -1;
     }
+
+    pr_response_block(FALSE);
   }
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
@@ -1802,6 +2155,11 @@ int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     pr_response_block(TRUE);
     errno = xerrno;
     return -1;
+  }
+
+  if (reverse_connect_policy == PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
+    /* Restore the normal response blocking, undone for PerUser policy only. */
+    pr_response_block(TRUE);
   }
 
   return 1;

@@ -677,12 +677,13 @@ MODRET set_proxyreverseconnectpolicy(cmd_rec *cmd) {
 }
 
 /* usage: ProxyReverseServers server1 ... server N
- *                            file://path/to/server/list.txt
- *                            sql://SQLNamedQuery
+ *                            file:/path/to/server/list.txt
+ *                            sql:/SQLNamedQuery
  */
 MODRET set_proxyreverseservers(cmd_rec *cmd) {
   config_rec *c;
   array_header *backend_servers;
+  char *uri = NULL;
 
   if (cmd->argc-1 < 1) {
     CONF_ERROR(cmd, "wrong number of parameters");
@@ -690,11 +691,10 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
 
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
-  c = add_config_param(cmd->argv[0], 1, NULL);
+  c = add_config_param(cmd->argv[0], 2, NULL, NULL);
   backend_servers = make_array(c->pool, 1, sizeof(struct proxy_conn *));
 
   if (cmd->argc-1 == 1) {
-
     /* We are dealing with one of the following possibilities:
      *
      *  file:/path/to/file.txt
@@ -704,35 +704,50 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
 
     if (strncmp(cmd->argv[1], "file:", 5) == 0) {
       char *path;
-      int xerrno;
 
       path = cmd->argv[1] + 5;
-    
-      /* For now, load the list of servers at sess init time.  In
-       * the future, we will want to load it at postparse time, mapped
-       * to the appropriate server_rec, and clear/reload on 'core.restart'.
+
+      /* If the path contains the %U variable, then defer loading of
+       * this file until the USER name is known.
        */
+      if (strstr(path, "%U") == NULL) {    
+        int xerrno;
 
-      PRIVS_ROOT
-      backend_servers = proxy_reverse_file_parse_uris(cmd->server->pool,
-        path);
-      xerrno = errno;
-      PRIVS_RELINQUISH
+        /* For now, load the list of servers at sess init time.  In
+         * the future, we will want to load it at postparse time, mapped
+         * to the appropriate server_rec, and clear/reload on 'core.restart'.
+         */
 
-      if (backend_servers == NULL) {
-        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
-          "error reading ProxyReverseServers file '", path, "': ",
-          strerror(xerrno), NULL));
+        PRIVS_ROOT
+        backend_servers = proxy_reverse_file_parse_uris(cmd->server->pool,
+          path);
+        xerrno = errno;
+        PRIVS_RELINQUISH
+
+        if (backend_servers == NULL) {
+          CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+            "error reading ProxyReverseServers file '", path, "': ",
+            strerror(xerrno), NULL));
+        }
+
+        if (backend_servers->nelts == 0) {
+          CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+            "no usable URLs found in file '", path, NULL));
+        }
       }
 
-      if (backend_servers->nelts == 0) {
-        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
-          "no usable URLs found in file '", path, NULL));
-      }
+      uri = cmd->argv[1];
 
     } else if (strncmp(cmd->argv[1], "sql:/", 5) == 0) {
-      /* XXX Implement */
-      CONF_ERROR(cmd, "not yet implemented");
+
+      /* Unfortunately there's not very much we can do to validate these
+       * SQL URIs at the moment.  They point to a SQLNamedQuery, which
+       * may not have been parsed yet from the config file, or which may be
+       * in a <Global> scope.  Thus we simply store them for now, and
+       * let the lookup routines do the necessary validation.
+       */
+
+      uri = cmd->argv[1];
 
     } else {
       /* Treat it as a server-spec (i.e. a URI) */
@@ -766,6 +781,10 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
   }
 
   c->argv[0] = backend_servers;
+  if (uri != NULL) {
+    c->argv[1] = pstrdup(c->pool, uri);
+  }
+
   return PR_HANDLED(cmd);
 }
 
