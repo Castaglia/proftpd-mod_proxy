@@ -701,7 +701,10 @@ sub new {
 }
 
 sub list_tests {
-  return testsuite_get_runnable_tests($TESTS);
+#  return testsuite_get_runnable_tests($TESTS);
+  return qw(
+    proxy_tls_reverse_list_pasv
+  );
 }
 
 sub config_hash2array {

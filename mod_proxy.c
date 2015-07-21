@@ -31,6 +31,7 @@
 #include "proxy/db.h"
 #include "proxy/session.h"
 #include "proxy/conn.h"
+#include "proxy/netio.h"
 #include "proxy/forward.h"
 #include "proxy/reverse.h"
 #include "proxy/ftp/conn.h"
@@ -1096,7 +1097,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       return PR_ERROR(cmd);
     }
 
-    if (pr_netio_postopen(backend_conn->instrm) < 0) {
+    if (proxy_netio_postopen(backend_conn->instrm) < 0) {
       xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1108,7 +1109,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       return PR_ERROR(cmd);
     }
 
-    if (pr_netio_postopen(backend_conn->outstrm) < 0) {
+    if (proxy_netio_postopen(backend_conn->outstrm) < 0) {
       xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1144,7 +1145,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     pr_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = backend_conn; 
 
-    if (pr_netio_postopen(backend_conn->instrm) < 0) {
+    if (proxy_netio_postopen(backend_conn->instrm) < 0) {
       xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1156,7 +1157,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       return PR_ERROR(cmd);
     }
 
-    if (pr_netio_postopen(backend_conn->outstrm) < 0) {
+    if (proxy_netio_postopen(backend_conn->outstrm) < 0) {
       xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1240,7 +1241,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       return PR_ERROR(cmd);
     } 
 
-    if (pr_netio_postopen(frontend_conn->instrm) < 0) {
+    if (proxy_netio_postopen(frontend_conn->instrm) < 0) {
       xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1252,7 +1253,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       return PR_ERROR(cmd);
     }
 
-    if (pr_netio_postopen(frontend_conn->outstrm) < 0) {
+    if (proxy_netio_postopen(frontend_conn->outstrm) < 0) {
       xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1293,7 +1294,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       return PR_ERROR(cmd);
     }
 
-    if (pr_netio_postopen(frontend_conn->instrm) < 0) {
+    if (proxy_netio_postopen(frontend_conn->instrm) < 0) {
       xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1305,7 +1306,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       return PR_ERROR(cmd);
     }
 
-    if (pr_netio_postopen(frontend_conn->outstrm) < 0) {
+    if (proxy_netio_postopen(frontend_conn->outstrm) < 0) {
       xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1368,13 +1369,13 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    */
   switch (xfer_direction) {
     case PR_NETIO_IO_RD:
-      pr_netio_set_poll_interval(backend_conn->instrm, 1);
-      pr_netio_set_poll_interval(frontend_conn->outstrm, 1);
+      proxy_netio_set_poll_interval(backend_conn->instrm, 1);
+      proxy_netio_set_poll_interval(frontend_conn->outstrm, 1);
       break;
 
     case PR_NETIO_IO_WR:
-      pr_netio_set_poll_interval(frontend_conn->instrm, 1);
-      pr_netio_set_poll_interval(backend_conn->outstrm, 1);
+      proxy_netio_set_poll_interval(frontend_conn->instrm, 1);
+      proxy_netio_set_poll_interval(backend_conn->outstrm, 1);
       break;
   }
 

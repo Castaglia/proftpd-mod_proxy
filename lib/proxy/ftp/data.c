@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP data conn routines
- * Copyright (c) 2012-2014 TJ Saunders
+ * Copyright (c) 2012-2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 
 #include "mod_proxy.h"
 
+#include "proxy/netio.h"
 #include "proxy/ftp/data.h"
 
 static const char *trace_channel = "proxy.ftp.data";
@@ -41,7 +42,7 @@ pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn) {
     pbuf = pr_netio_buffer_alloc(data_conn->instrm);
   }
 
-  nread = pr_netio_read(data_conn->instrm, pbuf->buf, pbuf->buflen, 1);
+  nread = proxy_netio_read(data_conn->instrm, pbuf->buf, pbuf->buflen, 1);
   if (nread < 0) {
     return NULL;
   }
@@ -86,7 +87,8 @@ int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf) {
    * problem.
    */
 
-  nwrote = pr_netio_write(data_conn->outstrm, pbuf->current, pbuf->remaining);
+  nwrote = proxy_netio_write(data_conn->outstrm, pbuf->current,
+    pbuf->remaining);
   while (nwrote < 0) {
     int xerrno = errno;
 
@@ -98,7 +100,7 @@ int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf) {
       errno = EINTR;
       pr_signals_handle();
 
-      nwrote = pr_netio_write(data_conn->outstrm, pbuf->current,
+      nwrote = proxy_netio_write(data_conn->outstrm, pbuf->current,
         pbuf->remaining);
       continue;
     }

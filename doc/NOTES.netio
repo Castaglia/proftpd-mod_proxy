@@ -37,22 +37,27 @@ to use is explicitly specified, rather than being assumed.
 mod_proxy currently calls the core NetIO API in these places:
 
   lib/proxy/conn.c:
-    pr_netio_open
-    pr_netio_poll
-    pr_netio_close
-    pr_netio_printf
+    pr_netio_open (CONVERTED)
+    pr_netio_poll (CONVERTED)
+    pr_netio_close (CONVERTED)
+    pr_netio_printf (CONVERTED)
 
   lib/proxy/ftp/ctrl.c:
-    pr_netio_read
-    pr_netio_printf
+    pr_netio_read (CONVERTED)
+    pr_netio_printf (CONVERTED)
 
   lib/proxy/ftp/data.c:
-    pr_netio_read
-    pr_netio_write
+    pr_netio_read (CONVERTED)
+    pr_netio_write (CONVERTED)
 
   mod_proxy.c:
-    pr_netio_postopen
-    pr_netio_set_poll_interval
+    pr_netio_postopen (CONVERTED)
+    pr_netio_set_poll_interval (CONVERTED)
+
+NOTE: We will ALSO need to wrap the pr_response_* API, as that is another
+place where the core (not proxy) NetIO API will be used, albeit indirectly.
+OR maybe we DO not need to this; the pr_response_* API is used for the
+frontend connections, which will use the normal mod_tls NetIO.  Right?
 
 Initial implementation:
 
