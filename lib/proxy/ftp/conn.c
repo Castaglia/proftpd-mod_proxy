@@ -67,15 +67,27 @@ conn_t *proxy_ftp_conn_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn,
     return NULL;
   }
 
+  /* Check for error conditions. */
+  if (conn->mode == CM_ERROR) {
+    int xerrno = conn->xerrno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error accepting backend data connection: %s", strerror(xerrno));
+    destroy_pool(conn->pool);
+
+    errno = xerrno;
+    return NULL;
+  }
+
   return conn;
 }
 
-conn_t *proxy_ftp_conn_connect(pool *p, pr_netaddr_t *local_addr,
+conn_t *proxy_ftp_conn_connect(pool *p, pr_netaddr_t *bind_addr,
     pr_netaddr_t *remote_addr, int frontend_data) {
   conn_t *conn, *opened = NULL;
   int res, reverse_dns;
 
-  conn = pr_inet_create_conn(session.pool, -1, local_addr, INPORT_ANY, TRUE);
+  conn = pr_inet_create_conn(session.pool, -1, bind_addr, INPORT_ANY, TRUE);
 
   reverse_dns = pr_netaddr_set_reverse_dns(ServerUseReverseDNS);
 
@@ -94,8 +106,6 @@ conn_t *proxy_ftp_conn_connect(pool *p, pr_netaddr_t *local_addr,
     main_server->tcp_mss_len, 0, IPTOS_THROUGHPUT, 1);
   pr_inet_generate_socket_event("proxy.data-connect", main_server,
     conn->local_addr, conn->listen_fd);
-
-  pr_inet_set_nonblock(session.pool, conn);
 
   pr_trace_msg(trace_channel, 9, "connecting to %s#%u",
     pr_netaddr_get_ipstr(remote_addr), ntohs(pr_netaddr_get_port(remote_addr)));
@@ -154,6 +164,7 @@ conn_t *proxy_ftp_conn_connect(pool *p, pr_netaddr_t *local_addr,
     return NULL;
   }
 
+  pr_inet_set_nonblock(session.pool, conn);
   return opened;
 }
 
@@ -192,14 +203,13 @@ conn_t *proxy_ftp_conn_listen(pool *p, pr_netaddr_t *bind_addr,
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error creating socket: %s", strerror(xerrno));
 
-    errno = xerrno;
+    errno = EINVAL;
     return NULL;
   }
 
   /* Make sure that necessary socket options are set on the socket prior
    * to the call to listen(2).
    */
-(void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION, "ftp_conn_listen: setting proto opts (conn->listen_fd = %d, frontend_data = %s)", conn->listen_fd, frontend_data ? "true" : "false");
   pr_inet_set_proto_opts(session.pool, conn, main_server->tcp_mss_len, 0,
     IPTOS_THROUGHPUT, 1);
   pr_inet_generate_socket_event("proxy.data-listen", main_server,

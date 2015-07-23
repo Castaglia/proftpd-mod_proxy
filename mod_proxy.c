@@ -1256,6 +1256,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         "postopen error for frontend data connection input stream: %s",
         strerror(xerrno));
       pr_inet_close(session.pool, frontend_conn);
+      session.d = NULL;
 
       errno = xerrno;
       return PR_ERROR(cmd);
@@ -1268,6 +1269,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         "postopen error for frontend data connection output stream: %s",
         strerror(xerrno));
       pr_inet_close(session.pool, frontend_conn);
+      session.d = NULL;
 
       errno = xerrno;
       return PR_ERROR(cmd);
@@ -1289,8 +1291,21 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       frontend_conn->remote_port);
 
   } else if (proxy_sess->frontend_sess_flags & SF_PORT) {
+    pr_netaddr_t *bind_addr;
+
     /* Connect to the frontend server now. */
-    frontend_conn = proxy_ftp_conn_connect(cmd->pool, session.c->local_addr,
+  
+    if (pr_netaddr_get_family(session.c->local_addr) == pr_netaddr_get_family(session.c->remote_addr)) {
+      bind_addr = session.c->local_addr;
+
+    } else {
+      /* In this scenario, the server has an IPv6 socket, but the remote client
+       * is an IPv4 (or IPv4-mapped IPv6) peer.
+       */
+      bind_addr = pr_netaddr_v6tov4(session.xfer.p, session.c->local_addr);
+    }
+
+    frontend_conn = proxy_ftp_conn_connect(cmd->pool, bind_addr,
       proxy_sess->frontend_data_addr, TRUE);
     if (frontend_conn == NULL) {
       xerrno = errno;
@@ -1315,6 +1330,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         "postopen error for frontend data connection input stream: %s",
         strerror(xerrno));
       pr_inet_close(session.pool, frontend_conn);
+      session.d = NULL;
 
       errno = xerrno;
       return PR_ERROR(cmd);
@@ -1327,13 +1343,13 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         "postopen error for frontend data connection output stream: %s",
         strerror(xerrno));
       pr_inet_close(session.pool, frontend_conn);
+      session.d = NULL;
 
       errno = xerrno;
       return PR_ERROR(cmd);
     }
 
     proxy_sess->frontend_data_conn = session.d = frontend_conn;
-    pr_inet_set_nonblock(session.pool, frontend_conn);
   }
 
   /* Now that we have our frontend connection, we can send the response from
@@ -1388,8 +1404,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       break;
 
     case PR_NETIO_IO_WR:
-      pr_netio_set_poll_interval(frontend_conn->instrm, 1);
       proxy_netio_set_poll_interval(backend_conn->outstrm, 1);
+      pr_netio_set_poll_interval(frontend_conn->instrm, 1);
       break;
   }
 
@@ -2030,7 +2046,33 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    * connection is for the frontend client.
    */
 
-  bind_addr = session.c->local_addr;
+  if (pr_netaddr_get_family(session.c->local_addr) == pr_netaddr_get_family(session.c->remote_addr)) {
+#ifdef PR_USE_IPV6
+    if (pr_netaddr_use_ipv6()) {
+      /* Make sure that the family is NOT IPv6, even though the family of the
+       * local and remote ends match.  The PASV command cannot be used for
+       * IPv6 addresses (Bug#3745).
+       */
+      if (pr_netaddr_get_family(session.c->local_addr) == AF_INET6) {
+        int xerrno = EPERM;
+
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "Unable to handle PASV for IPv6 address '%s', rejecting command",
+          pr_netaddr_get_ipstr(session.c->local_addr));
+        pr_response_add_err(R_501, "%s: %s", cmd->argv[0], strerror(xerrno));
+
+        pr_cmd_set_errno(cmd, xerrno);
+        errno = xerrno;
+        return PR_ERROR(cmd);
+      }
+    }
+#endif /* PR_USE_IPV6 */
+
+    bind_addr = session.c->local_addr;
+
+  } else {
+    bind_addr = pr_netaddr_v6tov4(cmd->pool, session.c->local_addr);
+  }
 
   /* PassivePorts is handled by proxy_ftp_conn_listen(). */
   data_conn = proxy_ftp_conn_listen(cmd->pool, bind_addr, TRUE);
@@ -2040,8 +2082,8 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
-    pr_response_add_err(R_425, _("Unable to build data connection: "
-      "Internal error"));
+    pr_response_add_err(R_425,
+      _("Unable to build data connection: Internal error"));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -2080,7 +2122,8 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
-    proxy_inet_close(session.pool, data_conn);
+    pr_inet_close(session.pool, data_conn);
+    proxy_sess->frontend_data_conn = session.d = NULL;
     pr_response_block(TRUE);
 
     pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
