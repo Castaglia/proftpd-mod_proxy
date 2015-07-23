@@ -29,11 +29,10 @@
 
 static const char *trace_channel = "proxy.ftp.data";
 
-pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn) {
+pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn,
+    int frontend_data) {
   int nread;
   pr_buffer_t *pbuf = NULL;
-  char *buf = NULL;
-  size_t buflen = 0;
 
   if (data_conn->instrm->strm_buf != NULL) {
     pbuf = data_conn->instrm->strm_buf;
@@ -42,7 +41,13 @@ pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn) {
     pbuf = pr_netio_buffer_alloc(data_conn->instrm);
   }
 
-  nread = proxy_netio_read(data_conn->instrm, pbuf->buf, pbuf->buflen, 1);
+  if (frontend_data) {
+    nread = pr_netio_read(data_conn->instrm, pbuf->buf, pbuf->buflen, 1);
+
+  } else {
+    nread = proxy_netio_read(data_conn->instrm, pbuf->buf, pbuf->buflen, 1);
+  }
+
   if (nread < 0) {
     return NULL;
   }
@@ -65,7 +70,8 @@ pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn) {
   return pbuf;
 }
 
-int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf) {
+int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf,
+    int frontend_data) {
   int nwrote;
 
   if (data_conn == NULL ||
@@ -87,8 +93,14 @@ int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf) {
    * problem.
    */
 
-  nwrote = proxy_netio_write(data_conn->outstrm, pbuf->current,
-    pbuf->remaining);
+  if (frontend_data) {
+    nwrote = pr_netio_write(data_conn->outstrm, pbuf->current, pbuf->remaining);
+
+  } else {
+    nwrote = proxy_netio_write(data_conn->outstrm, pbuf->current,
+      pbuf->remaining);
+  }
+
   while (nwrote < 0) {
     int xerrno = errno;
 
@@ -100,8 +112,15 @@ int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf) {
       errno = EINTR;
       pr_signals_handle();
 
-      nwrote = proxy_netio_write(data_conn->outstrm, pbuf->current,
-        pbuf->remaining);
+      if (frontend_data) {
+        nwrote = pr_netio_write(data_conn->outstrm, pbuf->current,
+          pbuf->remaining);
+
+      } else {
+        nwrote = proxy_netio_write(data_conn->outstrm, pbuf->current,
+          pbuf->remaining);
+      }
+
       continue;
     }
 

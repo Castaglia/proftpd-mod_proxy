@@ -26,6 +26,7 @@
 
 #include "proxy/conn.h"
 #include "proxy/netio.h"
+#include "proxy/inet.h"
 #include "proxy/session.h"
 #include "proxy/uri.h"
 
@@ -350,8 +351,8 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     pr_netaddr_get_ipstr(server_conn->local_addr),
     ntohs(pr_netaddr_get_port(server_conn->local_addr)));
 
-  ctrl_conn = pr_inet_openrw(p, server_conn, NULL, PR_NETIO_STRM_CTRL, -1, -1,
-    -1, FALSE);
+  ctrl_conn = proxy_inet_openrw(p, server_conn, NULL, PR_NETIO_STRM_CTRL, -1,
+    -1, -1, FALSE);
   if (ctrl_conn == NULL) {
     int xerrno = errno;
 

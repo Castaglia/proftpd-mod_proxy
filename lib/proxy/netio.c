@@ -51,21 +51,20 @@ static const char *netio_strm_typestr(int strm_type) {
   return typestr;
 }
 
-static pr_netio_t *netio_unset(int strm_type) {
+pr_netio_t *proxy_netio_unset(int strm_type, const char *fn) {
   pr_netio_t *netio = NULL;
 
   netio = pr_get_netio(strm_type);
   if (netio != NULL) {
-    const char *owner_name = "(core)", *typestr;
+    const char *owner_name = "core", *typestr;
 
     if (netio->owner_name != NULL) {
       owner_name = netio->owner_name;
     }
     typestr = netio_strm_typestr(strm_type);
 
-    pr_trace_msg(trace_channel, 11,
-      "found %s NetIO registered by %s", typestr, owner_name);
-
+    pr_trace_msg(trace_channel, 18, "(%s) found %s %s NetIO", fn, owner_name,
+      typestr);
     if (pr_unregister_netio(strm_type) < 0) {
       pr_trace_msg(trace_channel, 3,
         "error unregistering %s NetIO: %s", typestr, strerror(errno));
@@ -75,7 +74,7 @@ static pr_netio_t *netio_unset(int strm_type) {
   return netio;
 }
 
-static int netio_set(int strm_type, pr_netio_t *netio) {
+int proxy_netio_set(int strm_type, pr_netio_t *netio) {
   if (netio != NULL) {
     if (pr_register_netio(netio, strm_type) < 0) {
       pr_trace_msg(trace_channel, 3,
@@ -87,22 +86,20 @@ static int netio_set(int strm_type, pr_netio_t *netio) {
   return 0;
 }
 
-int proxy_netio_init(pool *p) {
-  return 0;
-}
-
-int proxy_netio_free(void) {
-  return 0;
-}
-
 int proxy_netio_close(pr_netio_stream_t *nstrm) {
   int res, xerrno;
   pr_netio_t *curr_netio = NULL;
 
-  curr_netio = netio_unset(nstrm->strm_type);  
+  if (nstrm != NULL) {
+    curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_close");
+  }
+
   res = pr_netio_close(nstrm);
   xerrno = errno;
-  netio_set(nstrm->strm_type, curr_netio);
+
+  if (nstrm != NULL) {
+    proxy_netio_set(nstrm->strm_type, curr_netio);
+  }
 
   errno = xerrno;
   return res;
@@ -113,10 +110,10 @@ pr_netio_stream_t *proxy_netio_open(pool *p, int strm_type, int fd, int mode) {
   pr_netio_stream_t *nstrm = NULL;
   pr_netio_t *curr_netio;
 
-  curr_netio = netio_unset(strm_type);
+  curr_netio = proxy_netio_unset(strm_type, "netio_open");
   nstrm = pr_netio_open(p, strm_type, fd, mode);
   xerrno = errno;
-  netio_set(strm_type, curr_netio);
+  proxy_netio_set(strm_type, curr_netio);
 
   errno = xerrno;
   return nstrm;
@@ -126,24 +123,24 @@ int proxy_netio_poll(pr_netio_stream_t *nstrm) {
   int res, xerrno;
   pr_netio_t *curr_netio;
 
-  curr_netio = netio_unset(nstrm->strm_type);
+  curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_poll");
   res = pr_netio_poll(nstrm);
   xerrno = errno;
-  netio_set(nstrm->strm_type, curr_netio);
+  proxy_netio_set(nstrm->strm_type, curr_netio);
 
   errno = xerrno;
   return res;
 }
 
 int proxy_netio_postopen(pr_netio_stream_t *nstrm) {
-  int res, xerrno;
+  int res = 0, xerrno;
   pr_netio_t *curr_netio = NULL;
 
-  curr_netio = netio_unset(nstrm->strm_type);
+  curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_postpopen");
   res = pr_netio_postopen(nstrm);
   xerrno = errno;
-  netio_set(nstrm->strm_type, curr_netio);
-
+  proxy_netio_set(nstrm->strm_type, curr_netio);
+ 
   errno = xerrno;
   return res;
 }
@@ -158,12 +155,12 @@ int proxy_netio_printf(pr_netio_stream_t *nstrm, const char *fmt, ...) {
     return -1;
   }
 
-  curr_netio = netio_unset(nstrm->strm_type);
+  curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_printf");
   va_start(msg, fmt);
   res = pr_netio_vprintf(nstrm, fmt, msg);
   xerrno = errno;
   va_end(msg);
-  netio_set(nstrm->strm_type, curr_netio);
+  proxy_netio_set(nstrm->strm_type, curr_netio);
 
   errno = xerrno;
   return res;
@@ -174,10 +171,10 @@ int proxy_netio_read(pr_netio_stream_t *nstrm, char *buf, size_t bufsz,
   int res, xerrno;
   pr_netio_t *curr_netio = NULL;
 
-  curr_netio = netio_unset(nstrm->strm_type);
+  curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_read");
   res = pr_netio_read(nstrm, buf, bufsz, bufmin);
   xerrno = errno;
-  netio_set(nstrm->strm_type, curr_netio);
+  proxy_netio_set(nstrm->strm_type, curr_netio);
 
   errno = xerrno;
   return res;
@@ -187,19 +184,19 @@ void proxy_netio_set_poll_interval(pr_netio_stream_t *nstrm,
     unsigned int secs) {
   pr_netio_t *curr_netio = NULL;
 
-  curr_netio = netio_unset(nstrm->strm_type);
+  curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_set_poll_interval");
   pr_netio_set_poll_interval(nstrm, secs);
-  netio_set(nstrm->strm_type, curr_netio);
+  proxy_netio_set(nstrm->strm_type, curr_netio);
 }
 
 int proxy_netio_shutdown(pr_netio_stream_t *nstrm, int how) {
   int res, xerrno;
   pr_netio_t *curr_netio = NULL;
 
-  curr_netio = netio_unset(nstrm->strm_type);
+  curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_shutdown");
   res = pr_netio_shutdown(nstrm, how);
   xerrno = errno;
-  netio_set(nstrm->strm_type, curr_netio);
+  proxy_netio_set(nstrm->strm_type, curr_netio);
 
   errno = xerrno;
   return res;
@@ -209,10 +206,10 @@ int proxy_netio_write(pr_netio_stream_t *nstrm, char *buf, size_t bufsz) {
   int res, xerrno;
   pr_netio_t *curr_netio = NULL;
 
-  curr_netio = netio_unset(nstrm->strm_type);
+  curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_write");
   res = pr_netio_write(nstrm, buf, bufsz);
   xerrno = errno;
-  netio_set(nstrm->strm_type, curr_netio);
+  proxy_netio_set(nstrm->strm_type, curr_netio);
 
   errno = xerrno;
   return res;

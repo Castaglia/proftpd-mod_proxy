@@ -32,6 +32,7 @@
 #include "proxy/session.h"
 #include "proxy/conn.h"
 #include "proxy/netio.h"
+#include "proxy/inet.h"
 #include "proxy/forward.h"
 #include "proxy/reverse.h"
 #include "proxy/ftp/conn.h"
@@ -1052,7 +1053,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   /* XXX Move all this connection setup into a function, separate from the
-   * transfer loop, if possible.
+   * transfer loop, if possible.  Maybe a proxy_data_prepare() or a
+   * proxy_data_setup()?
    */
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
@@ -1085,8 +1087,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       bind_addr = session.c->local_addr;
     }
 
-    backend_conn = proxy_ftp_conn_connect(cmd->tmp_pool, bind_addr,
-      proxy_sess->backend_data_addr);
+    backend_conn = proxy_ftp_conn_connect(cmd->pool, bind_addr,
+      proxy_sess->backend_data_addr, FALSE);
     if (backend_conn == NULL) {
       xerrno = errno;
 
@@ -1103,7 +1105,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "postopen error for backend data connection input stream: %s",
         strerror(xerrno));
-      pr_inet_close(session.pool, backend_conn);
+      proxy_inet_close(session.pool, backend_conn);
 
       errno = xerrno;
       return PR_ERROR(cmd);
@@ -1115,7 +1117,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "postopen error for backend data connection output stream: %s",
         strerror(xerrno));
-      pr_inet_close(session.pool, backend_conn);
+      proxy_inet_close(session.pool, backend_conn);
 
       errno = xerrno;
       return PR_ERROR(cmd);
@@ -1124,13 +1126,13 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     proxy_sess->backend_data_conn = backend_conn;
 
   } else if (proxy_sess->backend_sess_flags & SF_PORT) {
-    backend_conn = proxy_ftp_conn_accept(cmd->tmp_pool,
-      proxy_sess->backend_data_conn, proxy_sess->backend_ctrl_conn);
+    backend_conn = proxy_ftp_conn_accept(cmd->pool,
+      proxy_sess->backend_data_conn, proxy_sess->backend_ctrl_conn, FALSE);
     if (backend_conn == NULL) {
       xerrno = errno;
 
       if (proxy_sess->backend_data_conn != NULL) {
-        pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+        proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
         proxy_sess->backend_data_conn = NULL;
       }
 
@@ -1142,7 +1144,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     }
 
     /* We can close our listening socket now. */
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = backend_conn; 
 
     if (proxy_netio_postopen(backend_conn->instrm) < 0) {
@@ -1151,7 +1153,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "postopen error for backend data connection input stream: %s",
         strerror(xerrno));
-      pr_inet_close(session.pool, backend_conn);
+      proxy_inet_close(session.pool, backend_conn);
 
       errno = xerrno;
       return PR_ERROR(cmd);
@@ -1163,7 +1165,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "postopen error for backend data connection output stream: %s",
         strerror(xerrno));
-      pr_inet_close(session.pool, backend_conn);
+      proxy_inet_close(session.pool, backend_conn);
 
       errno = xerrno;
       return PR_ERROR(cmd);
@@ -1194,7 +1196,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     pr_response_flush(&resp_err_list);
 
     if (proxy_sess->backend_data_conn != NULL) {
-      pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+      proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
       proxy_sess->backend_data_conn = NULL;
     }
 
@@ -1211,11 +1213,11 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
     if (proxy_sess->frontend_data_conn) {
       pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-      proxy_sess->frontend_data_conn = NULL;
+      proxy_sess->frontend_data_conn = session.d = NULL;
     }
 
     if (proxy_sess->backend_data_conn) {
-      pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+      proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
       proxy_sess->backend_data_conn = NULL;
     }
 
@@ -1224,14 +1226,14 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   if (proxy_sess->frontend_sess_flags & SF_PASSIVE) {
-    frontend_conn = proxy_ftp_conn_accept(cmd->tmp_pool,
-      proxy_sess->frontend_data_conn, proxy_sess->frontend_ctrl_conn);
+    frontend_conn = proxy_ftp_conn_accept(cmd->pool,
+      proxy_sess->frontend_data_conn, proxy_sess->frontend_ctrl_conn, TRUE);
     if (frontend_conn == NULL) {
       xerrno = errno;
 
       if (proxy_sess->frontend_data_conn != NULL) {
         pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-        proxy_sess->frontend_data_conn = NULL;
+        proxy_sess->frontend_data_conn = session.d = NULL;
       }
 
       pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
@@ -1239,9 +1241,15 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     
       errno = xerrno;
       return PR_ERROR(cmd);
-    } 
+    }
 
-    if (proxy_netio_postopen(frontend_conn->instrm) < 0) {
+    /* Note that we need to set session.d here with the opened conn, for the
+     * benefit of other callbacks (e.g. in mod_tls) invoked via these
+     * NetIO calls.
+     */
+    session.d = frontend_conn;
+
+    if (pr_netio_postopen(frontend_conn->instrm) < 0) {
       xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1253,7 +1261,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       return PR_ERROR(cmd);
     }
 
-    if (proxy_netio_postopen(frontend_conn->outstrm) < 0) {
+    if (pr_netio_postopen(frontend_conn->outstrm) < 0) {
       xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1267,7 +1275,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
     /* We can close our listening socket now. */
     pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-    proxy_sess->frontend_data_conn = frontend_conn; 
+    proxy_sess->frontend_data_conn = session.d = frontend_conn; 
 
     pr_inet_set_nonblock(session.pool, frontend_conn);
 
@@ -1282,8 +1290,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   } else if (proxy_sess->frontend_sess_flags & SF_PORT) {
     /* Connect to the frontend server now. */
-    frontend_conn = proxy_ftp_conn_connect(cmd->tmp_pool, session.c->local_addr,
-      proxy_sess->frontend_data_addr);
+    frontend_conn = proxy_ftp_conn_connect(cmd->pool, session.c->local_addr,
+      proxy_sess->frontend_data_addr, TRUE);
     if (frontend_conn == NULL) {
       xerrno = errno;
 
@@ -1294,7 +1302,13 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       return PR_ERROR(cmd);
     }
 
-    if (proxy_netio_postopen(frontend_conn->instrm) < 0) {
+    /* Note that we need to set session.d here with the opened conn, for the
+     * benefit of other callbacks (e.g. in mod_tls) invoked via these
+     * NetIO calls.
+     */
+    session.d = frontend_conn;
+
+    if (pr_netio_postopen(frontend_conn->instrm) < 0) {
       xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1306,7 +1320,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       return PR_ERROR(cmd);
     }
 
-    if (proxy_netio_postopen(frontend_conn->outstrm) < 0) {
+    if (pr_netio_postopen(frontend_conn->outstrm) < 0) {
       xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1318,7 +1332,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       return PR_ERROR(cmd);
     }
 
-    proxy_sess->frontend_data_conn = frontend_conn;
+    proxy_sess->frontend_data_conn = session.d = frontend_conn;
     pr_inet_set_nonblock(session.pool, frontend_conn);
   }
 
@@ -1332,11 +1346,11 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
     if (proxy_sess->frontend_data_conn != NULL) {
       pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-      proxy_sess->frontend_data_conn = NULL;
+      proxy_sess->frontend_data_conn = session.d = NULL;
     }
 
     if (proxy_sess->backend_data_conn != NULL) {
-      pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+      proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
       proxy_sess->backend_data_conn = NULL;
     }
 
@@ -1370,11 +1384,11 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   switch (xfer_direction) {
     case PR_NETIO_IO_RD:
       proxy_netio_set_poll_interval(backend_conn->instrm, 1);
-      proxy_netio_set_poll_interval(frontend_conn->outstrm, 1);
+      pr_netio_set_poll_interval(frontend_conn->outstrm, 1);
       break;
 
     case PR_NETIO_IO_WR:
-      proxy_netio_set_poll_interval(frontend_conn->instrm, 1);
+      pr_netio_set_poll_interval(frontend_conn->instrm, 1);
       proxy_netio_set_poll_interval(backend_conn->outstrm, 1);
       break;
   }
@@ -1403,7 +1417,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   while (TRUE) {
     fd_set rfds;
     struct timeval tv;
-    int maxfd = -1, timeout = 15;
+    int frontend_data = FALSE, maxfd = -1, timeout = 15;
     conn_t *src_data_conn = NULL, *dst_data_conn = NULL;
 
     tv.tv_sec = timeout;
@@ -1426,12 +1440,13 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       case PR_NETIO_IO_RD:
         src_data_conn = proxy_sess->backend_data_conn;
         dst_data_conn = proxy_sess->frontend_data_conn;
+        frontend_data = FALSE;
         break;
 
       case PR_NETIO_IO_WR:
         src_data_conn = proxy_sess->frontend_data_conn;
         dst_data_conn = proxy_sess->backend_data_conn;
-
+        frontend_data = TRUE;
         break;
     }
 
@@ -1462,11 +1477,11 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
       if (proxy_sess->frontend_data_conn != NULL) {
         pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-        proxy_sess->frontend_data_conn = NULL;
+        proxy_sess->frontend_data_conn = session.d = NULL;
       }
 
       if (proxy_sess->backend_data_conn != NULL) {
-        pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+        proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
         proxy_sess->backend_data_conn = NULL;
       }
 
@@ -1495,7 +1510,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
         pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
  
-        pbuf = proxy_ftp_data_recv(cmd->tmp_pool, src_data_conn);
+        pbuf = proxy_ftp_data_recv(cmd->tmp_pool, src_data_conn, frontend_data);
         if (pbuf == NULL) {
           xerrno = errno;
 
@@ -1510,11 +1525,11 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
           if (pbuf->remaining == 0) {
             /* EOF on the data connection; close BOTH of them. */
 
-            pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+            proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
             proxy_sess->backend_data_conn = NULL;
 
             pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-            proxy_sess->frontend_data_conn = NULL;
+            proxy_sess->frontend_data_conn = session.d = NULL;
 
           } else {
             size_t remaining = pbuf->remaining;
@@ -1524,7 +1539,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
               (unsigned long) remaining);
             session.xfer.total_bytes += remaining;
 
-            res = proxy_ftp_data_send(cmd->tmp_pool, dst_data_conn, pbuf);
+            res = proxy_ftp_data_send(cmd->tmp_pool, dst_data_conn, pbuf,
+              !frontend_data);
             if (res < 0) {
               xerrno = errno;
 
@@ -1540,11 +1556,11 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
                 "unable to proxy data between frontend/backend, "
                 "closing data connections");
 
-              pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+              proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
               proxy_sess->backend_data_conn = NULL;
 
               pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-              proxy_sess->frontend_data_conn = NULL;
+              proxy_sess->frontend_data_conn = session.d = NULL;
             }
           }
         }
@@ -1565,11 +1581,11 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
         if (proxy_sess->frontend_data_conn != NULL) {
           pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-          proxy_sess->frontend_data_conn = NULL;
+          proxy_sess->frontend_data_conn = session.d = NULL;
         }
 
         if (proxy_sess->backend_data_conn != NULL) {
-          pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+          proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
           proxy_sess->backend_data_conn = NULL;
         }
 
@@ -1600,13 +1616,13 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
             case PR_NETIO_IO_RD:
               if (proxy_sess->frontend_data_conn != NULL) {
                 pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-                proxy_sess->frontend_data_conn = NULL;
+                proxy_sess->frontend_data_conn = session.d = NULL;
               }
               break;
 
             case PR_NETIO_IO_WR:
               if (proxy_sess->backend_data_conn != NULL) {
-                pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+                proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
                 proxy_sess->backend_data_conn = NULL;
               }
               break;
@@ -1851,7 +1867,7 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   char resp_msg[PR_RESPONSE_BUFFER_SIZE];
   pr_netaddr_t *bind_addr, *remote_addr;
   pr_response_t *resp;
-  unsigned int resp_nlines = 0;
+  unsigned int resp_nlines = 1;
 
   /* TODO: Handle any possible EPSV params, e.g. "EPSV ALL", properly. */
 
@@ -1905,11 +1921,11 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   /* PassivePorts is handled by proxy_ftp_conn_listen(). */
-  data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
+  data_conn = proxy_ftp_conn_listen(cmd->pool, bind_addr, FALSE);
   if (data_conn == NULL) {
     xerrno = errno;
 
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
     pr_response_add_err(R_425, _("Unable to build data connection: "
@@ -1923,10 +1939,10 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   if (proxy_sess->frontend_data_conn != NULL) {
     /* Make sure that we only have one frontend data connection. */
     pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-    proxy_sess->frontend_data_conn = NULL;
+    proxy_sess->frontend_data_conn = session.d = NULL;
   }
 
-  proxy_sess->frontend_data_conn = data_conn;
+  proxy_sess->frontend_data_conn = session.d = data_conn;
 
   epsv_msg = proxy_ftp_msg_fmt_ext_addr(cmd->tmp_pool, data_conn->local_addr,
     data_conn->local_port, cmd->cmd_id, TRUE);
@@ -1949,10 +1965,10 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   if (res < 0) {
     xerrno = errno;
 
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
-    pr_inet_close(session.pool, data_conn);
+    proxy_inet_close(session.pool, data_conn);
     pr_response_block(TRUE);
 
     pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
@@ -1973,7 +1989,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   char resp_msg[PR_RESPONSE_BUFFER_SIZE];
   pr_netaddr_t *bind_addr, *remote_addr;
   pr_response_t *resp;
-  unsigned int resp_nlines = 0;
+  unsigned int resp_nlines = 1;
 
   switch (proxy_sess->dataxfer_policy) {
     case PR_CMD_PORT_ID:
@@ -2017,11 +2033,11 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   bind_addr = session.c->local_addr;
 
   /* PassivePorts is handled by proxy_ftp_conn_listen(). */
-  data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
+  data_conn = proxy_ftp_conn_listen(cmd->pool, bind_addr, TRUE);
   if (data_conn == NULL) {
     xerrno = errno;
 
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
     pr_response_add_err(R_425, _("Unable to build data connection: "
@@ -2035,10 +2051,10 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   if (proxy_sess->frontend_data_conn != NULL) {
     /* Make sure that we only have one frontend data connection. */
     pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-    proxy_sess->frontend_data_conn = NULL;
+    proxy_sess->frontend_data_conn = session.d = NULL;
   }
 
-  proxy_sess->frontend_data_conn = data_conn;
+  proxy_sess->frontend_data_conn = session.d = data_conn;
 
   pasv_msg = proxy_ftp_msg_fmt_addr(cmd->tmp_pool, data_conn->local_addr,
     data_conn->local_port, TRUE);
@@ -2061,10 +2077,10 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   if (res < 0) {
     xerrno = errno;
 
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
-    pr_inet_close(session.pool, data_conn);
+    proxy_inet_close(session.pool, data_conn);
     pr_response_block(TRUE);
 
     pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
@@ -2584,6 +2600,7 @@ MODRET proxy_any(cmd_rec *cmd) {
     case PR_CMD_NLST_ID:
       if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
         session.xfer.p = make_sub_pool(session.pool);
+        session.xfer.direction = PR_NETIO_IO_WR;
         mr = proxy_data(cmd, proxy_sess);
         destroy_pool(session.xfer.p);
         memset(&session.xfer, 0, sizeof(session.xfer));
@@ -2606,6 +2623,13 @@ MODRET proxy_any(cmd_rec *cmd) {
          * track more things, for supporting e.g. TransferLog.
          */
         memset(&session.xfer, 0, sizeof(session.xfer));
+
+        if (pr_cmd_cmp(cmd, PR_CMD_RETR_ID) == 0) {
+          session.xfer.direction = PR_NETIO_IO_RD;
+        } else {
+          session.xfer.direction = PR_NETIO_IO_WR;
+        }
+
         session.xfer.p = make_sub_pool(session.pool);
         gettimeofday(&session.xfer.start_time, NULL);
 
@@ -2639,6 +2663,10 @@ MODRET proxy_any(cmd_rec *cmd) {
 
         return PR_DECLINED(cmd);
       }
+
+    case PR_CMD_HOST_ID:
+      /* TODO is there any value in handling the HOST command locally? */
+      return PR_DECLINED(cmd);
 
     /* Directory changing commands not allowed locally. */
     case PR_CMD_CDUP_ID:
@@ -2723,17 +2751,26 @@ static void proxy_exit_ev(const void *event_data, void *user_data) {
     }
 
     if (proxy_sess->frontend_data_conn != NULL) {
-      pr_inet_close(proxy_sess->pool, proxy_sess->frontend_data_conn);
-      proxy_sess->frontend_data_conn = NULL;
+      /* Note: if session.d is NULL, ASSUME that the core API's session
+       * cleanup already closed that connection, and so doing it here
+       * would be redundant (and worse, an attempted double-free);
+       * the frontend_data_conn and session.d are the same connection.
+       */
+      if (session.d != NULL) {
+        pr_inet_close(proxy_sess->pool, proxy_sess->frontend_data_conn);
+        proxy_sess->frontend_data_conn = session.d = NULL;
+      }
     }
 
     if (proxy_sess->backend_ctrl_conn != NULL) {
-      pr_inet_close(proxy_sess->pool, proxy_sess->backend_ctrl_conn);
+pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION, "proxy_exit_ev: closing backend_ctrl_conn");
+      proxy_inet_close(proxy_sess->pool, proxy_sess->backend_ctrl_conn);
       proxy_sess->backend_ctrl_conn = NULL;
     }
 
     if (proxy_sess->backend_data_conn != NULL) {
-      pr_inet_close(proxy_sess->pool, proxy_sess->backend_data_conn);
+pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION, "proxy_exit_ev: closing backend_data_conn");
+      proxy_inet_close(proxy_sess->pool, proxy_sess->backend_data_conn);
       proxy_sess->backend_data_conn = NULL;
     }
 

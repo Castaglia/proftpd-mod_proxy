@@ -27,11 +27,10 @@
 #ifndef MOD_PROXY_NETIO_H
 #define MOD_PROXY_NETIO_H
 
-int proxy_netio_init(pool *p);
-int proxy_netio_free(void);
+pr_netio_t *proxy_netio_unset(int strm_type, const char *fn);
+int proxy_netio_set(int strm_type, pr_netio_t *netio);
 
-/* Proxied versions of the core NetIO API functions; see include/netio.h.
- */
+/* Proxied versions of the core NetIO API functions; see include/netio.h. */
 
 pr_netio_stream_t *proxy_netio_open(pool *p, int strm_type, int fd, int mode);
 

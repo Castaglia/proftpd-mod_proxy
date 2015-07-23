@@ -35,6 +35,8 @@ const char *proxy_ftp_msg_fmt_addr(pool *p, pr_netaddr_t *addr,
   if (use_masqaddr) {
     config_rec *c;
 
+    /* TODO What about TLSMasqueradeAddress? */
+
     /* Handle MasqueradeAddress. */
     c = find_config(main_server->conf, CONF_PARAM, "MasqueradeAddress", FALSE);
     if (c != NULL) {
