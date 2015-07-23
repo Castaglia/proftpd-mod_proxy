@@ -2763,13 +2763,11 @@ static void proxy_exit_ev(const void *event_data, void *user_data) {
     }
 
     if (proxy_sess->backend_ctrl_conn != NULL) {
-pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION, "proxy_exit_ev: closing backend_ctrl_conn");
       proxy_inet_close(proxy_sess->pool, proxy_sess->backend_ctrl_conn);
       proxy_sess->backend_ctrl_conn = NULL;
     }
 
     if (proxy_sess->backend_data_conn != NULL) {
-pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION, "proxy_exit_ev: closing backend_data_conn");
       proxy_inet_close(proxy_sess->pool, proxy_sess->backend_data_conn);
       proxy_sess->backend_data_conn = NULL;
     }
