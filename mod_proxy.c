@@ -2775,7 +2775,14 @@ static void proxy_exit_ev(const void *event_data, void *user_data) {
     pr_table_remove(session.notes, "mod_proxy.proxy-session", NULL);
   }
 
-  proxy_reverse_sess_exit(session.pool);
+  switch (proxy_role) {
+    case PROXY_ROLE_REVERSE:
+      proxy_reverse_sess_exit(session.pool);
+      break;
+
+    case PROXY_ROLE_FORWARD:
+      break;
+  }
 
   if (proxy_logfd >= 0) {
     (void) close(proxy_logfd);
