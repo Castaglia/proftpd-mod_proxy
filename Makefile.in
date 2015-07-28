@@ -17,6 +17,8 @@ MODULE_OBJS=mod_proxy.o \
   lib/proxy/db.o \
   lib/proxy/session.o \
   lib/proxy/conn.o \
+  lib/proxy/netio.o \
+  lib/proxy/inet.o \
   lib/proxy/uri.o \
   lib/proxy/forward.o \
   lib/proxy/reverse.o \
@@ -33,6 +35,8 @@ SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/db.lo \
   lib/proxy/session.lo \
   lib/proxy/conn.lo \
+  lib/proxy/netio.lo \
+  lib/proxy/inet.lo \
   lib/proxy/uri.lo \
   lib/proxy/forward.lo \
   lib/proxy/reverse.lo \

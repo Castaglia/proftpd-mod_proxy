@@ -432,10 +432,10 @@ my $TESTS = {
     test_class => [qw(forking mod_tls reverse)],
   },
 
-#  proxy_tls_reverse_list_pasv => {
-#    order => ++$order,
-#    test_class => [qw(forking mod_tls reverse)],
-#  },
+  proxy_tls_reverse_list_pasv => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls reverse)],
+  },
 
   proxy_forward_connect => {
     order => ++$order,
@@ -14071,7 +14071,7 @@ sub proxy_tls_reverse_list_pasv {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+    Trace => 'DEFAULT:10 event:0 lock:0 netio:20 scoreboard:0 signal:0 proxy:20 proxy.inet:20 proxy.netio:20 proxy.reverse:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 tls:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
@@ -14087,7 +14087,8 @@ sub proxy_tls_reverse_list_pasv {
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
-        TLSOptions => 'NoSessionReuseRequired',
+        TLSOptions => 'NoSessionReuseRequired EnableDiags',
+        TLSTimeoutHandshake => 5,
       },
 
       'mod_delay.c' => {
@@ -14140,10 +14141,14 @@ EOC
     eval {
       # Give the server a chance to start up
       sleep(2);
- 
+
+      my $ssl_opts = {
+      };
+
       my $client_opts = {
         Encryption => 'E',
         Port => $port,
+        SSL_Client_Certificate => $ssl_opts,
       };
 
       if ($ENV{TEST_VERBOSE}) {
@@ -14160,15 +14165,18 @@ EOC
         die("Can't login: " . $client->last_message());
       }
 
-      my $res = $client->list('.');
+      my $res = $client->list();
       unless ($res) {
-        die("LIST failed unexpectedly: " . $client->last_message());
+        die("LIST failed unexpectedly: " . $client->last_message() .
+          "(" . IO::Socket::SSL::errstr() . ")");
       }
-
+ 
+      my $resp_msg = $client->last_message();
       $client->quit();
 
-use Data::Dumper;
-print STDERR "res: ", Dumper($res), "\n";
+      my $expected = '226 Transfer complete';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response '$expected', got '$resp_msg'"));
     };
 
     if ($@) {
@@ -14179,7 +14187,7 @@ print STDERR "res: ", Dumper($res), "\n";
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($config_file, $rfh, 20) };
     if ($@) {
       warn($@);
       exit 1;

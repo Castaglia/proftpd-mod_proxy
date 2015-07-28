@@ -25,6 +25,8 @@
 #include "mod_proxy.h"
 
 #include "proxy/conn.h"
+#include "proxy/netio.h"
+#include "proxy/inet.h"
 #include "proxy/session.h"
 #include "proxy/uri.h"
 
@@ -273,7 +275,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     }
 
     /* Not yet connected. */
-    nstrm = pr_netio_open(p, PR_NETIO_STRM_OTHR, server_conn->listen_fd,
+    nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, server_conn->listen_fd,
       nstrm_mode);
     if (nstrm == NULL) {
       int xerrno = errno;
@@ -289,13 +291,13 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
       return NULL;
     }
 
-    pr_netio_set_poll_interval(nstrm, 1);
+    proxy_netio_set_poll_interval(nstrm, 1);
 
-    switch (pr_netio_poll(nstrm)) {
+    switch (proxy_netio_poll(nstrm)) {
       case 1: {
         /* Aborted, timed out.  Note that we shouldn't reach here. */
         pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-        pr_netio_close(nstrm);
+        proxy_netio_close(nstrm);
         pr_inet_close(p, server_conn);
 
         errno = ETIMEDOUT;
@@ -311,7 +313,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
           strerror(xerrno));
 
         pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-        pr_netio_close(nstrm);
+        proxy_netio_close(nstrm);
         pr_inet_close(p, server_conn);
 
         errno = xerrno;
@@ -332,7 +334,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
             "error obtaining local socket info on fd %d: %s",
             server_conn->listen_fd, strerror(xerrno));
 
-          pr_netio_close(nstrm);
+          proxy_netio_close(nstrm);
           pr_inet_close(p, server_conn);
 
           errno = xerrno;
@@ -349,8 +351,8 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     pr_netaddr_get_ipstr(server_conn->local_addr),
     ntohs(pr_netaddr_get_port(server_conn->local_addr)));
 
-  ctrl_conn = pr_inet_openrw(p, server_conn, NULL, PR_NETIO_STRM_CTRL, -1, -1,
-    -1, FALSE);
+  ctrl_conn = proxy_inet_openrw(p, server_conn, NULL, PR_NETIO_STRM_CTRL, -1,
+    -1, -1, FALSE);
   if (ctrl_conn == NULL) {
     int xerrno = errno;
 
@@ -442,7 +444,7 @@ int proxy_conn_send_proxy(pool *p, conn_t *conn) {
     "sending proxy protocol message: 'PROXY %s %s %s %d %d' to backend",
     proto, src_ipstr, dst_ipstr, src_port, dst_port);
 
-  res = pr_netio_printf(conn->outstrm, "PROXY %s %s %s %d %d\r\n",
+  res = proxy_netio_printf(conn->outstrm, "PROXY %s %s %s %d %d\r\n",
     proto, src_ipstr, dst_ipstr, src_port, dst_port);
 
   if (sub_pool != NULL) {

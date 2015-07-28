@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP control conn routines
- * Copyright (c) 2012-2014 TJ Saunders
+ * Copyright (c) 2012-2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 
 #include "mod_proxy.h"
 
+#include "proxy/netio.h"
 #include "proxy/ftp/ctrl.h"
 
 static const char *trace_channel = "proxy.ftp.ctrl";
@@ -54,7 +55,7 @@ static char *ftp_telnet_gets(char *buf, size_t buflen,
     if (pbuf->current == NULL ||
         pbuf->remaining == pbuf->buflen) {
 
-      nread = pr_netio_read(nstrm, pbuf->buf,
+      nread = proxy_netio_read(nstrm, pbuf->buf,
         (buflen < pbuf->buflen ? buflen : pbuf->buflen), 4);
       if (nread <= 0) {
         if (buf_ptr != buf) {
@@ -329,8 +330,8 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
   *nlines = count;
 
   pr_trace_msg(trace_channel, 9,
-    "received '%s%s%s' response from backend to frontend", resp->num,
-    multiline ? "" : " ", resp->msg);
+    "received '%s%s%s' response from backend to frontend",
+    resp->num, multiline ? "" : " ", resp->msg);
   return resp;
 }
 
@@ -345,13 +346,13 @@ int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *ctrl_conn, cmd_rec *cmd) {
 
     pr_trace_msg(trace_channel, 9,
       "proxied command '%s' from frontend to backend", display_str);
-    res = pr_netio_printf(ctrl_conn->outstrm, "%s %s\r\n", cmd->argv[0],
+    res = proxy_netio_printf(ctrl_conn->outstrm, "%s %s\r\n", cmd->argv[0],
       cmd->arg);
 
   } else {
     pr_trace_msg(trace_channel, 9,
       "proxied %s command from frontend to backend", cmd->argv[0]);
-    res = pr_netio_printf(ctrl_conn->outstrm, "%s\r\n", cmd->argv[0]);
+    res = proxy_netio_printf(ctrl_conn->outstrm, "%s\r\n", cmd->argv[0]);
   }
 
   return res;

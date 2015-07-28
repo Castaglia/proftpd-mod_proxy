@@ -24,6 +24,7 @@
 
 #include "mod_proxy.h"
 
+#include "include/proxy/inet.h"
 #include "include/proxy/ftp/conn.h"
 #include "include/proxy/ftp/ctrl.h"
 #include "include/proxy/ftp/msg.h"
@@ -50,7 +51,7 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
     bind_addr = session.c->local_addr;
   }
 
-  data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr);
+  data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr, FALSE);
   if (data_conn == NULL) {
     xerrno = errno;
 
@@ -64,7 +65,7 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
 
   if (proxy_sess->backend_data_conn != NULL) {
     /* Make sure that we only have one backend data connection. */
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
   }
 
@@ -111,7 +112,7 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error sending %s to backend: %s", actv_cmd->argv[0], strerror(xerrno));
 
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
     pr_response_add_err(error_code, "%s: %s", cmd->argv[0], strerror(xerrno));
@@ -129,7 +130,7 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
       "error receiving %s response from backend: %s", actv_cmd->argv[0],
       strerror(xerrno));
 
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
     pr_response_add_err(error_code, "%s: %s", cmd->argv[0], strerror(xerrno));
@@ -144,7 +145,7 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
       "received non-2xx response from backend for %s: %s %s", actv_cmd->argv[0],
       resp->num, resp->msg);
 
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
     errno = xerrno = EINVAL;

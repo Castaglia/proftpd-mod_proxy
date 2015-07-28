@@ -1,6 +1,6 @@
 /*
- * ProFTPD - mod_proxy FTP data conn API
- * Copyright (c) 2012-2015 TJ Saunders
+ * ProFTPD - mod_proxy Inet API
+ * Copyright (c) 2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,11 +24,21 @@
 
 #include "mod_proxy.h"
 
-#ifndef MOD_PROXY_FTP_DATA_H
-#define MOD_PROXY_FTP_DATA_H
+#ifndef MOD_PROXY_INET_H
+#define MOD_PROXY_INET_H
 
-pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *conn, int frontend_data);
-int proxy_ftp_data_send(pool *p, conn_t *conn, pr_buffer_t *pbuf,
-  int frontend_data);
+/* Proxied versions of the core Inet API functions; see include/inet.h. */
 
-#endif /* MOD_PROXY_FTP_DATA_H */
+conn_t *proxy_inet_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn,
+  int rfd, int wfd, int resolve);
+
+void proxy_inet_close(pool *p, conn_t *conn);
+
+int proxy_inet_connect(pool *p, conn_t *conn, pr_netaddr_t *addr, int port);
+
+int proxy_inet_listen(pool *p, conn_t *conn, int backlog, int flags);
+
+conn_t *proxy_inet_openrw(pool *p, conn_t *conn, pr_netaddr_t *addr,
+  int strm_type, int fd, int rfd, int wfd, int resolve);
+
+#endif /* MOD_PROXY_INET_H */
