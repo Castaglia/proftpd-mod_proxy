@@ -1087,6 +1087,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       bind_addr = session.c->local_addr;
     }
 
+    pr_trace_msg(trace_channel, 17,
+      "connecting to backend server for passive data transfer");
     backend_conn = proxy_ftp_conn_connect(cmd->pool, bind_addr,
       proxy_sess->backend_data_addr, FALSE);
     if (backend_conn == NULL) {
@@ -1126,6 +1128,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     proxy_sess->backend_data_conn = backend_conn;
 
   } else if (proxy_sess->backend_sess_flags & SF_PORT) {
+    pr_trace_msg(trace_channel, 17,
+      "accepting connection from backend server for active data transfer");
     backend_conn = proxy_ftp_conn_accept(cmd->pool,
       proxy_sess->backend_data_conn, proxy_sess->backend_ctrl_conn, FALSE);
     if (backend_conn == NULL) {
@@ -1225,7 +1229,33 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     return PR_HANDLED(cmd);
   }
 
+  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
+    proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
+  if (res < 0) {
+    xerrno = errno;
+
+    if (proxy_sess->frontend_data_conn != NULL) {
+      pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+      proxy_sess->frontend_data_conn = session.d = NULL;
+    }
+
+    if (proxy_sess->backend_data_conn != NULL) {
+      proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+      proxy_sess->backend_data_conn = NULL;
+    }
+
+    pr_response_block(TRUE);
+
+    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
   if (proxy_sess->frontend_sess_flags & SF_PASSIVE) {
+    pr_trace_msg(trace_channel, 17,
+      "accepting connection from frontend server for passive data transfer");
     frontend_conn = proxy_ftp_conn_accept(cmd->pool,
       proxy_sess->frontend_data_conn, proxy_sess->frontend_ctrl_conn, TRUE);
     if (frontend_conn == NULL) {
@@ -1305,6 +1335,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       bind_addr = pr_netaddr_v6tov4(session.xfer.p, session.c->local_addr);
     }
 
+    pr_trace_msg(trace_channel, 17,
+      "connecting to frontend server for active data transfer");
     frontend_conn = proxy_ftp_conn_connect(cmd->pool, bind_addr,
       proxy_sess->frontend_data_addr, TRUE);
     if (frontend_conn == NULL) {
@@ -1350,33 +1382,6 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     }
 
     proxy_sess->frontend_data_conn = session.d = frontend_conn;
-  }
-
-  /* Now that we have our frontend connection, we can send the response from
-   * the backend to the frontend.
-   */
-  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
-    proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
-  if (res < 0) {
-    xerrno = errno;
-
-    if (proxy_sess->frontend_data_conn != NULL) {
-      pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-      proxy_sess->frontend_data_conn = session.d = NULL;
-    }
-
-    if (proxy_sess->backend_data_conn != NULL) {
-      proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
-      proxy_sess->backend_data_conn = NULL;
-    }
-
-    pr_response_block(TRUE);
-
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
   }
 
   /* If we don't have our frontend/backend connections by now, it's a
@@ -2054,7 +2059,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
        * IPv6 addresses (Bug#3745).
        */
       if (pr_netaddr_get_family(session.c->local_addr) == AF_INET6) {
-        int xerrno = EPERM;
+        xerrno = EPERM;
 
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "Unable to handle PASV for IPv6 address '%s', rejecting command",

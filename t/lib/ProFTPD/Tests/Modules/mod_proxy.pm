@@ -432,10 +432,10 @@ my $TESTS = {
     test_class => [qw(forking mod_tls reverse)],
   },
 
-#  proxy_tls_reverse_list_pasv => {
-#    order => ++$order,
-#    test_class => [qw(forking mod_tls reverse)],
-#  },
+  proxy_tls_reverse_list_pasv => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls reverse)],
+  },
 
   proxy_forward_connect => {
     order => ++$order,
@@ -701,10 +701,7 @@ sub new {
 }
 
 sub list_tests {
-#  return testsuite_get_runnable_tests($TESTS);
-  return qw(
-    proxy_tls_reverse_list_pasv
-  );
+  return testsuite_get_runnable_tests($TESTS);
 }
 
 sub config_hash2array {
@@ -14155,9 +14152,7 @@ EOC
       };
 
       if ($ENV{TEST_VERBOSE}) {
-use IO::Socket::SSL qw(debug3);
         $client_opts->{Debug} = 1;
-        $ssl_opts->{debug3} = 1;
       }
 
       my $client = Net::FTPSSL->new('127.0.0.1', %$client_opts);

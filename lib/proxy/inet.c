@@ -92,11 +92,11 @@ void proxy_inet_close(pool *p, conn_t *conn) {
       conn->wfd = -1;
     }
 
-    if (conn->instrm != NULL) {
+    if (in_netio != NULL) {
       proxy_netio_set(instrm_type, in_netio);
     }
 
-    if (conn->outstrm != NULL) {
+    if (out_netio != NULL) {
       proxy_netio_set(outstrm_type, out_netio);
     }
   }
