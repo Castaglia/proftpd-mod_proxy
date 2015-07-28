@@ -573,6 +573,7 @@ on the type of proxying, forward or reverse, that <code>mod_proxy</code>
 is configured to perform.  There are some benefit, however, that the module
 can bring, regardless of the type of proxying:
 <ul>
+  <li>Add ProFTPD's FTPS support (via <code>mod_tls</code>) for FTP servers which do not support FTPS
   <li>Add ProFTPD's logging power (<code>TransferLog</code>, <code>ExtendedLog</code>, <i>etc</i>) for FTP servers which do not provide such versatile logging
   <li>Use ProFTPD's monitoring capabilities (<i>e.g.</i> <code>mod_snmp</code>) for FTP servers which do not have such features
 </ul>
@@ -860,6 +861,31 @@ example:
     ProxyReverseServers ftp://ftp-backend1.example.com:2121 ftp://ftp-backend2.example.com:2121 ...
   &lt;/IfClass&gt;
 </pre>
+
+<p><a name="ProxyFTPSSupport">
+<font color=red>Question</font>: Does <code>mod_proxy</code> support SSL/TLS
+connections, <i>i.e.</i> FTPS?<br>
+<font color=blue>Answer</font>:  Short answer: yes.
+
+<p>
+The long answer is that currently, <code>mod_proxy</code> supports FTPS
+connections on the <em>frontend</em>, from connecting clients.  It does not
+yet support FTPS connections on the <em>backend</em>, to the backend/destination
+servers.  Thus the following flow is supported:
+<pre>
+  <em>client</em> --- FTPS ---> <em>proxy</em> --- FTP ---> <em>server</em>
+</pre>
+but these flows are <b>not</b> yet supported:
+<pre>
+  <em>client</em> --- FTP ---> <em>proxy</em> --- FTPS ---> <em>server</em>
+  <em>client</em> --- FTPS ---> <em>proxy</em> --- FTPS ---> <em>server</em>
+</pre>
+
+<p>
+Thus at the moment, <code>mod_proxy</code>'s FTPS support is best suited
+for reverse proxy configurations, where <code>mod_proxy</code> can be used
+to provide SSL/TLS capabilities to old/legacy FTP servers which do not implement
+it.
 
 <p>
 <hr>
