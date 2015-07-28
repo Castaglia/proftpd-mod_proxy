@@ -712,6 +712,12 @@ with lookup of per-user backend servers:
 </pre>
 
 <p>
+In order to support FTP over SSL/TLS (FTPS) when reverse proxying, simply
+include your normal <code>mod_tls</code> configuration with the same
+<code>&lt;VirtualHost&gt;</code> configuration with your <code>mod_proxy</code>
+configuration.
+
+<p>
 <b>Load Balancing versus Session Stickiness</b><br>
 For reverse proxy configurations, there is a choice between
 <em>load balancing</em> and <em>sticky session</em>
