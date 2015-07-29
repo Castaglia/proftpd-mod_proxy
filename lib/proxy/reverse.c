@@ -33,7 +33,6 @@
 
 #include <sqlite3.h>
 
-/* From response.c */
 extern xaset_t *server_list;
 
 static array_header *reverse_backends = NULL;
@@ -1366,7 +1365,7 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
     return -1;
   }
 
-  db_path = pdircat(p, tables_dir, "proxy.db", NULL);
+  db_path = pdircat(p, tables_dir, "proxy-reverse.db", NULL);
   if (file_exists(db_path)) {
     pr_log_debug(DEBUG9, MOD_PROXY_VERSION
       ": deleting existing database file '%s'", db_path);

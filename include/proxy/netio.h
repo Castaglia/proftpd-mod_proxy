@@ -30,6 +30,12 @@
 pr_netio_t *proxy_netio_unset(int strm_type, const char *fn);
 int proxy_netio_set(int strm_type, pr_netio_t *netio);
 
+/* Tells the Proxy NetIO API to use the given netio for the given stream
+ * type, when proxy_netio_unset() and proxy_netio_set() are called on that
+ * stream type.
+ */
+int proxy_netio_use(int strm_type, pr_netio_t *netio);
+
 /* Proxied versions of the core NetIO API functions; see include/netio.h. */
 
 pr_netio_stream_t *proxy_netio_open(pool *p, int strm_type, int fd, int mode);

@@ -10,8 +10,6 @@ Balancing vs Stickiness
   Sticky:
     per USER
     per HOST
-    per SSL session ID 
-    per SSL SNI
 
 Work on implementing just the balancing strategies, for now.
 
