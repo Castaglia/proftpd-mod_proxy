@@ -25,6 +25,7 @@
 #include "mod_proxy.h"
 
 #include "proxy/db.h"
+#include "proxy/conn.h"
 #include "proxy/netio.h"
 #include "proxy/session.h"
 #include "proxy/tls.h"
@@ -970,7 +971,8 @@ static int proxy_tls_check_server_cert(SSL *ssl, conn_t *conn) {
   return ok;
 }
 
-static int proxy_tls_connect(conn_t *conn, pr_netio_stream_t *nstrm) {
+static int proxy_tls_connect(conn_t *conn, const char *host_name,
+    pr_netio_stream_t *nstrm) {
   int blocking, nstrm_type, res = 0, xerrno = 0;
   char *subj = NULL;
   SSL *ssl = NULL;
@@ -990,21 +992,24 @@ static int proxy_tls_connect(conn_t *conn, pr_netio_stream_t *nstrm) {
     return -2;
   }
 
-/* TODO: FIX THIS! */
-  /* We deliberately set SSL_VERIFY_NONE here, so that we get to
-   * determine how to handle the server cert verification result ourselves.
-   */
-  SSL_set_verify(ssl, SSL_VERIFY_NONE, NULL);
+  SSL_set_verify(ssl, SSL_VERIFY_PEER, NULL);
+/* XXX TODO: set verify callback function! */
 
   /* This works with either rfd or wfd (I hope). */
   rbio = BIO_new_socket(conn->rfd, FALSE);
   wbio = BIO_new_socket(conn->rfd, FALSE);
   SSL_set_bio(ssl, rbio, wbio);
 
-  /* If we're opening a data connection, reuse the SSL data from the
-   * session on the control connection.
-   */
-  SSL_copy_session_id(ssl, proxy_tls_ctrl_ssl);
+#if !defined(OPENSSL_NO_TLSEXT)
+  SSL_set_tlsext_host_name(ssl, conn->remote_name);
+#endif /* OPENSSL_NO_TLSEXT */
+
+  if (nstrm->strm_type == PR_NETIO_STRM_DATA) {
+    /* If we're opening a data connection, reuse the SSL data from the
+     * session on the control connection.
+     */
+    SSL_copy_session_id(ssl, proxy_tls_ctrl_ssl);
+  }
 
   /* If configured, set a timer for the handshake. */
   if (handshake_timeout) {
@@ -1301,8 +1306,11 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
    * then do a TLS handshake.
    */
 
-  if (nstrm->strm_type == PR_NETIO_STRM_DATA &&
-      nstrm->strm_mode == PR_NETIO_IO_WR) {
+  if (proxy_tls_engine == PROXY_TLS_ENGINE_OFF) {
+    return 0;
+  }
+
+  if (nstrm->strm_mode == PR_NETIO_IO_WR) {
     struct proxy_session *proxy_sess;
     uint64_t *adaptive_ms = NULL, start_ms;
     off_t *adaptive_bytes = NULL;
@@ -1314,15 +1322,66 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
     pr_gettimeofday_millis(&start_ms);
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "starting TLS negotiation on data connection");
+      "starting TLS negotiation on %s connection",
+      nstrm->strm_type == PR_NETIO_STRM_CTRL ? "control" : "data");
 
     /* TODO: do SSL_connect() here?  Make sure to use SSL_set_session() for
      * the cached session ID, if found?  (Where to get a SSL_SESSION *?)
+     *
      */
+#if 0
 
-    if (proxy_tls_connect(proxy_sess->backend_data_conn, nstrm) < 0) {
+    /* writing out SSL_SESSION, from apps/s_client.c: */
+
+     Here, we can use a memory BIO to get the formatted SSL_SESSION.
+     AND since we'd be using PEM, it means that we can use TEXT, not BLOB,
+     in the schema.  Yay!
+
+     We'll need to use SSL_SESSION_get_time() to get the time at which
+     the session was established; we'll need to use this, and/or
+     SSL_SESSION_set_timeout to set a time limit on sessions (or should we
+     just let servers handle this?  What about buggy servers?).  We should
+     have our own timeout: 24 hours by default.  This timeout would be
+     enforced when we read sessions out of the db; expired sessions would
+     be a) DELETED from db, and b) return NULL/none to the caller.  I suppose,
+     if we wanted, we COULD use SESS_CACHE_CLIENT, and replace the cache
+     callbacks to use our database; this would make our implementation
+     more similar to mod_tls, AND it would mean being able to use e.g.
+     SSL_CTX_flush_sessions.  Hmmm.
+
+                    BIO *stmp = BIO_new_file(sess_out, "w");
+                    if (stmp) {
+                        PEM_write_bio_SSL_SESSION(stmp, SSL_get_session(con));
+                        BIO_free(stmp);
+                    } else
+                        BIO_printf(bio_err, "Error writing session file %s\n",
+                                   sess_out);
+
+    /* reading in SSL_SESSION, from apps/s_client.c: */
+        SSL_SESSION *sess;
+        BIO *stmp = BIO_new_file(sess_in, "r");
+        if (!stmp) {
+            BIO_printf(bio_err, "Can't open session file %s\n", sess_in);
+            ERR_print_errors(bio_err);
+            goto end;
+        }
+        sess = PEM_read_bio_SSL_SESSION(stmp, NULL, 0, NULL);
+        BIO_free(stmp);
+        if (!sess) {
+            BIO_printf(bio_err, "Can't open session file %s\n", sess_in);
+            ERR_print_errors(bio_err);
+            goto end;
+        }
+        SSL_set_session(con, sess);
+        SSL_SESSION_free(sess);
+
+#endif
+
+    if (proxy_tls_connect(proxy_sess->backend_data_conn,
+        proxy_conn_get_host(proxy_sess->dst_pconn), nstrm) < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "unable to open data connection: TLS negotiation failed");
+        "unable to open %s connection: TLS negotiation failed",
+        nstrm->strm_type == PR_NETIO_STRM_CTRL ? "control" : "data");
       errno = EPERM;
       return -1;
     }
@@ -1352,6 +1411,10 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
       pr_trace_msg(trace_channel, 3,
         "error stashing '%s' stream note: %s",
         PROXY_TLS_ADAPTIVE_BYTES_COUNT_KEY, strerror(errno));
+    }
+
+    if (nstrm->strm_type == PR_NETIO_STRM_CTRL) {
+      proxy_sess_state |= PROXY_SESS_STATE_BACKEND_HAS_CTRL_TLS;
     }
   }
 
@@ -1528,7 +1591,7 @@ static int netio_install_ctrl(void) {
     return 0;
   }
 
-  netio = pr_alloc_netio2(permanent_pool, &proxy_module);
+  netio = pr_alloc_netio2(permanent_pool, &proxy_module, "proxy.tls");
 
   netio->abort = netio_abort_cb;
   netio->close = netio_close_cb;
@@ -1554,7 +1617,7 @@ static int proxy_tls_netio_install_data(void) {
     return 0;
   }
 
-  netio = pr_alloc_netio2(permanent_pool, &proxy_module);
+  netio = pr_alloc_netio2(permanent_pool, &proxy_module, "proxy.tls");
 
   netio->abort = netio_abort_cb;
   netio->close = netio_close_cb;
@@ -1571,6 +1634,80 @@ static int proxy_tls_netio_install_data(void) {
 }
 
 /* Initialization routines */
+
+#if !defined(OPENSSL_NO_TLSEXT)
+
+struct proxy_tls_next_proto {
+  const char *proto;
+  unsigned char *encoded_proto;
+  unsigned int encoded_protolen;
+};
+
+static int proxy_tls_npn_cb(SSL *ssl,
+    unsigned char **npn_out, unsigned char *npn_outlen,
+    const unsigned char *npn_in, unsigned int npn_inlen,
+    void *data) {
+  struct proxy_tls_next_proto *next_proto;
+
+  next_proto = data;
+
+  if (pr_trace_get_level(trace_channel) >= 12) {
+    register unsigned int i;
+    int res;
+
+    pr_trace_msg(trace_channel, 12,
+      "NPN protocols advertised by server:");
+    for (i = 0; i < npn_inlen; i++) {
+      pr_trace_msg(trace_channel, 12,
+        " %*s", npn_in[i], &(npn_in[i+1]));
+      i += npn_in[i] + 1;
+    }
+
+    res = SSL_select_next_proto(npn_out, npn_outlen, npn_in, npn_inlen,
+      next_proto->encoded_proto, next_proto->encoded_protolen);
+    if (res != OPENSSL_NPN_NEGOTIATED) {
+      pr_trace_msg(trace_channel, 12,
+        "failed to negotiate NPN protocol '%s': %s", PROXY_TLS_NEXT_PROTO,
+        res == OPENSSL_NPN_UNSUPPORTED ? "NPN unsupported by server" :
+          "No overlap with server protocols");
+    }
+  }
+
+  return SSL_TLSEXT_ERR_OK;
+}
+
+static int set_next_protocol(SSL_CTX *ctx) {
+  register unsigned int i;
+  const char *proto = PROXY_TLS_NEXT_PROTO;
+  struct proxy_tls_next_proto *next_proto;
+  unsigned char *encoded_proto;
+  size_t encoded_protolen, proto_len;
+
+  proto_len = strlen(proto);
+  encoded_protolen = proto_len + 1;
+  encoded_proto = palloc(proxy_pool, encoded_protolen);
+  encoded_proto[0] = proto_len;
+  for (i = 0; i < proto_len; i++) {
+    encoded_proto[i+1] = proto[i];
+  }
+
+  next_proto = palloc(proxy_pool, sizeof(struct proxy_tls_next_proto));
+  next_proto->proto = pstrdup(proxy_pool, proto);
+  next_proto->encoded_proto = encoded_proto;
+  next_proto->encoded_protolen = encoded_protolen;
+
+# if defined(PR_USE_OPENSSL_NPN)
+  SSL_CTX_set_next_proto_select_cb(ctx, proxy_tls_npn_cb, &next_proto);
+# endif /* NPN */
+
+# if defined(PR_USE_OPENSSL_ALPN)
+  SSL_CTX_set_alpn_protos(ctx, next_proto->encoded_proto,
+    next_proto->encoded_protolen);
+# endif /* ALPN */
+
+  return 0;
+}
+#endif /* OPENSSL_NO_TLSEXT */
 
 static int proxy_tls_init_ctx(void) {
   long ssl_mode = 0;
@@ -1636,6 +1773,13 @@ static int proxy_tls_init_ctx(void) {
 
   SSL_CTX_set_options(proxy_ssl_ctx, ssl_opts);
 
+#if !defined(OPENSSL_NO_TLSEXT)
+  if (set_next_protocol(proxy_ssl_ctx) < 0) {
+    pr_trace_msg(trace_channel, 4,
+      "error setting TLS next protocol: %s", strerror(errno));
+  }
+#endif /* OPENSSL_NO_TLSEXT */
+
   /* XXX TODO: do we need to set ECDH, tmp dh callbacks for clients? */
 
   if (proxy_tls_seed_prng() < 0) {
@@ -1680,14 +1824,14 @@ static int tls_db_add_schema(pool *p, const char *db_path) {
     return -1;
   }
 
-  /* CREATE TABLE proxy_tls_session_ids (
+  /* CREATE TABLE proxy_tls_sessions (
    *   backend_uri STRING NOT NULL PRIMARY KEY,
    *   vhost_id INTEGER NOT NULL,
-   *   session_id BLOB NOT NULL,
+   *   session TEXT NOT NULL,
    *   FOREIGN KEY (vhost_id) REFERENCES proxy_tls_vhosts (vhost_id)
    * );
    */
-  stmt = "CREATE TABLE proxy_tls_session_ids (backend_uri STRING NOT NULL PRIMARY KEY, vhost_id INTEGER NOT NULL, session_id BLOB NOT NULL, FOREIGN KEY (vhost_id) REFERENCES proxy_hosts (vhost_id));";
+  stmt = "CREATE TABLE proxy_tls_sessions (backend_uri STRING NOT NULL PRIMARY KEY, vhost_id INTEGER NOT NULL, session TEXT NOT NULL, FOREIGN KEY (vhost_id) REFERENCES proxy_hosts (vhost_id));";
   res = proxy_db_exec_stmt(p, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1793,6 +1937,10 @@ static int tls_db_init(pool *p, const char *tables_dir) {
   return 0;
 }
 #endif /* PR_USE_OPENSSL */
+
+int proxy_tls_use_tls(void) {
+  return proxy_tls_engine;
+}
 
 int proxy_tls_init(pool *p, const char *tables_dir) {
 #ifdef PR_USE_OPENSSL
@@ -1964,7 +2112,7 @@ int proxy_tls_sess_init(pool *p) {
  * like lftp, and wait to receive 150 response code from backend server
  * BEFORE doing SSL_connect(), with timeout (5 sec, like lftp's default).
  *
- * SNI, NPN/ALPN, session ID caching!
+ * session ID caching!
  */
 
 /* On connect to backend, AFTER FEAT (and before HOST), do SSL_connect. */

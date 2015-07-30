@@ -25,7 +25,10 @@
 #include "mod_proxy.h"
 
 #include "proxy/conn.h"
+#include "proxy/netio.h"
+#include "proxy/inet.h"
 #include "proxy/forward.h"
+#include "proxy/tls.h"
 #include "proxy/ftp/ctrl.h"
 #include "proxy/ftp/sess.h"
 
@@ -134,7 +137,7 @@ int proxy_forward_have_authenticated(cmd_rec *cmd) {
 static int forward_connect(pool *p, struct proxy_session *proxy_sess,
     pr_response_t **resp, unsigned int *resp_nlines) {
   conn_t *server_conn = NULL;
-  int banner_ok = TRUE;
+  int banner_ok = TRUE, use_tls, xerrno = 0;
   pr_netaddr_t *dst_addr;
   array_header *other_addrs = NULL;
 
@@ -143,7 +146,7 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
 
   server_conn = proxy_conn_get_server_conn(p, proxy_sess, dst_addr);
   if (server_conn == NULL) {
-    int xerrno = errno;
+    xerrno = errno;
 
     if (other_addrs != NULL) {
       register unsigned int i;
@@ -190,7 +193,7 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
   *resp = proxy_ftp_ctrl_recv_resp(p, proxy_sess->backend_ctrl_conn,
     resp_nlines);
   if (*resp == NULL) {
-    int xerrno = errno;
+    xerrno = errno;
 
     pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "unable to read banner from server %s:%u: %s",
@@ -224,6 +227,55 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
   if (proxy_ftp_sess_get_feat(p, proxy_sess) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "unable to determine features of backend server: %s", strerror(errno));
+  }
+
+  use_tls = proxy_tls_use_tls();
+  if (use_tls != PROXY_TLS_ENGINE_OFF) {
+    if (proxy_ftp_sess_send_auth_tls(p, proxy_sess) < 0) {
+      xerrno = errno;
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error enabling TLS on control connection to backend server: %s",
+        strerror(xerrno));
+      pr_inet_close(p, proxy_sess->backend_ctrl_conn);
+      proxy_sess->backend_ctrl_conn = NULL;
+
+      errno = xerrno;
+      return -1;
+    }
+  }
+
+  if (proxy_netio_postopen(server_conn->instrm) < 0) {
+    xerrno = errno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "postopen error for backend ctrl connection input stream: %s",
+      strerror(xerrno));
+    proxy_inet_close(session.pool, server_conn);
+    proxy_sess->backend_ctrl_conn = NULL;
+
+    errno = xerrno;
+    return -1;
+  }
+
+  if (proxy_netio_postopen(server_conn->outstrm) < 0) {
+    xerrno = errno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "postopen error for backend ctrl connection output stream: %s",
+      strerror(xerrno));
+    proxy_inet_close(session.pool, server_conn);
+    proxy_sess->backend_ctrl_conn = NULL;
+
+    errno = xerrno;
+    return -1;
+  }
+
+  if (use_tls != PROXY_TLS_ENGINE_OFF) {
+    if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_HAS_CTRL_TLS) {
+      /* NOTE: should this be a fatal error? */
+      (void) proxy_ftp_sess_send_pbsz_prot(p, proxy_sess);
+    }
   }
 
   (void) proxy_ftp_sess_send_host(p, proxy_sess);

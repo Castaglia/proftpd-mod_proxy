@@ -58,6 +58,9 @@ int proxy_tls_init(pool *p, const char *tables_dir);
 int proxy_tls_free(pool *p);
 
 int proxy_tls_sess_init(pool *p);
-int proxy_tls_sess_exit(pool *p);
+int proxy_tls_sess_free(pool *p);
+
+/* Returns the ProxyTLSEngine value; see above. */
+int proxy_tls_use_tls(void);
 
 #endif /* MOD_PROXY_TLS_H */

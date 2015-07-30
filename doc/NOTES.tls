@@ -13,12 +13,12 @@ ciphersuites/protocol version, etc.
   ProxyTLSTimeoutHandshake
   ProxyTLSVerifyServer
 
-  ProxyOptions EnableTLSDiags
+  ProxyTLSOptions
+    EnableTLSDiags
+    IgnoreFEAT
 
 Support/store SSL session IDs (where to cache?  Locally in SQLite table?).
 What about PSK support?  Renegotiations?
 
-SNI support?
-ALPN/NPN support?
 Passphrase provider support?
 OCSP stapling support?
