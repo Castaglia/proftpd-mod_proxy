@@ -73,6 +73,7 @@ install: install-misc
 	fi
 
 install-misc:
+	$(INSTALL) -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0644 cacerts.pem $(DESTDIR)$(sysconfdir)/cacerts.pem
 
 clean:
 	$(LIBTOOL) --mode=clean $(RM) $(MODULE_NAME).a $(MODULE_NAME).la *.o *.lo .libs/*.o
