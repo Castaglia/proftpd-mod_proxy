@@ -219,6 +219,11 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
       return -1;
     }
 
+    /* Tell the Proxy NetIO API to NOT try to use our TLS NetIO. */
+    proxy_netio_use(PR_NETIO_STRM_CTRL, NULL);
+
+    pr_trace_msg(trace_channel, 19,
+      "backend server does not support AUTH TLS (via FEAT), skipping");
     return 0;
   }
 
