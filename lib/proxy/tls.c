@@ -39,6 +39,7 @@
 extern xaset_t *server_list;
 
 static int proxy_tls_engine = PROXY_TLS_ENGINE_OFF;
+static unsigned long proxy_tls_opts = 0UL;
 
 static const char *trace_channel = "proxy.tls";
 static const char *timing_channel = "timing";
@@ -54,21 +55,6 @@ static const char *timing_channel = "timing";
 #define PROXY_TLS_DATA_ADAPTIVE_WRITE_MAX_BUFFER_SIZE	(16 * 1024)
 #define PROXY_TLS_DATA_ADAPTIVE_WRITE_BOOST_THRESHOLD	(1024 * 1024)
 #define PROXY_TLS_DATA_ADAPTIVE_WRITE_BOOST_INTERVAL_MS	1000
-
-/* ProxyTLSProtocol handling */
-#define PROXY_TLS_PROTO_SSL_V3		0x0001
-#define PROXY_TLS_PROTO_TLS_V1		0x0002
-#define PROXY_TLS_PROTO_TLS_V1_1	0x0004
-#define PROXY_TLS_PROTO_TLS_V1_2	0x0008
-
-#if OPENSSL_VERSION_NUMBER >= 0x10001000L
-# define PROXY_TLS_PROTO_DEFAULT	(PROXY_TLS_PROTO_TLS_V1|PROXY_TLS_PROTO_TLS_V1_1|PROXY_TLS_PROTO_TLS_V1_2)
-#else
-# define PROXY_TLS_PROTO_DEFAULT	(PROXY_TLS_PROTO_TLS_V1)
-#endif /* OpenSSL 1.0.1 or later */
-
-/* This is used for e.g. "ProxyTLSProtocol ALL -SSLv3 ...". */
-#define PROXY_TLS_PROTO_ALL		(PROXY_TLS_PROTO_SSL_V3|PROXY_TLS_PROTO_TLS_V1|PROXY_TLS_PROTO_TLS_V1_1|PROXY_TLS_PROTO_TLS_V1_2)
 
 #ifdef SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS
 static int proxy_tls_ssl_opts = (SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_SINGLE_DH_USE)^SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
@@ -2045,6 +2031,343 @@ static const char *get_enabled_protocols_str(pool *p, unsigned int protos,
   return proto_str;
 }
 
+static void proxy_tls_info_cb(const SSL *ssl, int where, int ret) {
+  const char *str = "(unknown)";
+  int w;
+
+  pr_signals_handle();
+
+  w = where & ~SSL_ST_MASK;
+
+  if (w & SSL_ST_CONNECT) {
+    str = "connecting";
+
+  } else if (w & SSL_ST_ACCEPT) {
+    str = "accepting";
+
+  } else {
+    int ssl_state;
+
+    ssl_state = SSL_get_state(ssl);
+    switch (ssl_state) {
+#ifdef SSL_ST_BEFORE
+      case SSL_ST_BEFORE:
+        str = "before";
+        break;
+#endif
+
+      case SSL_ST_OK:
+        str = "ok";
+        break;
+
+#ifdef SSL_ST_RENEGOTIATE
+      case SSL_ST_RENEGOTIATE:
+        str = "renegotiating";
+        break;
+#endif
+
+      default:
+        break;
+    }
+  }
+
+  if (where & SSL_CB_CONNECT_LOOP) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "[tls.info] %s: %s", str, SSL_state_string_long(ssl));
+
+  } else if (where & SSL_CB_HANDSHAKE_START) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "[tls.info] %s: %s", str, SSL_state_string_long(ssl));
+
+  } else if (where & SSL_CB_HANDSHAKE_DONE) {
+    int reused;
+
+    reused = SSL_session_reused((SSL *) ssl);
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "%s renegotiation accepted, using cipher %s (%d bits%s)",
+        SSL_get_version(ssl), SSL_get_cipher_name(ssl),
+        SSL_get_cipher_bits(ssl, NULL),
+        reused > 0 ? ", resumed session" : "");
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "[tls.info] %s: %s", str, SSL_state_string_long(ssl));
+
+  } else if (where & SSL_CB_LOOP) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "[tls.info] %s: %s", str, SSL_state_string_long(ssl));
+
+  } else if (where & SSL_CB_ALERT) {
+    str = (where & SSL_CB_READ) ? "reading" : "writing";
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "[tls.info] %s: SSL/TLS alert %s: %s", str,
+      SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
+
+  } else if (where & SSL_CB_EXIT) {
+    if (ret == 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "[tls.info] %s: failed in %s: %s", str, SSL_state_string_long(ssl),
+        get_errors());
+
+    } else if (ret < 0 &&
+               errno != 0 &&
+               errno != EAGAIN) {
+      /* Ignore EAGAIN errors */
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "[tls.info] %s: error in %s (errno %d: %s)", str,
+        SSL_state_string_long(ssl), errno, strerror(errno));
+    }
+  }
+}
+
+#if OPENSSL_VERSION_NUMBER > 0x000907000L
+static void proxy_tls_msg_cb(int io_flag, int version, int content_type,
+    const void *buf, size_t buflen, SSL *ssl, void *arg) {
+  char *action_str = NULL;
+  char *version_str = NULL;
+  char *bytes_str = buflen != 1 ? "bytes" : "byte";
+
+  if (io_flag == 0) {
+    action_str = "received";
+
+  } else if (io_flag == 1) {
+    action_str = "sent";
+  }
+
+  switch (version) {
+    case SSL2_VERSION:
+      version_str = "SSLv2";
+      break;
+
+    case SSL3_VERSION:
+      version_str = "SSLv3";
+      break;
+
+    case TLS1_VERSION:
+      version_str = "TLSv1";
+      break;
+
+#if OPENSSL_VERSION_NUMBER >= 0x10001000L
+    case TLS1_1_VERSION:
+      version_str = "TLSv1.1";
+      break;
+
+    case TLS1_2_VERSION:
+      version_str = "TLSv1.2";
+      break;
+#endif
+
+    default:
+#ifdef SSL3_RT_HEADER
+      /* OpenSSL calls this callback for SSL records received; filter those
+       * from true "unknowns".
+       */
+      if (version == 0 &&
+          (content_type != SSL3_RT_HEADER ||
+           buflen != SSL3_RT_HEADER_LENGTH)) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "[tls.msg] unknown/unsupported version: %d", version);
+      }
+#else
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "[tls.msg] unknown/unsupported version: %d", version);
+#endif
+      break;
+  }
+
+  if (version == SSL3_VERSION ||
+#if OPENSSL_VERSION_NUMBER >= 0x10001000L
+      version == TLS1_1_VERSION ||
+      version == TLS1_2_VERSION ||
+#endif
+      version == TLS1_VERSION) {
+
+    switch (content_type) {
+      case 20:
+        /* ChangeCipherSpec message */
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "[tls.msg] %s %s ChangeCipherSpec message (%u %s)",
+          action_str, version_str, (unsigned int) buflen, bytes_str);
+        break;
+
+      case 21: {
+        /* Alert messages */
+        if (buflen == 2) {
+          char *severity_str = NULL;
+
+          /* Peek naughtily into the buffer. */
+          switch (((const unsigned char *) buf)[0]) {
+            case 1:
+              severity_str = "warning";
+              break;
+
+            case 2:
+              severity_str = "fatal";
+              break;
+          }
+
+          switch (((const unsigned char *) buf)[1]) {
+            case 0:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s %s 'close_notify' Alert message (%u %s)",
+                action_str, version_str, severity_str, (unsigned int) buflen,
+                bytes_str);
+              break;
+
+            case 10:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s %s 'unexpected_message' Alert message "
+                "(%u %s)", action_str, version_str, severity_str,
+                (unsigned int) buflen, bytes_str);
+              break;
+
+            case 20:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s %s 'bad_record_mac' Alert message (%u %s)",
+                action_str, version_str, severity_str, (unsigned int) buflen,
+                bytes_str);
+              break;
+
+            case 21:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s %s 'decryption_failed' Alert message "
+                "(%u %s)", action_str, version_str, severity_str,
+                (unsigned int) buflen, bytes_str);
+              break;
+
+            case 22:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s %s 'record_overflow' Alert message (%u %s)",
+                action_str, version_str, severity_str, (unsigned int) buflen,
+                bytes_str);
+              break;
+
+            case 30:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s %s 'decompression_failure' Alert message "
+                "(%u %s)", action_str, version_str, severity_str,
+                (unsigned int) buflen, bytes_str);
+              break;
+
+            case 40:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s %s 'handshake_failure' Alert message "
+                "(%u %s)", action_str, version_str, severity_str,
+                (unsigned int) buflen, bytes_str);
+              break;
+          }
+
+        } else {
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "[tls.msg] %s %s Alert message, unknown type (%u %s)", action_str,
+            version_str, (unsigned int) buflen, bytes_str);
+        }
+
+        break;
+      }
+
+      case 22: {
+        /* Handshake messages */
+        if (buflen > 0) {
+          /* Peek naughtily into the buffer. */
+          switch (((const unsigned char *) buf)[0]) {
+            case 0:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s 'HelloRequest' Handshake message (%u %s)",
+                action_str, version_str, (unsigned int) buflen, bytes_str);
+              break;
+
+            case 1:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s 'ClientHello' Handshake message (%u %s)",
+                action_str, version_str, (unsigned int) buflen, bytes_str);
+              break;
+
+            case 2:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s 'ServerHello' Handshake message (%u %s)",
+                action_str, version_str, (unsigned int) buflen, bytes_str);
+              break;
+
+            case 11:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s 'Certificate' Handshake message (%u %s)",
+                action_str, version_str, (unsigned int) buflen, bytes_str);
+              break;
+
+            case 12:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s 'ServerKeyExchange' Handshake message "
+                "(%u %s)", action_str, version_str, (unsigned int) buflen,
+                bytes_str);
+              break;
+
+            case 13:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s 'CertificateRequest' Handshake message "
+                "(%u %s)", action_str, version_str, (unsigned int) buflen,
+                bytes_str);
+              break;
+
+            case 14:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s 'ServerHelloDone' Handshake message (%u %s)",
+                action_str, version_str, (unsigned int) buflen, bytes_str);
+              break;
+
+            case 15:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s 'CertificateVerify' Handshake message "
+                "(%u %s)", action_str, version_str, (unsigned int) buflen,
+                bytes_str);
+              break;
+
+            case 16:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s 'ClientKeyExchange' Handshake message "
+                "(%u %s)", action_str, version_str, (unsigned int) buflen,
+                bytes_str);
+              break;
+
+            case 20:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s 'Finished' Handshake message (%u %s)",
+                action_str, version_str, (unsigned int) buflen, bytes_str);
+              break;
+          }
+
+        } else {
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "[tls.msg] %s %s Handshake message, unknown type %d (%u %s)",
+            action_str, version_str, content_type, (unsigned int) buflen,
+            bytes_str);
+        }
+
+        break;
+      }
+    }
+
+#ifdef SSL3_RT_HEADER
+  } else if (version == 0 &&
+             content_type == SSL3_RT_HEADER &&
+             SSL3_RT_HEADER_LENGTH) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "[tls.msg] %s protocol record message (%u %s)", action_str,
+      (unsigned int) buflen, bytes_str);
+#endif
+
+  } else {
+    /* This case might indicate an issue with OpenSSL itself; the version
+     * given to the msg_callback function was not initialized, or not set to
+     * one of the recognized SSL/TLS versions.  Weird.
+     */
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "[tls.msg] %s message of unknown version %d, type %d (%u %s)",
+      action_str, version, content_type, (unsigned int) buflen, bytes_str);
+  }
+}
+#endif /* OpenSSL-0.9.7 or later */
+
 int proxy_tls_sess_init(pool *p) {
 #ifdef PR_USE_OPENSSL
   config_rec *c;
@@ -2059,6 +2382,18 @@ int proxy_tls_sess_init(pool *p) {
 
   if (proxy_tls_engine == PROXY_TLS_ENGINE_OFF) {
     return 0;
+  }
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSOptions", FALSE);
+  while (c != NULL) {
+    unsigned long opts = 0;
+
+    pr_signals_handle();
+
+    opts = *((unsigned long *) c->argv[0]);
+    proxy_tls_opts |= opts;
+
+    c = find_config_next(c, c->next, CONF_PARAM, "ProxyTLSOptions", FALSE);
   }
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSProtocol", FALSE);
@@ -2101,13 +2436,6 @@ int proxy_tls_sess_init(pool *p) {
  *  ProxyTLSVerifyServer
  *  ProxyTLSCertificate{File,Key}
  *
- *  Need to figure out where to do:
- *  AUTH TLS
- *   (SSL_connect)
- *  PBSZ 0
- *  PROT P
- *  ...
- *
  * AND do SSL_connect() for data connections (even when we accept), too.  Be
  * like lftp, and wait to receive 150 response code from backend server
  * BEFORE doing SSL_connect(), with timeout (5 sec, like lftp's default).
@@ -2115,7 +2443,12 @@ int proxy_tls_sess_init(pool *p) {
  * session ID caching!
  */
 
-/* On connect to backend, AFTER FEAT (and before HOST), do SSL_connect. */
+  if (proxy_tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
+    SSL_CTX_set_info_callback(proxy_ssl_ctx, proxy_tls_info_cb);
+# if OPENSSL_VERSION_NUMBER > 0x000907000L
+    SSL_CTX_set_msg_callback(proxy_ssl_ctx, proxy_tls_msg_cb);
+# endif
+  }
 
 #endif /* PR_USE_OPENSSL */
 

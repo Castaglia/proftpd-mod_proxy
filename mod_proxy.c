@@ -1012,6 +1012,40 @@ MODRET set_proxytlsengine(cmd_rec *cmd) {
 #endif /* PR_USE_OPENSSL */
 }
 
+/* usage: ProxyTLSOptions ... */
+MODRET set_proxytlsoptions(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  config_rec *c = NULL;
+  register unsigned int i = 0;
+  unsigned long opts = 0UL;
+
+  if (cmd->argc-1 == 0) {
+    CONF_ERROR(cmd, "wrong number of parameters");
+  }
+
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+
+  for (i = 1; i < cmd->argc; i++) {
+    if (strcmp(cmd->argv[i], "EnableDiags") == 0) {
+      opts |= PROXY_TLS_OPT_ENABLE_DIAGS;
+
+    } else {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxyTLSOption '",
+        cmd->argv[i], "'", NULL));
+    }
+  }
+
+  c->argv[0] = pcalloc(c->pool, sizeof(unsigned long));
+  *((unsigned long *) c->argv[0]) = opts;
+
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
 /* usage: ProxyTLSProtocol protocols */
 MODRET set_proxytlsprotocol(cmd_rec *cmd) {
 #ifdef PR_USE_OPENSSL
@@ -1027,7 +1061,7 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
 
   if (strcasecmp(cmd->argv[1], "all") == 0) {
     /* We're in an additive/subtractive type of configuration. */
-    tls_protocol = TLS_PROTO_ALL;
+    tls_protocol = PROXY_TLS_PROTO_ALL;
 
     for (i = 2; i < cmd->argc; i++) {
       int disable = FALSE;
@@ -1052,24 +1086,24 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
 
       if (strncasecmp(proto_name, "SSLv3", 6) == 0) {
         if (disable) {
-          tls_protocol &= ~TLS_PROTO_SSL_V3;
+          tls_protocol &= ~PROXY_TLS_PROTO_SSL_V3;
         } else {
-          tls_protocol |= TLS_PROTO_SSL_V3;
+          tls_protocol |= PROXY_TLS_PROTO_SSL_V3;
         }
 
       } else if (strncasecmp(proto_name, "TLSv1", 6) == 0) {
         if (disable) {
-          tls_protocol &= ~TLS_PROTO_TLS_V1;
+          tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1;
         } else {
-          tls_protocol |= TLS_PROTO_TLS_V1;
+          tls_protocol |= PROXY_TLS_PROTO_TLS_V1;
         }
 
       } else if (strncasecmp(proto_name, "TLSv1.1", 8) == 0) {
 # if OPENSSL_VERSION_NUMBER >= 0x10001000L
         if (disable) {
-          tls_protocol &= ~TLS_PROTO_TLS_V1_1;
+          tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1_1;
         } else {
-          tls_protocol |= TLS_PROTO_TLS_V1_1;
+          tls_protocol |= PROXY_TLS_PROTO_TLS_V1_1;
         }
 # else
         CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.1");
@@ -1078,9 +1112,9 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
       } else if (strncasecmp(proto_name, "TLSv1.2", 8) == 0) {
 # if OPENSSL_VERSION_NUMBER >= 0x10001000L
         if (disable) {
-          tls_protocol &= ~TLS_PROTO_TLS_V1_2;
+          tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1_2;
         } else {
-          tls_protocol |= TLS_PROTO_TLS_V1_2;
+          tls_protocol |= PROXY_TLS_PROTO_TLS_V1_2;
         }
 # else
         CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.2");
@@ -1095,25 +1129,25 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
   } else {
     for (i = 1; i < cmd->argc; i++) {
       if (strncasecmp(cmd->argv[i], "SSLv23", 7) == 0) {
-        tls_protocol |= TLS_PROTO_SSL_V3;
-        tls_protocol |= TLS_PROTO_TLS_V1;
+        tls_protocol |= PROXY_TLS_PROTO_SSL_V3;
+        tls_protocol |= PROXY_TLS_PROTO_TLS_V1;
 
       } else if (strncasecmp(cmd->argv[i], "SSLv3", 6) == 0) {
-        tls_protocol |= TLS_PROTO_SSL_V3;
+        tls_protocol |= PROXY_TLS_PROTO_SSL_V3;
 
       } else if (strncasecmp(cmd->argv[i], "TLSv1", 6) == 0) {
-        tls_protocol |= TLS_PROTO_TLS_V1;
+        tls_protocol |= PROXY_TLS_PROTO_TLS_V1;
 
       } else if (strncasecmp(cmd->argv[i], "TLSv1.1", 8) == 0) {
 # if OPENSSL_VERSION_NUMBER >= 0x10001000L
-        tls_protocol |= TLS_PROTO_TLS_V1_1;
+        tls_protocol |= PROXY_TLS_PROTO_TLS_V1_1;
 # else
         CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.1");
 # endif /* OpenSSL 1.0.1 or later */
 
       } else if (strncasecmp(cmd->argv[i], "TLSv1.2", 8) == 0) {
 # if OPENSSL_VERSION_NUMBER >= 0x10001000L
-        tls_protocol |= TLS_PROTO_TLS_V1_2;
+        tls_protocol |= PROXY_TLS_PROTO_TLS_V1_2;
 # else
         CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.2");
 # endif /* OpenSSL 1.0.1 or later */
@@ -3438,6 +3472,7 @@ static conftable proxy_conftab[] = {
   /* TLS support */
   { "ProxyTLSCipherSuite",	set_proxytlsciphersuite,	NULL },
   { "ProxyTLSEngine",		set_proxytlsengine,		NULL },
+  { "ProxyTLSOptions",		set_proxytlsoptions,		NULL },
   { "ProxyTLSProtocol",		set_proxytlsprotocol,		NULL },
   { "ProxyTLSTimeoutHandshake",	set_proxytlstimeouthandshake,	NULL },
 
