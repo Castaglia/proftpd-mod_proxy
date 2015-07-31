@@ -366,18 +366,46 @@ int proxy_db_open(pool *p, const char *table_path) {
    * path to our handle.
    */
   if (proxy_dbh != NULL) {
-    const char *stmt;
+    pool *tmp_pool;
+    const char *stmt, *db_name = NULL;
+    char *ptr;
 
-    stmt = pstrcat(p, "ATTACH DATABASE '", table_path, "' AS proxy_tls;", NULL);
+    tmp_pool = make_sub_pool(p);
+
+    /* Suss out the file name from the table path to use as the database
+     * name.
+     */
+    ptr = strrchr(table_path, '/');
+    if (ptr != NULL) {
+      db_name = pstrdup(tmp_pool, ptr+1);
+
+    } else {
+      db_name = pstrdup(tmp_pool, table_path);
+    }
+
+    ptr = strrchr(db_name, '.');
+    if (ptr != NULL) {
+      *ptr = '\0';
+    }
+
+    ptr = strchr(db_name, '-');
+    if (ptr != NULL) {
+      db_name = sreplace(tmp_pool, db_name, "-", "_", NULL);
+    }
+
+    stmt = pstrcat(tmp_pool, "ATTACH DATABASE '", table_path, "' AS ",
+      db_name, ";", NULL);
     res = sqlite3_exec(proxy_dbh, stmt, NULL, NULL, NULL);
     if (res != SQLITE_OK) {
       pr_trace_msg(trace_channel, 2,
         "error attaching database '%s' to existing SQLite handle "
         "using '%s': %s", table_path, stmt, sqlite3_errmsg(proxy_dbh));
+      destroy_pool(tmp_pool);
       errno = EPERM;
       return -1;
     }
 
+    destroy_pool(tmp_pool);
     return 0;
   }
 

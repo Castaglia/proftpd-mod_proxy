@@ -54,6 +54,7 @@ questions, concerns, or suggestions regarding this module.
   <li><a href="#ProxySourceAddress">ProxySourceAddress</a>
   <li><a href="#ProxyTables">ProxyTables</a>
   <li><a href="#ProxyTimeoutConnect">ProxyTimeoutConnect</a>
+  <li><a href="#ProxyTLSEngine">ProxyTLSEngine</a>
 </ul>
 
 <p>
@@ -567,6 +568,18 @@ servers, a more aggressively short timeout can be used:
 <pre>
   ProxyTimeoutConnect 1sec
 </pre>
+
+<p>
+<hr>
+<h2><a name="ProxyTLSEngine">ProxyTLSEngine</a></h2>
+<strong>Syntax:</strong> ProxyTLSEngine <em>on|off|auto</em><br>
+<strong>Default:</strong> ProxyTLSEngine auto<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc2 and later
+
+<p>
+The <code>ProxyTLSEngine</code> directive configures
 
 <p>
 <hr>

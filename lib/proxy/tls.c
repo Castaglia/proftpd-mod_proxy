@@ -38,7 +38,7 @@
 
 extern xaset_t *server_list;
 
-static int tls_engine = PROXY_TLS_ENGINE_OFF;
+static int tls_engine = PROXY_TLS_ENGINE_AUTO;
 static unsigned long tls_opts = 0UL;
 
 static const char *trace_channel = "proxy.tls";
