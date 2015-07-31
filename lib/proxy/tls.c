@@ -1018,6 +1018,17 @@ static int tls_connect(conn_t *conn, const char *host_name,
   /* Make sure that TCP_NODELAY is enabled for the handshake. */
   (void) pr_inet_set_proto_nodelay(conn->pool, conn, 1);
 
+  if (nstrm->strm_type == PR_NETIO_STRM_DATA) {
+    /* Make sure that TCP_CORK (aka TCP_NOPUSH) is DISABLED for the handshake.
+     * This socket option is set via the pr_inet_set_proto_opts() call made
+     * in mod_core, upon handling the PASV/EPSV command.
+     */
+    if (pr_inet_set_proto_cork(conn->wfd, 0) < 0) {
+      pr_trace_msg(trace_channel, 9,
+        "error disabling TCP_CORK on data conn: %s", strerror(errno));
+    }
+  }
+
   connect_retry:
 
   blocking = tls_get_block(conn);
@@ -1129,11 +1140,19 @@ static int tls_connect(conn_t *conn, const char *host_name,
     return -3;
   }
 
+  /* Disable the handshake timer. */
+  pr_timer_remove(handshake_timer_id, &proxy_module);
+
   /* Disable TCP_NODELAY, now that the handshake is done. */
   (void) pr_inet_set_proto_nodelay(conn->pool, conn, 0);
 
-  /* Disable the handshake timer. */
-  pr_timer_remove(handshake_timer_id, &proxy_module);
+  if (nstrm->strm_type == PR_NETIO_STRM_DATA) {
+    /* Reenable TCP_CORK (aka TCP_NOPUSH), now that the handshake is done. */
+    if (pr_inet_set_proto_cork(conn->wfd, 1) < 0) {
+      pr_trace_msg(trace_channel, 9,
+        "error re-enabling TCP_CORK on data conn: %s", strerror(errno));
+    }
+  }
 
   /* Manually update the raw bytes counters with the network IO from the
    * SSL handshake.

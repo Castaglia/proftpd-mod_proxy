@@ -1886,7 +1886,6 @@ static int reverse_connect_index_used(pool *p, unsigned int vhost_id,
 static struct proxy_conn *get_reverse_server_conn(pool *p,
     struct proxy_session *proxy_sess, int *backend_id, void *policy_data) {
   struct proxy_conn *pconn;
-  pr_netaddr_t *addr;
 
   pconn = reverse_connect_next_backend(p, main_server->sid, policy_data);
   if (pconn == NULL) {
@@ -2020,27 +2019,6 @@ static int reverse_connect(pool *p, struct proxy_session *proxy_sess,
       ntohs(pr_netaddr_get_port(proxy_sess->backend_ctrl_conn->remote_addr)),
       banner_ok ? "" : ", DISCONNECTING", resp->num, resp->msg);
 
-    /* Send the banner to the connected client as if it were our own banner --
-     * except if the ConnectPolicy is NOT PerUser, OR if we will be using
-     * TLS for this connection.
-     *
-     * For the PerUser ConnectPolicy, if we echo the banner now, we will only
-     * confuse the client.
-     *
-     * For TLS connections, we want to succeed in the TLS handshake before
-     * sending the banner back to the frontend client; if the TLS handshake
-     * fails, then we do NOT send the 220, and the client knows that the
-     * connection failed.
-     */
-
-    if (reverse_connect_policy != PROXY_REVERSE_CONNECT_POLICY_PER_USER &&
-        use_tls == PROXY_TLS_ENGINE_OFF) {
-      if (proxy_ftp_ctrl_send_resp(p, session.c, resp, resp_nlines) < 0) {
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "unable to send banner to client: %s", strerror(errno));
-      }
-    }
-
     if (banner_ok == FALSE) {
       pr_inet_close(p, proxy_sess->backend_ctrl_conn);
       proxy_sess->backend_ctrl_conn = NULL;
@@ -2111,12 +2089,20 @@ static int reverse_connect(pool *p, struct proxy_session *proxy_sess,
     }
   }
 
-  if (reverse_connect_policy != PROXY_REVERSE_CONNECT_POLICY_PER_USER &&
-      use_tls != PROXY_TLS_ENGINE_OFF) {
+  /* Send the banner to the connected client as if it were our own banner --
+   * except if the ConnectPolicy is NOT PerUser.
+   *
+   * For the PerUser ConnectPolicy, if we echo the banner now, we will only
+   * confuse the client.
+   */
+
+  if (reverse_connect_policy != PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
+    pr_response_block(FALSE);
     if (proxy_ftp_ctrl_send_resp(p, session.c, resp, resp_nlines) < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unable to send banner to client: %s", strerror(errno));
     }
+    pr_response_block(TRUE);
   }
 
   (void) proxy_ftp_sess_send_host(p, proxy_sess);

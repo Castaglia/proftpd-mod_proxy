@@ -1433,6 +1433,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       return PR_ERROR(cmd);
     }
 
+    proxy_sess->backend_data_conn = backend_conn;
+
     if (proxy_netio_postopen(backend_conn->instrm) < 0) {
       xerrno = errno;
 
@@ -1440,6 +1442,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         "postopen error for backend data connection input stream: %s",
         strerror(xerrno));
       proxy_inet_close(session.pool, backend_conn);
+      proxy_sess->backend_data_conn = NULL;
 
       errno = xerrno;
       return PR_ERROR(cmd);
@@ -1452,12 +1455,11 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         "postopen error for backend data connection output stream: %s",
         strerror(xerrno));
       proxy_inet_close(session.pool, backend_conn);
+      proxy_sess->backend_data_conn = NULL;
 
       errno = xerrno;
       return PR_ERROR(cmd);
     }
-
-    proxy_sess->backend_data_conn = backend_conn;
 
   } else if (proxy_sess->backend_sess_flags & SF_PORT) {
     pr_trace_msg(trace_channel, 17,
@@ -1490,6 +1492,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         "postopen error for backend data connection input stream: %s",
         strerror(xerrno));
       proxy_inet_close(session.pool, backend_conn);
+      proxy_sess->backend_data_conn = NULL;
 
       errno = xerrno;
       return PR_ERROR(cmd);
@@ -1502,6 +1505,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         "postopen error for backend data connection output stream: %s",
         strerror(xerrno));
       proxy_inet_close(session.pool, backend_conn);
+      proxy_sess->backend_data_conn = NULL;
 
       errno = xerrno;
       return PR_ERROR(cmd);
