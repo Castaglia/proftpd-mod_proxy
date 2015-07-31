@@ -38,8 +38,8 @@
 
 extern xaset_t *server_list;
 
-static int proxy_tls_engine = PROXY_TLS_ENGINE_OFF;
-static unsigned long proxy_tls_opts = 0UL;
+static int tls_engine = PROXY_TLS_ENGINE_OFF;
+static unsigned long tls_opts = 0UL;
 
 static const char *trace_channel = "proxy.tls";
 static const char *timing_channel = "timing";
@@ -57,18 +57,18 @@ static const char *timing_channel = "timing";
 #define PROXY_TLS_DATA_ADAPTIVE_WRITE_BOOST_INTERVAL_MS	1000
 
 #ifdef SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS
-static int proxy_tls_ssl_opts = (SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_SINGLE_DH_USE)^SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
+static int tls_ssl_opts = (SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_SINGLE_DH_USE)^SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
 #else
 /* OpenSSL-0.9.6 and earlier (yes, it appears people still have these versions
  * installed) does not define the DONT_INSERT_EMPTY_FRAGMENTS option.
  */
-static int proxy_tls_ssl_opts = SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_SINGLE_DH_USE;
+static int tls_ssl_opts = SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_SINGLE_DH_USE;
 #endif
 
-static const char *proxy_tls_cipher_suite = NULL;
-static const char *proxy_tls_cert_file = NULL;
-static const char *proxy_tls_key_file = NULL;
-static unsigned long proxy_tls_flags = 0UL;
+static const char *tls_cipher_suite = NULL;
+static const char *tls_cert_file = NULL;
+static const char *tls_key_file = NULL;
+static unsigned long tls_flags = 0UL;
 
 /* ProxyTLSTimeoutHandshake */
 static unsigned int handshake_timeout = 30;
@@ -77,20 +77,18 @@ static int handshake_timed_out = FALSE;
 
 #define PROXY_TLS_SHUTDOWN_BIDIRECTIONAL	0x001
 
-/* OpenSSL's default is 9 as well. */
-static int proxy_tls_verify_depth = 9;
-
 /* Stream notes */
 #define PROXY_TLS_NETIO_NOTE			"mod_proxy.SSL"
 #define PROXY_TLS_ADAPTIVE_BYTES_COUNT_KEY	"mod_proxy.SSL.adaptive.bytes"
 #define PROXY_TLS_ADAPTIVE_BYTES_MS_KEY		"mod_proxy.SSL.adaptive.ms"
 
-static SSL_CTX *proxy_ssl_ctx = NULL;
-static pr_netio_t *proxy_tls_ctrl_netio = NULL;
-static pr_netio_t *proxy_tls_data_netio = NULL;
-static SSL *proxy_tls_ctrl_ssl = NULL;
+static SSL_CTX *ssl_ctx = NULL;
+static pr_netio_t *tls_ctrl_netio = NULL;
+static pr_netio_t *tls_data_netio = NULL;
+static SSL *tls_ctrl_ssl = NULL;
 
-/* XXX TODO: Add info/msg callbacks! */
+static int netio_install_ctrl(void);
+static int netio_install_data(void);
 
 static int handshake_timeout_cb(CALLBACK_FRAME) {
   handshake_timed_out = TRUE;
@@ -130,7 +128,7 @@ static const char *get_errors(void) {
   return str;
 }
 
-static char *proxy_tls_x509_name_oneline(X509_NAME *x509_name) {
+static char *tls_x509_name_oneline(X509_NAME *x509_name) {
   static char buf[1024] = {'\0'};
 
   /* If we are using OpenSSL 0.9.6 or newer, we want to use
@@ -174,14 +172,14 @@ static char *proxy_tls_x509_name_oneline(X509_NAME *x509_name) {
 #endif /* OPENSSL_VERSION_NUMBER >= 0x000906000 */
 }
 
-static char *proxy_tls_get_subj_name(SSL *ssl) {
+static char *tls_get_subj_name(SSL *ssl) {
   X509 *cert;
 
   cert = SSL_get_peer_certificate(ssl);
   if (cert != NULL) {
     char *subj_name;
 
-    subj_name = proxy_tls_x509_name_oneline(X509_get_subject_name(cert));
+    subj_name = tls_x509_name_oneline(X509_get_subject_name(cert));
     X509_free(cert);
     return subj_name;
   }
@@ -190,7 +188,7 @@ static char *proxy_tls_get_subj_name(SSL *ssl) {
   return NULL;
 }
 
-static int proxy_tls_get_block(conn_t *conn) {
+static int tls_get_block(conn_t *conn) {
   int flags;
 
   flags = fcntl(conn->rfd, F_GETFL);
@@ -201,7 +199,7 @@ static int proxy_tls_get_block(conn_t *conn) {
   return TRUE;
 }
 
-static void proxy_tls_fatal(long error, int lineno) {
+static void tls_fatal(long error, int lineno) {
   switch (error) {
     case SSL_ERROR_NONE:
       return;
@@ -282,7 +280,7 @@ static void proxy_tls_fatal(long error, int lineno) {
   pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION, NULL);
 }
 
-static void proxy_tls_end_sess(SSL *ssl, int strms, int flags) {
+static void tls_end_sess(SSL *ssl, int strms, int flags) {
   int res = 0;
   int shutdown_state;
   BIO *rbio, *wbio;
@@ -404,7 +402,7 @@ static void proxy_tls_end_sess(SSL *ssl, int strms, int flags) {
         break;
 
       default:
-        proxy_tls_fatal(err_code, __LINE__);
+        tls_fatal(err_code, __LINE__);
         break;
     }
   }
@@ -428,7 +426,7 @@ static void proxy_tls_end_sess(SSL *ssl, int strms, int flags) {
   SSL_free(ssl);
 }
 
-static int proxy_tls_readmore(int rfd) {
+static int tls_readmore(int rfd) {
   fd_set rfds;
   struct timeval tv;
 
@@ -442,7 +440,7 @@ static int proxy_tls_readmore(int rfd) {
   return select(rfd + 1, &rfds, NULL, NULL, &tv);
 }
 
-static int proxy_tls_writemore(int wfd) {
+static int tls_writemore(int wfd) {
   fd_set wfds;
   struct timeval tv;
 
@@ -456,7 +454,7 @@ static int proxy_tls_writemore(int wfd) {
   return select(wfd + 1, NULL, &wfds, NULL, &tv);
 }
 
-static ssize_t proxy_tls_read(SSL *ssl, void *buf, size_t len,
+static ssize_t tls_read(SSL *ssl, void *buf, size_t len,
     int nstrm_type, pr_table_t *notes) {
   ssize_t count;
 
@@ -481,7 +479,7 @@ static ssize_t proxy_tls_read(SSL *ssl, void *buf, size_t len,
         pr_trace_msg(trace_channel, 17,
           "WANT_READ encountered while reading SSL data on fd %d, "
           "waiting to read data", fd);
-        err = proxy_tls_readmore(fd);
+        err = tls_readmore(fd);
         if (err > 0) {
           goto read_retry;
 
@@ -504,7 +502,7 @@ static ssize_t proxy_tls_read(SSL *ssl, void *buf, size_t len,
         pr_trace_msg(trace_channel, 17,
           "WANT_WRITE encountered while writing SSL data on fd %d, "
           "waiting to send data", fd);
-        err = proxy_tls_writemore(fd);
+        err = tls_writemore(fd);
         if (err > 0) {
           goto read_retry;
 
@@ -526,7 +524,7 @@ static ssize_t proxy_tls_read(SSL *ssl, void *buf, size_t len,
         break;
 
       default:
-        proxy_tls_fatal(err, __LINE__);
+        tls_fatal(err, __LINE__);
         break;
     }
   }
@@ -534,7 +532,7 @@ static ssize_t proxy_tls_read(SSL *ssl, void *buf, size_t len,
   return count;
 }
 
-static ssize_t proxy_tls_write(SSL *ssl, const void *buf, size_t len,
+static ssize_t tls_write(SSL *ssl, const void *buf, size_t len,
     int nstrm_type, pr_table_t *notes) {
   ssize_t count;
 
@@ -553,7 +551,7 @@ static ssize_t proxy_tls_write(SSL *ssl, const void *buf, size_t len,
         break;
 
       default:
-        proxy_tls_fatal(err, __LINE__);
+        tls_fatal(err, __LINE__);
         break;
     }
   }
@@ -892,14 +890,14 @@ static int cert_match_cn(pool *p, X509 *cert, const char *name,
   return matched;
 }
 
-static int proxy_tls_check_server_cert(SSL *ssl, conn_t *conn) {
+static int check_server_cert(SSL *ssl, conn_t *conn) {
   X509 *cert = NULL;
   int ok = -1;
   long verify_result;
 
   /* Only perform these more stringent checks if asked to verify servers. */
-  if (!(proxy_tls_flags & PROXY_TLS_VERIFY_SERVER) &&
-      !(proxy_tls_flags & PROXY_TLS_VERIFY_SERVER_NO_DNS)) {
+  if (!(tls_flags & PROXY_TLS_VERIFY_SERVER_ON) &&
+      !(tls_flags & PROXY_TLS_VERIFY_SERVER_NO_DNS)) {
     return 0;
   }
 
@@ -935,7 +933,7 @@ static int proxy_tls_check_server_cert(SSL *ssl, conn_t *conn) {
   }
 
   if (ok == 0 &&
-      !(proxy_tls_flags & PROXY_TLS_VERIFY_SERVER_NO_DNS)) {
+      !(tls_flags & PROXY_TLS_VERIFY_SERVER_NO_DNS)) {
     int reverse_dns;
     const char *remote_name;
 
@@ -957,21 +955,35 @@ static int proxy_tls_check_server_cert(SSL *ssl, conn_t *conn) {
   return ok;
 }
 
-static int proxy_tls_connect(conn_t *conn, const char *host_name,
+static void stash_stream_ssl(pr_netio_stream_t *nstrm, SSL *ssl) {
+  if (pr_table_add(nstrm->notes,
+      pstrdup(nstrm->strm_pool, PROXY_TLS_NETIO_NOTE), ssl, sizeof(SSL)) < 0) {
+    if (errno != EEXIST) {
+      pr_trace_msg(trace_channel, 4,
+        "error stashing '%s' note on %s %s stream: %s",
+        PROXY_TLS_NETIO_NOTE,
+        nstrm->strm_type == PR_NETIO_STRM_CTRL ? "control" : "data",
+        nstrm->strm_mode == PR_NETIO_IO_RD ? "read" : "write",
+        strerror(errno));
+    }
+  }
+}
+
+static int tls_connect(conn_t *conn, const char *host_name,
     pr_netio_stream_t *nstrm) {
   int blocking, nstrm_type, res = 0, xerrno = 0;
   char *subj = NULL;
   SSL *ssl = NULL;
   BIO *rbio = NULL, *wbio = NULL;
 
-  if (proxy_ssl_ctx == NULL) {
+  if (ssl_ctx == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "unable to start session: null SSL_CTX");
     errno = EPERM;
     return -1;
   }
 
-  ssl = SSL_new(proxy_ssl_ctx);
+  ssl = SSL_new(ssl_ctx);
   if (ssl == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error: unable to allocate SSL session: %s", get_errors());
@@ -994,7 +1006,7 @@ static int proxy_tls_connect(conn_t *conn, const char *host_name,
     /* If we're opening a data connection, reuse the SSL data from the
      * session on the control connection.
      */
-    SSL_copy_session_id(ssl, proxy_tls_ctrl_ssl);
+    SSL_copy_session_id(ssl, tls_ctrl_ssl);
   }
 
   /* If configured, set a timer for the handshake. */
@@ -1008,7 +1020,7 @@ static int proxy_tls_connect(conn_t *conn, const char *host_name,
 
   connect_retry:
 
-  blocking = proxy_tls_get_block(conn);
+  blocking = tls_get_block(conn);
   if (blocking) {
     /* Put the connection in non-blocking mode for the duration of the
      * SSL handshake.  This lets us handle EAGAIN/retries better (i.e.
@@ -1043,7 +1055,7 @@ static int proxy_tls_connect(conn_t *conn, const char *host_name,
     if (handshake_timed_out) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "TLS negotiation timed out (%u seconds)", handshake_timeout);
-      proxy_tls_end_sess(ssl, nstrm_type, 0);
+      tls_end_sess(ssl, nstrm_type, 0);
       return -4;
     }
 
@@ -1052,14 +1064,14 @@ static int proxy_tls_connect(conn_t *conn, const char *host_name,
         pr_trace_msg(trace_channel, 17,
           "WANT_READ encountered while connecting on fd %d, "
           "waiting to read data", conn->rfd);
-        proxy_tls_readmore(conn->rfd);
+        tls_readmore(conn->rfd);
         goto connect_retry;
 
       case SSL_ERROR_WANT_WRITE:
         pr_trace_msg(trace_channel, 17,
           "WANT_WRITE encountered while connecting on fd %d, "
           "waiting to read data", conn->rfd);
-        proxy_tls_writemore(conn->rfd);
+        tls_writemore(conn->rfd);
         goto connect_retry;
 
       case SSL_ERROR_ZERO_RETURN:
@@ -1106,9 +1118,14 @@ static int proxy_tls_connect(conn_t *conn, const char *host_name,
         break;
     }
 
-    pr_event_generate("mod_proxy.tls-data-handshake-failed", &errcode);
+    if (nstrm->strm_type == PR_NETIO_STRM_CTRL) {
+      pr_event_generate("mod_proxy.tls-ctrl-handshake-failed", &errcode);
 
-    proxy_tls_end_sess(ssl, nstrm_type, 0);
+    } else if (nstrm->strm_type == PR_NETIO_STRM_DATA) {
+      pr_event_generate("mod_proxy.tls-data-handshake-failed", &errcode);
+    }
+
+    tls_end_sess(ssl, nstrm_type, 0);
     return -3;
   }
 
@@ -1126,15 +1143,11 @@ static int proxy_tls_connect(conn_t *conn, const char *host_name,
   session.total_raw_out += (BIO_number_written(rbio) +
     BIO_number_written(wbio));
 
-  if (pr_table_add(nstrm->notes,
-      pstrdup(nstrm->strm_pool, PROXY_TLS_NETIO_NOTE), ssl,
-      sizeof(SSL *)) < 0) {
-    if (errno != EEXIST) {
-      pr_trace_msg(trace_channel, 4,
-        "error stashing '%s' note on data stream: %s",
-        PROXY_TLS_NETIO_NOTE, strerror(errno));
-    }
-  }
+  /* Stash the SSL pointer in BOTH input and output streams for this
+   * connection.
+   */
+  stash_stream_ssl(conn->instrm, ssl);
+  stash_stream_ssl(conn->outstrm, ssl);
 
   if (nstrm->strm_type == PR_NETIO_STRM_DATA) {
     pr_buffer_t *strm_buf;
@@ -1150,17 +1163,17 @@ static int proxy_tls_connect(conn_t *conn, const char *host_name,
 
   } else {
     /* Stash a pointer to the control connection SSL object. */
-    proxy_tls_ctrl_ssl = ssl;
+    tls_ctrl_ssl = ssl;
   }
 
-  subj = proxy_tls_get_subj_name(ssl);
+  subj = tls_get_subj_name(ssl);
   if (subj != NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "Server: %s", subj);
   }
 
-  if (proxy_tls_check_server_cert(ssl, conn) < 0) {
-    proxy_tls_end_sess(ssl, nstrm_type, 0);
+  if (check_server_cert(ssl, conn) < 0) {
+    tls_end_sess(ssl, nstrm_type, 0);
     return -1;
   }
 
@@ -1172,7 +1185,7 @@ static int proxy_tls_connect(conn_t *conn, const char *host_name,
   return 0;
 }
 
-static int proxy_tls_seed_prng(void) {
+static int tls_seed_prng(void) {
   char *heapdata, stackdata[1024];
   FILE *fp = NULL;
   pid_t pid; 
@@ -1242,7 +1255,7 @@ static int netio_close_cb(pr_netio_stream_t *nstrm) {
         nstrm->strm_mode == PR_NETIO_IO_WR) {
 
       pr_table_remove(nstrm->notes, PROXY_TLS_NETIO_NOTE, NULL);
-      proxy_tls_end_sess(ssl, nstrm->strm_type, 0);
+      tls_end_sess(ssl, nstrm->strm_type, 0);
     }
 
     if (nstrm->strm_type == PR_NETIO_STRM_DATA &&
@@ -1292,7 +1305,7 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
    * then do a TLS handshake.
    */
 
-  if (proxy_tls_engine == PROXY_TLS_ENGINE_OFF) {
+  if (tls_engine == PROXY_TLS_ENGINE_OFF) {
     return 0;
   }
 
@@ -1300,6 +1313,7 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
     struct proxy_session *proxy_sess;
     uint64_t *adaptive_ms = NULL, start_ms;
     off_t *adaptive_bytes = NULL;
+    conn_t *conn = NULL;
 
     proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
 
@@ -1311,12 +1325,7 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
       "starting TLS negotiation on %s connection",
       nstrm->strm_type == PR_NETIO_STRM_CTRL ? "control" : "data");
 
-    /* TODO: do SSL_connect() here?  Make sure to use SSL_set_session() for
-     * the cached session ID, if found?  (Where to get a SSL_SESSION *?)
-     *
-     */
 #if 0
-
     /* writing out SSL_SESSION, from apps/s_client.c: */
 
      Here, we can use a memory BIO to get the formatted SSL_SESSION.
@@ -1360,11 +1369,17 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
         }
         SSL_set_session(con, sess);
         SSL_SESSION_free(sess);
-
 #endif
 
-    if (proxy_tls_connect(proxy_sess->backend_data_conn,
-        proxy_conn_get_host(proxy_sess->dst_pconn), nstrm) < 0) {
+    if (nstrm->strm_type == PR_NETIO_STRM_CTRL) {
+      conn = proxy_sess->backend_ctrl_conn;
+
+    } else {
+      conn = proxy_sess->backend_data_conn;
+    }
+
+    if (tls_connect(conn, proxy_conn_get_host(proxy_sess->dst_pconn),
+        nstrm) < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unable to open %s connection: TLS negotiation failed",
         nstrm->strm_type == PR_NETIO_STRM_CTRL ? "control" : "data");
@@ -1380,12 +1395,14 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
       elapsed_ms = (unsigned long) (finish_ms - start_ms);
 
       pr_trace_msg(timing_channel, 4,
-        "TLS data handshake duration: %lu ms", elapsed_ms);
+        "TLS %s handshake duration: %lu ms",
+        nstrm->strm_type == PR_NETIO_STRM_CTRL ? "control" : "data",
+        elapsed_ms);
     }
 
     adaptive_ms = pcalloc(nstrm->strm_pool, sizeof(uint64_t));
     if (pr_table_add(nstrm->notes, PROXY_TLS_ADAPTIVE_BYTES_MS_KEY,
-        adaptive_ms, sizeof(uint64_t *)) < 0) {
+        adaptive_ms, sizeof(uint64_t)) < 0) {
       pr_trace_msg(trace_channel, 3,
         "error stashing '%s' stream note: %s", PROXY_TLS_ADAPTIVE_BYTES_MS_KEY,
         strerror(errno));
@@ -1393,7 +1410,7 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
 
     adaptive_bytes = pcalloc(nstrm->strm_pool, sizeof(off_t));
     if (pr_table_add(nstrm->notes, PROXY_TLS_ADAPTIVE_BYTES_COUNT_KEY,
-        adaptive_bytes, sizeof(off_t *)) < 0) {
+        adaptive_bytes, sizeof(off_t)) < 0) {
       pr_trace_msg(trace_channel, 3,
         "error stashing '%s' stream note: %s",
         PROXY_TLS_ADAPTIVE_BYTES_COUNT_KEY, strerror(errno));
@@ -1401,6 +1418,11 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
 
     if (nstrm->strm_type == PR_NETIO_STRM_CTRL) {
       proxy_sess_state |= PROXY_SESS_STATE_BACKEND_HAS_CTRL_TLS;
+
+      if (netio_install_data() < 0) {
+        pr_trace_msg(trace_channel, 1,
+          "error installing data connection NetIO: %s", strerror(errno));
+      }
     }
   }
 
@@ -1408,7 +1430,7 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
 }
 
 static int netio_read_cb(pr_netio_stream_t *nstrm, char *buf, size_t buflen) {
-  SSL *ssl;
+  SSL *ssl = NULL;
 
   ssl = pr_table_get(nstrm->notes, PROXY_TLS_NETIO_NOTE, NULL);
   if (ssl != NULL) {
@@ -1425,7 +1447,7 @@ static int netio_read_cb(pr_netio_stream_t *nstrm, char *buf, size_t buflen) {
     wbio_rbytes = BIO_number_read(wbio);
     wbio_wbytes = BIO_number_written(wbio);
 
-    res = proxy_tls_read(ssl, buf, buflen, nstrm->strm_type, nstrm->notes);
+    res = tls_read(ssl, buf, buflen, nstrm->strm_type, nstrm->notes);
 
     bread = (BIO_number_read(rbio) - rbio_rbytes) +
       (BIO_number_read(wbio) - wbio_rbytes);
@@ -1539,7 +1561,7 @@ static int netio_write_cb(pr_netio_stream_t *nstrm, char *buf, size_t buflen) {
     wbio_rbytes = BIO_number_read(wbio);
     wbio_wbytes = BIO_number_written(wbio);
 
-    res = proxy_tls_write(ssl, buf, buflen, nstrm->strm_type, nstrm->notes);
+    res = tls_write(ssl, buf, buflen, nstrm->strm_type, nstrm->notes);
 
     bread = (BIO_number_read(rbio) - rbio_rbytes) +
       (BIO_number_read(wbio) - wbio_rbytes);
@@ -1570,7 +1592,7 @@ static int netio_write_cb(pr_netio_stream_t *nstrm, char *buf, size_t buflen) {
 static int netio_install_ctrl(void) {
   pr_netio_t *netio;
 
-  if (proxy_tls_ctrl_netio != NULL) {
+  if (tls_ctrl_netio != NULL) {
     /* If we already have our ctrl netio, then it's been registered, and
      * we don't need to do anything more.
      */
@@ -1593,10 +1615,10 @@ static int netio_install_ctrl(void) {
   return 0;
 }
 
-static int proxy_tls_netio_install_data(void) {
+static int netio_install_data(void) {
   pr_netio_t *netio;
 
-  if (proxy_tls_data_netio != NULL) {
+  if (tls_data_netio != NULL) {
     /* If we already have our data netio, then it's been registered, and
      * we don't need to do anything more.
      */
@@ -1629,7 +1651,7 @@ struct proxy_tls_next_proto {
   unsigned int encoded_protolen;
 };
 
-static int proxy_tls_npn_cb(SSL *ssl,
+static int tls_npn_cb(SSL *ssl,
     unsigned char **npn_out, unsigned char *npn_outlen,
     const unsigned char *npn_in, unsigned int npn_inlen,
     void *data) {
@@ -1683,7 +1705,7 @@ static int set_next_protocol(SSL_CTX *ctx) {
   next_proto->encoded_protolen = encoded_protolen;
 
 # if defined(PR_USE_OPENSSL_NPN)
-  SSL_CTX_set_next_proto_select_cb(ctx, proxy_tls_npn_cb, &next_proto);
+  SSL_CTX_set_next_proto_select_cb(ctx, tls_npn_cb, &next_proto);
 # endif /* NPN */
 
 # if defined(PR_USE_OPENSSL_ALPN)
@@ -1695,17 +1717,17 @@ static int set_next_protocol(SSL_CTX *ctx) {
 }
 #endif /* OPENSSL_NO_TLSEXT */
 
-static int proxy_tls_init_ctx(void) {
+static int init_ssl_ctx(void) {
   long ssl_mode = 0;
-  int ssl_opts = proxy_tls_ssl_opts;
+  int ssl_opts = tls_ssl_opts;
 
-  if (proxy_ssl_ctx != NULL) {
-    SSL_CTX_free(proxy_ssl_ctx);
-    proxy_ssl_ctx = NULL;
+  if (ssl_ctx != NULL) {
+    SSL_CTX_free(ssl_ctx);
+    ssl_ctx = NULL;
   }
 
-  proxy_ssl_ctx = SSL_CTX_new(SSLv23_client_method());
-  if (proxy_ssl_ctx == NULL) {
+  ssl_ctx = SSL_CTX_new(SSLv23_client_method());
+  if (ssl_ctx == NULL) {
     pr_log_debug(DEBUG0, MOD_PROXY_VERSION
       ": error creating SSL_CTX: %s", get_errors());
     errno = EPERM;
@@ -1715,7 +1737,7 @@ static int proxy_tls_init_ctx(void) {
   /* Note that we explicitly do NOT use OpenSSL's internal cache for
    * client session caching; we'll use our own.
    */
-  SSL_CTX_set_session_cache_mode(proxy_ssl_ctx, SSL_SESS_CACHE_OFF);
+  SSL_CTX_set_session_cache_mode(ssl_ctx, SSL_SESS_CACHE_OFF);
 
 #if OPENSSL_VERSION_NUMBER > 0x000906000L
   /* The SSL_MODE_AUTO_RETRY mode was added in 0.9.6. */
@@ -1728,7 +1750,7 @@ static int proxy_tls_init_ctx(void) {
 #endif
 
   if (ssl_mode != 0) {
-    SSL_CTX_set_mode(proxy_ssl_ctx, ssl_mode);
+    SSL_CTX_set_mode(ssl_ctx, ssl_mode);
   }
 
   /* If using OpenSSL-0.9.7 or greater, prevent session resumptions on
@@ -1757,10 +1779,10 @@ static int proxy_tls_init_ctx(void) {
 # endif
 #endif /* ECC support */
 
-  SSL_CTX_set_options(proxy_ssl_ctx, ssl_opts);
+  SSL_CTX_set_options(ssl_ctx, ssl_opts);
 
 #if !defined(OPENSSL_NO_TLSEXT)
-  if (set_next_protocol(proxy_ssl_ctx) < 0) {
+  if (set_next_protocol(ssl_ctx) < 0) {
     pr_trace_msg(trace_channel, 4,
       "error setting TLS next protocol: %s", strerror(errno));
   }
@@ -1768,7 +1790,7 @@ static int proxy_tls_init_ctx(void) {
 
   /* XXX TODO: do we need to set ECDH, tmp dh callbacks for clients? */
 
-  if (proxy_tls_seed_prng() < 0) {
+  if (tls_seed_prng() < 0) {
     pr_log_debug(DEBUG1, MOD_PROXY_VERSION ": unable to properly seed PRNG");
   }
 
@@ -1776,17 +1798,6 @@ static int proxy_tls_init_ctx(void) {
 }
 
 /* Event listeners */
-
-static void proxy_tls_postparse_ev(const void *event_data, void *user_data) {
-  int res;
-
-  res = proxy_tls_init_ctx();
-  if (res < 0) {
-    /* TODO: FATAL ERROR */
-  }
-
-  /* TODO: get passphrases for client certs, if any */
-}
 
 static void proxy_tls_shutdown_ev(const void *event_data, void *user_data) {
   RAND_cleanup();
@@ -1925,12 +1936,15 @@ static int tls_db_init(pool *p, const char *tables_dir) {
 #endif /* PR_USE_OPENSSL */
 
 int proxy_tls_use_tls(void) {
-  return proxy_tls_engine;
+  return tls_engine;
 }
 
 int proxy_tls_init(pool *p, const char *tables_dir) {
 #ifdef PR_USE_OPENSSL
-  if (tls_db_init(p, tables_dir) < 0) {
+  int res;
+
+  res = tls_db_init(p, tables_dir);
+  if (res < 0) {
     return -1;
   }
 
@@ -1946,8 +1960,13 @@ int proxy_tls_init(pool *p, const char *tables_dir) {
    * stuff?
    */
 
-  pr_event_register(&proxy_module, "core.postparse", proxy_tls_postparse_ev,
-    NULL);
+  res = init_ssl_ctx();
+  if (res < 0) {
+    return -1;
+  }
+
+  /* TODO: get passphrases for client certs, if any */
+
   pr_event_register(&proxy_module, "core.shutdown", proxy_tls_shutdown_ev,
     NULL);
 #endif /* PR_USE_OPENSSL */
@@ -2031,7 +2050,7 @@ static const char *get_enabled_protocols_str(pool *p, unsigned int protos,
   return proto_str;
 }
 
-static void proxy_tls_info_cb(const SSL *ssl, int where, int ret) {
+static void tls_info_cb(const SSL *ssl, int where, int ret) {
   const char *str = "(unknown)";
   int w;
 
@@ -2080,14 +2099,21 @@ static void proxy_tls_info_cb(const SSL *ssl, int where, int ret) {
       "[tls.info] %s: %s", str, SSL_state_string_long(ssl));
 
   } else if (where & SSL_CB_HANDSHAKE_DONE) {
-    int reused;
+    if (pr_trace_get_level(trace_channel) >= 9) {
+      int reused;
 
-    reused = SSL_session_reused((SSL *) ssl);
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "%s renegotiation accepted, using cipher %s (%d bits%s)",
-        SSL_get_version(ssl), SSL_get_cipher_name(ssl),
-        SSL_get_cipher_bits(ssl, NULL),
-        reused > 0 ? ", resumed session" : "");
+      reused = SSL_session_reused((SSL *) ssl);
+      if (reused > 0) {
+        pr_trace_msg(trace_channel, 9,
+          "resumed SSL/TLS session: %s using cipher %s (%d bits)",
+          SSL_get_version(ssl), SSL_get_cipher_name(ssl),
+          SSL_get_cipher_bits(ssl, NULL));
+
+      } else {
+        pr_trace_msg(trace_channel, 9,
+          "negotiated NEW SSL/TLS session");
+      }
+    }
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "[tls.info] %s: %s", str, SSL_state_string_long(ssl));
@@ -2120,7 +2146,7 @@ static void proxy_tls_info_cb(const SSL *ssl, int where, int ret) {
 }
 
 #if OPENSSL_VERSION_NUMBER > 0x000907000L
-static void proxy_tls_msg_cb(int io_flag, int version, int content_type,
+static void tls_msg_cb(int io_flag, int version, int content_type,
     const void *buf, size_t buflen, SSL *ssl, void *arg) {
   char *action_str = NULL;
   char *version_str = NULL;
@@ -2371,16 +2397,17 @@ static void proxy_tls_msg_cb(int io_flag, int version, int content_type,
 int proxy_tls_sess_init(pool *p) {
 #ifdef PR_USE_OPENSSL
   config_rec *c;
-  unsigned int enabled_proto_count = 0, proxy_tls_protocol = PROXY_TLS_PROTO_DEFAULT;
+  unsigned int enabled_proto_count = 0, tls_protocol = PROXY_TLS_PROTO_DEFAULT;
   int disabled_proto;
   const char *enabled_proto_str = NULL;
+  char *ca_file = NULL, *ca_path = NULL;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSEngine", FALSE);
   if (c != NULL) {
-    proxy_tls_engine = *((int *) c->argv[0]);
+    tls_engine = *((int *) c->argv[0]);
   }
 
-  if (proxy_tls_engine == PROXY_TLS_ENGINE_OFF) {
+  if (tls_engine == PROXY_TLS_ENGINE_OFF) {
     return 0;
   }
 
@@ -2391,39 +2418,39 @@ int proxy_tls_sess_init(pool *p) {
     pr_signals_handle();
 
     opts = *((unsigned long *) c->argv[0]);
-    proxy_tls_opts |= opts;
+    tls_opts |= opts;
 
     c = find_config_next(c, c->next, CONF_PARAM, "ProxyTLSOptions", FALSE);
   }
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSProtocol", FALSE);
   if (c != NULL) {
-    proxy_tls_protocol = *((unsigned int *) c->argv[0]);
+    tls_protocol = *((unsigned int *) c->argv[0]);
   }
 
-  disabled_proto = get_disabled_protocols(proxy_tls_protocol);
+  disabled_proto = get_disabled_protocols(tls_protocol);
 
   /* Per the comments in <ssl/ssl.h>, SSL_CTX_set_options() uses |= on
    * the previous value.  This means we can easily OR in our new option
    * values with any previously set values.
    */
   enabled_proto_str = get_enabled_protocols_str(main_server->pool,
-    proxy_tls_protocol, &enabled_proto_count);
+    tls_protocol, &enabled_proto_count);
 
   pr_log_debug(DEBUG8, MOD_PROXY_VERSION ": supporting %s %s",
     enabled_proto_str,
     enabled_proto_count != 1 ? "protocols" : "protocol only");
-  SSL_CTX_set_options(proxy_ssl_ctx, disabled_proto);
+  SSL_CTX_set_options(ssl_ctx, disabled_proto);
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSCipherSuite", FALSE);
   if (c != NULL) {
-    proxy_tls_cipher_suite = c->argv[0];
+    tls_cipher_suite = c->argv[0];
 
   } else {
-    proxy_tls_cipher_suite = PROXY_TLS_DEFAULT_CIPHER_SUITE;
+    tls_cipher_suite = PROXY_TLS_DEFAULT_CIPHER_SUITE;
   }
 
-  SSL_CTX_set_cipher_list(proxy_ssl_ctx, proxy_tls_cipher_suite);
+  SSL_CTX_set_cipher_list(ssl_ctx, tls_cipher_suite);
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSTimeoutHandshake",
     FALSE);
@@ -2431,8 +2458,54 @@ int proxy_tls_sess_init(pool *p) {
     handshake_timeout = *((unsigned int *) c->argv[0]);
   }
 
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSCACertificateFile",
+    FALSE);
+  if (c != NULL) {
+    ca_file = c->argv[0];
+  }
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSCACertificatePath",
+    FALSE);
+  if (c != NULL) {
+    ca_path = c->argv[0];
+  }
+
+  if (ca_file != NULL ||
+      ca_path != NULL) {
+
+    /* Set the locations used for verifying certificates. */
+    PRIVS_ROOT
+    if (SSL_CTX_load_verify_locations(ssl_ctx, ca_file, ca_path) != 1) {
+      PRIVS_RELINQUISH
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to set CA verification using file '%s' or "
+        "directory '%s': %s", ca_file ? ca_file : "(none)",
+        ca_path ? ca_path : "(none)", get_errors());
+      errno = EPERM;
+      return -1;
+    }
+    PRIVS_RELINQUISH
+
+  } else {
+    /* Default to using locations set in the OpenSSL config file. */
+    pr_trace_msg(trace_channel, 9,
+      "using default OpenSSL CA verification locations (see $SSL_CERT_DIR "
+      "environment variable)");
+
+    if (SSL_CTX_set_default_verify_paths(ssl_ctx) != 1) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error setting default CA verification locations: %s",
+        get_errors());
+    }
+  }
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSVerifyServer", FALSE);
+  if (c != NULL) {
+  } else {
+    /* TODO: defaults? */
+  }
+
 /* TODO (in this order):
- *  ProxyTLSCACertificate{File,Path}
  *  ProxyTLSVerifyServer
  *  ProxyTLSCertificate{File,Key}
  *
@@ -2443,13 +2516,22 @@ int proxy_tls_sess_init(pool *p) {
  * session ID caching!
  */
 
-  if (proxy_tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
-    SSL_CTX_set_info_callback(proxy_ssl_ctx, proxy_tls_info_cb);
+  if (tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
+    SSL_CTX_set_info_callback(ssl_ctx, tls_info_cb);
 # if OPENSSL_VERSION_NUMBER > 0x000907000L
-    SSL_CTX_set_msg_callback(proxy_ssl_ctx, proxy_tls_msg_cb);
+    SSL_CTX_set_msg_callback(ssl_ctx, tls_msg_cb);
 # endif
   }
 
+  if (netio_install_ctrl() < 0) {
+    int xerrno = errno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error installing control connection proxy NetIO: %s", strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
 #endif /* PR_USE_OPENSSL */
 
   return 0;

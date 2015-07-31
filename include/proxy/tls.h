@@ -69,8 +69,9 @@
 #define PROXY_TLS_PROTO_ALL		(PROXY_TLS_PROTO_SSL_V3|PROXY_TLS_PROTO_TLS_V1|PROXY_TLS_PROTO_TLS_V1_1|PROXY_TLS_PROTO_TLS_V1_2)
 
 /* ProxyTLSVerifyServer values */
-#define PROXY_TLS_VERIFY_SERVER		0x0001
-#define PROXY_TLS_VERIFY_SERVER_NO_DNS	0x0002
+#define PROXY_TLS_VERIFY_SERVER_OFF		0x01
+#define PROXY_TLS_VERIFY_SERVER_ON		0x02
+#define PROXY_TLS_VERIFY_SERVER_NO_DNS		0x04
 
 int proxy_tls_init(pool *p, const char *tables_dir);
 int proxy_tls_free(pool *p);

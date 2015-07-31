@@ -953,6 +953,61 @@ MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
+/* usage: ProxyTLSCACertificateFile path */
+MODRET set_proxytlscacertfile(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int res;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  PRIVS_ROOT
+  res = file_exists(cmd->argv[1]);
+  PRIVS_RELINQUISH
+
+  if (!res) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", cmd->argv[1],
+      "' does not exist", NULL));
+  }
+
+  if (*cmd->argv[1] != '/') {
+    CONF_ERROR(cmd, "parameter must be an absolute path");
+  }
+
+  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSCACertificatePath path */
+MODRET set_proxytlscacertpath(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int res;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  PRIVS_ROOT
+  res = dir_exists(cmd->argv[1]);
+  PRIVS_RELINQUISH
+
+  if (!res) {
+    CONF_ERROR(cmd, "parameter must be a directory path");
+  }
+
+  if (*cmd->argv[1] != '/') {
+    CONF_ERROR(cmd, "parameter must be an absolute path");
+  }
+
+  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
 /* usage: ProxyTLSCipherSuite ciphers */
 MODRET set_proxytlsciphersuite(cmd_rec *cmd) {
 #ifdef PR_USE_OPENSSL
@@ -1186,6 +1241,42 @@ MODRET set_proxytlstimeouthandshake(cmd_rec *cmd) {
   c = add_config_param(cmd->argv[0], 1, NULL);
   c->argv[0] = pcalloc(c->pool, sizeof(unsigned int));
   *((unsigned int *) c->argv[0]) = timeout;
+
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSVerifyServer on|off|NoReverseDNS */
+MODRET set_proxytlsverifyserver(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int setting = -1;
+  config_rec *c = NULL;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  setting = get_boolean(cmd, 1);
+  if (setting == -1) {
+    if (strcasecmp(cmd->argv[1], "NoReverseDNS") != 0) {
+      CONF_ERROR(cmd, "expected Boolean parameter");
+    }
+
+    setting = PROXY_TLS_VERIFY_SERVER_NO_DNS;
+
+  } else {
+    if (setting == TRUE) {
+      setting = PROXY_TLS_VERIFY_SERVER_ON;
+
+    } else {
+      setting = PROXY_TLS_VERIFY_SERVER_OFF;
+    }
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = pcalloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = setting;
 
   return PR_HANDLED(cmd);
 #else
@@ -3143,7 +3234,7 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
 
   if (proxy_tls_init(proxy_pool, proxy_tables_dir) < 0) {
     pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
-      ": unable to initialize reverse proxy, failing to start up: %s",
+      ": unable to initialize TLS support, failing to start up: %s",
       strerror(errno));
 
     pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BAD_CONFIG,
@@ -3397,6 +3488,11 @@ static int proxy_sess_init(void) {
       "error setting session directory to '%s': %s", sess_dir, strerror(errno));
   }
 
+  if (proxy_tls_sess_init(proxy_pool) < 0) {
+    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
+      "Unable to initialize TLS API");
+  }
+
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:
       if (proxy_reverse_sess_init(proxy_pool, proxy_tables_dir) < 0) {
@@ -3424,11 +3520,6 @@ static int proxy_sess_init(void) {
 
       set_auth_check(proxy_forward_have_authenticated);
       break;
-  }
-
-  if (proxy_tls_sess_init(proxy_pool) < 0) {
-    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
-      "Unable to initialize TLS API");
   }
 
   /* XXX set protocol?  What about ssh2 proxying?  How to interact
@@ -3470,11 +3561,14 @@ static conftable proxy_conftab[] = {
   { "ProxyTimeoutConnect",	set_proxytimeoutconnect,	NULL },
 
   /* TLS support */
+  { "ProxyTLSCACertificateFile",set_proxytlscacertfile,		NULL },
+  { "ProxyTLSCACertificatePath",set_proxytlscacertpath,		NULL },
   { "ProxyTLSCipherSuite",	set_proxytlsciphersuite,	NULL },
   { "ProxyTLSEngine",		set_proxytlsengine,		NULL },
   { "ProxyTLSOptions",		set_proxytlsoptions,		NULL },
   { "ProxyTLSProtocol",		set_proxytlsprotocol,		NULL },
   { "ProxyTLSTimeoutHandshake",	set_proxytlstimeouthandshake,	NULL },
+  { "ProxyTLSVerifyServer",	set_proxytlsverifyserver,	NULL },
 
   /* Support TransferPriority for proxied connections? */
   /* Deliberately ignore/disable HiddenStores in mod_proxy configs */

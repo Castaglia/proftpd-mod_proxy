@@ -191,7 +191,7 @@ int proxy_ftp_sess_send_host(pool *p, struct proxy_session *proxy_sess) {
 }
 
 int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
-  int res, use_tls, xerrno;
+  int use_tls, xerrno;
   char *auth_feat;
   pool *tmp_pool;
   cmd_rec *cmd;

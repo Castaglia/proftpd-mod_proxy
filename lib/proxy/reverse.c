@@ -1883,9 +1883,8 @@ static int reverse_connect_index_used(pool *p, unsigned int vhost_id,
   return 0;
 }
 
-static pr_netaddr_t *get_reverse_server_addr(pool *p,
-    struct proxy_session *proxy_sess, int *backend_id, void *policy_data,
-    array_header **other_addrs) {
+static struct proxy_conn *get_reverse_server_conn(pool *p,
+    struct proxy_session *proxy_sess, int *backend_id, void *policy_data) {
   struct proxy_conn *pconn;
   pr_netaddr_t *addr;
 
@@ -1903,9 +1902,7 @@ static pr_netaddr_t *get_reverse_server_addr(pool *p,
     "selected backend server '%s'", proxy_conn_get_uri(pconn));
 
   *backend_id = reverse_backend_id;
-
-  addr = proxy_conn_get_addr(pconn, other_addrs);
-  return addr;
+  return pconn;
 }
 
 static int reverse_connect(pool *p, struct proxy_session *proxy_sess,
@@ -1914,18 +1911,20 @@ static int reverse_connect(pool *p, struct proxy_session *proxy_sess,
   conn_t *server_conn = NULL;
   pr_response_t *resp = NULL;
   unsigned int resp_nlines = 0;
+  struct proxy_conn *pconn;
   pr_netaddr_t *dst_addr;
   array_header *other_addrs = NULL;
   uint64_t connecting_ms, connected_ms;
 
-  dst_addr = get_reverse_server_addr(p, proxy_sess, &backend_id, connect_data,
-    &other_addrs);
-  if (dst_addr == NULL) {
+  pconn = get_reverse_server_conn(p, proxy_sess, &backend_id, connect_data);
+  if (pconn == NULL) {
     return -1;
   }
 
+  dst_addr = proxy_conn_get_addr(pconn, &other_addrs);
   proxy_sess->dst_addr = dst_addr;
   proxy_sess->other_addrs = other_addrs;
+  proxy_sess->dst_pconn = pconn;
 
   pr_gettimeofday_millis(&connecting_ms);
   server_conn = proxy_conn_get_server_conn(p, proxy_sess, dst_addr);
@@ -2050,6 +2049,8 @@ static int reverse_connect(pool *p, struct proxy_session *proxy_sess,
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "unable to determine features of backend server: %s", strerror(errno));
   }
+
+  pr_response_block(TRUE);
 
   use_tls = proxy_tls_use_tls();
   if (use_tls != PROXY_TLS_ENGINE_OFF) {

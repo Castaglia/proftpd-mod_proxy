@@ -92,7 +92,7 @@ pr_netio_t *proxy_netio_unset(int strm_type, const char *fn) {
       typestr);
     if (pr_unregister_netio(strm_type) < 0) {
       pr_trace_msg(trace_channel, 3,
-        "error unregistering %s NetIO: %s", typestr, strerror(errno));
+        "(%s) error unregistering %s NetIO: %s", fn, typestr, strerror(errno));
     }
   }
 
@@ -104,8 +104,12 @@ pr_netio_t *proxy_netio_unset(int strm_type, const char *fn) {
       if (ctrl_netio != NULL) {
         if (pr_register_netio(ctrl_netio, strm_type) < 0) {
           pr_trace_msg(trace_channel, 3,
-            "error registering proxy %s NetIO: %s",
+            "(%s) error registering proxy %s NetIO: %s", fn,
             netio_strm_typestr(strm_type), strerror(errno));
+
+        } else {
+          pr_trace_msg(trace_channel, 19,
+            "(%s) using proxy %s NetIO", fn, netio_strm_typestr(strm_type));
         }
       }
       break;
@@ -114,8 +118,12 @@ pr_netio_t *proxy_netio_unset(int strm_type, const char *fn) {
       if (data_netio != NULL) {
         if (pr_register_netio(data_netio, strm_type) < 0) {
           pr_trace_msg(trace_channel, 3,
-            "error registering proxy %s NetIO: %s",
+            "(%s) error registering proxy %s NetIO: %s", fn,
             netio_strm_typestr(strm_type), strerror(errno));
+
+        } else {
+          pr_trace_msg(trace_channel, 19,
+            "(%s) using proxy %s NetIO", fn, netio_strm_typestr(strm_type));
         }
       }
       break;

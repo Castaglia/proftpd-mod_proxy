@@ -368,12 +368,12 @@ int proxy_db_open(pool *p, const char *table_path) {
   if (proxy_dbh != NULL) {
     const char *stmt;
 
-    stmt = pstrcat(p, "ATTACH DATABASE ", table_path, ";", NULL);
+    stmt = pstrcat(p, "ATTACH DATABASE '", table_path, "' AS proxy_tls;", NULL);
     res = sqlite3_exec(proxy_dbh, stmt, NULL, NULL, NULL);
     if (res != SQLITE_OK) {
       pr_trace_msg(trace_channel, 2,
-        "error attaching database '%s' to existing SQLite handle: %s",
-        table_path, sqlite3_errmsg(proxy_dbh));
+        "error attaching database '%s' to existing SQLite handle "
+        "using '%s': %s", table_path, stmt, sqlite3_errmsg(proxy_dbh));
       errno = EPERM;
       return -1;
     }
