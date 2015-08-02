@@ -1303,35 +1303,23 @@ MODRET set_proxytlstimeouthandshake(cmd_rec *cmd) {
 #endif /* PR_USE_OPENSSL */
 }
 
-/* usage: ProxyTLSVerifyServer on|off|NoReverseDNS */
+/* usage: ProxyTLSVerifyServer on|off */
 MODRET set_proxytlsverifyserver(cmd_rec *cmd) {
 #ifdef PR_USE_OPENSSL
-  int setting = -1;
+  int verify = -1;
   config_rec *c = NULL;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
-  setting = get_boolean(cmd, 1);
-  if (setting == -1) {
-    if (strcasecmp(cmd->argv[1], "NoReverseDNS") != 0) {
-      CONF_ERROR(cmd, "expected Boolean parameter");
-    }
-
-    setting = PROXY_TLS_VERIFY_SERVER_NO_DNS;
-
-  } else {
-    if (setting == TRUE) {
-      setting = PROXY_TLS_VERIFY_SERVER_ON;
-
-    } else {
-      setting = PROXY_TLS_VERIFY_SERVER_OFF;
-    }
+  verify = get_boolean(cmd, 1);
+  if (verify == -1) {
+    CONF_ERROR(cmd, "expected Boolean parameter");
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
   c->argv[0] = pcalloc(c->pool, sizeof(int));
-  *((int *) c->argv[0]) = setting;
+  *((int *) c->argv[0]) = verify;
 
   return PR_HANDLED(cmd);
 #else

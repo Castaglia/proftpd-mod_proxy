@@ -80,7 +80,27 @@ my $TESTS = {
     test_class => [qw(forking mod_tls reverse)],
   },
 
+  proxy_reverse_config_backend_tls_verify_server_off => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls reverse)],
+  },
+
   proxy_forward_frontend_tls_noproxyauth_login => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_backend_tls_login => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_backend_tls_login_failed_unknown_ca => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_backend_tls_list_pasv => {
     order => ++$order,
     test_class => [qw(forking mod_tls forward)],
   },
@@ -94,12 +114,11 @@ sub new {
 sub list_tests {
 #  return testsuite_get_runnable_tests($TESTS);
   return qw(
-    proxy_reverse_config_backend_tls_connect_policy_per_user_failed_unknown_ca
+    proxy_forward_backend_tls_login
   );
 
-#   proxy_reverse_config_backend_tls_verify_server_off
-#   proxy_forward_backend_tls_login
 #   proxy_forward_backend_tls_login_failed_unknown_ca
+#   proxy_forward_backend_tls_list_pasv
 }
 
 sub get_reverse_proxy_config {
@@ -2312,6 +2331,198 @@ EOC
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh, 15) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub proxy_reverse_config_backend_tls_verify_server_off {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/proxy.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
+  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+  my $vhost_port2 = $vhost_port - 7;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
+  $proxy_config->{ProxyTLSEngine} = 'auto';
+  $proxy_config->{ProxyTLSVerifyServer} = 'off';
+  $proxy_config->{ProxyRetryCount} = 1;
+  $proxy_config->{ProxyTimeoutConnect} = '2sec';
+  $proxy_config->{ProxyReverseConnectPolicy} = 'PerUser';
+  $proxy_config->{ProxyReverseServers} = "ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port2";
+
+  if ($ENV{TEST_VERBOSE}) {
+    $proxy_config->{ProxyTLSOptions} = 'EnableDiags';
+  }
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'DEFAULT:10 event:0 lock:0 response:20 scoreboard:0 signal:0 proxy:20 proxy.db:20 proxy.netio:20 proxy.reverse:20 proxy.tls:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.ftp.sess:20 tls:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $user,
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+
+  <IfModule mod_tls.c>
+    TLSEngine on
+    TLSLog $log_file
+    TLSProtocol SSLv3 TLSv1
+    TLSRequired on
+    TLSRSACertificateFile $cert_file
+    TLSCACertificateFile $ca_file
+  </IfModule>
+</VirtualHost>
+
+<VirtualHost 127.0.0.1>
+  Port $vhost_port2
+  ServerName "Other Real Server"
+
+  AuthUserFile $auth_user_file
+  AuthGroupFile $auth_group_file
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TransferLog none
+  WtmpLog off
+
+  <IfModule mod_tls.c>
+    TLSEngine on
+    TLSLog $log_file
+    TLSProtocol SSLv3 TLSv1
+    TLSRequired on
+    TLSRSACertificateFile $cert_file
+    TLSCACertificateFile $ca_file
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Give the server a chance to start up
+      sleep(2);
+
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 0);
+      $client->login($user, $passwd);
+      ftp_list($self, $client);
     };
 
     if ($@) {

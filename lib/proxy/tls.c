@@ -40,6 +40,7 @@ extern xaset_t *server_list;
 
 static int tls_engine = PROXY_TLS_ENGINE_AUTO;
 static unsigned long tls_opts = 0UL;
+static int tls_verify_server = TRUE;
 
 static const char *trace_channel = "proxy.tls";
 static const char *timing_channel = "timing";
@@ -68,7 +69,6 @@ static int tls_ssl_opts = SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_SINGLE_DH_USE;
 static const char *tls_cipher_suite = NULL;
 static const char *tls_cert_file = NULL;
 static const char *tls_key_file = NULL;
-static unsigned long tls_flags = 0UL;
 
 #define PROXY_TLS_VERIFY_DEPTH		9
 
@@ -898,8 +898,7 @@ static int check_server_cert(SSL *ssl, conn_t *conn) {
   long verify_result;
 
   /* Only perform these more stringent checks if asked to verify servers. */
-  if (!(tls_flags & PROXY_TLS_VERIFY_SERVER_ON) &&
-      !(tls_flags & PROXY_TLS_VERIFY_SERVER_NO_DNS)) {
+  if (tls_verify_server == FALSE) {
     return 0;
   }
 
@@ -934,22 +933,10 @@ static int check_server_cert(SSL *ssl, conn_t *conn) {
       pr_netaddr_get_ipstr(conn->remote_addr), FALSE);
   }
 
-  if (ok == 0 &&
-      !(tls_flags & PROXY_TLS_VERIFY_SERVER_NO_DNS)) {
-    int reverse_dns;
-    const char *remote_name;
-
-    reverse_dns = pr_netaddr_set_reverse_dns(TRUE);
-
-    pr_netaddr_clear_ipcache(pr_netaddr_get_ipstr(conn->remote_addr));
-
-    conn->remote_addr->na_have_dnsstr = FALSE;
-    remote_name = pr_netaddr_get_dnsstr(conn->remote_addr);
-    pr_netaddr_set_reverse_dns(reverse_dns);
-
-    ok = cert_match_dns_san(conn->pool, cert, remote_name);
+  if (ok == 0) {
+    ok = cert_match_dns_san(conn->pool, cert, conn->remote_name);
     if (ok == 0) {
-      ok = cert_match_cn(conn->pool, cert, remote_name, TRUE);
+      ok = cert_match_cn(conn->pool, cert, conn->remote_name, TRUE);
     }
   }
 
@@ -1081,8 +1068,7 @@ static void tls_tlsext_cb(SSL *ssl, int client_server, int type,
 }
 #endif /* OPENSSL_NO_TLSEXT */
 
-static int tls_cert_verify_cb(int ok, X509_STORE_CTX *ctx) {
-
+static int tls_verify_cb(int ok, X509_STORE_CTX *ctx) {
   if (!ok) {
     int verify_depth, verify_error;
     X509 *cert;
@@ -1147,6 +1133,12 @@ static int tls_cert_verify_cb(int ok, X509_STORE_CTX *ctx) {
         ok = 0;
         break;
     }
+
+    if (tls_verify_server == FALSE) {
+      pr_trace_msg(trace_channel, 3,
+        "ProxyTLSVerifyServer off, ignoring failed certificate verification");
+      ok = 1;
+    }
   }
 
   return ok;
@@ -1173,7 +1165,7 @@ static int tls_connect(conn_t *conn, const char *host_name,
     return -2;
   }
 
-  SSL_set_verify(ssl, SSL_VERIFY_PEER, tls_cert_verify_cb);
+  SSL_set_verify(ssl, SSL_VERIFY_PEER, tls_verify_cb);
 
   /* This works with either rfd or wfd (I hope). */
   rbio = BIO_new_socket(conn->rfd, FALSE);
@@ -2759,8 +2751,7 @@ int proxy_tls_sess_init(pool *p) {
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSVerifyServer", FALSE);
   if (c != NULL) {
-  } else {
-    /* TODO: defaults? */
+    tls_verify_server = *((int *) c->argv[0]);
   }
 
 /* TODO (in this order):
