@@ -70,6 +70,8 @@ static const char *tls_cert_file = NULL;
 static const char *tls_key_file = NULL;
 static unsigned long tls_flags = 0UL;
 
+#define PROXY_TLS_VERIFY_DEPTH		9
+
 /* ProxyTLSTimeoutHandshake */
 static unsigned int handshake_timeout = 30;
 static int handshake_timer_id = -1;
@@ -969,6 +971,187 @@ static void stash_stream_ssl(pr_netio_stream_t *nstrm, SSL *ssl) {
   }
 }
 
+#if !defined(OPENSSL_NO_TLSEXT)
+static void tls_tlsext_cb(SSL *ssl, int client_server, int type,
+    unsigned char *tlsext_data, int tlsext_datalen, void *data) {
+  char *extension_name = "(unknown)";
+
+  switch (type) {
+    case TLSEXT_TYPE_server_name:
+        extension_name = "server name";
+        break;
+
+    case TLSEXT_TYPE_max_fragment_length:
+        extension_name = "max fragment length";
+        break;
+
+    case TLSEXT_TYPE_client_certificate_url:
+        extension_name = "client certificate URL";
+        break;
+
+    case TLSEXT_TYPE_trusted_ca_keys:
+        extension_name = "trusted CA keys";
+        break;
+
+    case TLSEXT_TYPE_truncated_hmac:
+        extension_name = "truncated HMAC";
+        break;
+
+    case TLSEXT_TYPE_status_request:
+        extension_name = "status request";
+        break;
+
+    case TLSEXT_TYPE_user_mapping:
+        extension_name = "user mapping";
+        break;
+
+    case TLSEXT_TYPE_client_authz:
+        extension_name = "client authz";
+        break;
+
+    case TLSEXT_TYPE_server_authz:
+        extension_name = "server authz";
+        break;
+
+    case TLSEXT_TYPE_cert_type:
+        extension_name = "cert type";
+        break;
+
+    case TLSEXT_TYPE_elliptic_curves:
+        extension_name = "elliptic curves";
+        break;
+
+    case TLSEXT_TYPE_ec_point_formats:
+        extension_name = "EC point formats";
+        break;
+
+    case TLSEXT_TYPE_srp:
+        extension_name = "SRP";
+        break;
+
+    case TLSEXT_TYPE_signature_algorithms:
+        extension_name = "signature algorithms";
+        break;
+
+    case TLSEXT_TYPE_use_srtp:
+        extension_name = "use SRTP";
+        break;
+
+    case TLSEXT_TYPE_heartbeat:
+        extension_name = "heartbeat";
+        break;
+
+    case TLSEXT_TYPE_session_ticket:
+        extension_name = "session ticket";
+        break;
+
+    case TLSEXT_TYPE_renegotiate:
+        extension_name = "renegotiation info";
+        break;
+
+#ifdef TLSEXT_TYPE_opaque_prf_input
+    case TLSEXT_TYPE_opaque_prf_input:
+        extension_name = "opaque PRF input";
+        break;
+#endif
+
+#ifdef TLSEXT_TYPE_next_proto_neg
+    case TLSEXT_TYPE_next_proto_neg:
+        extension_name = "next protocol";
+        break;
+#endif
+
+#ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
+    case TLSEXT_TYPE_application_layer_protocol_negotiation:
+        extension_name = "application layer protocol";
+        break;
+#endif
+    case TLSEXT_TYPE_padding:
+        extension_name = "TLS padding";
+        break;
+
+    default:
+      break;
+  }
+
+  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+    "[tls.tlsext] TLS %s extension \"%s\" (ID %d, %d %s)",
+    client_server ? "server" : "client", extension_name, type, tlsext_datalen,
+    tlsext_datalen != 1 ? "bytes" : "byte");
+}
+#endif /* OPENSSL_NO_TLSEXT */
+
+static int tls_cert_verify_cb(int ok, X509_STORE_CTX *ctx) {
+
+  if (!ok) {
+    int verify_depth, verify_error;
+    X509 *cert;
+
+    cert = X509_STORE_CTX_get_current_cert(ctx);
+    verify_depth = X509_STORE_CTX_get_error_depth(ctx);
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error: unable to verify server certificate at depth %d",
+      verify_depth);
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error: cert subject: %s",
+      tls_x509_name_oneline(X509_get_subject_name(cert)));
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error: cert issuer: %s",
+      tls_x509_name_oneline(X509_get_issuer_name(cert)));
+
+    /* Catch a too long certificate chain here. */
+    if (verify_depth > PROXY_TLS_VERIFY_DEPTH) {
+        X509_STORE_CTX_set_error(ctx, X509_V_ERR_CERT_CHAIN_TOO_LONG);
+    }
+
+    verify_error = X509_STORE_CTX_get_error(ctx);
+    switch (verify_error) {
+      case X509_V_ERR_CERT_CHAIN_TOO_LONG:
+      case X509_V_ERR_CERT_NOT_YET_VALID:
+      case X509_V_ERR_CERT_HAS_EXPIRED:
+      case X509_V_ERR_CERT_REVOKED:
+      case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
+      case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
+      case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
+      case X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
+      case X509_V_ERR_APPLICATION_VERIFICATION:
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "server certificate failed verification: %s",
+          X509_verify_cert_error_string(ctx->error));
+        ok = 0;
+        break;
+
+      case X509_V_ERR_INVALID_PURPOSE: {
+        register unsigned int i;
+        int count = X509_PURPOSE_get_count();
+
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "server certificate failed verification: %s",
+          X509_verify_cert_error_string(ctx->error));
+
+        for (i = 0; i < count; i++) {
+          X509_PURPOSE *purp = X509_PURPOSE_get0(i);
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "  purpose #%d: %s", i+1, X509_PURPOSE_get0_name(purp));
+        }
+
+        ok = 0;
+        break;
+      }
+
+      default:
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error verifying server certificate: [%d] %s",
+          verify_error, X509_verify_cert_error_string(verify_error));
+        ok = 0;
+        break;
+    }
+  }
+
+  return ok;
+}
+
 static int tls_connect(conn_t *conn, const char *host_name,
     pr_netio_stream_t *nstrm) {
   int blocking, nstrm_type, res = 0, xerrno = 0;
@@ -990,8 +1173,7 @@ static int tls_connect(conn_t *conn, const char *host_name,
     return -2;
   }
 
-  SSL_set_verify(ssl, SSL_VERIFY_PEER, NULL);
-/* XXX TODO: set verify callback function! */
+  SSL_set_verify(ssl, SSL_VERIFY_PEER, tls_cert_verify_cb);
 
   /* This works with either rfd or wfd (I hope). */
   rbio = BIO_new_socket(conn->rfd, FALSE);
@@ -999,6 +1181,9 @@ static int tls_connect(conn_t *conn, const char *host_name,
   SSL_set_bio(ssl, rbio, wbio);
 
 #if !defined(OPENSSL_NO_TLSEXT)
+  SSL_set_tlsext_debug_callback(ssl, tls_tlsext_cb);
+
+  pr_trace_msg(trace_channel, 9, "sending SNI '%s'", conn->remote_name);
   SSL_set_tlsext_host_name(ssl, conn->remote_name);
 #endif /* OPENSSL_NO_TLSEXT */
 
@@ -1018,15 +1203,12 @@ static int tls_connect(conn_t *conn, const char *host_name,
   /* Make sure that TCP_NODELAY is enabled for the handshake. */
   (void) pr_inet_set_proto_nodelay(conn->pool, conn, 1);
 
-  if (nstrm->strm_type == PR_NETIO_STRM_DATA) {
-    /* Make sure that TCP_CORK (aka TCP_NOPUSH) is DISABLED for the handshake.
-     * This socket option is set via the pr_inet_set_proto_opts() call made
-     * in mod_core, upon handling the PASV/EPSV command.
-     */
-    if (pr_inet_set_proto_cork(conn->wfd, 0) < 0) {
-      pr_trace_msg(trace_channel, 9,
-        "error disabling TCP_CORK on data conn: %s", strerror(errno));
-    }
+  /* Make sure that TCP_CORK (aka TCP_NOPUSH) is DISABLED for the handshake. */
+  if (pr_inet_set_proto_cork(conn->wfd, 0) < 0) {
+    pr_trace_msg(trace_channel, 9,
+      "error disabling TCP_CORK on %s conn: %s",
+       nstrm->strm_type == PR_NETIO_STRM_CTRL ? "control" : "data",
+       strerror(errno));
   }
 
   connect_retry:
@@ -1058,7 +1240,7 @@ static int tls_connect(conn_t *conn, const char *host_name,
   }
 
   if (res < 1) {
-    const char *msg = "unable to connect using TLS connection";
+    const char *msg = "unable to connect using TLS";
     int errcode = SSL_get_error(ssl, res);
 
     pr_signals_handle();
@@ -1320,8 +1502,8 @@ static int netio_poll_cb(pr_netio_stream_t *nstrm) {
 
 static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
 
-  /* If this is a data stream, and it's for writing, and TLS is required,
-   * then do a TLS handshake.
+  /* If this stream is for writing, and TLS is wanted/required, then perform
+   * a TLS handshake.
    */
 
   if (tls_engine == PROXY_TLS_ENGINE_OFF) {
@@ -2419,7 +2601,7 @@ int proxy_tls_sess_init(pool *p) {
   unsigned int enabled_proto_count = 0, tls_protocol = PROXY_TLS_PROTO_DEFAULT;
   int disabled_proto;
   const char *enabled_proto_str = NULL;
-  char *ca_file = NULL, *ca_path = NULL;
+  char *ca_file = NULL, *ca_path = NULL, *crl_file = NULL, *crl_path = NULL;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSEngine", FALSE);
   if (c != NULL) {
@@ -2526,6 +2708,55 @@ int proxy_tls_sess_init(pool *p) {
     }
   }
 
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSCARevocationFile",
+    FALSE);
+  if (c != NULL) {
+    crl_file = c->argv[0];
+  }
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSCARevocationPath",
+    FALSE);
+  if (c != NULL) {
+    crl_path = c->argv[0];
+  }
+
+  if (crl_file != NULL ||
+      crl_path != NULL) {
+    X509_STORE *crl_store;
+
+    crl_store = X509_STORE_new();
+    if (crl_store == NULL) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error allocating CRL store: %s", get_errors());
+      errno = EPERM;
+      return -1;
+    }
+
+    if (X509_STORE_load_locations(crl_store, crl_file, crl_path) != 1) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error loading ProxyTLSCARevocation files: %s", get_errors());
+
+    } else {
+      long verify_flags = 0;
+
+#ifdef X509_V_FLAG_CRL_CHECK
+      verify_flags |= X509_V_FLAG_CRL_CHECK;
+#endif
+#ifdef X509_V_FLAG_CRL_CHECK_ALL
+      verify_flags |= X509_V_FLAG_CRL_CHECK_ALL;
+#endif
+#ifdef X509_V_FLAG_CHECK_SS_SIGNATURE
+      verify_flags |= X509_V_FLAG_CHECK_SS_SIGNATURE;
+#endif
+#ifdef X509_V_FLAG_TRUSTED_FIRST
+      verify_flags |= X509_V_FLAG_TRUSTED_FIRST;
+#endif
+
+      SSL_CTX_set_cert_store(ssl_ctx, crl_store);
+      SSL_CTX_set_cert_flags(ssl_ctx, verify_flags);
+    }
+  }
+
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSVerifyServer", FALSE);
   if (c != NULL) {
   } else {
@@ -2535,12 +2766,6 @@ int proxy_tls_sess_init(pool *p) {
 /* TODO (in this order):
  *  ProxyTLSVerifyServer
  *  ProxyTLSCertificate{File,Key}
- *
- * AND do SSL_connect() for data connections (even when we accept), too.  Be
- * like lftp, and wait to receive 150 response code from backend server
- * BEFORE doing SSL_connect(), with timeout (5 sec, like lftp's default).
- *
- * session ID caching!
  */
 
   if (tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
@@ -2565,5 +2790,8 @@ int proxy_tls_sess_init(pool *p) {
 }
 
 int proxy_tls_sess_free(pool *p) {
+#ifdef PR_USE_OPENSSL
+/* TODO: Unregister NetIOs, free ssl, ssl_ctx, etc. */
+#endif /* PR_USE_OPENSSL */
   return 0;
 }

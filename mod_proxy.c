@@ -1008,6 +1008,61 @@ MODRET set_proxytlscacertpath(cmd_rec *cmd) {
 #endif /* PR_USE_OPENSSL */
 }
 
+/* usage: ProxyTLSCARevocationFile path */
+MODRET set_proxytlscacrlfile(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int res;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  PRIVS_ROOT
+  res = file_exists(cmd->argv[1]);
+  PRIVS_RELINQUISH
+
+  if (!res) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", cmd->argv[1],
+      "' does not exist", NULL));
+  }
+
+  if (*cmd->argv[1] != '/') {
+    CONF_ERROR(cmd, "parameter must be an absolute path");
+  }
+
+  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSCARevocationPath path */
+MODRET set_proxytlscacrlpath(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int res;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  PRIVS_ROOT
+  res = dir_exists(cmd->argv[1]);
+  PRIVS_RELINQUISH
+
+  if (!res) {
+    CONF_ERROR(cmd, "parameter must be a directory path");
+  }
+
+  if (*cmd->argv[1] != '/') {
+    CONF_ERROR(cmd, "parameter must be an absolute path");
+  }
+
+  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
 /* usage: ProxyTLSCipherSuite ciphers */
 MODRET set_proxytlsciphersuite(cmd_rec *cmd) {
 #ifdef PR_USE_OPENSSL
@@ -2912,14 +2967,7 @@ MODRET proxy_any(cmd_rec *cmd) {
  
   proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
 
-  /* Commands related to logins and data transfers are handled separately.
-   *
-   * RFC 2228 commands are not to be proxied (since we cannot necessarily
-   * provide end-to-end protection, just hop-by-hop).
-   *
-   * FEAT should not necessarily be proxied to the backend, but should be
-   * handled locally.
-   */
+  /* Commands related to logins and data transfers are handled separately. */
 
   switch (cmd->cmd_id) {
     case PR_CMD_USER_ID:
@@ -3441,12 +3489,12 @@ static int proxy_sess_init(void) {
     c = find_config_next(c, c->next, CONF_PARAM, "ProxyOptions", FALSE);
   }
 
-  proxy_random_init();
-
   c = find_config(main_server->conf, CONF_PARAM, "ProxyRole", FALSE);
   if (c != NULL) {
     proxy_role = *((int *) c->argv[0]);
   }
+
+  proxy_random_init();
 
   /* Set defaults for directives that mod_proxy should allow. */
   proxy_set_sess_defaults();
@@ -3567,6 +3615,8 @@ static conftable proxy_conftab[] = {
   /* TLS support */
   { "ProxyTLSCACertificateFile",set_proxytlscacertfile,		NULL },
   { "ProxyTLSCACertificatePath",set_proxytlscacertpath,		NULL },
+  { "ProxyTLSCARevocationFile",	set_proxytlscacrlfile,		NULL },
+  { "ProxyTLSCARevocationPath",	set_proxytlscacrlpath,		NULL },
   { "ProxyTLSCipherSuite",	set_proxytlsciphersuite,	NULL },
   { "ProxyTLSEngine",		set_proxytlsengine,		NULL },
   { "ProxyTLSOptions",		set_proxytlsoptions,		NULL },
