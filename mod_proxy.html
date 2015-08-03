@@ -821,6 +821,15 @@ The currently implemented options are:
     <a href="#ProxyLog"><code>ProxyLog</code></a> file.  This option is
     <b>very</b> useful when debugging strange interactions with FTPS servers.
   </li>
+
+  <p>
+  <li><code>NoSessionCache</code>
+    <p>
+    By default, when using SSL/TLS, <code>mod_proxy</code> will <em>cache</em>
+    the negotiation SSL sessions in its local database, for reuse in enabling
+    SSL session resumption in future connections to those hosts.  Use this
+    option to <b>disable</b> use of session caching if/when needed.
+  </li>
 </ul>
 
 <p>
