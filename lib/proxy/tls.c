@@ -84,6 +84,7 @@ static int handshake_timed_out = FALSE;
 
 /* Session caching */
 #define PROXY_TLS_MAX_SESSION_AGE		86400
+#define PROXY_TLS_MAX_SESSION_COUNT		1000
 
 static SSL_CTX *ssl_ctx = NULL;
 static pr_netio_t *tls_ctrl_netio = NULL;
@@ -1354,6 +1355,37 @@ static SSL_SESSION *tls_db_get_sess(pool *p, const char *key) {
   return sess;
 }
 
+static int tls_db_get_cached_sess_count(pool *p) {
+  int count = 0, res;
+  const char *stmt, *errstr = NULL;
+  array_header *results;
+  
+  stmt = "SELECT COUNT(*) FROM proxy_tls_sessions;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return -1;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return -1;
+  }
+
+  if (results->nelts != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "expected 1 result from statement '%s', got %d", stmt,
+      results->nelts);
+    errno = EINVAL;
+    return -1;
+  }
+
+  count = atoi(((char **) results->elts)[0]); 
+  return count;
+}
+
 static int tls_get_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
   char port_str[32], *sess_key = NULL;
   SSL_SESSION *sess = NULL;
@@ -1396,11 +1428,23 @@ static int tls_get_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
 static int tls_add_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
   char port_str[32], *sess_key = NULL;
   SSL_SESSION *sess = NULL;
-  int res, xerrno = 0;
+  int res, sess_count, xerrno = 0;
 
   if (tls_opts & PROXY_TLS_OPT_NO_SESSION_CACHE) {
     pr_trace_msg(trace_channel, 19,
       "NoSessionCache ProxyTLSOption in effect, not caching SSL sessions");
+    return 0;
+  }
+
+  sess_count = tls_db_get_cached_sess_count(p);
+  if (sess_count < 0) {
+    return -1;
+  }
+
+  if (sess_count >= PROXY_TLS_MAX_SESSION_COUNT) {
+    pr_trace_msg(trace_channel, 14,
+      "Maximum number of cached sessions (%d) reached, not caching SSL session",
+      PROXY_TLS_MAX_SESSION_COUNT);
     return 0;
   }
 
