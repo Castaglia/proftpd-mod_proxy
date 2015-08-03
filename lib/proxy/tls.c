@@ -1147,10 +1147,10 @@ static int tls_verify_cb(int ok, X509_STORE_CTX *ctx) {
   } else {
     if (tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "OK: cert subject: %s",
+        "[tls.verify]: cert subject: %s",
         tls_x509_name_oneline(X509_get_subject_name(cert)));
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "OK: cert issuer: %s",
+        "[tls.verify]: cert issuer: %s",
         tls_x509_name_oneline(X509_get_issuer_name(cert)));
     }
   }
