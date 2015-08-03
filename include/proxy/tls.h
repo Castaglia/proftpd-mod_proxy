@@ -52,6 +52,7 @@
 
 /* ProxyTLSOptions values */
 #define PROXY_TLS_OPT_ENABLE_DIAGS	0x0001
+#define PROXY_TLS_OPT_NO_SESSION_CACHE	0x0002
 
 /* ProxyTLSProtocol handling */
 #define PROXY_TLS_PROTO_SSL_V3		0x0001

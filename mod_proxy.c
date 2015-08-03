@@ -1197,6 +1197,9 @@ MODRET set_proxytlsoptions(cmd_rec *cmd) {
     if (strcmp(cmd->argv[i], "EnableDiags") == 0) {
       opts |= PROXY_TLS_OPT_ENABLE_DIAGS;
 
+    } else if (strcmp(cmd->argv[i], "NoSessionCache") == 0) {
+      opts |= PROXY_TLS_OPT_NO_SESSION_CACHE;
+
     } else {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxyTLSOption '",
         cmd->argv[i], "'", NULL));
