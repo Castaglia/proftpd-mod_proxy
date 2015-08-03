@@ -82,6 +82,9 @@ static int handshake_timed_out = FALSE;
 #define PROXY_TLS_ADAPTIVE_BYTES_COUNT_KEY	"mod_proxy.SSL.adaptive.bytes"
 #define PROXY_TLS_ADAPTIVE_BYTES_MS_KEY		"mod_proxy.SSL.adaptive.ms"
 
+/* Session caching */
+#define PROXY_TLS_MAX_SESSION_AGE		86400
+
 static SSL_CTX *ssl_ctx = NULL;
 static pr_netio_t *tls_ctrl_netio = NULL;
 static pr_netio_t *tls_data_netio = NULL;
@@ -106,8 +109,9 @@ static const char *get_errors(void) {
   /* Use ERR_print_errors() and a memory BIO to build up a string with
    * all of the error messages from the error queue.
    */
-  if (e)
+  if (e) {
     bio = BIO_new(BIO_s_mem());
+  }
 
   while (e) {
     pr_signals_handle();
@@ -1142,6 +1146,289 @@ static int tls_verify_cb(int ok, X509_STORE_CTX *ctx) {
   return ok;
 }
 
+static int tls_db_add_sess(pool *p, const char *key, SSL_SESSION *sess) {
+  int res, vhost_id, xerrno = 0;
+  const char *stmt, *errstr = NULL;
+  time_t now, sess_age;
+  BIO *bio;
+  char *data = NULL;
+  long datalen = 0;
+  array_header *results;
+
+  /* If this session is already past our expiration policy, ignore it. */
+  now = time(NULL);
+  sess_age = now - SSL_SESSION_get_time(sess);
+  if (sess_age >= PROXY_TLS_MAX_SESSION_AGE) {
+    pr_trace_msg(trace_channel, 9,
+      "SSL session has already expired, not caching");
+    return 0;
+  }
+
+  bio = BIO_new(BIO_s_mem());
+  BIO_set_flags(bio, BIO_FLAGS_BASE64_NO_NL);
+  res = PEM_write_bio_SSL_SESSION(bio, sess);
+  if (res != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error writing PEM-encoded SSL session data: %s", get_errors());
+  }
+  (void) BIO_flush(bio);
+
+  datalen = BIO_get_mem_data(bio, &data);
+  if (data == NULL) {
+    pr_trace_msg(trace_channel, 9,
+      "no PEM data found for SSL session, not caching");
+    BIO_free(bio);
+    return 0;
+  }
+
+  data[datalen] = '\0';
+
+  /* We use INSERT OR REPLACE here to get upsert semantics; we only want/
+   * need one cached SSL session per URI.
+   */
+  stmt = "INSERT OR REPLACE INTO proxy_tls_sessions (vhost_id, backend_uri, session) VALUES (?, ?, ?);";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    xerrno = errno;
+
+    BIO_free(bio);
+    errno = xerrno;
+    return -1;
+  }
+
+  vhost_id = main_server->sid;
+  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+    (void *) &vhost_id);
+  if (res < 0) {
+    xerrno = errno;
+
+    BIO_free(bio);
+    errno = xerrno;
+    return -1;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) key);
+  if (res < 0) {
+    xerrno = errno;
+
+    BIO_free(bio);
+    errno = xerrno;
+    return -1;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 3, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) data);
+  if (res < 0) {
+    xerrno = errno;
+
+    BIO_free(bio);
+    errno = xerrno;
+    return -1;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+
+    BIO_free(bio);
+    errno = EPERM;
+    return -1;
+  }
+
+  BIO_free(bio);
+
+  pr_trace_msg(trace_channel, 17, "cached SSL session for key '%s'", key);
+  return 0;
+}
+
+static int tls_db_remove_sess(pool *p, const char *key) {
+  int res, vhost_id;
+  const char *stmt, *errstr = NULL;
+  array_header *results;
+
+  stmt = "DELETE FROM proxy_tls_sessions WHERE vhost_id = ? AND backend_uri = ?;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return -1;
+  }
+
+  vhost_id = main_server->sid;
+  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+    (void *) &vhost_id);
+  if (res < 0) {
+    return -1;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) key);
+  if (res < 0) {
+    return -1;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return -1;
+  }
+
+  return 0;
+}
+
+static SSL_SESSION *tls_db_get_sess(pool *p, const char *key) {
+  int res, vhost_id;
+  BIO *bio;
+  const char *stmt, *errstr = NULL;
+  array_header *results;
+  char *data = NULL;
+  size_t datalen;
+  SSL_SESSION *sess = NULL;
+  long sess_age;
+  time_t now;
+
+  stmt = "SELECT session FROM proxy_tls_sessions WHERE vhost_id = ? AND backend_uri = ?;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return NULL;
+  }
+
+  vhost_id = main_server->sid;
+  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+    (void *) &vhost_id);
+  if (res < 0) {
+    return NULL;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) key);
+  if (res < 0) {
+    return NULL;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return NULL;
+  }
+
+  if (results->nelts == 0) {
+    errno = ENOENT;
+    return NULL;
+  }
+
+  data = ((char **) results->elts)[0];
+  datalen = strlen(data);
+
+  bio = BIO_new_mem_buf(data, datalen);
+  sess = PEM_read_bio_SSL_SESSION(bio, NULL, 0, NULL);
+
+  if (sess == NULL) {
+    pr_trace_msg(trace_channel, 3,
+      "error converting database entry to SSL session: %s", get_errors());
+  }
+
+  BIO_free(bio);
+
+  if (sess == NULL) {
+    errno = ENOENT;
+    return NULL;
+  }
+
+  now = time(NULL);
+  sess_age = now - SSL_SESSION_get_time(sess);
+
+  if (sess_age >= PROXY_TLS_MAX_SESSION_AGE) {
+    pr_trace_msg(trace_channel, 9, "cached SSL session expired, removing");
+    tls_db_remove_sess(p, key);
+
+    SSL_SESSION_free(sess);
+    errno = ENOENT;
+    return NULL;
+  }
+
+  return sess;
+}
+
+static int tls_get_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
+  char port_str[32], *sess_key = NULL;
+  SSL_SESSION *sess = NULL;
+
+  if (tls_opts & PROXY_TLS_OPT_NO_SESSION_CACHE) {
+    pr_trace_msg(trace_channel, 19,
+      "NoSessionCache ProxyTLSOption in effect, not using cached SSL sessions");
+    return 0;
+  }
+
+  memset(port_str, '\0', sizeof(port_str));
+  snprintf(port_str, sizeof(port_str)-1, "%d", port);
+  sess_key = pstrcat(p, "ftp://", host, ":", port_str, NULL);
+
+  pr_trace_msg(trace_channel, 19,
+    "looking for cached SSL session using key '%s'", sess_key);
+
+  sess = tls_db_get_sess(p, sess_key);
+  if (sess != NULL) {
+    pr_trace_msg(trace_channel, 12,
+      "found cached SSL session using key '%s'", sess_key);
+    SSL_set_session(ssl, sess);
+    SSL_SESSION_free(sess);
+
+  } else {
+    if (errno == ENOENT) {
+      pr_trace_msg(trace_channel, 19,
+        "no cached sessions found for key '%s'", sess_key);
+
+    } else {
+      pr_trace_msg(trace_channel, 9,
+        "error getting cached session using key '%s': %s", sess_key,
+        strerror(errno));
+    } 
+  }
+
+  return 0;
+}
+
+static int tls_add_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
+  char port_str[32], *sess_key = NULL;
+  SSL_SESSION *sess = NULL;
+  int res, xerrno = 0;
+
+  if (tls_opts & PROXY_TLS_OPT_NO_SESSION_CACHE) {
+    pr_trace_msg(trace_channel, 19,
+      "NoSessionCache ProxyTLSOption in effect, not caching SSL sessions");
+    return 0;
+  }
+
+  memset(port_str, '\0', sizeof(port_str));
+  snprintf(port_str, sizeof(port_str)-1, "%d", port);
+  sess_key = pstrcat(p, "ftp://", host, ":", port_str, NULL);
+
+  pr_trace_msg(trace_channel, 19,
+    "caching SSL session using key '%s'", sess_key);
+
+  sess = SSL_get1_session(ssl);
+  res = tls_db_add_sess(p, sess_key, sess);
+  xerrno = errno;
+  SSL_SESSION_free(sess);
+
+  if (res < 0) {
+    pr_trace_msg(trace_channel, 9,
+      "error storing cached SSL session using key '%s': %s", sess_key,
+      strerror(xerrno));
+
+  } else {
+    pr_trace_msg(trace_channel, 19,
+      "successfully cached SSL session using key '%s'", sess_key);
+  }
+
+  return 0;
+}
+
 static int tls_connect(conn_t *conn, const char *host_name,
     pr_netio_stream_t *nstrm) {
   int blocking, nstrm_type, res = 0, xerrno = 0;
@@ -1182,6 +1469,9 @@ static int tls_connect(conn_t *conn, const char *host_name,
      * session on the control connection.
      */
     SSL_copy_session_id(ssl, tls_ctrl_ssl);
+
+  } else if (nstrm->strm_type == PR_NETIO_STRM_CTRL) {
+    tls_get_cached_sess(nstrm->strm_pool, ssl, host_name, conn->remote_port);
   }
 
   /* If configured, set a timer for the handshake. */
@@ -1324,6 +1614,17 @@ static int tls_connect(conn_t *conn, const char *host_name,
       pr_trace_msg(trace_channel, 9,
         "error re-enabling TCP_CORK on data conn: %s", strerror(errno));
     }
+
+  } else if (nstrm->strm_type == PR_NETIO_STRM_CTRL) {
+    int reused;
+
+    /* Only try to cache the new SSL session if we actually did create a
+     * new session.  Otherwise, leave the previously cached session as is.
+     */
+    reused = SSL_session_reused(ssl);
+    if (reused == 0) {
+      tls_add_cached_sess(nstrm->strm_pool, ssl, host_name, conn->remote_port);
+    }
   }
 
   /* Manually update the raw bytes counters with the network IO from the
@@ -1444,6 +1745,18 @@ static int netio_close_cb(pr_netio_stream_t *nstrm) {
   if (ssl != NULL) {
     if (nstrm->strm_type == PR_NETIO_STRM_CTRL &&
         nstrm->strm_mode == PR_NETIO_IO_WR) {
+      struct proxy_session *proxy_sess;
+      const char *host_name;
+      int remote_port;
+
+      proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+      host_name = proxy_conn_get_host(proxy_sess->dst_pconn);
+      remote_port = proxy_conn_get_port(proxy_sess->dst_pconn);
+
+      /* Cache the SSL session here, as it may have changed (e.g. due to
+       * renegotiations) during the lifetime of the control connection.
+       */
+      tls_add_cached_sess(nstrm->strm_pool, ssl, host_name, remote_port);
 
       pr_table_remove(nstrm->notes, PROXY_TLS_NETIO_NOTE, NULL);
       tls_end_sess(ssl, nstrm->strm_type, 0);
@@ -1515,52 +1828,6 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "starting TLS negotiation on %s connection",
       nstrm->strm_type == PR_NETIO_STRM_CTRL ? "control" : "data");
-
-#if 0
-    /* writing out SSL_SESSION, from apps/s_client.c: */
-
-     Here, we can use a memory BIO to get the formatted SSL_SESSION.
-     AND since we'd be using PEM, it means that we can use TEXT, not BLOB,
-     in the schema.  Yay!
-
-     We'll need to use SSL_SESSION_get_time() to get the time at which
-     the session was established; we'll need to use this, and/or
-     SSL_SESSION_set_timeout to set a time limit on sessions (or should we
-     just let servers handle this?  What about buggy servers?).  We should
-     have our own timeout: 24 hours by default.  This timeout would be
-     enforced when we read sessions out of the db; expired sessions would
-     be a) DELETED from db, and b) return NULL/none to the caller.  I suppose,
-     if we wanted, we COULD use SESS_CACHE_CLIENT, and replace the cache
-     callbacks to use our database; this would make our implementation
-     more similar to mod_tls, AND it would mean being able to use e.g.
-     SSL_CTX_flush_sessions.  Hmmm.
-
-                    BIO *stmp = BIO_new_file(sess_out, "w");
-                    if (stmp) {
-                        PEM_write_bio_SSL_SESSION(stmp, SSL_get_session(con));
-                        BIO_free(stmp);
-                    } else
-                        BIO_printf(bio_err, "Error writing session file %s\n",
-                                   sess_out);
-
-    /* reading in SSL_SESSION, from apps/s_client.c: */
-        SSL_SESSION *sess;
-        BIO *stmp = BIO_new_file(sess_in, "r");
-        if (!stmp) {
-            BIO_printf(bio_err, "Can't open session file %s\n", sess_in);
-            ERR_print_errors(bio_err);
-            goto end;
-        }
-        sess = PEM_read_bio_SSL_SESSION(stmp, NULL, 0, NULL);
-        BIO_free(stmp);
-        if (!sess) {
-            BIO_printf(bio_err, "Can't open session file %s\n", sess_in);
-            ERR_print_errors(bio_err);
-            goto end;
-        }
-        SSL_set_session(con, sess);
-        SSL_SESSION_free(sess);
-#endif
 
     if (nstrm->strm_type == PR_NETIO_STRM_CTRL) {
       conn = proxy_sess->backend_ctrl_conn;
@@ -2288,7 +2555,7 @@ static void tls_info_cb(const SSL *ssl, int where, int ret) {
       reused = SSL_session_reused((SSL *) ssl);
       if (reused > 0) {
         pr_trace_msg(trace_channel, 9,
-          "resumed SSL/TLS session: %s using cipher %s (%d bits)",
+          "RESUMED SSL/TLS session: %s using cipher %s (%d bits)",
           SSL_get_version(ssl), SSL_get_cipher_name(ssl),
           SSL_get_cipher_bits(ssl, NULL));
 

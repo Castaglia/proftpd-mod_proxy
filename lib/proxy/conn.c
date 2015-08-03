@@ -37,6 +37,7 @@ struct proxy_conn {
   const char *pconn_proto;
   const char *pconn_host;
   const char *pconn_hostport;
+  int pconn_port;
 
   pr_netaddr_t *pconn_addr;
   array_header *pconn_addrs;
@@ -117,6 +118,7 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
   pconn = pcalloc(pconn_pool, sizeof(struct proxy_conn));
   pconn->pconn_pool = pconn_pool;
   pconn->pconn_host = pstrdup(pconn_pool, remote_host);
+  pconn->pconn_port = remote_port;
   pconn->pconn_hostport = pstrdup(pconn_pool, hostport);
   pconn->pconn_uri = pstrdup(pconn_pool, uri);
   pconn->pconn_proto = pstrdup(pconn_pool, proto);
@@ -173,6 +175,15 @@ const char *proxy_conn_get_hostport(struct proxy_conn *pconn) {
   }
 
   return pconn->pconn_hostport;
+}
+
+int proxy_conn_get_port(struct proxy_conn *pconn) {
+  if (pconn == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  return pconn->pconn_port;
 }
 
 conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
