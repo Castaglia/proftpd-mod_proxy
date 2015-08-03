@@ -1979,8 +1979,6 @@ static int init_ssl_ctx(void) {
   }
 #endif /* OPENSSL_NO_TLSEXT */
 
-  /* XXX TODO: do we need to set ECDH, tmp dh callbacks for clients? */
-
   if (tls_seed_prng() < 0) {
     pr_log_debug(DEBUG1, MOD_PROXY_VERSION ": unable to properly seed PRNG");
   }
@@ -2146,10 +2144,6 @@ int proxy_tls_init(pool *p, const char *tables_dir) {
     ERR_load_crypto_strings();
     OpenSSL_add_all_algorithms();
   }
-
-  /* XXX TODO: register listener for module-unload event, to clean up OpenSSL
-   * stuff?
-   */
 
   res = init_ssl_ctx();
   if (res < 0) {

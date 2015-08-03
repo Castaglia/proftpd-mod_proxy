@@ -54,7 +54,18 @@ questions, concerns, or suggestions regarding this module.
   <li><a href="#ProxySourceAddress">ProxySourceAddress</a>
   <li><a href="#ProxyTables">ProxyTables</a>
   <li><a href="#ProxyTimeoutConnect">ProxyTimeoutConnect</a>
+  <li><a href="#ProxyTLSCACertificateFile">ProxyTLSCACertificateFile</a>
+  <li><a href="#ProxyTLSCACertificatePath">ProxyTLSCACertificatePath</a>
+  <li><a href="#ProxyTLSCARevocationFile">ProxyTLSCARevocationFile</a>
+  <li><a href="#ProxyTLSCARevocationPath">ProxyTLSCARevocationPath</a>
+  <li><a href="#ProxyTLSCertificateFile">ProxyTLSCertificateFile</a>
+  <li><a href="#ProxyTLSCertificateKeyFile">ProxyTLSCertificateKeyFile</a>
+  <li><a href="#ProxyTLSCipherSuite">ProxyTLSCipherSuite</a>
   <li><a href="#ProxyTLSEngine">ProxyTLSEngine</a>
+  <li><a href="#ProxyTLSOptions">ProxyTLSOptions</a>
+  <li><a href="#ProxyTLSProtocol">ProxyTLSProtocol</a>
+  <li><a href="#ProxyTLSTimeoutHandshake">ProxyTLSTimeoutHandshake</a>
+  <li><a href="#ProxyTLSVerifyServer">ProxyTLSVerifyServer</a>
 </ul>
 
 <p>
@@ -571,6 +582,178 @@ servers, a more aggressively short timeout can be used:
 
 <p>
 <hr>
+<h2><a name="ProxyTLSCACertificateFile">ProxyTLSCACertificateFile</a></h2>
+<strong>Syntax:</strong> ProxyTLSCACertificateFile <em>path</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc2 and later
+
+<p>
+The <code>ProxyTLSCACertificateFile</code> directive configures one file where
+you can assemble the certificates of Certification Authorities (CA) which will
+be used to verify the servers' certificates.  Such a file is merely the
+concatenation of the various PEM-encoded CA certificates.  This directive can
+be used in addition to, or as an alternative for,
+<code>ProxyTLSCACertificatePath</code>.
+
+<p>
+Example:
+<pre>
+  ProxyTLSCACertificateFile /etc/ftpd/cacerts.pem
+</pre>
+
+<p>
+<b>Note</b> that the location of CA certificates is <b>required</b> for
+<code>mod_proxy</code>'s TLS support; verification of server certificates
+is required for secure connections to backend/destination servers.
+
+<p>
+<hr>
+<h2><a name="ProxyTLSCACertificatePath">ProxyTLSCACertificatePath</a></h2>
+<strong>Syntax:</strong> ProxyTLSCACertificatePath <em>directory</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc2 and later
+
+<p>
+The <code>ProxyTLSCACertificatePath</code> directive sets the directory for the
+certificates of Certification Authorities (CAs); these are used to verify the
+server certificates presented.  This directive may be used in addition to, or
+as alternative for, <code>ProxyTLSCACertificateFile</code>.
+
+<p>
+The files in the configured directory have to be PEM-encoded, and are accessed
+through hash filenames.  This means one cannot simply place the CA certificates
+there: one also has to create symbolic links named <i>hash-value</i>.N.  The
+<code>c_rehash</code> utility that comes with OpenSSL can be used to create
+the necessary symlinks.
+
+<p>
+Example:
+<pre>
+  ProxyTLSCACertificatePath /etc/ftpd/cacerts/
+</pre>
+
+<p>
+<hr>
+<h2><a name="ProxyTLSCARevocationFile">ProxyTLSCARevocationFile</a></h2>
+<strong>Syntax:</strong> ProxyTLSCACertificateFile <em>path</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc2 and later
+
+<p>
+The <code>ProxyTLSCARevocationFile</code> directive configures one file that can
+contain the Certificate Revocation Lists (CRL) of Certification Authorities
+(CA); these CRLs are used during the verification of server certificates. Such
+a file is merely the concatenation of the various PEM-encoded CRL files.  This
+directive can be used in addition to, or as an alternative for,
+<code>ProxyTLSCARevocationPath</code>.
+
+<p>
+Example:
+<pre>
+  ProxyTLSCARevocationFile /etc/ftpd/cacrls.pem
+</pre>
+
+<p>
+<hr>
+<h2><a name="ProxyTLSCARevocationPath">ProxyTLSCARevocationPath</a></h2>
+<strong>Syntax:</strong> ProxyTLSCARevocationPath <em>directory</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc2 and later
+
+<p>
+The <code>ProxyTLSCARevocationPath</code> directive sets the directory for the
+Certificate Revocation Lists (CRL) of Certification Authorities (CAs); these
+are used during the verification of server certificates.  This directive may
+be used in addition to, or as alternative for,
+<code>ProxyTLSCARevocationFile</code>.
+
+<p>
+The files in the configured directory have to be PEM-encoded, and are accessed
+through hash filenames.  This means one cannot simply place the CRLs there:
+one also has to create symbolic links named <i>hash-value</i>.N.  The
+<code>c_rehash</code> utility that comes with OpenSSL can be used to create
+the necessary symlinks.
+
+<p>
+Example:
+<pre>
+  ProxyTLSCARevocationPath /etc/ftpd/cacrls/
+</pre>
+
+<p>
+<hr>
+<h2><a name="ProxyTLSCertificateFile">ProxyTLSCertificateFile</a></h2>
+<strong>Syntax:</strong> ProxyTLSCertificateFile <em>path</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc2 and later
+
+<p>
+The <code>ProxyTLSCertificateFile</code> directive points to the PEM-encoded
+file containing the <em>client</em> certificate file, and optionally also
+the corresponding private key.  <em>Note</em> that this directive is only
+needed for backend/target FTPS servers which require client authentication.
+
+<p>
+Example:
+<pre>
+  ProxyTLSCertificateFile /etc/ftpd/client-cert.pem
+</pre>
+
+<p>
+<hr>
+<h2><a name="ProxyTLSCertificateKeyFile">ProxyTLSCertificateKeyFile</a></h2>
+<strong>Syntax:</strong> ProxyTLSCertificateKeyFile <em>path</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc2 and later
+
+<p>
+The <code>ProxyTLSCertificateKeyFile</code> directive points to the PEM-encoded
+file containing the <em>client</em> certificate file, and optionally also
+
+<p>
+The <code>ProxyTLSCertificateKeyFile</code> directive points to the PEM-encoded
+private key file for the client certificate indicated by
+<code>ProxyTLSCertificateFile</code>. If the private key is not combined with
+the certificate in the <code>ProxyTLSCertificateFile</code>, use this additional
+directive to point to the file with the standalone private key.  When
+<code>ProxyTLSCertificateFile</code> is used and the file contains both the
+certificate and the private key, this directive need not be used.  <b>However,
+this practice is strongly discouraged</b>.  Instead we recommend you to separate
+the certificate and the private key.
+
+<p>
+<hr>
+<h2><a name="ProxyTLSCipherSuite">ProxyTLSCipherSuite</a></h2>
+<strong>Syntax:</strong> ProxyTLSCipherSuite <em>cipher-list</em><br>
+<strong>Default:</strong> ProxyTLSCipherSuite DEFAULT:!ADH:!EXPORT:!DES<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc2 and later
+
+<p>
+The <code>ProxyTLSCipherSuite</code> directive configures the list of
+acceptable SSL/TLS ciphersuites to use for backend SSL/TLS connections.  The
+syntax is that of the OpenSSL <code>ciphers</code> command, <i>e.g.</i>:
+<pre>
+  $ openssl ciphers -v <em>&lt;cipher-list&gt;</em>
+</pre>
+may be used to list all of the ciphers and the order described by a specific
+<em>&lt;cipher-list&gt;</em>.
+
+<p>
+<hr>
 <h2><a name="ProxyTLSEngine">ProxyTLSEngine</a></h2>
 <strong>Syntax:</strong> ProxyTLSEngine <em>on|off|auto</em><br>
 <strong>Default:</strong> ProxyTLSEngine auto<br>
@@ -579,7 +762,157 @@ servers, a more aggressively short timeout can be used:
 <strong>Compatibility:</strong> 1.3.6rc2 and later
 
 <p>
-The <code>ProxyTLSEngine</code> directive configures
+The <code>ProxyTLSEngine</code> directive configures the use of SSL/TLS for
+<em>backend</em> FTP connections.  The supported values are:
+<ul>
+  <li><em>on</em>
+    <p> 
+    Use of SSL/TLS is <b>required</b>; backend servers which do not support
+    SSL/TLS <b>or</b> which fail the SSL/TLS handshake will cause the proxied
+    session to be closed.
+  </li>
+
+  <p>
+  <li>em>off</em>
+    <p> 
+    Use of SSL/TLS is <b>disabled</b>; backend servers which do support SSL/TLS
+    will be ignored, and only FTP will be used.
+  </li>
+
+  <p>
+  <li><em>auto</em>
+    <p>
+    Use of SSL/TLS will be <b>automatically</b> used if the backend server
+    supports SSL/TLS (via <code>AUTH TLS</code> in its <code>FEAT</code>
+    response).  If the SSL/TLS handshake fails, the backend connection will
+    proceed using plain FTP.
+
+    <p>
+    <b>Note</b>: this is the default behavior in <code>mod_proxy</code>.
+  </li>
+</ul>
+
+<p>
+<hr>
+<h2><a name="ProxyTLSOptions">ProxyTLSOptions</a></h2>
+<strong>Syntax:</strong> ProxyTLSOptions <em>options</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc2 and later
+
+<p>
+The <code>ProxyTLSOptions</code> directive is used to configure various
+optional SSL/TLS behavior of <code>mod_proxy</code>.
+
+<p>
+Example:
+<pre>
+  ProxyTLSOptions EnableDiags
+</pre>
+
+<p>
+The currently implemented options are:
+<ul>
+  <li><code>EnableDiags</code>
+    <p>
+    Sets callbacks in the OpenSSL library such that <b>a lot</b> of
+    SSL/TLS protcol information is logged to the
+    <a href="#ProxyLog"><code>ProxyLog</code></a> file.  This option is
+    <b>very</b> useful when debugging strange interactions with FTPS servers.
+  </li>
+</ul>
+
+<p>
+<hr>
+<h2><a name="ProxyTLSProtocol">ProxyTLSProtocol</a></h2>
+<strong>Syntax:</strong> ProxyTLSProtocol <em>protocols</em><br>
+<strong>Default:</strong> ProxyTLSProtocol TLSv1 TLSv1.1 TLSv1.2<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc2 and later
+
+<p>
+The <code>ProxyTLSProtocol</code> directive is used to configure the SSL/TLS
+protocol versions that <code>mod_proxy</code> should use when establishing
+SSL/TLS sessions to backend servers.
+
+<p>
+The allowed protocols are:
+<p>
+<table>
+  <tr>
+    <td><code>SSLv3</code></td>
+    <td>Use only SSLv3</td>
+  </tr>
+
+  <tr>
+    <td><code>TLSv1</code></td>
+    <td>Use only TLSv1</td>
+  </tr>
+
+  <tr>
+    <td><code>TLSv1.1</code></td>
+    <td>Use only TLSv1.1</td>
+  </tr>
+
+  <tr>
+    <td><code>TLSv1.2</code></td>
+    <td>Use only TLSv1.2</td>
+  </tr>
+
+</table>
+To support both SSLv3 and TLSv1, simply list both parameters for the
+<code>ProxyTLSProtocol</code> directive, <i>e.g.</i>:
+<pre>
+  ProxyTLSProtocol SSLv3 TLSv1
+</pre>
+
+<p>
+The <code>ProxyTLSProtocol</code> directive can also be used in a different
+manner, to <em>add</em> or <em>subtract</em> protocol support.  For example,
+to enable all protocols <b>except</b> SSLv3, you can use:
+<pre>
+  ProxyTLSProtocol ALL -SSLv3
+</pre>
+Using the directive in this manner requires that "ALL" be the <b>first</b>
+parameter, <i>and</i> that all protocols have either a <code>+</code>
+(<em>add</em>) or <code>-</code> (<em>subtract</em>) prefix.  "ALL" will
+always be expanded to all of the supported SSL/TLS protocols known by
+<code>mod_proxy</code> and supported by <code>OpenSSL</code>.
+
+<p>
+<hr>
+<h2><a name="ProxyTLSTimeoutHandshake">ProxyTLSTimeoutHandshake</a></h2>
+<strong>Syntax:</strong> ProxyTLSTimeoutHandshake <em>timeout</em><br>
+<strong>Default:</strong> ProxyTLSTimeoutHandshake 30sec<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc2 and later
+
+<p>
+The <code>ProxyTLSTimeoutHandshake</code> directive configures the maximum
+number of seconds for <code>mod_proxy</code> to complete an SSL/TLS handshake.
+If set to zero, <code>mod_proxy</code> will wait forever for a handshake to
+complete.  The default is 30 seconds.
+
+<p>
+<hr>
+<h2><a name="ProxyTLSVerifyServer">ProxyTLSVerifyServer</a></h2>
+<strong>Syntax:</strong> ProxyTLSVerifyServer <em>on|off</em><br>
+<strong>Default:</strong> ProxyTLSVerifyServer on<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc2 and later
+
+<p>
+The <code>ProxyTLSVerifyServer</code> directive configures how
+<code>mod_proxy</code> handles certificates presented by servers.  If
+<em>off</em>, the module will accept <b>any</b> server certificate and
+establish an SSL/TLS session, but will <b>not</b> verify the certificate.  If
+<em>on</em>, the module will verify a server's certificate and, furthermore,
+will fail all SSL handshake attempts <b>unless</b> the server presents a valid
+certificate.
 
 <p>
 <hr>
@@ -592,7 +925,8 @@ on the type of proxying, forward or reverse, that <code>mod_proxy</code>
 is configured to perform.  There are some benefit, however, that the module
 can bring, regardless of the type of proxying:
 <ul>
-  <li>Add ProFTPD's FTPS support (via <code>mod_tls</code>) for FTP servers which do not support FTPS
+  <li>Add ProFTPD's FTPS support (via <code>mod_tls</code>) for FTP <em>servers</em> which do not support FTPS
+  <li>Add ProFTPD's FTPS support for FTP <em>clients</em> which do not support FTPS
   <li>Add ProFTPD's logging power (<code>TransferLog</code>, <code>ExtendedLog</code>, <i>etc</i>) for FTP servers which do not provide such versatile logging
   <li>Use ProFTPD's monitoring capabilities (<i>e.g.</i> <code>mod_snmp</code>) for FTP servers which do not have such features
 </ul>
@@ -731,10 +1065,31 @@ with lookup of per-user backend servers:
 </pre>
 
 <p>
-In order to support FTP over SSL/TLS (FTPS) when reverse proxying, simply
-include your normal <code>mod_tls</code> configuration with the same
-<code>&lt;VirtualHost&gt;</code> configuration with your <code>mod_proxy</code>
-configuration.
+In order to support FTP over SSL/TLS (FTPS) connections from <em>clients</em>
+when reverse proxying, simply include your normal <code>mod_tls</code>
+configuration with the same <code>&lt;VirtualHost&gt;</code> configuration
+with your <code>mod_proxy</code> configuration.
+
+<p>
+For FTPS support to the backend <em>servers</em>, your reverse proxy
+configuration would look something like this:
+<pre>
+  &lt;IfModule mod_proxy.c&gt;
+    ProxyEngine on
+    ProxyLog /path/to/proxy.log
+    ProxyTables /var/ftp/proxy
+
+    ProxyRole reverse
+    ProxyReverseConnectPolicy RoundRobin
+    ProxyReverseServers ftp://ftp-backend1.example.com:2121 ftp://ftp-backend2.example.com:2121 ...
+
+    # Use FTPS when supported/available by the backend server
+    ProxyTLSEngine auto
+
+    # List of trusted root CAs
+    ProxyTLSCACertificateFile /etc/ftpd/cacerts.pem
+  &lt;/IfModule&gt;
+</pre>
 
 <p>
 <b>Load Balancing versus Session Stickiness</b><br>
@@ -813,6 +1168,7 @@ purposes, the module also uses <a href="http://www.proftpd.org/docs/howto/Tracin
   <li>proxy.netio
   <li>proxy.reverse
   <li>proxy.session
+  <li>proxy.tls
   <li>proxy.uri
 </ul>
 Thus for trace logging, to aid in debugging, you would use the following in
@@ -829,7 +1185,7 @@ use only, and should be removed from any production configuration.
 The following lists the features I hope to add to <code>mod_proxy</code>,
 according to need, demand, inclination, and time:
 <ul>
-  <li>FTPS connections to backend/destination servers
+  <li><code>MODE Z</code> support
   <li>Directory format translation (<i>e.g.</i> <code>LIST</code> to <code>MLSD</code>)
   <li>SFTP/SCP support
 </ul>
@@ -893,24 +1249,23 @@ connections, <i>i.e.</i> FTPS?<br>
 <font color=blue>Answer</font>:  Short answer: yes.
 
 <p>
-The long answer is that currently, <code>mod_proxy</code> supports FTPS
-connections on the <em>frontend</em>, from connecting clients.  It does not
-yet support FTPS connections on the <em>backend</em>, to the backend/destination
-servers.  Thus the following flow is supported:
+The long answer is the <code>mod_proxy</code> supports FTPS connections
+<b>both</b> on the <em>frontend</em>, from connecting clients, <b>and</b> on
+the <em>backend</em>, to backend servers.  This means that all of the following
+flows are supported:
 <pre>
   <em>client</em> --- FTPS ---> <em>proxy</em> --- FTP ---> <em>server</em>
-</pre>
-but these flows are <b>not</b> yet supported:
-<pre>
   <em>client</em> --- FTP ---> <em>proxy</em> --- FTPS ---> <em>server</em>
   <em>client</em> --- FTPS ---> <em>proxy</em> --- FTPS ---> <em>server</em>
 </pre>
 
 <p>
-Thus at the moment, <code>mod_proxy</code>'s FTPS support is best suited
-for reverse proxy configurations, where <code>mod_proxy</code> can be used
-to provide SSL/TLS capabilities to old/legacy FTP servers which do not implement
-it.
+Thus <code>mod_proxy</code>'s FTPS support is suited for reverse proxy
+configurations, where <code>mod_proxy</code> can be used to provide SSL/TLS
+capabilities to old/legacy FTP servers which do not implement it.   The
+<code>mod_proxy</code> module is <em>also</em> suited for forward proxy
+configurations, where the FTPS support can be used to provide SSL/TLS
+capabilities to old/legacy FTP clients which do not implement it.
 
 <p>
 <hr>
