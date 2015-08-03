@@ -1072,11 +1072,13 @@ static void tls_tlsext_cb(SSL *ssl, int client_server, int type,
 #endif /* OPENSSL_NO_TLSEXT */
 
 static int tls_verify_cb(int ok, X509_STORE_CTX *ctx) {
+  X509 *cert;
+
+  cert = X509_STORE_CTX_get_current_cert(ctx);
+
   if (!ok) {
     int verify_depth, verify_error;
-    X509 *cert;
 
-    cert = X509_STORE_CTX_get_current_cert(ctx);
     verify_depth = X509_STORE_CTX_get_error_depth(ctx);
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1141,6 +1143,15 @@ static int tls_verify_cb(int ok, X509_STORE_CTX *ctx) {
       pr_trace_msg(trace_channel, 3,
         "ProxyTLSVerifyServer off, ignoring failed certificate verification");
       ok = 1;
+    }
+  } else {
+    if (tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "OK: cert subject: %s",
+        tls_x509_name_oneline(X509_get_subject_name(cert)));
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "OK: cert issuer: %s",
+        tls_x509_name_oneline(X509_get_issuer_name(cert)));
     }
   }
 
