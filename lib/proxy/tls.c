@@ -67,8 +67,6 @@ static int tls_ssl_opts = SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_SINGLE_DH_USE;
 #endif
 
 static const char *tls_cipher_suite = NULL;
-static const char *tls_cert_file = NULL;
-static const char *tls_key_file = NULL;
 
 #define PROXY_TLS_VERIFY_DEPTH		9
 
@@ -2158,8 +2156,6 @@ int proxy_tls_init(pool *p, const char *tables_dir) {
     return -1;
   }
 
-  /* TODO: get passphrases for client certs, if any */
-
   pr_event_register(&proxy_module, "core.shutdown", proxy_tls_shutdown_ev,
     NULL);
 #endif /* PR_USE_OPENSSL */
@@ -2593,7 +2589,8 @@ int proxy_tls_sess_init(pool *p) {
   unsigned int enabled_proto_count = 0, tls_protocol = PROXY_TLS_PROTO_DEFAULT;
   int disabled_proto;
   const char *enabled_proto_str = NULL;
-  char *ca_file = NULL, *ca_path = NULL, *crl_file = NULL, *crl_path = NULL;
+  char *ca_file = NULL, *ca_path = NULL, *cert_file = NULL, *key_file = NULL,
+    *crl_file = NULL, *crl_path = NULL;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSEngine", FALSE);
   if (c != NULL) {
@@ -2754,9 +2751,58 @@ int proxy_tls_sess_init(pool *p) {
     tls_verify_server = *((int *) c->argv[0]);
   }
 
-/* TODO (in this order):
- *  ProxyTLSCertificate{File,Key}
- */
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSCertificateFile",
+    FALSE);
+  if (c != NULL) {
+    cert_file = c->argv[0];
+  }
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSCertificateKeyFile",
+    FALSE);
+  if (c != NULL) {
+    key_file = c->argv[0];
+
+  } else {
+    key_file = cert_file;
+  }
+
+  if (cert_file != NULL) {
+    int ok = TRUE, res;
+
+    PRIVS_ROOT
+    res = SSL_CTX_use_certificate_file(ssl_ctx, cert_file, SSL_FILETYPE_PEM);
+    PRIVS_RELINQUISH
+
+    if (res != 1) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error loading certificate from ProxyTLSCertificateFile '%s': %s",
+        cert_file, get_errors());
+      ok = FALSE;
+    }
+
+    if (ok) {
+      PRIVS_ROOT
+      res = SSL_CTX_use_PrivateKey_file(ssl_ctx, key_file, SSL_FILETYPE_PEM);
+      PRIVS_RELINQUISH
+
+      if (res != 1) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error loading private key from ProxyTLSCertificateKeyFile '%s': %s",
+          key_file, get_errors());
+        ok = FALSE;
+      }
+    }
+
+    if (ok) {
+      res = SSL_CTX_check_private_key(ssl_ctx);
+      if (res != 1) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "warning: ProxyTLSCertificateKeyFile '%s' private key does not "
+          "match ProxyTLSCertificateFile '%s' certificate", key_file,
+          cert_file);
+      }
+    }
+  }
 
   if (tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
     SSL_CTX_set_info_callback(ssl_ctx, tls_info_cb);

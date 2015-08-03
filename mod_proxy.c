@@ -1063,6 +1063,62 @@ MODRET set_proxytlscacrlpath(cmd_rec *cmd) {
 #endif /* PR_USE_OPENSSL */
 }
 
+/* usage: ProxyTLSCertificateFile path */
+MODRET set_proxytlscertfile(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int res;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  PRIVS_ROOT
+  res = file_exists(cmd->argv[1]);
+  PRIVS_RELINQUISH
+
+  if (!res) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", cmd->argv[1],
+      "' does not exist", NULL));
+  }
+
+  if (*cmd->argv[1] != '/') {
+    CONF_ERROR(cmd, "parameter must be an absolute path");
+  }
+
+  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSCertificateKeyFile path */
+MODRET set_proxytlscertkeyfile(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int res;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  PRIVS_ROOT
+  res = file_exists(cmd->argv[1]);
+  PRIVS_RELINQUISH
+
+  if (!res) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", cmd->argv[1],
+      "' does not exist", NULL));
+  }
+
+  if (*cmd->argv[1] != '/') {
+    CONF_ERROR(cmd, "parameter must be an absolute path");
+  }
+
+  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
 /* usage: ProxyTLSCipherSuite ciphers */
 MODRET set_proxytlsciphersuite(cmd_rec *cmd) {
 #ifdef PR_USE_OPENSSL
@@ -3598,6 +3654,8 @@ static conftable proxy_conftab[] = {
   { "ProxyTLSCACertificatePath",set_proxytlscacertpath,		NULL },
   { "ProxyTLSCARevocationFile",	set_proxytlscacrlfile,		NULL },
   { "ProxyTLSCARevocationPath",	set_proxytlscacrlpath,		NULL },
+  { "ProxyTLSCertificateFile",	set_proxytlscertfile,		NULL },
+  { "ProxyTLSCertificateKeyFile",set_proxytlscertkeyfile,	NULL },
   { "ProxyTLSCipherSuite",	set_proxytlsciphersuite,	NULL },
   { "ProxyTLSEngine",		set_proxytlsengine,		NULL },
   { "ProxyTLSOptions",		set_proxytlsoptions,		NULL },
