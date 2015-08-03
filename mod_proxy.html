@@ -606,7 +606,12 @@ Example:
 <p>
 <b>Note</b> that the location of CA certificates is <b>required</b> for
 <code>mod_proxy</code>'s TLS support; verification of server certificates
-is required for secure connections to backend/destination servers.
+is required for secure connections to backend/destination servers.  For
+this reason, <code>mod_proxy</code> ships with its own default
+<code>ProxyTLSCACertificateFile</code>, which is generated using <code>libcurl</code>'s <code>mk-ca-bundle.pl</code> script:
+<pre>
+  $ lib/mk-ca-bundle.pl -u cacerts.pem
+</pre>
 
 <p>
 <hr>
