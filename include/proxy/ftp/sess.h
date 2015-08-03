@@ -29,6 +29,8 @@
 #define MOD_PROXY_FTP_SESS_H
 
 int proxy_ftp_sess_get_feat(pool *, struct proxy_session *);
+int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *);
 int proxy_ftp_sess_send_host(pool *, struct proxy_session *);
+int proxy_ftp_sess_send_pbsz_prot(pool *p, struct proxy_session *);
 
 #endif /* MOD_PROXY_FTP_SESS_H */

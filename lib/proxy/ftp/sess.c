@@ -25,6 +25,7 @@
 #include "mod_proxy.h"
 
 #include "proxy/conn.h"
+#include "proxy/tls.h"
 #include "proxy/ftp/sess.h"
 #include "proxy/ftp/ctrl.h"
 
@@ -116,9 +117,41 @@ int proxy_ftp_sess_get_feat(pool *p, struct proxy_session *proxy_sess) {
   return 0;
 }
 
+static pr_response_t *send_recv(pool *p, conn_t *conn, cmd_rec *cmd,
+    unsigned int *resp_nlines) {
+  int res, xerrno;
+  pr_response_t *resp;
+
+  res = proxy_ftp_ctrl_send_cmd(p, conn, cmd);
+  if (res < 0) {
+    xerrno = errno;
+
+    pr_trace_msg(trace_channel, 4,
+      "error sending '%s %s' to backend: %s", cmd->argv[0], cmd->arg,
+      strerror(xerrno));
+
+    errno = xerrno;
+    return NULL;
+  }
+
+  resp = proxy_ftp_ctrl_recv_resp(p, conn, resp_nlines);
+  if (resp == NULL) {
+    xerrno = errno;
+
+    pr_trace_msg(trace_channel, 4,
+      "error receiving %s response from backend: %s", cmd->argv[0],
+      strerror(xerrno));
+
+    errno = xerrno;
+    return NULL;
+  }
+
+  return resp;
+}
+
 int proxy_ftp_sess_send_host(pool *p, struct proxy_session *proxy_sess) {
   pool *tmp_pool;
-  int res, xerrno = 0;
+  int xerrno = 0;
   cmd_rec *cmd;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
@@ -132,32 +165,14 @@ int proxy_ftp_sess_send_host(pool *p, struct proxy_session *proxy_sess) {
 
   tmp_pool = make_sub_pool(p);
 
-  host = pr_netaddr_get_ipstr(proxy_sess->dst_addr);
+  host = proxy_conn_get_host(proxy_sess->dst_pconn);
   cmd = pr_cmd_alloc(tmp_pool, 2, C_HOST, host);
   cmd->arg = pstrdup(tmp_pool, host);
-  res = proxy_ftp_ctrl_send_cmd(tmp_pool, proxy_sess->backend_ctrl_conn, cmd);
-  if (res < 0) {
-    xerrno = errno;
 
-    pr_trace_msg(trace_channel, 4,
-      "error sending '%s %s' to backend: %s", cmd->argv[0], host,
-      strerror(xerrno));
-    destroy_pool(tmp_pool);
-
-    errno = xerrno;
-    return -1;
-  }
-
-  resp = proxy_ftp_ctrl_recv_resp(tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
+  resp = send_recv(tmp_pool, proxy_sess->backend_ctrl_conn, cmd, &resp_nlines);
   if (resp == NULL) {
     xerrno = errno;
-
-    pr_trace_msg(trace_channel, 4,
-      "error receiving %s response from backend: %s", cmd->argv[0],
-      strerror(xerrno));
     destroy_pool(tmp_pool);
-
     errno = xerrno;
     return -1;
   }
@@ -172,5 +187,154 @@ int proxy_ftp_sess_send_host(pool *p, struct proxy_session *proxy_sess) {
   }
 
   destroy_pool(tmp_pool);
+  return 0;
+}
+
+int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
+  int use_tls, xerrno;
+  char *auth_feat;
+  pool *tmp_pool;
+  cmd_rec *cmd;
+  pr_response_t *resp;
+  unsigned int resp_nlines = 0;
+
+  use_tls = proxy_tls_use_tls();
+  if (use_tls == PROXY_TLS_ENGINE_OFF) {
+    pr_trace_msg(trace_channel, 19,
+      "TLS support not enabled/desired, skipping");
+    return 0;
+  }
+
+  auth_feat = pr_table_get(proxy_sess->backend_features, C_AUTH, NULL);
+  if (auth_feat == NULL) {
+    /* Backend server does not indicate that it supports AUTH via FEAT. */
+
+    /* If TLS is required, then fail now. */
+    if (use_tls == PROXY_TLS_ENGINE_ON) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "backend server %s does not support AUTH TLS (see FEAT response) but "
+        "ProxyTLSEngine requires TLS, failing connection",
+        pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr));
+      errno = EPERM;
+      return -1;
+    }
+
+    /* Tell the Proxy NetIO API to NOT try to use our TLS NetIO. */
+    proxy_netio_use(PR_NETIO_STRM_CTRL, NULL);
+
+    pr_trace_msg(trace_channel, 9,
+      "backend server does not support AUTH TLS (via FEAT), skipping");
+    return 0;
+  }
+
+  if (strcasecmp(auth_feat, "AUTH SSL") == 0) {
+    /* Legacy FTPS server; log and ignore this for now. */
+    pr_trace_msg(trace_channel, 9,
+      "backend server %s provides legacy FTPS support via '%s', ignoring",
+      pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr),
+      auth_feat);
+  }
+
+  tmp_pool = make_sub_pool(p);
+  cmd = pr_cmd_alloc(tmp_pool, 2, C_AUTH, "TLS");
+  cmd->arg = pstrdup(tmp_pool, "TLS");
+
+  resp = send_recv(tmp_pool, proxy_sess->backend_ctrl_conn, cmd, &resp_nlines);
+  if (resp == NULL) {
+    xerrno = errno;
+    destroy_pool(tmp_pool);
+    errno = xerrno;
+    return -1;
+  }
+
+  if (resp->num[0] != '2') {
+    pr_trace_msg(trace_channel, 4,
+      "received unexpected %s response code %s from backend", cmd->argv[0],
+      resp->num);
+    destroy_pool(tmp_pool);
+    errno = EPERM;
+    return -1;
+  }
+
+  destroy_pool(tmp_pool);
+  return 0;
+}
+
+int proxy_ftp_sess_send_pbsz_prot(pool *p, struct proxy_session *proxy_sess) {
+  int use_tls;
+
+  use_tls = proxy_tls_use_tls();
+  if (use_tls == PROXY_TLS_ENGINE_OFF) {
+    pr_trace_msg(trace_channel, 19,
+      "TLS support not enabled/desired, skipping");
+    return 0;
+  }
+
+  if (pr_table_get(proxy_sess->backend_features, C_PBSZ, NULL) != NULL) {
+    int xerrno;
+    pool *tmp_pool;
+    cmd_rec *cmd;
+    pr_response_t *resp;
+    unsigned int resp_nlines = 0;
+
+    tmp_pool = make_sub_pool(p);
+
+    cmd = pr_cmd_alloc(tmp_pool, 2, C_PBSZ, "0");
+    cmd->arg = pstrdup(tmp_pool, "0");
+
+    resp = send_recv(tmp_pool, proxy_sess->backend_ctrl_conn, cmd,
+      &resp_nlines);
+    if (resp == NULL) {
+      xerrno = errno;
+      destroy_pool(tmp_pool);
+      errno = xerrno;
+      return -1;
+    }
+
+    if (resp->num[0] != '2') {
+      pr_trace_msg(trace_channel, 4,
+        "received unexpected %s response code %s from backend", cmd->argv[0],
+        resp->num);
+      destroy_pool(tmp_pool);
+      errno = EPERM;
+      return -1;
+    }
+
+    destroy_pool(tmp_pool);
+  }
+
+  if (pr_table_get(proxy_sess->backend_features, C_PROT, NULL) != NULL) {
+    int xerrno;
+    pool *tmp_pool;
+    cmd_rec *cmd;
+    pr_response_t *resp;
+    unsigned int resp_nlines = 0;
+
+    tmp_pool = make_sub_pool(p);
+
+    cmd = pr_cmd_alloc(tmp_pool, 2, C_PROT, "P");
+    cmd->arg = pstrdup(tmp_pool, "P");
+
+    resp = send_recv(tmp_pool, proxy_sess->backend_ctrl_conn, cmd,
+      &resp_nlines);
+    if (resp == NULL) {
+      xerrno = errno;
+      destroy_pool(tmp_pool);
+      errno = xerrno;
+      return -1;
+    }
+
+    if (resp->num[0] != '2') {
+      pr_trace_msg(trace_channel, 4,
+        "received unexpected %s response code %s from backend", cmd->argv[0],
+        resp->num);
+      destroy_pool(tmp_pool);
+      errno = EPERM;
+      return -1;
+    }
+
+    destroy_pool(tmp_pool);
+  }
+
   return 0;
 }

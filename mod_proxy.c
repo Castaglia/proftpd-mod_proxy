@@ -33,6 +33,7 @@
 #include "proxy/conn.h"
 #include "proxy/netio.h"
 #include "proxy/inet.h"
+#include "proxy/tls.h"
 #include "proxy/forward.h"
 #include "proxy/reverse.h"
 #include "proxy/ftp/conn.h"
@@ -952,6 +953,436 @@ MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
+/* usage: ProxyTLSCACertificateFile path */
+MODRET set_proxytlscacertfile(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int res;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  PRIVS_ROOT
+  res = file_exists(cmd->argv[1]);
+  PRIVS_RELINQUISH
+
+  if (!res) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", cmd->argv[1],
+      "' does not exist", NULL));
+  }
+
+  if (*cmd->argv[1] != '/') {
+    CONF_ERROR(cmd, "parameter must be an absolute path");
+  }
+
+  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSCACertificatePath path */
+MODRET set_proxytlscacertpath(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int res;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  PRIVS_ROOT
+  res = dir_exists(cmd->argv[1]);
+  PRIVS_RELINQUISH
+
+  if (!res) {
+    CONF_ERROR(cmd, "parameter must be a directory path");
+  }
+
+  if (*cmd->argv[1] != '/') {
+    CONF_ERROR(cmd, "parameter must be an absolute path");
+  }
+
+  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSCARevocationFile path */
+MODRET set_proxytlscacrlfile(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int res;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  PRIVS_ROOT
+  res = file_exists(cmd->argv[1]);
+  PRIVS_RELINQUISH
+
+  if (!res) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", cmd->argv[1],
+      "' does not exist", NULL));
+  }
+
+  if (*cmd->argv[1] != '/') {
+    CONF_ERROR(cmd, "parameter must be an absolute path");
+  }
+
+  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSCARevocationPath path */
+MODRET set_proxytlscacrlpath(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int res;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  PRIVS_ROOT
+  res = dir_exists(cmd->argv[1]);
+  PRIVS_RELINQUISH
+
+  if (!res) {
+    CONF_ERROR(cmd, "parameter must be a directory path");
+  }
+
+  if (*cmd->argv[1] != '/') {
+    CONF_ERROR(cmd, "parameter must be an absolute path");
+  }
+
+  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSCertificateFile path */
+MODRET set_proxytlscertfile(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int res;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  PRIVS_ROOT
+  res = file_exists(cmd->argv[1]);
+  PRIVS_RELINQUISH
+
+  if (!res) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", cmd->argv[1],
+      "' does not exist", NULL));
+  }
+
+  if (*cmd->argv[1] != '/') {
+    CONF_ERROR(cmd, "parameter must be an absolute path");
+  }
+
+  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSCertificateKeyFile path */
+MODRET set_proxytlscertkeyfile(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int res;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  PRIVS_ROOT
+  res = file_exists(cmd->argv[1]);
+  PRIVS_RELINQUISH
+
+  if (!res) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", cmd->argv[1],
+      "' does not exist", NULL));
+  }
+
+  if (*cmd->argv[1] != '/') {
+    CONF_ERROR(cmd, "parameter must be an absolute path");
+  }
+
+  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSCipherSuite ciphers */
+MODRET set_proxytlsciphersuite(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  config_rec *c = NULL;
+  char *ciphersuite = NULL;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  ciphersuite = cmd->argv[1];
+  c = add_config_param(cmd->argv[0], 1, NULL);
+
+  /* Make sure that EXPORT ciphers cannot be used, per Bug#4163. */
+  c->argv[0] = pstrcat(c->pool, "!EXPORT:", ciphersuite, NULL);
+
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSEngine on|off|auto */
+MODRET set_proxytlsengine(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int engine = -1;
+  config_rec *c;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_GLOBAL|CONF_VIRTUAL);
+
+  engine = get_boolean(cmd, 1);
+  if (engine == -1) {
+    if (strcasecmp(cmd->argv[1], "auto") == 0) {
+      engine = PROXY_TLS_ENGINE_AUTO;
+
+    } else {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown ProxyTLSEngine value: '",
+        cmd->argv[1], "'", NULL));
+    }
+
+  } else {
+    if (engine == TRUE) {
+      engine = PROXY_TLS_ENGINE_ON;
+
+    } else {
+      engine = PROXY_TLS_ENGINE_OFF;
+    }
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = engine;
+
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSOptions ... */
+MODRET set_proxytlsoptions(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  config_rec *c = NULL;
+  register unsigned int i = 0;
+  unsigned long opts = 0UL;
+
+  if (cmd->argc-1 == 0) {
+    CONF_ERROR(cmd, "wrong number of parameters");
+  }
+
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+
+  for (i = 1; i < cmd->argc; i++) {
+    if (strcmp(cmd->argv[i], "EnableDiags") == 0) {
+      opts |= PROXY_TLS_OPT_ENABLE_DIAGS;
+
+    } else {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxyTLSOption '",
+        cmd->argv[i], "'", NULL));
+    }
+  }
+
+  c->argv[0] = pcalloc(c->pool, sizeof(unsigned long));
+  *((unsigned long *) c->argv[0]) = opts;
+
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSProtocol protocols */
+MODRET set_proxytlsprotocol(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  register unsigned int i;
+  config_rec *c;
+  unsigned int tls_protocol = 0;
+
+  if (cmd->argc-1 == 0) {
+    CONF_ERROR(cmd, "wrong number of parameters");
+  }
+
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  if (strcasecmp(cmd->argv[1], "all") == 0) {
+    /* We're in an additive/subtractive type of configuration. */
+    tls_protocol = PROXY_TLS_PROTO_ALL;
+
+    for (i = 2; i < cmd->argc; i++) {
+      int disable = FALSE;
+      char *proto_name;
+
+      proto_name = cmd->argv[i];
+
+      if (*proto_name == '+') {
+        proto_name++;
+
+      } else if (*proto_name == '-') {
+        disable = TRUE;
+        proto_name++;
+
+      } else {
+        /* Using the additive/subtractive approach requires a +/- prefix;
+         * it's malformed without such prefaces.
+         */
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "missing required +/- prefix: ",
+          proto_name, NULL));
+      }
+
+      if (strncasecmp(proto_name, "SSLv3", 6) == 0) {
+        if (disable) {
+          tls_protocol &= ~PROXY_TLS_PROTO_SSL_V3;
+        } else {
+          tls_protocol |= PROXY_TLS_PROTO_SSL_V3;
+        }
+
+      } else if (strncasecmp(proto_name, "TLSv1", 6) == 0) {
+        if (disable) {
+          tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1;
+        } else {
+          tls_protocol |= PROXY_TLS_PROTO_TLS_V1;
+        }
+
+      } else if (strncasecmp(proto_name, "TLSv1.1", 8) == 0) {
+# if OPENSSL_VERSION_NUMBER >= 0x10001000L
+        if (disable) {
+          tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1_1;
+        } else {
+          tls_protocol |= PROXY_TLS_PROTO_TLS_V1_1;
+        }
+# else
+        CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.1");
+# endif /* OpenSSL 1.0.1 or later */
+
+      } else if (strncasecmp(proto_name, "TLSv1.2", 8) == 0) {
+# if OPENSSL_VERSION_NUMBER >= 0x10001000L
+        if (disable) {
+          tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1_2;
+        } else {
+          tls_protocol |= PROXY_TLS_PROTO_TLS_V1_2;
+        }
+# else
+        CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.2");
+# endif /* OpenSSL 1.0.1 or later */
+
+      } else {
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown protocol: '",
+          cmd->argv[i], "'", NULL));
+      }
+    }
+
+  } else {
+    for (i = 1; i < cmd->argc; i++) {
+      if (strncasecmp(cmd->argv[i], "SSLv23", 7) == 0) {
+        tls_protocol |= PROXY_TLS_PROTO_SSL_V3;
+        tls_protocol |= PROXY_TLS_PROTO_TLS_V1;
+
+      } else if (strncasecmp(cmd->argv[i], "SSLv3", 6) == 0) {
+        tls_protocol |= PROXY_TLS_PROTO_SSL_V3;
+
+      } else if (strncasecmp(cmd->argv[i], "TLSv1", 6) == 0) {
+        tls_protocol |= PROXY_TLS_PROTO_TLS_V1;
+
+      } else if (strncasecmp(cmd->argv[i], "TLSv1.1", 8) == 0) {
+# if OPENSSL_VERSION_NUMBER >= 0x10001000L
+        tls_protocol |= PROXY_TLS_PROTO_TLS_V1_1;
+# else
+        CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.1");
+# endif /* OpenSSL 1.0.1 or later */
+
+      } else if (strncasecmp(cmd->argv[i], "TLSv1.2", 8) == 0) {
+# if OPENSSL_VERSION_NUMBER >= 0x10001000L
+        tls_protocol |= PROXY_TLS_PROTO_TLS_V1_2;
+# else
+        CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.2");
+# endif /* OpenSSL 1.0.1 or later */
+
+      } else {
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown protocol: '",
+          cmd->argv[i], "'", NULL));
+      }
+    }
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(unsigned int));
+  *((unsigned int *) c->argv[0]) = tls_protocol;
+
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSTimeoutHandshake timeout */
+MODRET set_proxytlstimeouthandshake(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int timeout = -1;
+  config_rec *c = NULL;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  if (pr_str_get_duration(cmd->argv[1], &timeout) < 0) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing timeout value '",
+      cmd->argv[1], "': ", strerror(errno), NULL));
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = pcalloc(c->pool, sizeof(unsigned int));
+  *((unsigned int *) c->argv[0]) = timeout;
+
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSVerifyServer on|off */
+MODRET set_proxytlsverifyserver(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  int verify = -1;
+  config_rec *c = NULL;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  verify = get_boolean(cmd, 1);
+  if (verify == -1) {
+    CONF_ERROR(cmd, "expected Boolean parameter");
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = pcalloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = verify;
+
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
 /* mod_proxy event/dispatch loop. */
 static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
 
@@ -1101,6 +1532,8 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       return PR_ERROR(cmd);
     }
 
+    proxy_sess->backend_data_conn = backend_conn;
+
     if (proxy_netio_postopen(backend_conn->instrm) < 0) {
       xerrno = errno;
 
@@ -1108,6 +1541,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         "postopen error for backend data connection input stream: %s",
         strerror(xerrno));
       proxy_inet_close(session.pool, backend_conn);
+      proxy_sess->backend_data_conn = NULL;
 
       errno = xerrno;
       return PR_ERROR(cmd);
@@ -1120,12 +1554,11 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         "postopen error for backend data connection output stream: %s",
         strerror(xerrno));
       proxy_inet_close(session.pool, backend_conn);
+      proxy_sess->backend_data_conn = NULL;
 
       errno = xerrno;
       return PR_ERROR(cmd);
     }
-
-    proxy_sess->backend_data_conn = backend_conn;
 
   } else if (proxy_sess->backend_sess_flags & SF_PORT) {
     pr_trace_msg(trace_channel, 17,
@@ -1158,6 +1591,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         "postopen error for backend data connection input stream: %s",
         strerror(xerrno));
       proxy_inet_close(session.pool, backend_conn);
+      proxy_sess->backend_data_conn = NULL;
 
       errno = xerrno;
       return PR_ERROR(cmd);
@@ -1170,6 +1604,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         "postopen error for backend data connection output stream: %s",
         strerror(xerrno));
       proxy_inet_close(session.pool, backend_conn);
+      proxy_sess->backend_data_conn = NULL;
 
       errno = xerrno;
       return PR_ERROR(cmd);
@@ -2332,6 +2767,12 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *block_responses) {
   int successful = FALSE, res;
 
+  /* Remove any exit handlers installed by mod_xfer.  We do this here,
+   * rather than in sess_init, since our sess_init is called BEFORE the
+   * sess_init of mod_xfer.
+   */
+  pr_event_unregister(&xfer_module, "core.exit", NULL);
+
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:
       if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
@@ -2452,7 +2893,12 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
   if (res < 0) {
     int xerrno = errno;
 
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    if (xerrno != EINVAL) {
+      pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    } else {
+      pr_response_add_err(R_530, _("Login incorrect."));
+    }
+
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -2474,15 +2920,6 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
       proxy_restrict_session();
     }
   }
-
-  /* Remove any exit handlers installed by mod_xfer.  We do this here,
-   * rather than in sess_init, since our sess_init is called BEFORE the
-   * sess_init of mod_xfer.
-   *
-   * XXX What if no PASS command is sent/needed by the client?  Can we
-   * remove the mod_xfer exit headers in the proxy_user() function?
-   */
-  pr_event_unregister(&xfer_module, "core.exit", NULL);
 
   return PR_HANDLED(cmd);
 }
@@ -2576,14 +3013,7 @@ MODRET proxy_any(cmd_rec *cmd) {
  
   proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
 
-  /* Commands related to logins and data transfers are handled separately.
-   *
-   * RFC 2228 commands are not to be proxied (since we cannot necessarily
-   * provide end-to-end protection, just hop-by-hop).
-   *
-   * FEAT should not necessarily be proxied to the backend, but should be
-   * handled locally.
-   */
+  /* Commands related to logins and data transfers are handled separately. */
 
   switch (cmd->cmd_id) {
     case PR_CMD_USER_ID:
@@ -2899,6 +3329,15 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
     pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BAD_CONFIG,
       "Failed reverse proxy initialization");
   }
+
+  if (proxy_tls_init(proxy_pool, proxy_tables_dir) < 0) {
+    pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
+      ": unable to initialize TLS support, failing to start up: %s",
+      strerror(errno));
+
+    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BAD_CONFIG,
+      "Failed TLS initialization");
+  }
 }
 
 static void proxy_restart_ev(const void *event_data, void *user_data) {
@@ -2906,6 +3345,7 @@ static void proxy_restart_ev(const void *event_data, void *user_data) {
 
   proxy_forward_free(proxy_pool);
   proxy_reverse_free(proxy_pool);
+  proxy_tls_free(proxy_pool);
 
   res = proxy_db_close(proxy_pool);
   if (res < 0) {
@@ -3035,15 +3475,6 @@ static int proxy_sess_init(void) {
   pr_event_register(&proxy_module, "core.timeout-stalled",
     proxy_timeoutstalled_ev, NULL);
 
-  /* XXX What do we do about TimeoutLogin?  That timeout doesn't really mean
-   * much to mod_proxy; how can we ensure that it won't be enforced e.g.
-   * by mod_core?
-   *
-   * Well, it MIGHT mean something for a forward ProxyRole, since we
-   * need to at least get the USER command from the client before knowing
-   * the destination server.
-   */
-
   c = find_config(main_server->conf, CONF_PARAM, "ProxyLog", FALSE);
   if (c != NULL) {
     char *logname;
@@ -3095,12 +3526,12 @@ static int proxy_sess_init(void) {
     c = find_config_next(c, c->next, CONF_PARAM, "ProxyOptions", FALSE);
   }
 
-  proxy_random_init();
-
   c = find_config(main_server->conf, CONF_PARAM, "ProxyRole", FALSE);
   if (c != NULL) {
     proxy_role = *((int *) c->argv[0]);
   }
+
+  proxy_random_init();
 
   /* Set defaults for directives that mod_proxy should allow. */
   proxy_set_sess_defaults();
@@ -3144,6 +3575,11 @@ static int proxy_sess_init(void) {
   if (pr_fsio_chdir_canon(sess_dir, TRUE) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error setting session directory to '%s': %s", sess_dir, strerror(errno));
+  }
+
+  if (proxy_tls_sess_init(proxy_pool) < 0) {
+    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
+      "Unable to initialize TLS API");
   }
 
   switch (proxy_role) {
@@ -3212,6 +3648,20 @@ static conftable proxy_conftab[] = {
   { "ProxySourceAddress",	set_proxysourceaddress,		NULL },
   { "ProxyTables",		set_proxytables,		NULL },
   { "ProxyTimeoutConnect",	set_proxytimeoutconnect,	NULL },
+
+  /* TLS support */
+  { "ProxyTLSCACertificateFile",set_proxytlscacertfile,		NULL },
+  { "ProxyTLSCACertificatePath",set_proxytlscacertpath,		NULL },
+  { "ProxyTLSCARevocationFile",	set_proxytlscacrlfile,		NULL },
+  { "ProxyTLSCARevocationPath",	set_proxytlscacrlpath,		NULL },
+  { "ProxyTLSCertificateFile",	set_proxytlscertfile,		NULL },
+  { "ProxyTLSCertificateKeyFile",set_proxytlscertkeyfile,	NULL },
+  { "ProxyTLSCipherSuite",	set_proxytlsciphersuite,	NULL },
+  { "ProxyTLSEngine",		set_proxytlsengine,		NULL },
+  { "ProxyTLSOptions",		set_proxytlsoptions,		NULL },
+  { "ProxyTLSProtocol",		set_proxytlsprotocol,		NULL },
+  { "ProxyTLSTimeoutHandshake",	set_proxytlstimeouthandshake,	NULL },
+  { "ProxyTLSVerifyServer",	set_proxytlsverifyserver,	NULL },
 
   /* Support TransferPriority for proxied connections? */
   /* Deliberately ignore/disable HiddenStores in mod_proxy configs */

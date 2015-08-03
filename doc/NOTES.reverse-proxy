@@ -10,7 +10,6 @@ Selection Strategies: Balancing vs Stickiness
     client IP
     USER
     HOST
-    SSL session ID
 
 What's better for FTP, SFTP connections?  RoundRobin or LeastConns?  And
 why?  The HAproxy docs for the 'balance' keyword say that 'leastconn' is
