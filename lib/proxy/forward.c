@@ -240,6 +240,7 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
       pr_inet_close(p, proxy_sess->backend_ctrl_conn);
       proxy_sess->backend_ctrl_conn = NULL;
 
+      *resp = NULL;
       errno = xerrno;
       return -1;
     }
@@ -249,11 +250,12 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
     xerrno = errno;
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "postopen error for backend ctrl connection input stream: %s",
+      "postopen error for backend control connection input stream: %s",
       strerror(xerrno));
     proxy_inet_close(session.pool, server_conn);
     proxy_sess->backend_ctrl_conn = NULL;
 
+    *resp = NULL;
     errno = xerrno;
     return -1;
   }
@@ -262,11 +264,12 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
     xerrno = errno;
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "postopen error for backend ctrl connection output stream: %s",
+      "postopen error for backend control connection output stream: %s",
       strerror(xerrno));
     proxy_inet_close(session.pool, server_conn);
     proxy_sess->backend_ctrl_conn = NULL;
 
+    *resp = NULL;
     errno = xerrno;
     return -1;
   }
@@ -905,12 +908,13 @@ static int forward_handle_pass_proxyuserwithproxyauth(cmd_rec *cmd,
 
 int proxy_forward_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *successful, int *block_responses) {
-  int res = -1;
+  int res = -1, xerrno = 0;
 
   /* Look at our proxy method to see what we should do here. */
   switch (proxy_method) {
     case PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH:
       res = forward_handle_pass_passthru(cmd, proxy_sess, successful);
+      xerrno = errno;
       if (res == 1) {
         pr_timer_remove(PR_TIMER_LOGIN, ANY_MODULE);
       }
@@ -919,18 +923,27 @@ int proxy_forward_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     case PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH:
       res = forward_handle_pass_userwithproxyauth(cmd, proxy_sess,
         successful, block_responses);
+      xerrno = errno;
+      if (res == 1) {
+        pr_timer_remove(PR_TIMER_LOGIN, ANY_MODULE);
+      }
       break;
 
     case PROXY_FORWARD_METHOD_PROXY_USER_WITH_PROXY_AUTH:
       res = forward_handle_pass_proxyuserwithproxyauth(cmd, proxy_sess,
         successful, block_responses);
+      xerrno = errno;
+      if (res == 1) {
+        pr_timer_remove(PR_TIMER_LOGIN, ANY_MODULE);
+      }
       break;
 
     default:
-      errno = ENOSYS;
+      xerrno = ENOSYS;
       res = -1;
   }
 
+  errno = xerrno;
   return res;
 }
 

@@ -2755,7 +2755,6 @@ int proxy_tls_sess_init(pool *p) {
   }
 
 /* TODO (in this order):
- *  ProxyTLSVerifyServer
  *  ProxyTLSCertificate{File,Key}
  */
 

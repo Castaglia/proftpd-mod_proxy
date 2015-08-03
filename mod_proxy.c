@@ -2711,6 +2711,12 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *block_responses) {
   int successful = FALSE, res;
 
+  /* Remove any exit handlers installed by mod_xfer.  We do this here,
+   * rather than in sess_init, since our sess_init is called BEFORE the
+   * sess_init of mod_xfer.
+   */
+  pr_event_unregister(&xfer_module, "core.exit", NULL);
+
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:
       if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
@@ -2831,7 +2837,12 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
   if (res < 0) {
     int xerrno = errno;
 
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    if (xerrno != EINVAL) {
+      pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    } else {
+      pr_response_add_err(R_530, _("Login incorrect."));
+    }
+
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -2853,15 +2864,6 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
       proxy_restrict_session();
     }
   }
-
-  /* Remove any exit handlers installed by mod_xfer.  We do this here,
-   * rather than in sess_init, since our sess_init is called BEFORE the
-   * sess_init of mod_xfer.
-   *
-   * XXX What if no PASS command is sent/needed by the client?  Can we
-   * remove the mod_xfer exit headers in the proxy_user() function?
-   */
-  pr_event_unregister(&xfer_module, "core.exit", NULL);
 
   return PR_HANDLED(cmd);
 }
@@ -3416,15 +3418,6 @@ static int proxy_sess_init(void) {
     proxy_timeoutnoxfer_ev, NULL);
   pr_event_register(&proxy_module, "core.timeout-stalled",
     proxy_timeoutstalled_ev, NULL);
-
-  /* XXX What do we do about TimeoutLogin?  That timeout doesn't really mean
-   * much to mod_proxy; how can we ensure that it won't be enforced e.g.
-   * by mod_core?
-   *
-   * Well, it MIGHT mean something for a forward ProxyRole, since we
-   * need to at least get the USER command from the client before knowing
-   * the destination server.
-   */
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyLog", FALSE);
   if (c != NULL) {
