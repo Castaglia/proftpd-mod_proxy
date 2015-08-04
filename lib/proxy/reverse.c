@@ -2229,6 +2229,11 @@ int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
   if (resp->num[0] == '2' ||
       resp->num[0] == '3') {
     *successful = TRUE;
+
+    if (strcmp(resp->num, R_232) == 0) {
+      proxy_sess_state |= PROXY_SESS_STATE_BACKEND_AUTHENTICATED;
+      pr_timer_remove(PR_TIMER_LOGIN, ANY_MODULE);
+    }
   }
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,

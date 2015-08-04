@@ -528,6 +528,11 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
   if (resp->num[0] == '2' ||
       resp->num[0] == '3') {
     *successful = TRUE;
+
+    if (strcmp(resp->num, R_232) == 0) {
+      proxy_sess_state |= PROXY_SESS_STATE_BACKEND_AUTHENTICATED;
+      pr_timer_remove(PR_TIMER_LOGIN, ANY_MODULE);
+    }
   }
 
   /* XXX TODO: Concatenate the banner from the connect with the USER response
