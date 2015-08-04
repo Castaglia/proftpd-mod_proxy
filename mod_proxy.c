@@ -3148,7 +3148,12 @@ MODRET proxy_any(cmd_rec *cmd) {
       }
 
     case PR_CMD_HOST_ID:
-      /* TODO is there any value in handling the HOST command locally? */
+      /* TODO is there any value in handling the HOST command locally?
+       * Answer: yes!  Consider the reverse proxy case + mod_autohost!
+       * Thus we DO want to return DECLINED here, BUT we ALSO need to implement
+       * the event listener for resetting the forward/reverse (but not tls)
+       * APIs.
+       */
       return PR_DECLINED(cmd);
 
     /* Directory changing commands not allowed locally. */
