@@ -1,28 +1,6 @@
 
-Need Proxy* directives for setting the client certificate/key/CA to use,
-ciphersuites/protocol version, etc.
-
-  ProxyTLSCACertificateFile
-  ProxyTLSCACertificatePath
-  ProxyTLSCertificateFile (support RSA, DSA, EC with these!)
-  ProxyTLSCertificateKey
-  ProxyTLSCipherSuite (DONE)
-  ProxyTLSECDHCurve (?)
-  ProxyTLSEngine (auto, on (required), off) (DONE)
-  ProxyTLSProtocol (DONE)
-  ProxyTLSTimeoutHandshake (DONE)
-  ProxyTLSVerifyServer
-
-  ProxyTLSOptions
-    EnableDiags (DONE)
-    IgnoreFEAT
-    UseCCC
-    implicit TLS?
-    PROT C?
-    TLS protocol version fallback (implicits TLS_FALLBACK_SCSV?)
-
-Support/store SSL session IDs (where to cache?  Locally in SQLite table?).
-What about PSK support?  Renegotiations?
+ProxyTLSOptions
+  IgnoreFEAT
+  UseCCC
 
 Passphrase provider support?
-OCSP stapling support?
