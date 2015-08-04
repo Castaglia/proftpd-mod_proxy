@@ -895,7 +895,7 @@ static int cert_match_cn(pool *p, X509 *cert, const char *name,
   return matched;
 }
 
-static int check_server_cert(SSL *ssl, conn_t *conn) {
+static int check_server_cert(SSL *ssl, conn_t *conn, const char *host_name) {
   X509 *cert = NULL;
   int ok = -1;
   long verify_result;
@@ -937,9 +937,9 @@ static int check_server_cert(SSL *ssl, conn_t *conn) {
   }
 
   if (ok == 0) {
-    ok = cert_match_dns_san(conn->pool, cert, conn->remote_name);
+    ok = cert_match_dns_san(conn->pool, cert, host_name);
     if (ok == 0) {
-      ok = cert_match_cn(conn->pool, cert, conn->remote_name, TRUE);
+      ok = cert_match_cn(conn->pool, cert, host_name, TRUE);
     }
   }
 
@@ -1746,7 +1746,7 @@ static int tls_connect(conn_t *conn, const char *host_name,
       "Server: %s", subj);
   }
 
-  if (check_server_cert(ssl, conn) < 0) {
+  if (check_server_cert(ssl, conn, host_name) < 0) {
     tls_end_sess(ssl, nstrm_type, 0);
     return -1;
   }
