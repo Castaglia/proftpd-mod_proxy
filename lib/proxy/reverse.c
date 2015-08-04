@@ -1741,14 +1741,7 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
     }
   }
 
-  /* Send the banner to the connected client as if it were our own banner --
-   * except if the ConnectPolicy is NOT PerUser/PerHost.
-   *
-   * For PerUser ConnectPolicy, if we echo the banner now, we will only
-   * confuse the client.
-   */
-
-  if (reverse_connect_policy != PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
+  if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_SESS_INIT) {
     pr_response_block(FALSE);
   }
 
@@ -1757,7 +1750,7 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
       "unable to send banner to client: %s", strerror(errno));
   }
 
-  if (reverse_connect_policy != PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
+  if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_SESS_INIT) {
     pr_response_block(TRUE);
   }
 
@@ -1971,7 +1964,7 @@ int proxy_reverse_sess_exit(pool *p) {
 }
 
 static void set_reverse_flags(void) {
-  if (proxy_opts & PROXY_OPT_REVERSE_PROXY_AUTH) {
+  if (proxy_opts & PROXY_OPT_USE_REVERSE_PROXY_AUTH) {
     reverse_flags = PROXY_REVERSE_FL_CONNECT_AT_PASS;
 
   } else {
@@ -2319,7 +2312,30 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
 
-  if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_PASS) {
+  if (!(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED)) {
+    char *user = NULL;
+
+    user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
+    res = proxy_session_check_password(cmd->pool, user, cmd->arg);
+    if (res < 0) {
+      errno = EINVAL;
+      return -1;
+    }
+
+    res = proxy_session_setup_env(proxy_pool, user);
+    if (res < 0) {
+      errno = EINVAL;
+      return -1;
+    }
+
+    if (session.auth_mech) {
+      pr_log_debug(DEBUG2, "user '%s' authenticated by %s", user,
+        session.auth_mech);
+    }
+  }
+
+  if ((reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_PASS) &&
+      !(proxy_sess_state & PROXY_SESS_STATE_CONNECTED)) {
     register unsigned int i;
     int connected = FALSE;
     char *user = NULL;
@@ -2361,10 +2377,24 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
       return -1;
     }
 
+    if (user == NULL) {
+      user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
+    }
+
     user_cmd = pr_cmd_alloc(cmd->tmp_pool, 2, C_USER, user);
     user_cmd->arg = pstrdup(cmd->tmp_pool, user);
 
-    if (send_user(proxy_sess, user_cmd, successful) < 0) {
+    /* Since we're replaying the USER command here, we want to make sure
+     * that the USER response from the backend isn't played back to the
+     * frontend client.
+     */
+    pr_response_block(TRUE);
+    res = send_user(proxy_sess, user_cmd, successful);
+    xerrno = errno;
+    pr_response_block(FALSE);
+
+    if (res < 0) {
+      errno = xerrno;
       return -1;
     }
   }

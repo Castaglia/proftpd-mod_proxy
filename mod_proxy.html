@@ -353,18 +353,6 @@ behavior of <code>mod_proxy</code>.  For example:
 <p>
 The currently implemented options are:
 <ul>
-  <li><code>ReverseProxyAuth</code><br>
-    <p>
-    When reverse proxying, <code>mod_proxy</code> delegates user authentication
-    to the selected backend server.  However, there are some sites which need
-    to centralize user authentication in the proxy; use this option to require
-    proxy authentication for such cases.  <b>Note</b> that this option
-    <b>only</b> pertains to reverse proxy connections; proxy authentication
-    when forward proxying is determined by the <code>ProxyForwardMethod</code>
-    directive.
-  </li>
-
-  <p>
   <li><code>ShowFeatures</code><br>
     <p>
     When reverse proxing, <code>mod_proxy</code> defaults to not responding to
@@ -387,6 +375,18 @@ The currently implemented options are:
     ProFTPD module can be used to handle the <code>PROXY</code> command on
     the receiving side, <i>i.e.</i> when using <code>proftpd</code> as the
     backend/destination server.
+  </li>
+
+  <p>
+  <li><code>UseReverseProxyAuth</code><br>
+    <p>
+    When reverse proxying, <code>mod_proxy</code> delegates user authentication
+    to the selected backend server.  However, there are some sites which need
+    to centralize user authentication in the proxy; use this option to require
+    proxy authentication for such cases.  <b>Note</b> that this option
+    <b>only</b> pertains to reverse proxy connections; proxy authentication
+    when forward proxying is determined by the <code>ProxyForwardMethod</code>
+    directive.
   </li>
 </ul>
 

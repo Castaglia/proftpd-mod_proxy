@@ -629,8 +629,8 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
     } else if (strncmp(cmd->argv[i], "ShowFeatures", 13) == 0) {
       opts |= PROXY_OPT_SHOW_FEATURES;
 
-    } else if (strncmp(cmd->argv[i], "ReverseProxyAuth", 17) == 0) {
-      opts |= PROXY_OPT_REVERSE_PROXY_AUTH;
+    } else if (strncmp(cmd->argv[i], "UseReverseProxyAuth", 20) == 0) {
+      opts |= PROXY_OPT_USE_REVERSE_PROXY_AUTH;
 
     } else {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxyOption '",
@@ -2782,27 +2782,20 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
    */
   pr_event_unregister(&xfer_module, "core.exit", NULL);
 
+  if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
+    /* If we've already authenticated, then let the backend server deal
+     * with this.
+     */
+    return proxy_cmd(cmd, proxy_sess);
+  }
+
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:
-      if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
-        /* If we've already authenticated, then let the backend server
-         * deal with this.
-         */
-        return proxy_cmd(cmd, proxy_sess);
-      }
-
       res = proxy_reverse_handle_user(cmd, proxy_sess, &successful,
         block_responses);
       break;
 
     case PROXY_ROLE_FORWARD:
-      if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
-        /* If we've already authenticated, then let the backend server
-         * deal with this.
-         */
-        return proxy_cmd(cmd, proxy_sess);
-      }
-
       res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
         block_responses);
       break;
@@ -2875,27 +2868,20 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *block_responses) {
   int successful = FALSE, res;
 
+  if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
+    /* If we've already authenticated, then let the backend server deal with
+     * this.
+     */
+    return proxy_cmd(cmd, proxy_sess);
+  }
+
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:
-      if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
-        /* If we've already authenticated, then let the backend server
-         * deal with this.
-         */
-        return proxy_cmd(cmd, proxy_sess);
-      }
-
       res = proxy_reverse_handle_pass(cmd, proxy_sess, &successful,
         block_responses);
       break;
 
     case PROXY_ROLE_FORWARD:
-      if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
-        /* If we've already authenticated, then let the backend server
-         * deal with this.
-         */
-        return proxy_cmd(cmd, proxy_sess);
-      }
-
       res = proxy_forward_handle_pass(cmd, proxy_sess, &successful,
         block_responses);
       break;
