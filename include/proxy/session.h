@@ -68,4 +68,7 @@ struct proxy_session {
 
 struct proxy_session *proxy_session_alloc(pool *p);
 
+int proxy_session_check_password(pool *p, const char *user, const char *passwd);
+int proxy_session_setup_env(pool *p, const char *user);
+
 #endif /* MOD_PROXY_SESSION_H */
