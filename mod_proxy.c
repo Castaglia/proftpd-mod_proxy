@@ -436,10 +436,12 @@ MODRET set_proxydatatransferpolicy(cmd_rec *cmd) {
   cmd_id = pr_cmd_get_id(cmd->argv[1]);
   if (cmd_id < 0) {
     if (strncasecmp(cmd->argv[1], "active", 7) == 0) {
-      cmd_id = PR_CMD_PORT_ID;
+      /* Try to use EPRT over PORT. */
+      cmd_id = PR_CMD_EPRT_ID;
 
     } else if (strncasecmp(cmd->argv[1], "passive", 8) == 0) {
-      cmd_id = PR_CMD_PASV_ID;
+      /* Try to use EPSV over PASV. */
+      cmd_id = PR_CMD_EPSV_ID;
 
     } else if (strncasecmp(cmd->argv[1], "client", 7) == 0) {
       cmd_id = 0;
