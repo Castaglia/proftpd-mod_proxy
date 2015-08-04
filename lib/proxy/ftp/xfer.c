@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP data transfer routines
- * Copyright (c) 2013 TJ Saunders
+ * Copyright (c) 2013-2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -77,7 +77,20 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
       break;
 
     case PR_CMD_EPRT_ID:
+      /* If the remote host does not mention EPRT in its features, fall back
+       * to using PORT.
+       */
       active_cmd = C_EPRT;
+      if (pr_table_get(proxy_sess->backend_features, C_EPRT, NULL) == NULL) {
+        pr_trace_msg(trace_channel, 19,
+          "EPRT not supported by backend server (via FEAT), using PORT");
+        if (proxy_sess->dataxfer_policy == PR_CMD_EPRT_ID) {
+          proxy_sess->dataxfer_policy = PR_CMD_PORT_ID;
+        }
+
+        active_cmd = C_PORT;
+        cmd_id = PR_CMD_PORT_ID;
+      }
       break;
 
     default:
@@ -148,6 +161,21 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
+    if (cmd_id == PR_CMD_EPRT_ID) {
+      /* If using EPRT failed, try again using PORT, and switch the
+       * DataTransferPolicy (if EPRT) to be PORT, for future attempts.
+       */
+
+      if (proxy_sess->dataxfer_policy == PR_CMD_EPRT_ID) {
+        pr_trace_msg(trace_channel, 15,
+          "falling back from EPRT to PORT DataTransferPolicy");
+        proxy_sess->dataxfer_policy == PR_CMD_PORT_ID;
+      }
+
+      return proxy_ftp_xfer_prepare_active(PR_CMD_PORT_ID, cmd,
+        error_code, proxy_sess);
+    }
+
     errno = xerrno = EINVAL;
     pr_response_add_err(error_code, "%s: %s", cmd->argv[0], strerror(xerrno));
 
@@ -177,7 +205,20 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
       break;
 
     case PR_CMD_EPSV_ID:
+      /* If the remote host does not mention EPSV in its features, fall back
+       * to using PASV.
+       */
       passive_cmd = C_EPSV;
+      if (pr_table_get(proxy_sess->backend_features, C_EPSV, NULL) == NULL) {
+        pr_trace_msg(trace_channel, 19,
+          "EPSV not supported by backend server (via FEAT), using PASV");
+        if (proxy_sess->dataxfer_policy == PR_CMD_EPSV_ID) {
+          proxy_sess->dataxfer_policy = PR_CMD_PASV_ID;
+        }
+
+        passive_cmd = C_PASV;
+        cmd_id = PR_CMD_PASV_ID;
+      }
       break;
 
     default:
@@ -236,6 +277,21 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "received response code %s, but expected %s for %s command", resp->num,
       passive_respcode, pasv_cmd->argv[0]);
+
+    if (cmd_id == PR_CMD_EPSV_ID) {
+      /* If using EPSV failed, try again using PASV, and switch the
+       * DataTransferPolicy (if EPSV) to be PASV, for future attempts.
+       */
+
+      if (proxy_sess->dataxfer_policy == PR_CMD_EPSV_ID) {
+        pr_trace_msg(trace_channel, 15,
+          "falling back from EPSV to PASV DataTransferPolicy");
+        proxy_sess->dataxfer_policy == PR_CMD_PASV_ID;
+      }
+
+      return proxy_ftp_xfer_prepare_passive(PR_CMD_PASV_ID, cmd,
+        error_code, proxy_sess);
+    }
 
     res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
       proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
