@@ -169,7 +169,7 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
       if (proxy_sess->dataxfer_policy == PR_CMD_EPRT_ID) {
         pr_trace_msg(trace_channel, 15,
           "falling back from EPRT to PORT DataTransferPolicy");
-        proxy_sess->dataxfer_policy == PR_CMD_PORT_ID;
+        proxy_sess->dataxfer_policy = PR_CMD_PORT_ID;
       }
 
       return proxy_ftp_xfer_prepare_active(PR_CMD_PORT_ID, cmd,
@@ -286,7 +286,7 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
       if (proxy_sess->dataxfer_policy == PR_CMD_EPSV_ID) {
         pr_trace_msg(trace_channel, 15,
           "falling back from EPSV to PASV DataTransferPolicy");
-        proxy_sess->dataxfer_policy == PR_CMD_PASV_ID;
+        proxy_sess->dataxfer_policy = PR_CMD_PASV_ID;
       }
 
       return proxy_ftp_xfer_prepare_passive(PR_CMD_PASV_ID, cmd,

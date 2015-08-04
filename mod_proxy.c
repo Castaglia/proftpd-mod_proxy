@@ -728,7 +728,7 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
          */
 
         PRIVS_ROOT
-        backend_servers = proxy_reverse_file_parse_uris(cmd->server->pool,
+        backend_servers = proxy_reverse_json_parse_uris(cmd->server->pool,
           path);
         xerrno = errno;
         PRIVS_RELINQUISH
@@ -1963,7 +1963,7 @@ MODRET proxy_data(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     if (res == 0) {
       /* XXX Have MAX_RETRIES logic here. */
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "timed out waiting for readability on ctrl/data connections, "
+        "timed out waiting for readability on control/data connections, "
         "trying again");
       continue;
     }

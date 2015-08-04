@@ -357,12 +357,12 @@ my $TESTS = {
     test_class => [qw(forking reverse)],
   },
 
-  proxy_reverse_config_connect_policy_per_user_by_file => {
+  proxy_reverse_config_connect_policy_per_user_by_json => {
     order => ++$order,
     test_class => [qw(forking reverse)],
   },
 
-  proxy_reverse_config_reverseservers_file => {
+  proxy_reverse_config_reverseservers_json => {
     order => ++$order,
     test_class => [qw(forking reverse)],
   },
@@ -11831,7 +11831,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_reverse_config_connect_policy_per_user_by_file {
+sub proxy_reverse_config_connect_policy_per_user_by_json {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -11876,9 +11876,9 @@ sub proxy_reverse_config_connect_policy_per_user_by_file {
   $proxy_config->{ProxyReverseConnectPolicy} = 'PerUser';
   $proxy_config->{ProxyReverseServers} = "ftp://127.0.0.1:$vhost_port";
 
-  my $user_path = File::Spec->rel2abs("$tmpdir/$user-servers.txt");
+  my $user_path = File::Spec->rel2abs("$tmpdir/$user-servers.json");
   if (open(my $fh, "> $user_path")) {
-    print $fh "ftp://127.0.0.1:$vhost_port2\n";
+    print $fh "[ \"ftp://127.0.0.1:$vhost_port2\" ]\n";
     unless (close($fh)) {
       die("Can't write $user_path: $!");
     }
@@ -11887,7 +11887,7 @@ sub proxy_reverse_config_connect_policy_per_user_by_file {
     die("Can't open $user_path: $!");
   }
 
-  my $uservar_path = File::Spec->rel2abs("$tmpdir/%U-servers.txt");
+  my $uservar_path = File::Spec->rel2abs("$tmpdir/%U-servers.json");
 
   # Since we need multiple ProxyReverseServers directives, convert this
   # hashref into an arrayref.
@@ -14462,7 +14462,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_reverse_config_reverseservers_file {
+sub proxy_reverse_config_reverseservers_json {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -14503,9 +14503,9 @@ sub proxy_reverse_config_reverseservers_file {
 
   my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
 
-  my $proxy_hosts_file = File::Spec->rel2abs("$tmpdir/backends.txt");
+  my $proxy_hosts_file = File::Spec->rel2abs("$tmpdir/backends.json");
   if (open(my $fh, "> $proxy_hosts_file")) {
-    print $fh "ftp://127.0.0.1:$vhost_port\n";
+    print $fh "[ \"ftp://127.0.0.1:$vhost_port\" ]\n";
 
     unless (close($fh)) {
       die("Can't write $proxy_hosts_file: $!");

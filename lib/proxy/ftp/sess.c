@@ -25,6 +25,7 @@
 #include "mod_proxy.h"
 
 #include "proxy/conn.h"
+#include "proxy/netio.h"
 #include "proxy/tls.h"
 #include "proxy/ftp/sess.h"
 #include "proxy/ftp/ctrl.h"

@@ -367,8 +367,8 @@ int proxy_db_open(pool *p, const char *table_path) {
    */
   if (proxy_dbh != NULL) {
     pool *tmp_pool;
-    const char *stmt, *db_name = NULL;
-    char *ptr;
+    const char *stmt;
+    char *db_name = NULL, *ptr;
 
     tmp_pool = make_sub_pool(p);
 
