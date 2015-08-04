@@ -11,6 +11,11 @@ it's easily configured via ProxyForwardMethod.)
     This means that backend server connection MUST happen AFTER successful
     PASS command, regardless of ReverseConnectPolicy.
 
+    OR:
+      reverse_connect at connect time (no proxy auth, balancing policy)
+      reverse_connect at USER time (no proxy auth, sticky policy)
+      reverse_connect at PASS time (proxy auth, any policy)
+
     Failure scenarios:
       PASS fails (unknown user, password mismatch, etc)
       PASS succeeds, BUT backend connect fails
