@@ -991,74 +991,101 @@ static void tls_tlsext_cb(SSL *ssl, int client_server, int type,
         extension_name = "status request";
         break;
 
+# ifdef TLSEXT_TYPE_user_mapping
     case TLSEXT_TYPE_user_mapping:
         extension_name = "user mapping";
         break;
+# endif
 
+# ifdef TLSEXT_TYPE_client_authz
     case TLSEXT_TYPE_client_authz:
         extension_name = "client authz";
         break;
+# endif
 
+# ifdef TLSEXT_TYPE_server_authz
     case TLSEXT_TYPE_server_authz:
         extension_name = "server authz";
         break;
+# endif
 
+# ifdef TLSEXT_TYPE_cert_type
     case TLSEXT_TYPE_cert_type:
         extension_name = "cert type";
         break;
+# endif
 
+# ifdef TLSEXT_TYPE_elliptic_curves
     case TLSEXT_TYPE_elliptic_curves:
         extension_name = "elliptic curves";
         break;
+# endif
 
+# ifdef TLSEXT_TYPE_ec_point_formats
     case TLSEXT_TYPE_ec_point_formats:
         extension_name = "EC point formats";
         break;
+# endif
 
+# ifdef TLSEXT_TYPE_srp
     case TLSEXT_TYPE_srp:
         extension_name = "SRP";
         break;
+# endif
 
+# ifdef TLSEXT_TYPE_signature_algorithms
     case TLSEXT_TYPE_signature_algorithms:
         extension_name = "signature algorithms";
         break;
+# endif
 
+# ifdef TLSEXT_TYPE_use_srtp
     case TLSEXT_TYPE_use_srtp:
         extension_name = "use SRTP";
         break;
+# endif
 
+# ifdef TLSEXT_TYPE_heartbeat
     case TLSEXT_TYPE_heartbeat:
         extension_name = "heartbeat";
         break;
+# endif
 
+# ifdef TLSEXT_TYPE_session_ticket
     case TLSEXT_TYPE_session_ticket:
         extension_name = "session ticket";
         break;
+# endif
 
+# ifdef TLSEXT_TYPE_renegotiate
     case TLSEXT_TYPE_renegotiate:
         extension_name = "renegotiation info";
         break;
+# endif
 
-#ifdef TLSEXT_TYPE_opaque_prf_input
+# ifdef TLSEXT_TYPE_opaque_prf_input
     case TLSEXT_TYPE_opaque_prf_input:
         extension_name = "opaque PRF input";
         break;
-#endif
+# endif
 
-#ifdef TLSEXT_TYPE_next_proto_neg
+# ifdef TLSEXT_TYPE_next_proto_neg
     case TLSEXT_TYPE_next_proto_neg:
         extension_name = "next protocol";
         break;
-#endif
+# endif
 
-#ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
+# ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
     case TLSEXT_TYPE_application_layer_protocol_negotiation:
         extension_name = "application layer protocol";
         break;
-#endif
+# endif
+
+# ifdef TLSEXT_TYPE_padding
     case TLSEXT_TYPE_padding:
         extension_name = "TLS padding";
         break;
+# endif
 
     default:
       break;
@@ -2164,6 +2191,7 @@ struct proxy_tls_next_proto {
   unsigned int encoded_protolen;
 };
 
+#if defined(PR_USE_OPENSSL_NPN)
 static int tls_npn_cb(SSL *ssl,
     unsigned char **npn_out, unsigned char *npn_outlen,
     const unsigned char *npn_in, unsigned int npn_inlen,
@@ -2196,6 +2224,7 @@ static int tls_npn_cb(SSL *ssl,
 
   return SSL_TLSEXT_ERR_OK;
 }
+#endif /* PR_USE_OPENSSL_NPN */
 
 static int set_next_protocol(SSL_CTX *ctx) {
   register unsigned int i;
@@ -3064,7 +3093,10 @@ int proxy_tls_sess_init(pool *p) {
 # endif
 
       SSL_CTX_set_cert_store(ssl_ctx, crl_store);
+
+# ifdef SSL_CTX_set_cert_flags
       SSL_CTX_set_cert_flags(ssl_ctx, verify_flags);
+# endif
     }
   }
 
