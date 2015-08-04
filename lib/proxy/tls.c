@@ -2447,7 +2447,11 @@ static int tls_db_init(pool *p, const char *tables_dir) {
 #endif /* PR_USE_OPENSSL */
 
 int proxy_tls_use_tls(void) {
+#ifdef PR_USE_OPENSSL
   return tls_engine;
+#else
+  return PROXY_TLS_ENGINE_OFF;
+#endif /* PR_USE_OPENSSL */
 }
 
 int proxy_tls_init(pool *p, const char *tables_dir) {
@@ -2483,6 +2487,7 @@ int proxy_tls_free(pool *p) {
   return 0;
 }
 
+#ifdef PR_USE_OPENSSL
 /* Construct the options value that disables all unsupported protocols. */
 static int get_disabled_protocols(unsigned int supported_protocols) {
   int disabled_protocols;
@@ -2490,12 +2495,12 @@ static int get_disabled_protocols(unsigned int supported_protocols) {
   /* First, create an options value where ALL protocols are disabled. */
   disabled_protocols = (SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3|SSL_OP_NO_TLSv1);
 
-#ifdef SSL_OP_NO_TLSv1_1
+# ifdef SSL_OP_NO_TLSv1_1
   disabled_protocols |= SSL_OP_NO_TLSv1_1;
-#endif
-#ifdef SSL_OP_NO_TLSv1_2
+# endif
+# ifdef SSL_OP_NO_TLSv1_2
   disabled_protocols |= SSL_OP_NO_TLSv1_2;
-#endif
+# endif
 
   /* Now, based on the given bitset of supported protocols, clear the
    * necessary bits.
@@ -2509,7 +2514,7 @@ static int get_disabled_protocols(unsigned int supported_protocols) {
     disabled_protocols &= ~SSL_OP_NO_TLSv1;
   }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10001000L
+# if OPENSSL_VERSION_NUMBER >= 0x10001000L
   if (supported_protocols & PROXY_TLS_PROTO_TLS_V1_1) {
     disabled_protocols &= ~SSL_OP_NO_TLSv1_1;
   }
@@ -2517,7 +2522,7 @@ static int get_disabled_protocols(unsigned int supported_protocols) {
   if (supported_protocols & PROXY_TLS_PROTO_TLS_V1_2) {
     disabled_protocols &= ~SSL_OP_NO_TLSv1_2;
   }
-#endif /* OpenSSL-1.0.1 or later */
+# endif /* OpenSSL-1.0.1 or later */
 
   return disabled_protocols;
 }
@@ -2574,21 +2579,21 @@ static void tls_info_cb(const SSL *ssl, int where, int ret) {
 
     ssl_state = SSL_get_state(ssl);
     switch (ssl_state) {
-#ifdef SSL_ST_BEFORE
+# ifdef SSL_ST_BEFORE
       case SSL_ST_BEFORE:
         str = "before";
         break;
-#endif
+# endif
 
       case SSL_ST_OK:
         str = "ok";
         break;
 
-#ifdef SSL_ST_RENEGOTIATE
+# ifdef SSL_ST_RENEGOTIATE
       case SSL_ST_RENEGOTIATE:
         str = "renegotiating";
         break;
-#endif
+# endif
 
       default:
         break;
@@ -2650,7 +2655,7 @@ static void tls_info_cb(const SSL *ssl, int where, int ret) {
   }
 }
 
-#if OPENSSL_VERSION_NUMBER > 0x000907000L
+# if OPENSSL_VERSION_NUMBER > 0x000907000L
 static void tls_msg_cb(int io_flag, int version, int content_type,
     const void *buf, size_t buflen, SSL *ssl, void *arg) {
   char *action_str = NULL;
@@ -2677,7 +2682,7 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
       version_str = "TLSv1";
       break;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10001000L
+#  if OPENSSL_VERSION_NUMBER >= 0x10001000L
     case TLS1_1_VERSION:
       version_str = "TLSv1.1";
       break;
@@ -2685,10 +2690,10 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
     case TLS1_2_VERSION:
       version_str = "TLSv1.2";
       break;
-#endif
+#  endif
 
     default:
-#ifdef SSL3_RT_HEADER
+#  ifdef SSL3_RT_HEADER
       /* OpenSSL calls this callback for SSL records received; filter those
        * from true "unknowns".
        */
@@ -2698,18 +2703,18 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "[tls.msg] unknown/unsupported version: %d", version);
       }
-#else
+#  else
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "[tls.msg] unknown/unsupported version: %d", version);
-#endif
+#  endif
       break;
   }
 
   if (version == SSL3_VERSION ||
-#if OPENSSL_VERSION_NUMBER >= 0x10001000L
+#  if OPENSSL_VERSION_NUMBER >= 0x10001000L
       version == TLS1_1_VERSION ||
       version == TLS1_2_VERSION ||
-#endif
+#  endif
       version == TLS1_VERSION) {
 
     switch (content_type) {
@@ -2877,14 +2882,14 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
       }
     }
 
-#ifdef SSL3_RT_HEADER
+#  ifdef SSL3_RT_HEADER
   } else if (version == 0 &&
              content_type == SSL3_RT_HEADER &&
              SSL3_RT_HEADER_LENGTH) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "[tls.msg] %s protocol record message (%u %s)", action_str,
       (unsigned int) buflen, bytes_str);
-#endif
+#  endif
 
   } else {
     /* This case might indicate an issue with OpenSSL itself; the version
@@ -2897,7 +2902,8 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
       action_str, version, content_type, (unsigned int) buflen, bytes_str);
   }
 }
-#endif /* OpenSSL-0.9.7 or later */
+# endif /* OpenSSL-0.9.7 or later */
+#endif /* PR_USE_OPENSSL */
 
 int proxy_tls_sess_init(pool *p) {
 #ifdef PR_USE_OPENSSL
@@ -3044,18 +3050,18 @@ int proxy_tls_sess_init(pool *p) {
     } else {
       long verify_flags = 0;
 
-#ifdef X509_V_FLAG_CRL_CHECK
+# ifdef X509_V_FLAG_CRL_CHECK
       verify_flags |= X509_V_FLAG_CRL_CHECK;
-#endif
-#ifdef X509_V_FLAG_CRL_CHECK_ALL
+# endif
+# ifdef X509_V_FLAG_CRL_CHECK_ALL
       verify_flags |= X509_V_FLAG_CRL_CHECK_ALL;
-#endif
-#ifdef X509_V_FLAG_CHECK_SS_SIGNATURE
+# endif
+# ifdef X509_V_FLAG_CHECK_SS_SIGNATURE
       verify_flags |= X509_V_FLAG_CHECK_SS_SIGNATURE;
-#endif
-#ifdef X509_V_FLAG_TRUSTED_FIRST
+# endif
+# ifdef X509_V_FLAG_TRUSTED_FIRST
       verify_flags |= X509_V_FLAG_TRUSTED_FIRST;
-#endif
+# endif
 
       SSL_CTX_set_cert_store(ssl_ctx, crl_store);
       SSL_CTX_set_cert_flags(ssl_ctx, verify_flags);
