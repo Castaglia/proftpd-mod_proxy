@@ -50,7 +50,8 @@ int proxy_forward_free(pool *p) {
   return 0;
 }
 
-int proxy_forward_sess_init(pool *p, const char *tables_dir) {
+int proxy_forward_sess_init(pool *p, const char *tables_dir,
+    struct proxy_session *proxy_sess) {
   config_rec *c;
   int allowed = FALSE;
   void *enabled = NULL;
@@ -583,8 +584,7 @@ static int forward_handle_user_proxyuserwithproxyauth(cmd_rec *cmd,
 
     /* Rewrite the USER command here with the trimmed/truncated name. */
     pr_cmd_clear_cache(cmd);
-    cmd->arg = pstrdup(cmd->pool, user);
-    cmd->argv[1] = pstrdup(cmd->pool, user);
+    cmd->arg = cmd->argv[1] = pstrdup(cmd->pool, user);
 
     /* By returning zero here, we let the rest of the proftpd internals
      * deal with the USER command locally, leading to proxy auth.

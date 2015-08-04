@@ -687,6 +687,12 @@ sub new {
 
 sub list_tests {
   return testsuite_get_runnable_tests($TESTS);
+
+#  return qw(
+#    proxy_reverse_config_reverse_proxy_auth_login
+#  );
+#    proxy_reverse_config_reverse_proxy_auth_login_failed_bad_proxy_passwd
+#    proxy_reverse_config_reverse_proxy_auth_login_failed_bad_dst_passwd
 }
 
 sub config_hash2array {
@@ -10129,7 +10135,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_reverse_config_datatransferpolicy_passive_list_epsv {
+sub proxy_reverse_config_datatransferpolicy_passive_list_pasv {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
