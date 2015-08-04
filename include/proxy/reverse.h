@@ -33,15 +33,14 @@ int proxy_reverse_init(pool *p, const char *tables_dir);
 int proxy_reverse_free(pool *p);
 
 int proxy_reverse_have_authenticated(cmd_rec *cmd);
-int proxy_reverse_sess_init(pool *p, const char *tables_dir);
+int proxy_reverse_sess_init(pool *p, const char *tables_dir,
+  struct proxy_session *proxy_sess);
 int proxy_reverse_sess_exit(pool *p);
 
-int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess);
-
 int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
-  int *successful);
+  int *successful, int *block_responses);
 int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
-  int *successful);
+  int *successful, int *block_responses);
 
 array_header *proxy_reverse_file_parse_uris(pool *p, const char *path);
 

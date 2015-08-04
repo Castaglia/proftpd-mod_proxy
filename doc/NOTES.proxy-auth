@@ -1,0 +1,40 @@
+
+When/how to configure proxy auth for reverse proxying?  (For forward proxying,
+it's easily configured via ProxyForwardMethod.)
+
+  None:
+    No proxy auth; all auth is delegated to backend server.  This means
+    that backend server connection can happen at a) connect time (assuming
+    a balancing policy), or b) at USER time (assuming a per-USER/host policy).
+
+  Proxy Auth:
+    This means that backend server connection MUST happen AFTER successful
+    PASS command, regardless of ReverseConnectPolicy.
+
+    OR:
+      reverse_connect at connect time (no proxy auth, balancing policy)
+      reverse_connect at USER time (no proxy auth, sticky policy)
+      reverse_connect at PASS time (proxy auth, any policy)
+
+    Failure scenarios:
+      PASS fails (unknown user, password mismatch, etc)
+      PASS succeeds, BUT backend connect fails
+      PASS succeeds, backend connect succeeds, but backend auth (USER or PASS)
+        fails
+
+    What does this mean for FEAT, HOST, etc?  Require proxy auth on a per-user
+    basis (ugh!)?  Multiple USER commands?
+
+    Fortunately, we will NOT have to cache the actual password; at PASS time,
+    we have the normal PASS cmd->arg, and can replay that against the backend
+    server as needed.
+
+And for overriding credentials (forward AND reverse proxying?), how to configure
+that?  Note that this feature is independent of proxy auth; whether or not
+the user has to authenticate to the proxy, the user will still need to
+authenticate to the backend server, and it is the credentials for the backend
+authentication that might be overridden.
+
+If we support SQL query overrides (preferable), then the lookup query would
+use both %U and %{0} for the backend URI selected.  Query would return USER
+and PASS to use!

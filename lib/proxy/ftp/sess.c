@@ -242,6 +242,8 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
   resp = send_recv(tmp_pool, proxy_sess->backend_ctrl_conn, cmd, &resp_nlines);
   if (resp == NULL) {
     xerrno = errno;
+
+    proxy_netio_use(PR_NETIO_STRM_CTRL, NULL);
     destroy_pool(tmp_pool);
     errno = xerrno;
     return -1;
@@ -251,6 +253,8 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
     pr_trace_msg(trace_channel, 4,
       "received unexpected %s response code %s from backend", cmd->argv[0],
       resp->num);
+
+    proxy_netio_use(PR_NETIO_STRM_CTRL, NULL);
     destroy_pool(tmp_pool);
     errno = EPERM;
     return -1;

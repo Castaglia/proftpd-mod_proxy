@@ -50,6 +50,7 @@
 /* mod_proxy option flags */
 #define PROXY_OPT_USE_PROXY_PROTOCOL		0x0001
 #define PROXY_OPT_SHOW_FEATURES			0x0002
+#define PROXY_OPT_USE_REVERSE_PROXY_AUTH	0x0004
 
 /* Miscellaneous */
 extern int proxy_logfd;

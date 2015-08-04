@@ -1,21 +1,14 @@
 
-mod_proxy
-
-  ProxyEngine
-  ProxyLog
-  ProxyMode forward|proxy|reverse|gateway
-
 Benefits:
   Front servers which can't do: PASV, EPRT/EPSV, FTPS
   Can use to do your logging: TransferLog, ExtendedLog, mod_log_zmq, etc.
   Can use to do your monitoring: mod_snmp, etc
+  Single SSL cert (on the proxy) for several different backend servers
 
-Why?
   Have mod_netsieve here, for sieving the inbound commands and outbound files
   (have netsieve rules for common cases like scanning for SSNs/credit card
   numbers in outbound data)
 
-  Single SSL cert (on the proxy) for several different backend servers
 
 What would a proxy module for proftpd look like?
 
@@ -32,9 +25,6 @@ Forward Proxy
   Need some kind of mechanism that clients can use to specify their end
   targets.
 
-  Keep this restricted, as it can be used to "hide" the origin of attacks,
-  using your proxy as the jumping off point.  Think of open email relays.
-
 Reverse Proxy
   Terminates any SSL session (backend connection to use SSL or not?)
   What credentials to use for authenticating to backend server for a reverse
@@ -47,27 +37,11 @@ Reverse Proxy
    it's protocol-aware); the other implementations are TCP-specific, and
    can be done by nginx, haproxy, etc.
 
-    { remote_user, remote_passwd, remote_host, remote_port } = lookup_remote_info(user)
-
   If map/lookup is done based on client IP, then it can be done at connect
   time, and thus mod_proxy can relay the connection to the remote host, and
   let all authentication be handled by the remote/target host.
 
   Scenarios:
-
-    Simplest:
-      mod_proxy configured to always use the SAME backend server.  In this
-      case, proxying the control connection is trivial; the backend server does
-      all of the protocol work.  The control connection from proxy to backend
-      server is opened when client connects to proxy.  However, mod_proxy DOES
-      need to watch for EPRT/EPSV/PASV/PORT commands, rewrite the responses
-      from the backend server to use the proxy's IP address/port.
-
-    Next simplest:
-      Just as above, except that there is a list of backend servers, and
-      some selection mechanism (roundrobin [weighted or not],
-      consistent hashing based on client IP, etc).  Selection mechanism
-      should be pluggable.
 
     Complex:
       backend server selection based on USER; this means mod_proxy needs to
@@ -92,36 +66,11 @@ Reverse Proxy
                           sql://SQLNamedQuery/...
                           ldap://...?
 
-SITE VIA
-  http://www.faqs.org/rfcs/rfc2616.html, Section 14.45 (Via header)
-
-    Via = "Via" ":" 1#(received-protocol received-by [comment])
-    received-protocol = [protocol-name "/"] protocol-version
-    protocol-name = token
-    protocol-version = token
-    received-by = (host [":" port]) | pseudonym
-    pseudonym = token
-
-  Proposed FTP SITE VIA command:
-    SITE VIA 1#(protocol from to)[","]
-    protocol = protocol-name ["/" protocol-version]
-    from = remote-host [":" port]
-    remote-host = hostname | remote-ip
-    to = local-host [":" port]
-    local-host = hostname | local-ip
-
-   Examples:
-     SITE VIA ftp 127.0.0.1:1234 127.0.0.1:21, sftp ....
-
  HAproxy PROXY protocol
    http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt
     http://ben.timby.com/?page_id=210
 
-   Support for this could be implemented in mod_proxy, as an option, and
-   could be handled in sess_init.  Would, however, need to be implemented BOTH
-   in mod_proxy (as sender) and in proftpd backend (as receiver), which may
-   or not be using mod_proxy.  Thus perhaps a separate module, e.g.
-   mod_proxy_protocol?
+   Implemented in mod_proxy_protocol.
 
 Any caching of proxied results, files, directory transfers, etc?
 
@@ -145,17 +94,7 @@ servers) for reverse proxying.
 Health checks
   TCP
 
-Authentication:
-
-  USER user@remote.site, proxy-user@remote-user@remote.site and other
-  variations.  (No "CNCT" FTP command; should there be one, e.g. HTTP CONNECT?
-  Probably not, given the easy abuse of such things.)
-
 Data Transfers:
-
-  Client requests active transfer; does proxy request active transfer, too?
-
-  SSL/TLS data transfers on frontend, backend?
   MODE Z on frontend, backend?
 
 Load balancing

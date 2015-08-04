@@ -41,7 +41,26 @@ extern xaset_t *server_list;
 static array_header *reverse_backends = NULL;
 static int reverse_backend_id = -1;
 static int reverse_connect_policy = PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN;
+static unsigned long reverse_flags = 0UL;
 static int reverse_retry_count = PROXY_DEFAULT_RETRY_COUNT;
+
+/* Flag that indicates that we should select/connect to the backend server
+ * at session init time, i.e. when proxy auth is not required, and we're using
+ * a balancing policy.
+ */
+#define PROXY_REVERSE_FL_CONNECT_AT_SESS_INIT		1
+
+/* Flag that indicates that we should select/connect to the backend server
+ * at USER time, i.e. when proxy auth is not required, and we're using a
+ * sticky policy.
+ */
+#define PROXY_REVERSE_FL_CONNECT_AT_USER		2
+
+/* Flag that indicates that we should select/connect to the backend server
+ * at PASS time, i.e. when proxy auth IS required (balancing/sticky policy
+ * doesn't really matter).
+ */
+#define PROXY_REVERSE_FL_CONNECT_AT_PASS		3
 
 static const char *trace_channel = "proxy.reverse";
 
@@ -1139,9 +1158,9 @@ static struct proxy_conn *reverse_db_peruser_init(pool *p,
   }
 
   /* TODO: What happens if the chosen backend URI cannot be used, e.g.
-   * because it is down/unreachable?  In reverse_connect(), we'll know that it
-   * failed to connect, but how to tunnel that back down here, to choose
-   * another?
+   * because it is down/unreachable?  In reverse_try_connect(), we'll know
+   * that it failed to connect, but how to tunnel that back down here, to
+   * choose another?
    */
 
   stmt = "INSERT INTO proxy_vhost_reverse_per_user (vhost_id, user, backend_uri) VALUES (?, ?, ?);";
@@ -1357,393 +1376,6 @@ static int reverse_db_perhost_used(pool *p, unsigned int vhost_id,
 
 /* ProxyReverseServers API/handling */
 
-int proxy_reverse_init(pool *p, const char *tables_dir) {
-  int res, xerrno = 0;
-  server_rec *s;
-  char *db_path;
-
-  if (p == NULL ||
-      tables_dir == NULL) {
-    errno = EINVAL;
-    return -1;
-  }
-
-  db_path = pdircat(p, tables_dir, "proxy-reverse.db", NULL);
-  if (file_exists(db_path)) {
-    pr_log_debug(DEBUG9, MOD_PROXY_VERSION
-      ": deleting existing database file '%s'", db_path);
-    if (unlink(db_path) < 0) {
-      pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
-        ": error deleting '%s': %s", db_path, strerror(errno));
-    }
-  }
-
-  res = proxy_db_open(p, db_path);
-  if (res < 0) {
-    xerrno = errno;
-    (void) pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
-      ": error opening database '%s': %s", db_path, strerror(xerrno));
-    errno = xerrno;
-    return -1;
-  }
-
-  res = reverse_db_add_schema(p, db_path);
-  if (res < 0) {
-    xerrno = errno;
-    (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-      ": error adding schema to database '%s': %s", db_path, strerror(xerrno));
-    (void) proxy_db_close(p);
-    errno = xerrno;
-    return -1;
-  }
-
-  for (s = (server_rec *) server_list->xas_list; s; s = s->next) {
-    config_rec *c;
-    array_header *backends = NULL;
-    int connect_policy = reverse_connect_policy;
-
-    res = reverse_db_add_vhost(p, s);
-    if (res < 0) {
-      xerrno = errno;
-      (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-        ": error adding database entry for server '%s': %s", s->ServerName,
-        strerror(xerrno));
-      (void) proxy_db_close(p);
-      errno = xerrno;
-      return -1;
-    }
-
-    c = find_config(s->conf, CONF_PARAM, "ProxyReverseServers", FALSE);
-    while (c != NULL) {
-      const char *uri;
-
-      pr_signals_handle();
-
-      uri = c->argv[1];
-      if (uri != NULL) {
-        int defer = FALSE;
-
-        /* Handling of sql:// URIs is done later, in the session init
-         * call, assuming we've connected to a SQL server.
-         */
-        if (strncmp(uri, "sql:/", 5) == 0) {
-          defer = TRUE;
-        }
-
-        /* Skip any %U-bearing URIs. */
-        if (defer == FALSE &&
-            strstr(uri, "%U") != NULL) {
-          defer = TRUE;
-        }
-
-        if (defer) {
-          c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
-            FALSE);
-          continue;
-        }
-      }
-
-      if (backends == NULL) {
-        backends = c->argv[0];
-
-      } else {
-        array_cat2(backends, c->argv[0]);
-      }
-
-      res = reverse_db_add_backends(p, s->sid, backends);
-      if (res < 0) {
-        xerrno = errno;
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "error adding database entries for ProxyReverseServers: %s",
-          strerror(xerrno));
-        errno = xerrno;
-        return -1;
-      }
-
-      c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
-        FALSE);
-    }
-
-    c = find_config(s->conf, CONF_PARAM, "ProxyReverseConnectPolicy", FALSE);
-    if (c != NULL) {
-      connect_policy = *((int *) c->argv[0]);
-    }
-
-    /* Note that we use a separate variable for the ConnectPolicy here, so
-     * that we do NOT switch the per-vhost default; we want to track each
-     * vhost's ConnectPolicy separately in this loop.
-     */
-    switch (connect_policy) {
-      case PROXY_REVERSE_CONNECT_POLICY_RANDOM:
-      case PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS:
-      case PROXY_REVERSE_CONNECT_POLICY_PER_USER:
-      case PROXY_REVERSE_CONNECT_POLICY_PER_HOST:
-        /* No preparation needed at this time. */
-        break;
-
-      case PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN: {
-        int backend_id = 0; 
-
-        if (backends != NULL) {
-          backend_id = backends->nelts-1;
-        }
-
-        res = reverse_db_roundrobin_init(p, s->sid, backend_id);
-        if (res < 0) {
-          xerrno = errno;
-          pr_log_debug(DEBUG3, MOD_PROXY_VERSION
-            ": error preparing database for ProxyReverseConnectPolicy "
-            "RoundRobin: %s", strerror(xerrno));
-        }
-        break;
-      }
-
-      case PROXY_REVERSE_CONNECT_POLICY_SHUFFLE:
-        if (backends != NULL) {
-          res = reverse_db_shuffle_init(p, s->sid, backends);
-          if (res < 0) {
-            xerrno = errno;
-            pr_log_debug(DEBUG3, MOD_PROXY_VERSION
-              ": error preparing database for ProxyReverseConnectPolicy "
-              "Shuffle: %s", strerror(xerrno));
-          }
-        }
-        break;
-
-      default:
-        break;
-    }
-  }
-
-  return 0;
-}
-
-int proxy_reverse_free(pool *p) {
-  /* TODO: Implement any necessary cleanup */
-  return 0;
-}
-
-int proxy_reverse_sess_exit(pool *p) {
-  if (reverse_backends != NULL &&
-      reverse_backend_id >= 0) {
-    int res;
-
-    res = reverse_db_update_backend(p, main_server->sid, reverse_backend_id,
-      -1, 0);
-    if (res < 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error updating backend ID %d: %s", reverse_backend_id,
-        strerror(errno));
-    }
-  }
-
-  return 0;
-}
-
-int proxy_reverse_sess_init(pool *p, const char *tables_dir) {
-  config_rec *c;
-
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyRetryCount", FALSE);
-  if (c != NULL) {
-    reverse_retry_count = *((int *) c->argv[0]);
-  }
-
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseServers",
-    FALSE);
-  if (c == NULL) {
-    pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "'ProxyRole reverse' in effect, but no ProxyReverseServers configured");
-    pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
-      ": 'ProxyRole reverse' in effect, but no ProxyReverseServers configured");
-    errno = EPERM;
-    return -1;
-  }
-
-  reverse_backends = c->argv[0];
-
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseConnectPolicy",
-    FALSE);
-  if (c != NULL) {
-    reverse_connect_policy = *((int *) c->argv[0]);
-  }
-
-  return 0;
-}
-
-int proxy_reverse_have_authenticated(cmd_rec *cmd) {
-  int authd = FALSE;
-
-  /* Authenticated here means authenticated *to the proxy*, i.e. should we
-   * allow more commands, or reject them because the client hasn't authenticated
-   * yet.
-   */
-
-  if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
-    authd = TRUE;
-  }
-
-  if (authd == FALSE) {
-    pr_response_send(R_530, _("Please login with USER and PASS"));
-  }
-
-  return authd;
-}
-
-array_header *proxy_reverse_file_parse_uris(pool *p, const char *path) {
-  int res;
-  char buf[PR_TUNABLE_BUFFER_SIZE+1];
-  pr_fh_t *fh;
-  unsigned int lineno = 0;
-  array_header *uris = NULL;
-  struct stat st;
-
-  if (p == NULL ||
-      path == NULL) {
-    errno = EINVAL;
-    return NULL;
-  }
-
-  if (*path != '/') {
-    /* A relative path?  Unacceptable. */
-    errno = EINVAL;
-    return NULL;
-  }
-
-  res = check_file_perms(p, path);
-  if (res < 0) {
-    return NULL;
-  }
-
-  /* Use a nonblocking open() for the path; it could be a FIFO, and we don't
-   * want to block forever if the other end of the FIFO is not running.
-   */
-  fh = pr_fsio_open(path, O_RDONLY|O_NONBLOCK);
-  if (fh == NULL) {
-    int xerrno = errno;
-
-    pr_trace_msg(trace_channel, 7,
-      "error opening ProxyReverseServers file '%s': %s", path,
-      strerror(xerrno));
-
-    errno = xerrno;
-    return NULL;
-  }
-
-  pr_fsio_set_block(fh);
-
-  /* Stat the file to find the optimal buffer size for reading. */
-  res = pr_fsio_fstat(fh, &st);
-  if (res < 0) {
-    int xerrno = errno;
-
-    pr_trace_msg(trace_channel, 3,
-      "unable to fstat '%s': %s", path, strerror(xerrno));
-
-    errno = xerrno;
-    return NULL;
-  }
-
-  fh->fh_iosz = st.st_blksize;
-
-  memset(buf, '\0', sizeof(buf));
-  uris = make_array(p, 1, sizeof(struct proxy_conn *));
-
-  while ((pr_fsio_getline(buf, sizeof(buf)-1, fh, &lineno) != NULL)) {
-    int have_eol = FALSE;
-    char *bufp = NULL;
-    size_t buflen;
-    struct proxy_conn *pconn;
-
-    pr_signals_handle();
-
-    buflen = strlen(buf);
-
-    /* Trim off the trailing newline, if present. */
-    if (buflen &&
-        buf[buflen - 1] == '\n') {
-      have_eol = TRUE;
-      buf[buflen-1] = '\0';
-      buflen--;
-    }
-
-    while (buflen &&
-           buf[buflen - 1] == '\r') {
-      pr_signals_handle();
-      buf[buflen-1] = '\0';
-      buflen--;
-    }
-
-    if (!have_eol) {
-      pr_trace_msg(trace_channel, 3,
-        "warning: skipping possibly truncated ProxyReverseServers data (%s:%u)",
-        path, lineno);
-      memset(buf, '\0', sizeof(buf));
-      continue;
-    }
-
-    /* Advance past any leading whitespace. */
-    for (bufp = buf; *bufp && PR_ISSPACE(*bufp); bufp++);
-
-    /* Check for commented or blank lines at this point, and just continue on
-     * to the next configuration line if found.
-     */
-    if (*bufp == '#' || !*bufp) {
-      pr_trace_msg(trace_channel, 9,
-        "skipping commented/empty line (%s:%u)", path, lineno);
-      memset(buf, '\0', sizeof(buf));
-      continue;
-    }
-
-    pconn = proxy_conn_create(p, bufp);
-    if (pconn == NULL) {
-      pr_trace_msg(trace_channel, 9,
-        "skipping malformed URL '%s' (%s:%u)", bufp, path, lineno);
-      memset(buf, '\0', sizeof(buf));
-      continue;
-    }
-
-    *((struct proxy_conn **) push_array(uris)) = pconn; 
-    memset(buf, '\0', sizeof(buf));
-  }
-
-  (void) pr_fsio_close(fh);
-  return uris;
-}
-
-int proxy_reverse_connect_get_policy(const char *policy) {
-  if (policy == NULL) {
-    errno = EINVAL;
-    return -1;
-  }
-
-  if (strncasecmp(policy, "Random", 7) == 0) {
-    return PROXY_REVERSE_CONNECT_POLICY_RANDOM;
-
-  } else if (strncasecmp(policy, "RoundRobin", 11) == 0) {
-    return PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN;
-
-  } else if (strncasecmp(policy, "Shuffle", 8) == 0) {
-    return PROXY_REVERSE_CONNECT_POLICY_SHUFFLE;
-
-  } else if (strncasecmp(policy, "LeastConns", 11) == 0) {
-    return PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS;
-
-  } else if (strncasecmp(policy, "PerUser", 8) == 0) {
-    return PROXY_REVERSE_CONNECT_POLICY_PER_USER;
-
-  } else if (strncasecmp(policy, "PerHost", 8) == 0) {
-    return PROXY_REVERSE_CONNECT_POLICY_PER_HOST;
-
-#if 0
-  } else if (strncasecmp(policy, "LowestResponseTime", 19) == 0) {
-    return PROXY_REVERSE_CONNECT_POLICY_LOWEST_RESPONSE_TIME;
-#endif
-  }
-
-  errno = ENOENT;
-  return -1;
-}
-
 static struct proxy_conn *reverse_connect_next_backend(pool *p,
     unsigned int vhost_id, void *policy_data) {
   struct proxy_conn **conns, *pconn = NULL;
@@ -1914,7 +1546,7 @@ static struct proxy_conn *get_reverse_server_conn(pool *p,
   return pconn;
 }
 
-static int reverse_connect(pool *p, struct proxy_session *proxy_sess,
+static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
     void *connect_data) {
   int backend_id = -1, use_tls, xerrno = 0;
   conn_t *server_conn = NULL;
@@ -2109,14 +1741,7 @@ static int reverse_connect(pool *p, struct proxy_session *proxy_sess,
     }
   }
 
-  /* Send the banner to the connected client as if it were our own banner --
-   * except if the ConnectPolicy is NOT PerUser/PerHost.
-   *
-   * For PerUser ConnectPolicy, if we echo the banner now, we will only
-   * confuse the client.
-   */
-
-  if (reverse_connect_policy != PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
+  if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_SESS_INIT) {
     pr_response_block(FALSE);
   }
 
@@ -2125,7 +1750,7 @@ static int reverse_connect(pool *p, struct proxy_session *proxy_sess,
       "unable to send banner to client: %s", strerror(errno));
   }
 
-  if (reverse_connect_policy != PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
+  if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_SESS_INIT) {
     pr_response_block(TRUE);
   }
 
@@ -2135,22 +1760,14 @@ static int reverse_connect(pool *p, struct proxy_session *proxy_sess,
   return 0;
 }
 
-int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess) {
+static int reverse_connect(pool *p, struct proxy_session *proxy_sess) {
   register unsigned int i;
   int res;
-
-  /* If the ConnectPolicy is one of a subset of sticky policies, then the
-   * actual backend server selection/connection is deferred; see
-   * proxy_reverse_handle_user().
-   */
-  if (reverse_connect_policy == PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
-    return 0;
-  }
 
   for (i = 0; i < reverse_retry_count; i++) {
     pr_signals_handle();
 
-    res = reverse_connect(p, proxy_sess, NULL);
+    res = reverse_try_connect(p, proxy_sess, NULL);
     if (res == 0) {
       return 0;
     }
@@ -2163,45 +1780,423 @@ int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess) {
   return -1;
 }
 
-int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
+int proxy_reverse_init(pool *p, const char *tables_dir) {
+  int res, xerrno = 0;
+  server_rec *s;
+  char *db_path;
+
+  if (p == NULL ||
+      tables_dir == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  db_path = pdircat(p, tables_dir, "proxy-reverse.db", NULL);
+  if (file_exists(db_path)) {
+    pr_log_debug(DEBUG9, MOD_PROXY_VERSION
+      ": deleting existing database file '%s'", db_path);
+    if (unlink(db_path) < 0) {
+      pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
+        ": error deleting '%s': %s", db_path, strerror(errno));
+    }
+  }
+
+  res = proxy_db_open(p, db_path);
+  if (res < 0) {
+    xerrno = errno;
+    (void) pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
+      ": error opening database '%s': %s", db_path, strerror(xerrno));
+    errno = xerrno;
+    return -1;
+  }
+
+  res = reverse_db_add_schema(p, db_path);
+  if (res < 0) {
+    xerrno = errno;
+    (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+      ": error adding schema to database '%s': %s", db_path, strerror(xerrno));
+    (void) proxy_db_close(p);
+    errno = xerrno;
+    return -1;
+  }
+
+  for (s = (server_rec *) server_list->xas_list; s; s = s->next) {
+    config_rec *c;
+    array_header *backends = NULL;
+    int connect_policy = reverse_connect_policy;
+
+    res = reverse_db_add_vhost(p, s);
+    if (res < 0) {
+      xerrno = errno;
+      (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+        ": error adding database entry for server '%s': %s", s->ServerName,
+        strerror(xerrno));
+      (void) proxy_db_close(p);
+      errno = xerrno;
+      return -1;
+    }
+
+    c = find_config(s->conf, CONF_PARAM, "ProxyReverseServers", FALSE);
+    while (c != NULL) {
+      const char *uri;
+
+      pr_signals_handle();
+
+      uri = c->argv[1];
+      if (uri != NULL) {
+        int defer = FALSE;
+
+        /* Handling of sql:// URIs is done later, in the session init
+         * call, assuming we've connected to a SQL server.
+         */
+        if (strncmp(uri, "sql:/", 5) == 0) {
+          defer = TRUE;
+        }
+
+        /* Skip any %U-bearing URIs. */
+        if (defer == FALSE &&
+            strstr(uri, "%U") != NULL) {
+          defer = TRUE;
+        }
+
+        if (defer) {
+          c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
+            FALSE);
+          continue;
+        }
+      }
+
+      if (backends == NULL) {
+        backends = c->argv[0];
+
+      } else {
+        array_cat2(backends, c->argv[0]);
+      }
+
+      res = reverse_db_add_backends(p, s->sid, backends);
+      if (res < 0) {
+        xerrno = errno;
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error adding database entries for ProxyReverseServers: %s",
+          strerror(xerrno));
+        errno = xerrno;
+        return -1;
+      }
+
+      c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
+        FALSE);
+    }
+
+    c = find_config(s->conf, CONF_PARAM, "ProxyReverseConnectPolicy", FALSE);
+    if (c != NULL) {
+      connect_policy = *((int *) c->argv[0]);
+    }
+
+    /* Note that we use a separate variable for the ConnectPolicy here, so
+     * that we do NOT switch the per-vhost default; we want to track each
+     * vhost's ConnectPolicy separately in this loop.
+     */
+    switch (connect_policy) {
+      case PROXY_REVERSE_CONNECT_POLICY_RANDOM:
+      case PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS:
+      case PROXY_REVERSE_CONNECT_POLICY_PER_USER:
+      case PROXY_REVERSE_CONNECT_POLICY_PER_HOST:
+        /* No preparation needed at this time. */
+        break;
+
+      case PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN: {
+        int backend_id = 0; 
+
+        if (backends != NULL) {
+          backend_id = backends->nelts-1;
+        }
+
+        res = reverse_db_roundrobin_init(p, s->sid, backend_id);
+        if (res < 0) {
+          xerrno = errno;
+          pr_log_debug(DEBUG3, MOD_PROXY_VERSION
+            ": error preparing database for ProxyReverseConnectPolicy "
+            "RoundRobin: %s", strerror(xerrno));
+        }
+        break;
+      }
+
+      case PROXY_REVERSE_CONNECT_POLICY_SHUFFLE:
+        if (backends != NULL) {
+          res = reverse_db_shuffle_init(p, s->sid, backends);
+          if (res < 0) {
+            xerrno = errno;
+            pr_log_debug(DEBUG3, MOD_PROXY_VERSION
+              ": error preparing database for ProxyReverseConnectPolicy "
+              "Shuffle: %s", strerror(xerrno));
+          }
+        }
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  return 0;
+}
+
+int proxy_reverse_free(pool *p) {
+  /* TODO: Implement any necessary cleanup */
+  return 0;
+}
+
+int proxy_reverse_sess_exit(pool *p) {
+  if (reverse_backends != NULL &&
+      reverse_backend_id >= 0) {
+    int res;
+
+    res = reverse_db_update_backend(p, main_server->sid, reverse_backend_id,
+      -1, 0);
+    if (res < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error updating backend ID %d: %s", reverse_backend_id,
+        strerror(errno));
+    }
+  }
+
+  return 0;
+}
+
+static void set_reverse_flags(void) {
+  if (proxy_opts & PROXY_OPT_USE_REVERSE_PROXY_AUTH) {
+    reverse_flags = PROXY_REVERSE_FL_CONNECT_AT_PASS;
+
+  } else {
+    if (reverse_connect_policy == PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
+      reverse_flags = PROXY_REVERSE_FL_CONNECT_AT_USER;
+
+    } else {
+      reverse_flags = PROXY_REVERSE_FL_CONNECT_AT_SESS_INIT;
+    }
+  }
+}
+
+int proxy_reverse_sess_init(pool *p, const char *tables_dir,
+    struct proxy_session *proxy_sess) {
+  int res;
+  config_rec *c;
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyRetryCount", FALSE);
+  if (c != NULL) {
+    reverse_retry_count = *((int *) c->argv[0]);
+  }
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseServers",
+    FALSE);
+  if (c == NULL) {
+    pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "'ProxyRole reverse' in effect, but no ProxyReverseServers configured");
+    pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
+      ": 'ProxyRole reverse' in effect, but no ProxyReverseServers configured");
+    errno = EPERM;
+    return -1;
+  }
+
+  reverse_backends = c->argv[0];
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseConnectPolicy",
+    FALSE);
+  if (c != NULL) {
+    reverse_connect_policy = *((int *) c->argv[0]);
+  }
+
+  set_reverse_flags();
+
+  if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_SESS_INIT) {
+    res = reverse_connect(p, proxy_sess);
+    if (res < 0) {
+      return -1;
+    }
+  }
+
+  return 0;
+}
+
+int proxy_reverse_have_authenticated(cmd_rec *cmd) {
+  int authd = FALSE;
+
+  /* Authenticated here means authenticated *to the proxy*, i.e. should we
+   * allow more commands, or reject them because the client hasn't authenticated
+   * yet.
+   */
+
+  if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
+    authd = TRUE;
+  }
+
+  if (authd == FALSE) {
+    pr_response_send(R_530, _("Please login with USER and PASS"));
+  }
+
+  return authd;
+}
+
+array_header *proxy_reverse_file_parse_uris(pool *p, const char *path) {
+  int res;
+  char buf[PR_TUNABLE_BUFFER_SIZE+1];
+  pr_fh_t *fh;
+  unsigned int lineno = 0;
+  array_header *uris = NULL;
+  struct stat st;
+
+  if (p == NULL ||
+      path == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  if (*path != '/') {
+    /* A relative path?  Unacceptable. */
+    errno = EINVAL;
+    return NULL;
+  }
+
+  res = check_file_perms(p, path);
+  if (res < 0) {
+    return NULL;
+  }
+
+  /* Use a nonblocking open() for the path; it could be a FIFO, and we don't
+   * want to block forever if the other end of the FIFO is not running.
+   */
+  fh = pr_fsio_open(path, O_RDONLY|O_NONBLOCK);
+  if (fh == NULL) {
+    int xerrno = errno;
+
+    pr_trace_msg(trace_channel, 7,
+      "error opening ProxyReverseServers file '%s': %s", path,
+      strerror(xerrno));
+
+    errno = xerrno;
+    return NULL;
+  }
+
+  pr_fsio_set_block(fh);
+
+  /* Stat the file to find the optimal buffer size for reading. */
+  res = pr_fsio_fstat(fh, &st);
+  if (res < 0) {
+    int xerrno = errno;
+
+    pr_trace_msg(trace_channel, 3,
+      "unable to fstat '%s': %s", path, strerror(xerrno));
+
+    errno = xerrno;
+    return NULL;
+  }
+
+  fh->fh_iosz = st.st_blksize;
+
+  memset(buf, '\0', sizeof(buf));
+  uris = make_array(p, 1, sizeof(struct proxy_conn *));
+
+  while ((pr_fsio_getline(buf, sizeof(buf)-1, fh, &lineno) != NULL)) {
+    int have_eol = FALSE;
+    char *bufp = NULL;
+    size_t buflen;
+    struct proxy_conn *pconn;
+
+    pr_signals_handle();
+
+    buflen = strlen(buf);
+
+    /* Trim off the trailing newline, if present. */
+    if (buflen &&
+        buf[buflen - 1] == '\n') {
+      have_eol = TRUE;
+      buf[buflen-1] = '\0';
+      buflen--;
+    }
+
+    while (buflen &&
+           buf[buflen - 1] == '\r') {
+      pr_signals_handle();
+      buf[buflen-1] = '\0';
+      buflen--;
+    }
+
+    if (!have_eol) {
+      pr_trace_msg(trace_channel, 3,
+        "warning: skipping possibly truncated ProxyReverseServers data (%s:%u)",
+        path, lineno);
+      memset(buf, '\0', sizeof(buf));
+      continue;
+    }
+
+    /* Advance past any leading whitespace. */
+    for (bufp = buf; *bufp && PR_ISSPACE(*bufp); bufp++);
+
+    /* Check for commented or blank lines at this point, and just continue on
+     * to the next configuration line if found.
+     */
+    if (*bufp == '#' || !*bufp) {
+      pr_trace_msg(trace_channel, 9,
+        "skipping commented/empty line (%s:%u)", path, lineno);
+      memset(buf, '\0', sizeof(buf));
+      continue;
+    }
+
+    pconn = proxy_conn_create(p, bufp);
+    if (pconn == NULL) {
+      pr_trace_msg(trace_channel, 9,
+        "skipping malformed URL '%s' (%s:%u)", bufp, path, lineno);
+      memset(buf, '\0', sizeof(buf));
+      continue;
+    }
+
+    *((struct proxy_conn **) push_array(uris)) = pconn; 
+    memset(buf, '\0', sizeof(buf));
+  }
+
+  (void) pr_fsio_close(fh);
+  return uris;
+}
+
+int proxy_reverse_connect_get_policy(const char *policy) {
+  if (policy == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (strncasecmp(policy, "Random", 7) == 0) {
+    return PROXY_REVERSE_CONNECT_POLICY_RANDOM;
+
+  } else if (strncasecmp(policy, "RoundRobin", 11) == 0) {
+    return PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN;
+
+  } else if (strncasecmp(policy, "Shuffle", 8) == 0) {
+    return PROXY_REVERSE_CONNECT_POLICY_SHUFFLE;
+
+  } else if (strncasecmp(policy, "LeastConns", 11) == 0) {
+    return PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS;
+
+  } else if (strncasecmp(policy, "PerUser", 8) == 0) {
+    return PROXY_REVERSE_CONNECT_POLICY_PER_USER;
+
+  } else if (strncasecmp(policy, "PerHost", 8) == 0) {
+    return PROXY_REVERSE_CONNECT_POLICY_PER_HOST;
+
+#if 0
+  } else if (strncasecmp(policy, "LowestResponseTime", 19) == 0) {
+    return PROXY_REVERSE_CONNECT_POLICY_LOWEST_RESPONSE_TIME;
+#endif
+  }
+
+  errno = ENOENT;
+  return -1;
+}
+
+static int send_user(struct proxy_session *proxy_sess, cmd_rec *cmd,
     int *successful) {
   int res, xerrno;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
-
-  if (reverse_connect_policy == PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
-    register unsigned int i;
-    int connected = FALSE;
-
-    for (i = 0; i < reverse_retry_count; i++) {
-      pr_signals_handle();
-
-      res = reverse_connect(proxy_pool, proxy_sess, cmd->arg);
-      if (res == 0) {
-        connected = TRUE;
-        break;
-      }
-
-      xerrno = errno;
-    }
-
-    pr_response_block(FALSE);
-
-    if (!connected) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "ProxyRetryCount %d reached with no successful connection, failing",
-        reverse_retry_count);
-      *successful = FALSE;
-
-      if (xerrno != EINVAL) {
-        errno = EPERM;
-      } else {
-        errno = xerrno;
-      }
-
-      return -1;
-    }
-  }
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
     cmd);
@@ -2246,7 +2241,64 @@ int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     return -1;
   }
 
-  if (reverse_connect_policy == PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
+  return 0;
+}
+
+int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
+    int *successful, int *block_responses) {
+  int res;
+
+  if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_PASS) {
+    /* If we're already connected, then proxy this USER command through to the
+     * backend, otherwise we let the proftpd internals deal with it locally,
+     * leading to proxy auth.
+     */
+    if (!(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED)) {
+      *block_responses = FALSE;
+      return 0;
+    }
+  }
+
+  if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_USER) {
+    register unsigned int i;
+    int connected = FALSE, xerrno = 0;
+
+    for (i = 0; i < reverse_retry_count; i++) {
+      pr_signals_handle();
+
+      res = reverse_try_connect(proxy_pool, proxy_sess, cmd->arg);
+      if (res == 0) {
+        connected = TRUE;
+        break;
+      }
+
+      xerrno = errno;
+    }
+
+    pr_response_block(FALSE);
+
+    if (connected == FALSE) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "ProxyRetryCount %d reached with no successful connection, failing",
+        reverse_retry_count);
+      *successful = FALSE;
+
+      if (xerrno != EINVAL) {
+        errno = EPERM;
+      } else {
+        errno = xerrno;
+      }
+
+      return -1;
+    }
+  }
+
+  res = send_user(proxy_sess, cmd, successful);
+  if (res < 0) {
+    return -1;
+  }
+
+  if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_USER) {
     /* Restore the normal response blocking, undone for the PerUser policy. */
     pr_response_block(TRUE);
   }
@@ -2255,10 +2307,97 @@ int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
 }
 
 int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
-    int *successful) {
+    int *successful, int *block_responses) {
   int res, xerrno;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
+
+  if (!(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED)) {
+    char *user = NULL;
+
+    user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
+    res = proxy_session_check_password(cmd->pool, user, cmd->arg);
+    if (res < 0) {
+      errno = EINVAL;
+      return -1;
+    }
+
+    res = proxy_session_setup_env(proxy_pool, user);
+    if (res < 0) {
+      errno = EINVAL;
+      return -1;
+    }
+
+    if (session.auth_mech) {
+      pr_log_debug(DEBUG2, "user '%s' authenticated by %s", user,
+        session.auth_mech);
+    }
+  }
+
+  if ((reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_PASS) &&
+      !(proxy_sess_state & PROXY_SESS_STATE_CONNECTED)) {
+    register unsigned int i;
+    int connected = FALSE;
+    char *user = NULL;
+    cmd_rec *user_cmd;
+
+    /* If we're using a sticky policy, we need to know the USER name that was
+     * sent.
+     */
+    if (reverse_connect_policy == PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
+      user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
+    }
+
+    for (i = 0; i < reverse_retry_count; i++) {
+      pr_signals_handle();
+
+      res = reverse_try_connect(proxy_pool, proxy_sess, user);
+      if (res == 0) {
+        connected = TRUE;
+        break;
+      }
+
+      xerrno = errno;
+    }
+
+    pr_response_block(FALSE);
+
+    if (connected == FALSE) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "ProxyRetryCount %d reached with no successful connection, failing",
+        reverse_retry_count);
+      *successful = FALSE;
+
+      if (xerrno != EINVAL) {
+        errno = EPERM;
+      } else {
+        errno = xerrno;
+      }
+
+      return -1;
+    }
+
+    if (user == NULL) {
+      user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
+    }
+
+    user_cmd = pr_cmd_alloc(cmd->tmp_pool, 2, C_USER, user);
+    user_cmd->arg = pstrdup(cmd->tmp_pool, user);
+
+    /* Since we're replaying the USER command here, we want to make sure
+     * that the USER response from the backend isn't played back to the
+     * frontend client.
+     */
+    pr_response_block(TRUE);
+    res = send_user(proxy_sess, user_cmd, successful);
+    xerrno = errno;
+    pr_response_block(FALSE);
+
+    if (res < 0) {
+      errno = xerrno;
+      return -1;
+    }
+  }
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
     cmd);

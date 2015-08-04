@@ -50,7 +50,8 @@ int proxy_forward_free(pool *p) {
   return 0;
 }
 
-int proxy_forward_sess_init(pool *p, const char *tables_dir) {
+int proxy_forward_sess_init(pool *p, const char *tables_dir,
+    struct proxy_session *proxy_sess) {
   config_rec *c;
   int allowed = FALSE;
   void *enabled = NULL;
@@ -583,8 +584,7 @@ static int forward_handle_user_proxyuserwithproxyauth(cmd_rec *cmd,
 
     /* Rewrite the USER command here with the trimmed/truncated name. */
     pr_cmd_clear_cache(cmd);
-    cmd->arg = pstrdup(cmd->pool, user);
-    cmd->argv[1] = pstrdup(cmd->pool, user);
+    cmd->arg = cmd->argv[1] = pstrdup(cmd->pool, user);
 
     /* By returning zero here, we let the rest of the proftpd internals
      * deal with the USER command locally, leading to proxy auth.
@@ -645,182 +645,6 @@ int proxy_forward_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
   return res;
 }
 
-static int check_passwd(pool *p, const char *user, const char *passwd) {
-  int res;
-
-  res = pr_auth_authenticate(p, user, passwd);
-  switch (res) {
-    case PR_AUTH_OK:
-      break;
-
-    case PR_AUTH_NOPWD:
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "password authentication for user '%s' failed: No such user", user);
-      pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): No such user found",
-        user);
-      return -1;
-
-    case PR_AUTH_BADPWD:
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "password authentication for user '%s' failed: Incorrect password",
-        user);
-      pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): Incorrect password",
-        user);
-      return -1;
-
-    case PR_AUTH_AGEPWD:
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "password authentication for user '%s' failed: Password expired",
-        user);
-      pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): Password expired",
-        user);
-      return -1;
-
-    case PR_AUTH_DISABLEDPWD:
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "password authentication for user '%s' failed: Account disabled",
-        user);
-      pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): Account disabled",
-        user);
-      return -1;
-
-    default:
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "unknown authentication value (%d), returning error", res);
-      return -1;
-  }
-
-  return 0;
-}
-
-static int setup_env(pool *p, const char *user) {
-  struct passwd *pw;
-  config_rec *c;
-  int login_acl, i, res, xerrno;
-  const char *xferlog = NULL;
-
-  session.hide_password = TRUE;
-
-  pw = pr_auth_getpwnam(p, user);
-
-  if (pw->pw_uid == PR_ROOT_UID) {
-    pr_event_generate("mod_auth.root-login", NULL);
-
-    c = find_config(main_server->conf, CONF_PARAM, "RootLogin", FALSE);
-    if (c) {
-      if (*((int *) c->argv[0]) == FALSE) {
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "root login attempted, denied by RootLogin configuration");
-        pr_log_auth(PR_LOG_NOTICE, "SECURITY VIOLATION: Root login attempted.");
-        return -1;
-      }
-
-    } else {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "root login attempted, denied by RootLogin configuration");
-      pr_log_auth(PR_LOG_NOTICE, "SECURITY VIOLATION: Root login attempted.");
-      return -1;
-    }
-  }
-
-  res = pr_auth_is_valid_shell(main_server->conf, pw->pw_shell);
-  if (res == FALSE) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "authentication for user '%s' failed: Invalid shell", user);
-    pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): Invalid shell: '%s'",
-      user, pw->pw_shell);
-    return -1;
-  }
-
-  res = pr_auth_banned_by_ftpusers(main_server->conf, pw->pw_name);
-  if (res == TRUE) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "authentication for user '%s' failed: User in " PR_FTPUSERS_PATH, user);
-    pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): User in "
-      PR_FTPUSERS_PATH, pw->pw_name);
-    return -1;
-  }
-
-  session.user = pstrdup(p, pw->pw_name);
-  session.group = pstrdup(p, pr_auth_gid2name(p, pw->pw_gid));
-
-  session.login_uid = pw->pw_uid;
-  session.login_gid = pw->pw_gid;
-
-  if (session.gids == NULL &&
-      session.groups == NULL) {
-    res = pr_auth_getgroups(p, pw->pw_name, &session.gids, &session.groups);
-    if (res < 1) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "no supplemental groups found for user '%s'", pw->pw_name);
-    }
-  }
-
-  login_acl = login_check_limits(main_server->conf, FALSE, TRUE, &i);
-  if (!login_acl) {
-    pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): Limit configuration "
-      "denies login", user);
-    return -1;
-  }
-
-  /* XXX Will users want wtmp logging for a proxy login? */
-  session.wtmp_log = FALSE;
-
-  PRIVS_ROOT
-
-  c = find_config(main_server->conf, CONF_PARAM, "TransferLog", FALSE);
-  if (c == NULL) {
-    xferlog = PR_XFERLOG_PATH;
-
-  } else {
-    xferlog = c->argv[0];
-  }
-
-  if (strncasecmp(xferlog, "none", 5) == 0) {
-    xferlog_open(NULL);
-
-  } else {
-    xferlog_open(xferlog);
-  }
-
-  res = set_groups(p, pw->pw_gid, session.gids);
-  xerrno = errno;
-  PRIVS_RELINQUISH
-
-  if (res < 0) {
-    pr_log_pri(PR_LOG_WARNING, "unable to set process groups: %s",
-      strerror(xerrno));
-  }
-
-  session.disable_id_switching = TRUE;
-
-  session.proc_prefix = pstrdup(session.pool, session.c->remote_name);
-  session.sf_flags = 0;
-
-  pr_log_auth(PR_LOG_INFO, "USER %s: Login successful", user);
-
-  if (pw->pw_uid == PR_ROOT_UID) {
-    pr_log_auth(PR_LOG_WARNING, "ROOT proxy login successful");
-  }
-
-  pr_scoreboard_update_entry(session.pid,
-    PR_SCORE_USER, session.user,
-    PR_SCORE_CWD, pr_fs_getcwd(),
-    NULL);
-
-  session.user = pstrdup(session.pool, session.user);
-
-  if (session.group) {
-    session.group = pstrdup(session.pool, session.group);
-  }
-
-  session.groups = copy_array_str(session.pool, session.groups);
-
-  proxy_sess_state |= PROXY_SESS_STATE_PROXY_AUTHENTICATED;
-  pr_timer_remove(PR_TIMER_LOGIN, ANY_MODULE);
-  return 0;
-}
-
 static int forward_handle_pass_passthru(cmd_rec *cmd,
     struct proxy_session *proxy_sess, int *successful) {
   int res, xerrno;
@@ -879,13 +703,13 @@ static int forward_handle_pass_userwithproxyauth(cmd_rec *cmd,
 
     user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
 
-    res = check_passwd(cmd->pool, user, cmd->arg);
+    res = proxy_session_check_password(cmd->pool, user, cmd->arg);
     if (res < 0) {
       errno = EINVAL;
       return -1;
     }
 
-    res = setup_env(proxy_pool, user);
+    res = proxy_session_setup_env(proxy_pool, user);
     if (res < 0) {
       errno = EINVAL;
       return -1;

@@ -614,8 +614,9 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
   config_rec *c;
   unsigned long opts = 0UL;
 
-  if (cmd->argc-1 == 0)
+  if (cmd->argc-1 == 0) {
     CONF_ERROR(cmd, "wrong number of parameters");
+  }
 
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
@@ -627,6 +628,9 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
 
     } else if (strncmp(cmd->argv[i], "ShowFeatures", 13) == 0) {
       opts |= PROXY_OPT_SHOW_FEATURES;
+
+    } else if (strncmp(cmd->argv[i], "UseReverseProxyAuth", 20) == 0) {
+      opts |= PROXY_OPT_USE_REVERSE_PROXY_AUTH;
 
     } else {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxyOption '",
@@ -2778,26 +2782,20 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
    */
   pr_event_unregister(&xfer_module, "core.exit", NULL);
 
+  if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
+    /* If we've already authenticated, then let the backend server deal
+     * with this.
+     */
+    return proxy_cmd(cmd, proxy_sess);
+  }
+
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:
-      if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
-        /* If we've already authenticated, then let the backend server
-         * deal with this.
-         */
-        return proxy_cmd(cmd, proxy_sess);
-      }
-
-      res = proxy_reverse_handle_user(cmd, proxy_sess, &successful);
+      res = proxy_reverse_handle_user(cmd, proxy_sess, &successful,
+        block_responses);
       break;
 
     case PROXY_ROLE_FORWARD:
-      if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
-        /* If we've already authenticated, then let the backend server
-         * deal with this.
-         */
-        return proxy_cmd(cmd, proxy_sess);
-      }
-
       res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
         block_responses);
       break;
@@ -2870,26 +2868,20 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *block_responses) {
   int successful = FALSE, res;
 
+  if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
+    /* If we've already authenticated, then let the backend server deal with
+     * this.
+     */
+    return proxy_cmd(cmd, proxy_sess);
+  }
+
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:
-      if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
-        /* If we've already authenticated, then let the backend server
-         * deal with this.
-         */
-        return proxy_cmd(cmd, proxy_sess);
-      }
-
-      res = proxy_reverse_handle_pass(cmd, proxy_sess, &successful);
+      res = proxy_reverse_handle_pass(cmd, proxy_sess, &successful,
+        block_responses);
       break;
 
     case PROXY_ROLE_FORWARD:
-      if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
-        /* If we've already authenticated, then let the backend server
-         * deal with this.
-         */
-        return proxy_cmd(cmd, proxy_sess);
-      }
-
       res = proxy_forward_handle_pass(cmd, proxy_sess, &successful,
         block_responses);
       break;
@@ -3148,7 +3140,12 @@ MODRET proxy_any(cmd_rec *cmd) {
       }
 
     case PR_CMD_HOST_ID:
-      /* TODO is there any value in handling the HOST command locally? */
+      /* TODO is there any value in handling the HOST command locally?
+       * Answer: yes!  Consider the reverse proxy case + mod_autohost!
+       * Thus we DO want to return DECLINED here, BUT we ALSO need to implement
+       * the event listener for resetting the forward/reverse (but not tls)
+       * APIs.
+       */
       return PR_DECLINED(cmd);
 
     /* Directory changing commands not allowed locally. */
@@ -3589,21 +3586,18 @@ static int proxy_sess_init(void) {
 
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:
-      if (proxy_reverse_sess_init(proxy_pool, proxy_tables_dir) < 0) {
+      if (proxy_reverse_sess_init(proxy_pool, proxy_tables_dir,
+          proxy_sess) < 0) {
         pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
           "Unable to initialize reverse proxy API");
-      }
-
-      if (proxy_reverse_connect(proxy_pool, proxy_sess) < 0) {
-        pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
-          "Unable to connect to backend server");
       }
 
       set_auth_check(proxy_reverse_have_authenticated);
       break;
 
     case PROXY_ROLE_FORWARD:
-      if (proxy_forward_sess_init(proxy_pool, proxy_tables_dir) < 0) {
+      if (proxy_forward_sess_init(proxy_pool, proxy_tables_dir,
+          proxy_sess) < 0) {
         pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
           "Unable to initialize forward proxy API");
       }
