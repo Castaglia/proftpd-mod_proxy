@@ -492,11 +492,17 @@ And using them all in the configuration would look like:
 </pre>
 
 <p>
-In addition, the list of backend servers can be contained in a simple text
-file, one URL per line; you then only need to configure the path to that
-text file:
+In addition, the list of backend servers can be contained in a list in a JSON
+file, <i>e.g.</i>:
 <pre>
-  ProxyReverseServers file:/path/to/backends.txt
+[
+  "ftp://ftp1.example.com:2121",
+  "ftp://[::ffff:6.7.8.9]:2121"
+]
+</pre>
+You then only need to configure the path to that JSON file:
+<pre>
+  ProxyReverseServers file:/path/to/backends.json
 </pre>
 
 <p>
@@ -1086,8 +1092,8 @@ with lookup of per-user backend servers:
     # We need to provide a pool of backend servers as a fallback
     ProxyReverseServers ftp://ftp-backend1.example.com:2121 ftp://ftp-backend2.example.com:2121 ...
 
-    # Look up per-user backend servers from user-specific files
-    ProxyReverseServers file:/var/ftp/proxy/backends/%U.txt
+    # Look up per-user backend servers from user-specific JSON files
+    ProxyReverseServers file:/var/ftp/proxy/backends/%U.json
   &lt;/IfModule&gt;
 </pre>
 

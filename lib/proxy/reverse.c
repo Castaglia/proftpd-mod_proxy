@@ -62,6 +62,10 @@ static int reverse_retry_count = PROXY_DEFAULT_RETRY_COUNT;
  */
 #define PROXY_REVERSE_FL_CONNECT_AT_PASS		3
 
+/* JSON handling */
+#define PROXY_REVERSE_JSON_MAX_FILE_SIZE		(1024 * 1024 * 5)
+#define PROXY_REVERSE_JSON_MAX_ITEMS			1000
+
 static const char *trace_channel = "proxy.reverse";
 
 static int check_parent_dir_perms(pool *p, const char *path) {
@@ -1037,7 +1041,7 @@ static array_header *reverse_db_peruser_backends_by_sql(pool *p,
   return sql_backends;
 }
 
-static array_header *reverse_db_peruser_backends_by_file(pool *p,
+static array_header *reverse_db_peruser_backends_by_json(pool *p,
     const char *user) {
   config_rec *c;
   array_header *file_backends = NULL;
@@ -1070,7 +1074,7 @@ static array_header *reverse_db_peruser_backends_by_file(pool *p,
       "loading user-specific ProxyReverseServers file '%s'", path);
 
     PRIVS_ROOT
-    backends = proxy_reverse_file_parse_uris(p, path);
+    backends = proxy_reverse_json_parse_uris(p, path);
     xerrno = errno;
     PRIVS_RELINQUISH
 
@@ -1106,7 +1110,7 @@ static array_header *reverse_db_peruser_backends_by_file(pool *p,
 static array_header *reverse_db_peruser_backends(pool *p, const char *user) {
   array_header *file_backends, *sql_backends, *user_backends = NULL;
 
-  file_backends = reverse_db_peruser_backends_by_file(p, user);
+  file_backends = reverse_db_peruser_backends_by_json(p, user);
   if (file_backends != NULL) {
     user_backends = file_backends;
   }
@@ -2037,13 +2041,90 @@ int proxy_reverse_have_authenticated(cmd_rec *cmd) {
   return authd;
 }
 
-array_header *proxy_reverse_file_parse_uris(pool *p, const char *path) {
+static JsonNode *read_json_array(pool *p, pr_fh_t *fh, off_t filesz) {
+  JsonNode *json = NULL;
+  char *buf, *ptr;
   int res;
-  char buf[PR_TUNABLE_BUFFER_SIZE+1];
+  off_t len;
+
+  len = filesz;
+  buf = ptr = palloc(p, len);
+
+  res = pr_fsio_read(fh, buf, len);
+  while (res != len) {
+    if (res < 0) {
+      if (errno == EINTR) {
+        pr_signals_handle();
+        res = pr_fsio_read(fh, buf, len);
+        continue;
+      }
+
+      return NULL;
+    }
+
+    if (res == 0) {
+      /* EOF, but we shouldn't reach this. */
+      pr_trace_msg(trace_channel, 14,
+        "unexpectedly reached EOF when reading '%s'", fh->fh_path);
+      errno = EOF;
+      return NULL;
+    }
+
+    /* Paranoia, paranoia...*/
+    if (len > res) {
+      errno = EIO;
+      return NULL;
+    }
+
+    /* Short read: advance the buffer, decrement the length, and read more. */
+    buf += res;
+    len -= res; 
+
+    pr_signals_handle();
+    res = pr_fsio_read(fh, buf, len);
+  }
+
+  json = json_decode(ptr);
+  if (json == NULL) {
+    pr_trace_msg(trace_channel, 3,
+      "invalid JSON format found in '%s'", fh->fh_path);
+    errno = EINVAL;
+    return NULL;
+  }
+
+  if (json->tag != JSON_ARRAY) {
+    /* Not expected JSON format */
+    pr_trace_msg(trace_channel, 3,
+      "JSON array not found as expected in '%s'", fh->fh_path);
+    errno = EINVAL;
+    return NULL;
+  }
+
+  return json;
+}
+
+static char *read_json_string(JsonNode *node) {
+  if (node == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  if (node->tag != JSON_STRING) {
+    errno = EPERM;
+    return NULL;
+  }
+
+  return node->string_;
+}
+
+array_header *proxy_reverse_json_parse_uris(pool *p, const char *path) {
+  register unsigned int i;
+  int reached_eol = FALSE, res, xerrno = 0;
   pr_fh_t *fh;
-  unsigned int lineno = 0;
   array_header *uris = NULL;
   struct stat st;
+  pool *tmp_pool;
+  JsonNode *json = NULL;
 
   if (p == NULL ||
       path == NULL) {
@@ -2067,7 +2148,7 @@ array_header *proxy_reverse_file_parse_uris(pool *p, const char *path) {
    */
   fh = pr_fsio_open(path, O_RDONLY|O_NONBLOCK);
   if (fh == NULL) {
-    int xerrno = errno;
+    xerrno = errno;
 
     pr_trace_msg(trace_channel, 7,
       "error opening ProxyReverseServers file '%s': %s", path,
@@ -2082,79 +2163,88 @@ array_header *proxy_reverse_file_parse_uris(pool *p, const char *path) {
   /* Stat the file to find the optimal buffer size for reading. */
   res = pr_fsio_fstat(fh, &st);
   if (res < 0) {
-    int xerrno = errno;
+    xerrno = errno;
 
     pr_trace_msg(trace_channel, 3,
       "unable to fstat '%s': %s", path, strerror(xerrno));
+    (void) pr_fsio_close(fh);
 
     errno = xerrno;
     return NULL;
   }
 
+  if (st.st_size > PROXY_REVERSE_JSON_MAX_FILE_SIZE) {
+    pr_trace_msg(trace_channel, 1,
+      "'%s' file size (%lu bytes) exceeds max JSON file size (%lu bytes)",
+      path, (unsigned long) st.st_size,
+      (unsigned long) PROXY_REVERSE_JSON_MAX_FILE_SIZE);
+    (void) pr_fsio_close(fh);
+    errno = EPERM;
+    return NULL;
+  }
+
   fh->fh_iosz = st.st_blksize;
 
-  memset(buf, '\0', sizeof(buf));
+  tmp_pool = make_sub_pool(p);
+  json = read_json_array(tmp_pool, fh, st.st_size);
+  xerrno = errno;
+
+  (void) pr_fsio_close(fh);
+
+  if (json == NULL) {
+    pr_trace_msg(trace_channel, 1,
+      "unable to read JSON array from '%s': %s", path, strerror(xerrno));
+
+    destroy_pool(tmp_pool);
+    errno = xerrno;
+    return NULL;
+  }
+
   uris = make_array(p, 1, sizeof(struct proxy_conn *));
 
-  while ((pr_fsio_getline(buf, sizeof(buf)-1, fh, &lineno) != NULL)) {
-    int have_eol = FALSE;
-    char *bufp = NULL;
-    size_t buflen;
+  for (i = 0; i < PROXY_REVERSE_JSON_MAX_ITEMS; i++) {
+    JsonNode *item;
+    char *uri;
     struct proxy_conn *pconn;
 
     pr_signals_handle();
 
-    buflen = strlen(buf);
-
-    /* Trim off the trailing newline, if present. */
-    if (buflen &&
-        buf[buflen - 1] == '\n') {
-      have_eol = TRUE;
-      buf[buflen-1] = '\0';
-      buflen--;
+    item = json_find_element(json, i);
+    if (item == NULL) {
+      /* End of array reached. */
+      reached_eol = TRUE;
+      pr_trace_msg(trace_channel, 12,
+        "found items (count %u) in JSON file '%s'", i, path);
+      break;
     }
 
-    while (buflen &&
-           buf[buflen - 1] == '\r') {
-      pr_signals_handle();
-      buf[buflen-1] = '\0';
-      buflen--;
-    }
-
-    if (!have_eol) {
-      pr_trace_msg(trace_channel, 3,
-        "warning: skipping possibly truncated ProxyReverseServers data (%s:%u)",
-        path, lineno);
-      memset(buf, '\0', sizeof(buf));
+    uri = read_json_string(item);
+    if (uri == NULL) {
+      pr_trace_msg(trace_channel, 1,
+        "error obtaining JSON string from item #%u in array: %s", i,
+        strerror(errno));
       continue;
     }
 
-    /* Advance past any leading whitespace. */
-    for (bufp = buf; *bufp && PR_ISSPACE(*bufp); bufp++);
-
-    /* Check for commented or blank lines at this point, and just continue on
-     * to the next configuration line if found.
-     */
-    if (*bufp == '#' || !*bufp) {
-      pr_trace_msg(trace_channel, 9,
-        "skipping commented/empty line (%s:%u)", path, lineno);
-      memset(buf, '\0', sizeof(buf));
-      continue;
-    }
-
-    pconn = proxy_conn_create(p, bufp);
+    pconn = proxy_conn_create(p, uri);
     if (pconn == NULL) {
       pr_trace_msg(trace_channel, 9,
-        "skipping malformed URL '%s' (%s:%u)", bufp, path, lineno);
-      memset(buf, '\0', sizeof(buf));
+        "skipping malformed URL '%s' found in file '%s'", uri, path);
       continue;
     }
 
-    *((struct proxy_conn **) push_array(uris)) = pconn; 
-    memset(buf, '\0', sizeof(buf));
+    *((struct proxy_conn **) push_array(uris)) = pconn;  
   }
 
-  (void) pr_fsio_close(fh);
+  json_delete(json);
+  destroy_pool(tmp_pool);
+
+  if (reached_eol == FALSE) {
+    pr_trace_msg(trace_channel, 3,
+      "warning: skipped ProxyReverseServers '%s' data (only used "
+      "first %u items)", path, i);
+  }
+
   return uris;
 }
 
@@ -2312,90 +2402,91 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
 
-  if (!(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED)) {
-    char *user = NULL;
+  if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_PASS) {
+    if (!(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED)) {
+      char *user = NULL;
 
-    user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
-    res = proxy_session_check_password(cmd->pool, user, cmd->arg);
-    if (res < 0) {
-      errno = EINVAL;
-      return -1;
-    }
-
-    res = proxy_session_setup_env(proxy_pool, user);
-    if (res < 0) {
-      errno = EINVAL;
-      return -1;
-    }
-
-    if (session.auth_mech) {
-      pr_log_debug(DEBUG2, "user '%s' authenticated by %s", user,
-        session.auth_mech);
-    }
-  }
-
-  if ((reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_PASS) &&
-      !(proxy_sess_state & PROXY_SESS_STATE_CONNECTED)) {
-    register unsigned int i;
-    int connected = FALSE;
-    char *user = NULL;
-    cmd_rec *user_cmd;
-
-    /* If we're using a sticky policy, we need to know the USER name that was
-     * sent.
-     */
-    if (reverse_connect_policy == PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
       user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
-    }
-
-    for (i = 0; i < reverse_retry_count; i++) {
-      pr_signals_handle();
-
-      res = reverse_try_connect(proxy_pool, proxy_sess, user);
-      if (res == 0) {
-        connected = TRUE;
-        break;
+      res = proxy_session_check_password(cmd->pool, user, cmd->arg);
+      if (res < 0) {
+        errno = EINVAL;
+        return -1;
       }
 
+      res = proxy_session_setup_env(proxy_pool, user);
+      if (res < 0) {
+        errno = EINVAL;
+        return -1;
+      }
+
+      if (session.auth_mech) {
+        pr_log_debug(DEBUG2, "user '%s' authenticated by %s", user,
+          session.auth_mech);
+      }
+    }
+
+    if (!(proxy_sess_state & PROXY_SESS_STATE_CONNECTED)) {
+      register unsigned int i;
+      int connected = FALSE;
+      char *user = NULL;
+      cmd_rec *user_cmd;
+
+      /* If we're using a sticky policy, we need to know the USER name that was
+       * sent.
+       */
+      if (reverse_connect_policy == PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
+        user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
+      }
+
+      for (i = 0; i < reverse_retry_count; i++) {
+        pr_signals_handle();
+
+        res = reverse_try_connect(proxy_pool, proxy_sess, user);
+        if (res == 0) {
+          connected = TRUE;
+          break;
+        }
+
+        xerrno = errno;
+      }
+
+      pr_response_block(FALSE);
+
+      if (connected == FALSE) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "ProxyRetryCount %d reached with no successful connection, failing",
+          reverse_retry_count);
+        *successful = FALSE;
+
+        if (xerrno != EINVAL) {
+          errno = EPERM;
+        } else {
+          errno = xerrno;
+        }
+
+        return -1;
+      }
+
+      if (user == NULL) {
+        user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
+      }
+
+      user_cmd = pr_cmd_alloc(cmd->tmp_pool, 2, C_USER, user);
+      user_cmd->arg = pstrdup(cmd->tmp_pool, user);
+
+      /* Since we're replaying the USER command here, we want to make sure
+       * that the USER response from the backend isn't played back to the
+       * frontend client.
+       */
+      pr_response_block(TRUE);
+      res = send_user(proxy_sess, user_cmd, successful);
       xerrno = errno;
-    }
+      pr_response_block(FALSE);
 
-    pr_response_block(FALSE);
-
-    if (connected == FALSE) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "ProxyRetryCount %d reached with no successful connection, failing",
-        reverse_retry_count);
-      *successful = FALSE;
-
-      if (xerrno != EINVAL) {
-        errno = EPERM;
-      } else {
+      if (res < 0) {
         errno = xerrno;
+        return -1;
       }
-
-      return -1;
-    }
-
-    if (user == NULL) {
-      user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
-    }
-
-    user_cmd = pr_cmd_alloc(cmd->tmp_pool, 2, C_USER, user);
-    user_cmd->arg = pstrdup(cmd->tmp_pool, user);
-
-    /* Since we're replaying the USER command here, we want to make sure
-     * that the USER response from the backend isn't played back to the
-     * frontend client.
-     */
-    pr_response_block(TRUE);
-    res = send_user(proxy_sess, user_cmd, successful);
-    xerrno = errno;
-    pr_response_block(FALSE);
-
-    if (res < 0) {
-      errno = xerrno;
-      return -1;
     }
   }
 

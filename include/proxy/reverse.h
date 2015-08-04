@@ -42,7 +42,7 @@ int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
 int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
   int *successful, int *block_responses);
 
-array_header *proxy_reverse_file_parse_uris(pool *p, const char *path);
+array_header *proxy_reverse_json_parse_uris(pool *p, const char *path);
 
 /* Connect policy API */
 #define PROXY_REVERSE_CONNECT_POLICY_RANDOM			1
