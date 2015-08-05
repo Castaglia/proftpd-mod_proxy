@@ -266,10 +266,11 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
    *   vhost_id INTEGER NOT NULL,
    *   backend_uri TEXT NOT NULL,
    *   conn_count INTEGER NOT NULL,
+   *   connect_ms INTEGER,
    *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id)
    * );
    */
-  stmt = "CREATE TABLE proxy_vhost_backends (backend_id INTEGER NOT NULL PRIMARY KEY, vhost_id INTEGER NOT NULL, backend_uri TEXT NOT NULL, conn_count INTEGER NOT NULL, FOREIGN KEY (vhost_id) REFERENCES proxy_hosts (vhost_id));";
+  stmt = "CREATE TABLE proxy_vhost_backends (backend_id INTEGER NOT NULL PRIMARY KEY, vhost_id INTEGER NOT NULL, backend_uri TEXT NOT NULL, conn_count INTEGER NOT NULL, connect_ms INTEGER, FOREIGN KEY (vhost_id) REFERENCES proxy_hosts (vhost_id));";
   res = proxy_db_exec_stmt(p, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -454,15 +455,13 @@ static int reverse_db_add_backends(pool *p, unsigned int vhost_id,
 }
 
 static int reverse_db_update_backend(pool *p, unsigned vhost_id,
-    int backend_id, int conn_incr, unsigned long response_ms) {
+    int backend_id, int conn_incr, long connect_ms) {
   /* Increment the conn count for this backend ID. */
   int res;
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  /* TODO: Use/store the response_ms. */
-
-  stmt = "UPDATE proxy_vhost_backends SET conn_count = conn_count + ? WHERE vhost_id = ? AND backend_id = ?;";
+  stmt = "UPDATE proxy_vhost_backends SET conn_count = conn_count + ?, connect_ms = ? WHERE vhost_id = ? AND backend_id = ?;";
   res = proxy_db_prepare_stmt(p, stmt);
   if (res < 0) {
     return -1;
@@ -474,13 +473,24 @@ static int reverse_db_update_backend(pool *p, unsigned vhost_id,
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+  if (connect_ms > 0) {
+    res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_LONG,
+      (void *) &connect_ms);
+  } else {
+    res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_NULL, NULL);
+  }
+
   if (res < 0) {
     return -1;
   }
 
   res = proxy_db_bind_stmt(p, stmt, 3, PROXY_DB_BIND_TYPE_INT,
+    (void *) &vhost_id);
+  if (res < 0) {
+    return -1;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 4, PROXY_DB_BIND_TYPE_INT,
     (void *) &backend_id);
   if (res < 0) {
     return -1;
@@ -1488,14 +1498,14 @@ static struct proxy_conn *reverse_connect_next_backend(pool *p,
 }
 
 static int reverse_connect_index_used(pool *p, unsigned int vhost_id,
-    int idx, unsigned long response_ms) {
+    int idx, long connect_ms) {
   int res;
 
   if (reverse_backends->nelts == 1) {
     return 0;
   }
 
-  res = reverse_db_update_backend(p, vhost_id, idx, 1, response_ms);
+  res = reverse_db_update_backend(p, vhost_id, idx, 1, connect_ms);
   if (res < 0) {
     int xerrno = errno;
 
@@ -1624,7 +1634,7 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
        * to get that unhealthy flag?
        */
 
-      if (reverse_connect_index_used(p, main_server->sid, backend_id, 0) < 0) {
+      if (reverse_connect_index_used(p, main_server->sid, backend_id, -1) < 0) {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "error updating database for backend server index %d: %s", backend_id,
           strerror(xerrno));
@@ -1689,8 +1699,13 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
     }
   }
 
+  pr_trace_msg(trace_channel, 8,
+    "connected to backend '%.100s' in %ld ms",
+    proxy_conn_get_uri(proxy_sess->dst_pconn),
+    (long) (connected_ms - connecting_ms));
+
   if (reverse_connect_index_used(p, main_server->sid, backend_id,
-    (unsigned long) connected_ms - connecting_ms) < 0) {
+      (long) (connected_ms - connecting_ms)) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error updating database for backend server index %d: %s", backend_id,
       strerror(errno));
