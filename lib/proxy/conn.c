@@ -38,8 +38,13 @@ struct proxy_conn {
   const char *pconn_host;
   const char *pconn_hostport;
   int pconn_port;
-  const char *pconn_username;
-  const char *pconn_password;
+
+  /* Note that these are deliberately NOT 'const', so that they can be
+   * scrubbed in the per-session memory space, once backend authentication
+   * has occurred.
+   */
+  char *pconn_username;
+  char *pconn_password;
 
   pr_netaddr_t *pconn_addr;
   array_header *pconn_addrs;
@@ -201,6 +206,22 @@ int proxy_conn_get_port(struct proxy_conn *pconn) {
   return pconn->pconn_port;
 }
 
+void proxy_conn_clear_username(struct proxy_conn *pconn) {
+  size_t len;
+
+  if (pconn == NULL) {
+    return;
+  }
+
+  if (pconn->pconn_username == NULL) {
+    return;
+  }
+
+  len = strlen(pconn->pconn_username);
+  pr_memscrub(pconn->pconn_username, len);
+  pconn->pconn_username = NULL;
+}
+
 const char *proxy_conn_get_username(struct proxy_conn *pconn) {
   if (pconn == NULL) {
     errno = EINVAL;
@@ -208,6 +229,22 @@ const char *proxy_conn_get_username(struct proxy_conn *pconn) {
   }
 
   return pconn->pconn_username;
+}
+
+void proxy_conn_clear_password(struct proxy_conn *pconn) {
+  size_t len;
+
+  if (pconn == NULL) {
+    return;
+  }
+
+  if (pconn->pconn_password == NULL) {
+    return;
+  }
+
+  len = strlen(pconn->pconn_password);
+  pr_memscrub(pconn->pconn_password, len);
+  pconn->pconn_password = NULL;
 }
 
 const char *proxy_conn_get_password(struct proxy_conn *pconn) {

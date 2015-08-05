@@ -2825,7 +2825,6 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     user = cmd->arg;
 
     (void) pr_table_remove(session.notes, notes_key, NULL);
-
     if (pr_table_add_dup(session.notes, notes_key, user, 0) < 0) {
       pr_log_debug(DEBUG3, "error stashing '%s' in session.notes: %s",
         notes_key, strerror(errno));

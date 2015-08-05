@@ -68,6 +68,24 @@ static int reverse_retry_count = PROXY_DEFAULT_RETRY_COUNT;
 
 static const char *trace_channel = "proxy.reverse";
 
+static void clear_user_creds(void) {
+  register unsigned int i;
+
+  if (reverse_backends == NULL ||
+      reverse_backends->nelts == 0) {
+    /* Nothing to do. */
+    return;
+  }
+
+  for (i = 0; i < reverse_backends->nelts; i++) {
+    struct proxy_conn *pconn;
+
+    pconn = ((struct proxy_conn **) reverse_backends->elts)[i];
+    proxy_conn_clear_username(pconn);
+    proxy_conn_clear_password(pconn);
+  }
+}
+
 static int check_parent_dir_perms(pool *p, const char *path) {
   struct stat st;
   int res;
@@ -2297,9 +2315,25 @@ static int send_user(struct proxy_session *proxy_sess, cmd_rec *cmd,
   int res, xerrno;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
+  char *orig_user;
+  const char *uri_user;
+
+  orig_user = cmd->arg;
+  uri_user = proxy_conn_get_username(proxy_sess->dst_pconn);
+  if (uri_user != NULL) {
+    /* We have URI-specific USER name to use, instead of the client-provided
+     * one.
+     */
+    pr_trace_msg(trace_channel, 18,
+      "using URI-specific username '%s' instead of client-provided '%s'",
+      uri_user, orig_user);
+    cmd->argv[1] = cmd->arg = pstrdup(cmd->pool, uri_user);
+  }
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
     cmd);
+  cmd->argv[1] = cmd->arg = orig_user;
+
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -2321,12 +2355,24 @@ static int send_user(struct proxy_session *proxy_sess, cmd_rec *cmd,
     return -1;
   }
 
+  /* Note that the response message may contain the per-URI user name we
+   * sent; be sure to preserve the illusion, and re-write the response as
+   * necessary.
+   */
+  if (uri_user != NULL) {
+    /* TODO: handle the case where there are multiple response lines. */
+    if (strstr(resp->msg, uri_user) != NULL) {
+      resp->msg = sreplace(cmd->pool, resp->msg, uri_user, orig_user, NULL);
+    }
+  }
+
   if (resp->num[0] == '2' ||
       resp->num[0] == '3') {
     *successful = TRUE;
 
     if (strcmp(resp->num, R_232) == 0) {
       proxy_sess_state |= PROXY_SESS_STATE_BACKEND_AUTHENTICATED;
+      clear_user_creds();
       pr_timer_remove(PR_TIMER_LOGIN, ANY_MODULE);
     }
   }
@@ -2406,11 +2452,91 @@ int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
   return 1;
 }
 
-int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
-    int *successful, int *block_responses) {
+static int send_pass(struct proxy_session *proxy_sess, cmd_rec *cmd,
+    int *successful) {
   int res, xerrno;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
+  const char *uri_user, *uri_pass;
+  char *orig_pass;
+
+  orig_pass = cmd->arg;
+  uri_user = proxy_conn_get_username(proxy_sess->dst_pconn);
+  uri_pass = proxy_conn_get_password(proxy_sess->dst_pconn);
+  if (uri_pass != NULL) {
+    /* We have URI-specific password to use, instead of the client-provided
+     * one.
+     */
+    pr_trace_msg(trace_channel, 18,
+      "using URI-specific password instead of client-provided one");
+    cmd->argv[1] = cmd->arg = pstrdup(cmd->pool, uri_pass);
+  }
+
+  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    cmd);
+  cmd->argv[1] = cmd->arg = orig_pass;
+
+  if (res < 0) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
+  if (resp == NULL) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error receiving %s response from backend: %s", cmd->argv[0],
+      strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  /* Note that the response message may contain the per-URI user name we
+   * sent; be sure to preserve the illusion, and re-write the response as
+   * necessary.
+   */
+  if (uri_user != NULL) {
+    char *orig_user;
+
+    orig_user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
+
+    /* TODO: handle the case where there are multiple response lines. */
+    if (strstr(resp->msg, uri_user) != NULL) {
+      resp->msg = sreplace(cmd->pool, resp->msg, uri_user, orig_user, NULL);
+    }
+  }
+
+  /* XXX What about other response codes for PASS? */
+  if (resp->num[0] == '2') {
+    *successful = TRUE;
+
+    proxy_sess_state |= PROXY_SESS_STATE_BACKEND_AUTHENTICATED;
+    clear_user_creds();
+    pr_timer_remove(PR_TIMER_LOGIN, ANY_MODULE); 
+  }
+
+  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
+    resp, resp_nlines);
+  if (res < 0) {
+    xerrno = errno;
+
+    pr_response_block(TRUE);
+    errno = xerrno;
+    return -1;
+  }
+
+  return 0;
+}
+
+int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
+    int *successful, int *block_responses) {
+  int res, xerrno;
 
   if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_PASS) {
     if (!(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED)) {
@@ -2500,44 +2626,8 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     }
   }
 
-  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    cmd);
+  res = send_pass(proxy_sess, cmd, successful);
   if (res < 0) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
-
-    errno = xerrno;
-    return -1;
-  }
-
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
-  if (resp == NULL) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", cmd->argv[0],
-      strerror(xerrno));
-
-    errno = xerrno;
-    return -1;
-  }
-
-  /* XXX What about other response codes for PASS? */
-  if (resp->num[0] == '2') {
-    *successful = TRUE;
-
-    proxy_sess_state |= PROXY_SESS_STATE_BACKEND_AUTHENTICATED;
-    pr_timer_remove(PR_TIMER_LOGIN, ANY_MODULE); 
-  }
-
-  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
-    resp, resp_nlines);
-  if (res < 0) {
-    xerrno = errno;
-
-    pr_response_block(TRUE);
-    errno = xerrno;
     return -1;
   }
 
