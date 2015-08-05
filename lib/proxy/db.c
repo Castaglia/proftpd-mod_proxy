@@ -38,7 +38,8 @@ int proxy_db_exec_stmt(pool *p, const char *stmt, const char **errstr) {
   char *ptr = NULL;
   unsigned int nretries = 0;
 
-  if (stmt == NULL) {
+  if (p == NULL ||
+      stmt == NULL) {
     errno = EINVAL;
     return -1;
   }
@@ -141,7 +142,8 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
   sqlite3_stmt *pstmt;
   int res;
  
-  if (stmt == NULL) {
+  if (p == NULL ||
+      stmt == NULL) {
     errno = EINVAL;
     return -1;
   }
@@ -169,6 +171,11 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
     case PROXY_DB_BIND_TYPE_INT: {
       int i;
 
+      if (data == NULL) {
+        errno = EINVAL;
+        return -1;
+      }
+
       i = *((int *) data);
       res = sqlite3_bind_int(pstmt, idx, i);
       if (res != SQLITE_OK) {
@@ -182,6 +189,11 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
     case PROXY_DB_BIND_TYPE_LONG: {
       long l;
 
+      if (data == NULL) {
+        errno = EINVAL;
+        return -1;
+      }
+
       l = *((long *) data);
       res = sqlite3_bind_int(pstmt, idx, l);
       if (res != SQLITE_OK) {
@@ -194,6 +206,11 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
 
     case PROXY_DB_BIND_TYPE_TEXT: {
       const char *text;
+
+      if (data == NULL) {
+        errno = EINVAL;
+        return -1;
+      }
 
       text = (const char *) data;
       res = sqlite3_bind_text(pstmt, idx, text, -1, NULL);
@@ -228,7 +245,8 @@ int proxy_db_finish_stmt(pool *p, const char *stmt) {
   sqlite3_stmt *pstmt;
   int res;
 
-  if (stmt == NULL) {
+  if (p == NULL ||
+      stmt == NULL) {
     errno = EINVAL;
     return -1;
   }
@@ -265,7 +283,8 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, const char *stmt,
   int readonly = FALSE, res;
   array_header *results = NULL;
 
-  if (stmt == NULL) {
+  if (p == NULL ||
+      stmt == NULL) {
     errno = EINVAL;
     return NULL;
   }
@@ -441,6 +460,11 @@ int proxy_db_open(pool *p, const char *table_path) {
 }
 
 int proxy_db_close(pool *p) {
+  if (p == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
   if (proxy_dbh != NULL) {
     sqlite3_stmt *pstmt;
     int res;

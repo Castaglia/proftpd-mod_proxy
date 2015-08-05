@@ -58,26 +58,84 @@ START_TEST (db_open_test) {
 END_TEST
 
 START_TEST (db_close_test) {
+  int res;
+
+  res = proxy_db_close(NULL);
+  fail_unless(res == -1, "Failed to handle null arguments");
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL, got %s (%d)",
+    strerror(errno), errno);
 }
 END_TEST
 
 START_TEST (db_prepare_stmt_test) {
+  int res;
+
+  res = proxy_db_prepare_stmt(NULL, NULL);
+  fail_unless(res == -1, "Failed to handle null arguments");
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL, got %s (%d)",
+    strerror(errno), errno);
 }
 END_TEST
 
 START_TEST (db_finish_stmt_test) {
+  int res;
+  const char *stmt;
+
+  res = proxy_db_finish_stmt(NULL, NULL);
+  fail_unless(res == -1, "Failed to handle null arguments");
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL, got %s (%d)",
+    strerror(errno), errno);
+
+  stmt = "SELECT COUNT(*) FROM table";
+  res = proxy_db_finish_stmt(p, stmt);
+  fail_unless(res == -1, "Failed to handle unprepared statement");
+  fail_unless(errno == ENOENT, "Failed to set errno to ENOENT, got %s (%d)",
+    strerror(errno), errno);
 }
 END_TEST
 
 START_TEST (db_bind_stmt_test) {
+  int res;
+  const char *stmt;
+  int idx, type;
+
+  res = proxy_db_bind_stmt(NULL, NULL, -1, -1, NULL);
+  fail_unless(res == -1, "Failed to handle null arguments");
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL, got %s (%d)",
+    strerror(errno), errno);
+
+  stmt = "SELECT COUNT(*) FROM table";
+  idx = -1;
+  res = proxy_db_bind_stmt(p, stmt, idx, PROXY_DB_BIND_TYPE_INT, NULL);
+  fail_unless(res == -1, "Failed to handle invalid index %d", idx);
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL, got %s (%d)",
+    strerror(errno), errno);
+
+  idx = 1;
+  res = proxy_db_bind_stmt(p, stmt, idx, PROXY_DB_BIND_TYPE_INT, NULL);
+  fail_unless(res == -1, "Failed to handle unprepared statement");
+  fail_unless(errno == ENOENT, "Failed to set errno to ENOENT, got %s (%d)",
+    strerror(errno), errno);
 }
 END_TEST
 
 START_TEST (db_exec_stmt_test) {
+  int res;
+
+  res = proxy_db_exec_stmt(NULL, NULL, NULL);
+  fail_unless(res == -1, "Failed to handle null arguments");
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL, got %s (%d)",
+    strerror(errno), errno);
 }
 END_TEST
 
 START_TEST (db_exec_prepared_stmt_test) {
+  array_header *res;
+
+  res = proxy_db_exec_prepared_stmt(NULL, NULL, NULL);
+  fail_unless(res == NULL, "Failed to handle null arguments");
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL, got %s (%d)",
+    strerror(errno), errno);
 }
 END_TEST
 

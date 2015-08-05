@@ -143,7 +143,7 @@ START_TEST (conn_get_hostport_test) {
 }
 END_TEST
 
-START_TEST (conn_get_url_test) {
+START_TEST (conn_get_uri_test) {
   struct proxy_conn *pconn;
   const char *pconn_url, *url;
 
@@ -176,7 +176,7 @@ Suite *tests_get_conn_suite(void) {
   tcase_add_test(testcase, conn_create_test);
   tcase_add_test(testcase, conn_get_addr_test);
   tcase_add_test(testcase, conn_get_hostport_test);
-  tcase_add_test(testcase, conn_get_url_test);
+  tcase_add_test(testcase, conn_get_uri_test);
 
   suite_add_tcase(suite, testcase);
   return suite;
