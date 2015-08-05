@@ -1221,6 +1221,50 @@ MODRET set_proxytlsoptions(cmd_rec *cmd) {
 #endif /* PR_USE_OPENSSL */
 }
 
+/* usage: ProxyTLSPreSharedKey name path */
+MODRET set_proxytlspresharedkey(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+# if defined(PSK_MAX_PSK_LEN)
+  size_t identity_len, path_len;
+
+  CHECK_ARGS(cmd, 2);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  identity_len = strlen(cmd->argv[1]);
+  if (identity_len > PSK_MAX_IDENTITY_LEN) {
+    char buf[32];
+
+    memset(buf, '\0', sizeof(buf));
+    snprintf(buf, sizeof(buf)-1, "%d", (int) PSK_MAX_IDENTITY_LEN);
+
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+      "ProxyTLSPreSharedKey identity '", cmd->argv[1],
+      "' exceeds maximum length ", buf, cmd->argv[2], NULL))
+  }
+
+  /* Ensure that the given path starts with "hex:", denoting the
+   * format of the key at the given path.  Support for other formats, e.g.
+   * bcrypt or somesuch, will be added later.
+   */
+  path_len = strlen(cmd->argv[2]);
+  if (path_len < 5 ||
+      strncmp(cmd->argv[2], "hex:", 4) != 0) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+      "unsupported ProxyTLSPreSharedKey format: ", cmd->argv[2], NULL))
+  }
+
+  (void) add_config_param_str(cmd->argv[0], 2, cmd->argv[1], cmd->argv[2]);
+# else
+  pr_log_debug(DEBUG0,
+    "%s is not supported by this build/version of OpenSSL, ignoring",
+    cmd->argv[0]);
+# endif /* PSK support */
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
 /* usage: ProxyTLSProtocol protocols */
 MODRET set_proxytlsprotocol(cmd_rec *cmd) {
 #ifdef PR_USE_OPENSSL
@@ -3657,6 +3701,7 @@ static conftable proxy_conftab[] = {
   { "ProxyTLSCipherSuite",	set_proxytlsciphersuite,	NULL },
   { "ProxyTLSEngine",		set_proxytlsengine,		NULL },
   { "ProxyTLSOptions",		set_proxytlsoptions,		NULL },
+  { "ProxyTLSPreSharedKey",	set_proxytlspresharedkey,	NULL },
   { "ProxyTLSProtocol",		set_proxytlsprotocol,		NULL },
   { "ProxyTLSTimeoutHandshake",	set_proxytlstimeouthandshake,	NULL },
   { "ProxyTLSVerifyServer",	set_proxytlsverifyserver,	NULL },

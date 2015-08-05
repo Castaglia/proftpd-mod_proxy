@@ -42,6 +42,13 @@ static int tls_engine = PROXY_TLS_ENGINE_AUTO;
 static unsigned long tls_opts = 0UL;
 static int tls_verify_server = TRUE;
 
+#if defined(PSK_MAX_PSK_LEN)
+static const char *tls_psk_name = NULL;
+static BIGNUM *tls_psk_bn = NULL;
+static int tls_psk_used = FALSE;
+# define PROXY_TLS_MIN_PSK_LEN			20
+#endif /* PSK support */
+
 static const char *trace_channel = "proxy.tls";
 static const char *timing_channel = "timing";
 
@@ -905,7 +912,7 @@ static int check_server_cert(SSL *ssl, conn_t *conn, const char *host_name) {
     return 0;
   }
 
-  /* Check SSL_get_verify_result */
+  /* Check SSL_get_verify_result. */
   verify_result = SSL_get_verify_result(ssl);
   if (verify_result != X509_V_OK) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -922,6 +929,13 @@ static int check_server_cert(SSL *ssl, conn_t *conn, const char *host_name) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "unable to verify '%s': server did not provide certificate",
       conn->remote_name);
+
+# if defined(PSK_MAX_PSK_LEN)
+    if (tls_psk_used) {
+      return 0;
+    }
+# endif /* PSK support */
+
     return -1;
   }
 
@@ -2183,8 +2197,55 @@ static int netio_install_data(void) {
 
 /* Initialization routines */
 
-#if !defined(OPENSSL_NO_TLSEXT)
+#if defined(PSK_MAX_PSK_LEN)
+static unsigned int tls_psk_cb(SSL *ssl, const char *psk_hint, char *identity,
+    unsigned int max_identity_len,
+    unsigned char *psk, unsigned int max_psklen) {
+  int res, bn_len;
+  unsigned int psklen;
 
+  if (psk_hint != NULL) {
+    pr_trace_msg(trace_channel, 7, "received PSK identity hint: '%s'",
+      psk_hint);
+
+  } else {
+    pr_trace_msg(trace_channel, 17, "received no PSK identity hint");
+  }
+
+  res = snprintf(identity, max_identity_len, "%s", tls_psk_name);
+  if (res < 0 || res > max_identity_len) {
+    pr_trace_msg(trace_channel, 6,
+      "error setting PSK identity to '%s'", tls_psk_name);
+    return 0;
+  }
+
+  bn_len = BN_num_bytes(tls_psk_bn);
+  if (bn_len > (int) max_psklen) {
+    pr_trace_msg(trace_channel, 6,
+      "warning: unable to use '%s' PSK: max buffer size (%u bytes) "
+      "too small for key (%d bytes)", tls_psk_name, max_psklen,
+      bn_len);
+    return 0;
+  }
+
+  psklen = BN_bn2bin(tls_psk_bn, psk);
+  if (psklen == 0) {
+    pr_trace_msg(trace_channel, 6,
+      "error converting '%s' PSK to binary: %s", tls_psk_name, get_errors());
+    return 0;
+  }
+
+  if (tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "[tls.psk] used PSK identity '%s'", tls_psk_name);
+  }
+
+  tls_psk_used = TRUE;
+  return psklen;
+}
+#endif /* PSK support */
+
+#if !defined(OPENSSL_NO_TLSEXT)
 struct proxy_tls_next_proto {
   const char *proto;
   unsigned char *encoded_proto;
@@ -2588,6 +2649,140 @@ static const char *get_enabled_protocols_str(pool *p, unsigned int protos,
   *count = nproto;
   return proto_str;
 }
+
+# if defined(PSK_MAX_PSK_LEN)
+static int tls_load_psk(const char *identity, const char *path) {
+  register unsigned int i;
+  char key_buf[PR_TUNABLE_BUFFER_SIZE];
+  int fd, key_len, valid_hex = TRUE, res, xerrno;
+  struct stat st;
+  BIGNUM *bn = NULL;
+
+  PRIVS_ROOT
+  fd = open(path, O_RDONLY);
+  xerrno = errno;
+  PRIVS_RELINQUISH
+
+  if (fd < 0) {
+    pr_trace_msg(trace_channel, 6,
+      "error opening ProxyTLSPreSharedKey file '%s': %s", path,
+      strerror(xerrno));
+    errno = xerrno;
+    return -1;
+  }
+
+  if (fstat(fd, &st) < 0) {
+    xerrno = errno;
+
+    pr_trace_msg(trace_channel, 6,
+      "error checking ProxyTLSPreSharedKey file '%s': %s", path,
+      strerror(xerrno));
+    (void) close(fd);
+    errno = xerrno;
+    return -1;
+  }
+
+  /* Check on the permissions of the file; skip it if the permissions
+   * are too permissive, e.g. file is world-read/writable.
+   */
+  if (st.st_mode & S_IROTH) {
+    pr_trace_msg(trace_channel, 6,
+      "unable to use ProxyTLSPreSharedKey file '%s': "
+      "file is world-readable", path);
+    (void) close(fd);
+    errno = EPERM;
+    return -1;
+  }
+
+  if (st.st_mode & S_IWOTH) {
+    pr_trace_msg(trace_channel, 6,
+      "unable to use ProxyTLSPreSharedKey file '%s': "
+      "file is world-writable", path);
+    (void) close(fd);
+    errno = EPERM;
+    return -1;
+  }
+
+  if (st.st_size == 0) {
+    pr_trace_msg(trace_channel, 6,
+      "unable to use ProxyTLSPreSharedKey file '%s': "
+      "file is zero length", path);
+    (void) close(fd);
+    errno = ENOENT;
+    return -1;
+  }
+
+  /* Read the entire key into memory. */
+  memset(key_buf, '\0', sizeof(key_buf));
+  key_len = read(fd, key_buf, sizeof(key_buf)-1);
+  xerrno = errno;
+  (void) close(fd);
+
+  if (key_len < 0) {
+    pr_trace_msg(trace_channel, 6,
+      ": error reading ProxyTLSPreSharedKey file '%s': %s", path,
+      strerror(xerrno));
+    errno = xerrno;
+    return -1;
+  }
+
+  if (key_len < PROXY_TLS_MIN_PSK_LEN) {
+    pr_trace_msg(trace_channel, 6,
+      "read %d bytes from ProxyTLSPreSharedKey file '%s', need at least %d "
+      "bytes of key data, ignoring", key_len, path, PROXY_TLS_MIN_PSK_LEN);
+    errno = ENOENT;
+    return -1;
+  }
+
+  key_buf[key_len] = '\0';
+  key_buf[sizeof(key_buf)-1] = '\0';
+
+  /* Ignore any trailing newlines. */
+  if (key_buf[key_len-1] == '\n') {
+    key_buf[key_len-1] = '\0';
+    key_len--;
+  }
+
+  if (key_buf[key_len-1] == '\r') {
+    key_buf[key_len-1] = '\0';
+    key_len--;
+  }
+
+  /* Ensure that it is all hex encoded data */
+  for (i = 0; i < key_len; i++) {
+    if (isxdigit((int) key_buf[i]) == 0) {
+      valid_hex = FALSE;
+      break;
+    }
+  }
+
+  if (valid_hex == FALSE) {
+    pr_trace_msg(trace_channel, 6,
+      "unable to use '%s' data from ProxyTLSPreSharedKey file '%s': "
+      "not a hex number", key_buf, path);
+    errno = EINVAL;
+    return -1;
+  }
+
+  res = BN_hex2bn(&bn, key_buf);
+  if (res == 0) {
+    pr_trace_msg(trace_channel, 6,
+      "failed to convert '%s' data from ProxyTLSPreSharedKey file '%s' "
+      "to BIGNUM: %s", key_buf, path, get_errors());
+
+    if (bn != NULL) {
+      BN_free(bn);
+    }
+
+    errno = EINVAL;
+    return -1;
+  }
+
+  tls_psk_name = identity;
+  tls_psk_bn = bn;
+  return 0;
+}
+# endif /* PSK support */
 
 static void tls_info_cb(const SSL *ssl, int where, int ret) {
   const char *str = "(unknown)";
@@ -3157,6 +3352,35 @@ int proxy_tls_sess_init(pool *p) {
       }
     }
   }
+
+# if defined(PSK_MAX_PSK_LEN)
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSPreSharedKey", FALSE);
+  if (c != NULL) {
+    const char *identity, *path;
+    int res;
+
+    pr_signals_handle();
+
+    identity = c->argv[0];
+    path = c->argv[1];
+
+    /* Advance past the "hex:" format prefix. */
+    path += 4;
+
+    res = tls_load_psk(identity, path);
+    if (res < 0) {
+      pr_log_debug(DEBUG2, MOD_PROXY_VERSION
+        ": error loading ProxyTLSPreSharedKey file '%s': %s", path,
+        strerror(errno));
+    }
+  }
+
+  if (tls_psk_name != NULL) {
+    pr_trace_msg(trace_channel, 9,
+      "enabling support for PSK identities");
+    SSL_CTX_set_psk_client_callback(ssl_ctx, tls_psk_cb);
+  }
+# endif /* PSK support */
 
   if (tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
     SSL_CTX_set_info_callback(ssl_ctx, tls_info_cb);
