@@ -39,6 +39,13 @@ struct proxy_conn {
   const char *pconn_hostport;
   int pconn_port;
 
+  /* Note that these are deliberately NOT 'const', so that they can be
+   * scrubbed in the per-session memory space, once backend authentication
+   * has occurred.
+   */
+  char *pconn_username;
+  char *pconn_password;
+
   pr_netaddr_t *pconn_addr;
   array_header *pconn_addrs;
 };
@@ -92,12 +99,19 @@ int proxy_conn_connect_timeout_cb(CALLBACK_FRAME) {
 
 struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
   int res;
-  char hostport[512], *proto, *remote_host;
+  char hostport[512], *proto, *remote_host, *username = NULL, *password = NULL;
   unsigned int remote_port;
   struct proxy_conn *pconn;
   pool *pconn_pool;
 
-  res = proxy_uri_parse(p, uri, &proto, &remote_host, &remote_port);
+  if (p == NULL ||
+      uri == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  res = proxy_uri_parse(p, uri, &proto, &remote_host, &remote_port, &username,
+    &password);
   if (res < 0) {
     return NULL;
   }
@@ -122,6 +136,12 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
   pconn->pconn_hostport = pstrdup(pconn_pool, hostport);
   pconn->pconn_uri = pstrdup(pconn_pool, uri);
   pconn->pconn_proto = pstrdup(pconn_pool, proto);
+  if (username != NULL) {
+    pconn->pconn_username = pstrdup(pconn_pool, username);
+  }
+  if (password != NULL) {
+    pconn->pconn_password = pstrdup(pconn_pool, password);
+  }
 
   pconn->pconn_addr = pr_netaddr_get_addr(pconn_pool, remote_host,
     &(pconn->pconn_addrs));
@@ -184,6 +204,56 @@ int proxy_conn_get_port(struct proxy_conn *pconn) {
   }
 
   return pconn->pconn_port;
+}
+
+void proxy_conn_clear_username(struct proxy_conn *pconn) {
+  size_t len;
+
+  if (pconn == NULL) {
+    return;
+  }
+
+  if (pconn->pconn_username == NULL) {
+    return;
+  }
+
+  len = strlen(pconn->pconn_username);
+  pr_memscrub(pconn->pconn_username, len);
+  pconn->pconn_username = NULL;
+}
+
+const char *proxy_conn_get_username(struct proxy_conn *pconn) {
+  if (pconn == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  return pconn->pconn_username;
+}
+
+void proxy_conn_clear_password(struct proxy_conn *pconn) {
+  size_t len;
+
+  if (pconn == NULL) {
+    return;
+  }
+
+  if (pconn->pconn_password == NULL) {
+    return;
+  }
+
+  len = strlen(pconn->pconn_password);
+  pr_memscrub(pconn->pconn_password, len);
+  pconn->pconn_password = NULL;
+}
+
+const char *proxy_conn_get_password(struct proxy_conn *pconn) {
+  if (pconn == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+  
+  return pconn->pconn_password;
 }
 
 conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,

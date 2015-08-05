@@ -28,6 +28,6 @@
 #define MOD_PROXY_URI_H
 
 int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
-  unsigned int *port);
+  unsigned int *port, char **username, char **password);
 
 #endif /* MOD_PROXY_URI_H */

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2013 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2013-2015 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,15 +22,13 @@
  * source distribution.
  */
 
-/* Reverse-proxy API tests
- * $Id: env.c,v 1.2 2011/05/23 20:50:31 castaglia Exp $
- */
+/* Reverse-proxy API tests */
 
 #include "tests.h"
 
 static pool *p = NULL;
 static const char *test_dir = "/tmp/mod_proxy-test-reverse";
-static const char *test_file = "/tmp/mod_proxy-test-reverse/servers.txt";
+static const char *test_file = "/tmp/mod_proxy-test-reverse/servers.json";
 
 static void test_cleanup(void) {
   (void) unlink(test_file);
@@ -83,46 +81,46 @@ static void tear_down(void) {
   test_cleanup();
 }
 
-START_TEST (reverse_file_parse_uris_args_test) {
+START_TEST (reverse_json_parse_uris_args_test) {
   array_header *uris;
   const char *path;
 
-  uris = proxy_reverse_file_parse_uris(NULL, NULL);
+  uris = proxy_reverse_json_parse_uris(NULL, NULL);
   fail_unless(uris == NULL, "Failed to handle null arguments");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
 
-  uris = proxy_reverse_file_parse_uris(p, NULL);
+  uris = proxy_reverse_json_parse_uris(p, NULL);
   fail_unless(uris == NULL, "Failed to handle null path argument");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
 
   path = "/tmp/test.dat";
-  uris = proxy_reverse_file_parse_uris(NULL, path);
+  uris = proxy_reverse_json_parse_uris(NULL, path);
   fail_unless(uris == NULL, "Failed to handle null pool argument");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
 }
 END_TEST
 
-START_TEST (reverse_file_parse_uris_isreg_test) {
+START_TEST (reverse_json_parse_uris_isreg_test) {
   array_header *uris;
   const char *path;
   int res;
 
   test_cleanup();
 
-  path = "servers.txt";
-  uris = proxy_reverse_file_parse_uris(p, path);
+  path = "servers.json";
+  uris = proxy_reverse_json_parse_uris(p, path);
   fail_unless(uris == NULL, "Failed to handle relative path '%s'", path);
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
 
   path = test_file;
-  uris = proxy_reverse_file_parse_uris(p, path);
+  uris = proxy_reverse_json_parse_uris(p, path);
   fail_unless(uris == NULL, "Failed to handle nonexistent file '%s'", path);
   fail_unless(errno == ENOENT, "Failed to set errno to ENOENT");
 
   res = mkdir(test_dir, 0777);
   fail_unless(res == 0, "Failed to create tmp directory '%s': %s", test_dir,
     strerror(errno));
-  uris = proxy_reverse_file_parse_uris(p, test_dir);
+  uris = proxy_reverse_json_parse_uris(p, test_dir);
   fail_unless(uris == NULL, "Failed to handle directory path '%s'", test_dir);
   fail_unless(errno == EISDIR, "Failed to set errno to EISDIR");
 
@@ -130,7 +128,7 @@ START_TEST (reverse_file_parse_uris_isreg_test) {
 }
 END_TEST
 
-START_TEST (reverse_file_parse_uris_perms_test) {
+START_TEST (reverse_json_parse_uris_perms_test) {
   array_header *uris;
   const char *path;
   int fd, res;
@@ -160,7 +158,7 @@ START_TEST (reverse_file_parse_uris_perms_test) {
     perms, test_file, strerror(errno));
 
   path = test_file;
-  uris = proxy_reverse_file_parse_uris(p, path);
+  uris = proxy_reverse_json_parse_uris(p, path);
   fail_unless(uris == NULL, "Failed to handle world-writable file '%s'",
     path);
   fail_unless(errno == EPERM, "Failed to set errno to EPERM, got %d (%s)",
@@ -175,7 +173,7 @@ START_TEST (reverse_file_parse_uris_perms_test) {
   fail_unless(res == 0, "Failed to set perms %04o on file '%s': %s",
     perms, test_file, strerror(errno));
 
-  uris = proxy_reverse_file_parse_uris(p, path);
+  uris = proxy_reverse_json_parse_uris(p, path);
   fail_unless(uris == NULL, "Failed to handle world-writable directory '%s'",
     test_file);
   fail_unless(errno == EPERM, "Failed to set errno to EPERM, got %d (%s)",
@@ -186,35 +184,7 @@ START_TEST (reverse_file_parse_uris_perms_test) {
 }
 END_TEST
 
-START_TEST (reverse_file_parse_uris_comments_test) {
-  array_header *uris;
-  FILE *fh = NULL;
-  int res;
-
-  test_cleanup();
-  fh = test_prep();
-
-  /* Write a file with only comments. */
-  fprintf(fh, "# Hello, World!\n");
-  fprintf(fh, "# This is a series of comments\n");
-  fprintf(fh, "# for a unit test as part of mod_proxy\n");
-  fprintf(fh, "\t# need to include some lines whose first\n");
-  fprintf(fh, "   # characters are not '#'\n");
-
-  res = fclose(fh);
-  fail_if(res < 0, "Failed to write file '%s': %s", test_file,
-    strerror(errno));
-
-  uris = proxy_reverse_file_parse_uris(p, test_file);
-  fail_unless(uris != NULL, "Did not receive parsed list as expected");
-  fail_unless(uris->nelts == 0, "Expected zero elements, found %d",
-    uris->nelts);
-
-  test_cleanup();
-}
-END_TEST
-
-START_TEST (reverse_file_parse_uris_empty_test) {
+START_TEST (reverse_json_parse_uris_empty_test) {
   array_header *uris;
   FILE *fh = NULL;
   int res;
@@ -227,7 +197,9 @@ START_TEST (reverse_file_parse_uris_empty_test) {
   fail_if(res < 0, "Failed to write file '%s': %s", test_file,
     strerror(errno));
 
-  uris = proxy_reverse_file_parse_uris(p, test_file);
+  mark_point();
+
+  uris = proxy_reverse_json_parse_uris(p, test_file);
   fail_unless(uris != NULL, "Did not receive parsed list as expected");
   fail_unless(uris->nelts == 0, "Expected zero elements, found %d",
     uris->nelts);
@@ -236,7 +208,7 @@ START_TEST (reverse_file_parse_uris_empty_test) {
 }
 END_TEST
 
-START_TEST (reverse_file_parse_uris_malformed_test) {
+START_TEST (reverse_json_parse_uris_malformed_test) {
   array_header *uris;
   FILE *fh = NULL;
   int res;
@@ -244,17 +216,17 @@ START_TEST (reverse_file_parse_uris_malformed_test) {
   test_cleanup();
   fh = test_prep();
 
-  /* Write a file with comments and bad URLs. */
-  fprintf(fh, "# Hello, World!\n");
-  fprintf(fh, "http://127.0.0.1:80\n");
-  fprintf(fh, "ftp:/127.0.0.1::21\n");
-  fprintf(fh, "\tftp://foo.bar.baz:21\n");
+  fprintf(fh, "[ \"http://127.0.0.1:80\",\n");
+  fprintf(fh, "\"ftp:/127.0.0.1::21\",\n");
+  fprintf(fh, "\"ftp://foo.bar.baz:21\" ]\n");
 
   res = fclose(fh);
   fail_if(res < 0, "Failed to write file '%s': %s", test_file,
     strerror(errno));
 
-  uris = proxy_reverse_file_parse_uris(p, test_file);
+  mark_point();
+
+  uris = proxy_reverse_json_parse_uris(p, test_file);
   fail_unless(uris != NULL, "Did not receive parsed list as expected");
   fail_unless(uris->nelts == 0, "Expected zero elements, found %d",
     uris->nelts);
@@ -263,7 +235,7 @@ START_TEST (reverse_file_parse_uris_malformed_test) {
 }
 END_TEST
 
-START_TEST (reverse_file_parse_uris_usable_test) {
+START_TEST (reverse_json_parse_uris_usable_test) {
   array_header *uris;
   FILE *fh = NULL;
   int res, expected;
@@ -271,17 +243,18 @@ START_TEST (reverse_file_parse_uris_usable_test) {
   test_cleanup();
   fh = test_prep();
 
-  /* Write a file with comments and usable URLs. */
-  fprintf(fh, "# Hello, World!\n");
-  fprintf(fh, "ftp://127.0.0.1\n");
-  fprintf(fh, "ftp://localhost:2121\n");
-  fprintf(fh, "ftp://[::1]:21212\n");
+  /* Write a file with usable URLs. */
+  fprintf(fh, "[ \"ftp://127.0.0.1\",\n");
+  fprintf(fh, "\"ftp://localhost:2121\",\n");
+  fprintf(fh, "\"ftp://[::1]:21212\" ]\n");
 
   res = fclose(fh);
   fail_if(res < 0, "Failed to write file '%s': %s", test_file,
     strerror(errno));
 
-  uris = proxy_reverse_file_parse_uris(p, test_file);
+  mark_point();
+
+  uris = proxy_reverse_json_parse_uris(p, test_file);
   fail_unless(uris != NULL, "Did not receive parsed list as expected");
 
   expected = 3;
@@ -302,13 +275,12 @@ Suite *tests_get_reverse_suite(void) {
 
   tcase_add_checked_fixture(testcase, set_up, tear_down);
 
-  tcase_add_test(testcase, reverse_file_parse_uris_args_test);
-  tcase_add_test(testcase, reverse_file_parse_uris_isreg_test);
-  tcase_add_test(testcase, reverse_file_parse_uris_perms_test);
-  tcase_add_test(testcase, reverse_file_parse_uris_comments_test);
-  tcase_add_test(testcase, reverse_file_parse_uris_empty_test);
-  tcase_add_test(testcase, reverse_file_parse_uris_malformed_test);
-  tcase_add_test(testcase, reverse_file_parse_uris_usable_test);
+  tcase_add_test(testcase, reverse_json_parse_uris_args_test);
+  tcase_add_test(testcase, reverse_json_parse_uris_isreg_test);
+  tcase_add_test(testcase, reverse_json_parse_uris_perms_test);
+  tcase_add_test(testcase, reverse_json_parse_uris_empty_test);
+  tcase_add_test(testcase, reverse_json_parse_uris_malformed_test);
+  tcase_add_test(testcase, reverse_json_parse_uris_usable_test);
 
   suite_add_tcase(suite, testcase);
   return suite;

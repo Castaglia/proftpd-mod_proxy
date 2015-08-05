@@ -31,6 +31,8 @@
 
 struct proxy_conn;
 
+void proxy_conn_clear_username(struct proxy_conn *pconn);
+void proxy_conn_clear_password(struct proxy_conn *pconn);
 int proxy_conn_connect_timeout_cb(CALLBACK_FRAME);
 struct proxy_conn *proxy_conn_create(pool *p, const char *uri);
 pr_netaddr_t *proxy_conn_get_addr(struct proxy_conn *, array_header **);
@@ -40,6 +42,8 @@ int proxy_conn_get_port(struct proxy_conn *pconn);
 conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
   pr_netaddr_t *remote_addr);
 const char *proxy_conn_get_uri(struct proxy_conn *pconn);
+const char *proxy_conn_get_username(struct proxy_conn *pconn);
+const char *proxy_conn_get_password(struct proxy_conn *pconn);
 int proxy_conn_send_proxy(pool *p, conn_t *conn);
 
 #endif /* MOD_PROXY_CONN_H */

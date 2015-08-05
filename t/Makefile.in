@@ -24,20 +24,36 @@ TEST_API_DEPS=\
   $(top_srcdir)/src/table.o \
   $(top_srcdir)/src/event.o \
   $(top_srcdir)/src/timers.o \
+  $(top_srcdir)/src/stash.o \
+  $(top_srcdir)/src/modules.o \
+  $(top_srcdir)/src/cmd.o \
+  $(top_srcdir)/src/configdb.o \
+  $(top_srcdir)/src/parser.o \
   $(top_srcdir)/src/fsio.o \
   $(top_srcdir)/src/netaddr.o \
-  $(top_srcdir)/src/inet.o \
+  $(top_srcdir)/src/auth.o \
+  $(top_srcdir)/src/env.o \
+  $(top_srcdir)/src/support.o \
   $(module_srcdir)/lib/proxy/random.o \
-  $(module_srcdir)/lib/proxy/conn.o \
+  $(module_srcdir)/lib/proxy/db.o \
   $(module_srcdir)/lib/proxy/uri.o \
+  $(module_srcdir)/lib/proxy/conn.o \
+  $(module_srcdir)/lib/proxy/netio.o \
+  $(module_srcdir)/lib/proxy/inet.o \
+  $(module_srcdir)/lib/proxy/tls.o \
+  $(module_srcdir)/lib/proxy/session.o \
   $(module_srcdir)/lib/proxy/reverse.o
 
 TEST_API_LIBS=-lcheck
 
 TEST_API_OBJS=\
   api/random.o \
-  api/conn.o \
+  api/db.o \
   api/uri.o \
+  api/conn.o \
+  api/netio.o \
+  api/inet.o \
+  api/tls.o \
   api/reverse.o \
   api/stubs.o \
   api/tests.o

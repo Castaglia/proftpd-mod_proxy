@@ -1,0 +1,9 @@
+
+Note that to run the API tests for mod_proxy, you must:
+
+  $ ./configure --enable-tests ...
+
+Then:
+
+  $ cd contrib/mod_proxy/t/
+  $ make api-tests

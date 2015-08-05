@@ -1123,6 +1123,13 @@ configuration would look something like this:
     ProxyTLSCACertificateFile /etc/ftpd/cacerts.pem
   &lt;/IfModule&gt;
 </pre>
+In fact, <code>mod_proxy</code> comes with a default
+<code>ProxyTLSCACertificateFile</code> (comprised of the root CAs that most
+browsers use/trust), <b>and</b> the default <code>ProxyTLSEngine</code>
+value is <em>auto</em>.  This means that, by default, <code>mod_proxy</code>
+will try to use FTPS for backend connections automatically (assuming that
+ProFTPD is built with OpenSSL support using the <code>--enable-openssl</code>
+configure option).
 
 <p>
 <b>Load Balancing versus Session Stickiness</b><br>
@@ -1299,6 +1306,39 @@ capabilities to old/legacy FTP servers which do not implement it.   The
 <code>mod_proxy</code> module is <em>also</em> suited for forward proxy
 configurations, where the FTPS support can be used to provide SSL/TLS
 capabilities to old/legacy FTP clients which do not implement it.
+
+<p><a name="ProxyReverseProxyCredentials">
+<font color=red>Question</font>: I want to use <code>mod_proxy</code> for
+reverse proxying.  I want to centralize all of my user authentication in
+<code>mod_proxy</code>, <b>and</b> I want to use <em>different</em> user
+credentials when logging in to the backend servers.  Can <code>mod_proxy</code>
+do all of this?<br>
+<font color=blue>Answer</font>: Yes.
+
+<p>
+There are a couple of key parts of your <code>mod_proxy</code> configuration
+to pay attention to, for achieving the above.
+<pre>
+  &lt;IfModule mod_proxy.c&gt;
+    ProxyEngine on
+    ProxyLog /path/to/proxy.log
+    ProxyTables /var/ftp/proxy
+
+    ProxyRole reverse
+
+    <b># Make sure to authenticate in the proxy itself
+    ProxyOptions UseReverseProxyAuth</b>
+
+    ProxyReverseConnectPolicy ...
+
+    <b># Include the username/passwords to use for the backend servers
+    # <em>in the URLs</em>.</b>
+    ProxyReverseServers ftp://<b>user1:password1@</b>ftp-backend1.example.com:2121 ftp://<b>user2:password2@</b>ftp-backend2.example.com:2121 ...
+  &lt;/IfModule&gt;
+</pre>
+When a URL uses the "username:password" syntax for including the credentials
+to use for that connection, <code>mod_proxy</code> will use those URI
+credentials when logging in to that backend server.
 
 <p>
 <hr>
