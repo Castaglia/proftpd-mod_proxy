@@ -28,6 +28,7 @@
 #include "proxy/netio.h"
 #include "proxy/inet.h"
 #include "proxy/session.h"
+#include "proxy/tls.h"
 #include "proxy/uri.h"
 
 struct proxy_conn {
@@ -38,6 +39,7 @@ struct proxy_conn {
   const char *pconn_host;
   const char *pconn_hostport;
   int pconn_port;
+  int pconn_tls;
 
   /* Note that these are deliberately NOT 'const', so that they can be
    * scrubbed in the per-session memory space, once backend authentication
@@ -98,7 +100,7 @@ int proxy_conn_connect_timeout_cb(CALLBACK_FRAME) {
 }
 
 struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
-  int res;
+  int res, use_tls = PROXY_TLS_ENGINE_AUTO;
   char hostport[512], *proto, *remote_host, *username = NULL, *password = NULL;
   unsigned int remote_port;
   struct proxy_conn *pconn;
@@ -123,6 +125,19 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
     return NULL;
   }
 
+  if (strncmp(proto, "ftps", 5) == 0) {
+    /* If the 'ftps' scheme is used, then FTPS is REQUIRED for connections
+     * to this server.
+     */
+    use_tls = PROXY_TLS_ENGINE_ON;
+
+  } else if (strncmp(proto, "sftp", 5) == 0) {
+    /* As might be obvious, do not try to use TLS against an SSH2/SFTP
+     * server.
+     */
+    use_tls = PROXY_TLS_ENGINE_OFF;
+  }
+
   memset(hostport, '\0', sizeof(hostport));
   snprintf(hostport, sizeof(hostport)-1, "%s:%u", remote_host, remote_port);
 
@@ -136,6 +151,7 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
   pconn->pconn_hostport = pstrdup(pconn_pool, hostport);
   pconn->pconn_uri = pstrdup(pconn_pool, uri);
   pconn->pconn_proto = pstrdup(pconn_pool, proto);
+  pconn->pconn_tls = use_tls;
   if (username != NULL) {
     pconn->pconn_username = pstrdup(pconn_pool, username);
   }
@@ -254,6 +270,15 @@ const char *proxy_conn_get_password(struct proxy_conn *pconn) {
   }
   
   return pconn->pconn_password;
+}
+
+int proxy_conn_get_tls(struct proxy_conn *pconn) {
+  if (pconn == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  return pconn->pconn_tls;
 }
 
 conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,

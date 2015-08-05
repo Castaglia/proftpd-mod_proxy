@@ -44,6 +44,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
 const char *proxy_conn_get_uri(struct proxy_conn *pconn);
 const char *proxy_conn_get_username(struct proxy_conn *pconn);
 const char *proxy_conn_get_password(struct proxy_conn *pconn);
+int proxy_conn_get_tls(struct proxy_conn *pconn);
 int proxy_conn_send_proxy(pool *p, conn_t *conn);
 
 #endif /* MOD_PROXY_CONN_H */

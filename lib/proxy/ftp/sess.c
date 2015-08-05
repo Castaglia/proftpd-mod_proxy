@@ -192,7 +192,7 @@ int proxy_ftp_sess_send_host(pool *p, struct proxy_session *proxy_sess) {
 }
 
 int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
-  int use_tls, xerrno;
+  int uri_tls, use_tls, xerrno;
   char *auth_feat;
   pool *tmp_pool;
   cmd_rec *cmd;
@@ -206,16 +206,30 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
     return 0;
   }
 
+  /* Check for any per-URI scheme-based TLS requirements. */
+  uri_tls = proxy_conn_get_tls(proxy_sess->dst_pconn);
+
   auth_feat = pr_table_get(proxy_sess->backend_features, C_AUTH, NULL);
   if (auth_feat == NULL) {
     /* Backend server does not indicate that it supports AUTH via FEAT. */
 
     /* If TLS is required, then fail now. */
-    if (use_tls == PROXY_TLS_ENGINE_ON) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "backend server %s does not support AUTH TLS (see FEAT response) but "
-        "ProxyTLSEngine requires TLS, failing connection",
-        pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr));
+    if (uri_tls == PROXY_TLS_ENGINE_ON ||
+        use_tls == PROXY_TLS_ENGINE_ON) {
+
+      if (uri_tls == PROXY_TLS_ENGINE_ON) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "backend server %s does not support AUTH TLS (see FEAT response) but "
+          "URI '%.100s' requires TLS, failing connection",
+          proxy_conn_get_uri(proxy_sess->dst_pconn));
+
+      } else if (use_tls == PROXY_TLS_ENGINE_ON) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "backend server %s does not support AUTH TLS (see FEAT response) but "
+          "ProxyTLSEngine requires TLS, failing connection",
+          pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr));
+      }
+
       errno = EPERM;
       return -1;
     }
