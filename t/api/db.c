@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2013-2015 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2015 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@
  * source distribution.
  */
 
-/* Random API tests. */
+/* Database API tests. */
 
 #include "tests.h"
 
@@ -33,74 +33,71 @@ static void set_up(void) {
     p = make_sub_pool(NULL);
   }
 
-  proxy_random_init();
+  mark_point();
+  proxy_db_init(p);
 }
 
 static void tear_down(void) {
+  proxy_db_free();
+
   if (p) {
     destroy_pool(p);
     p = NULL;
-  } 
+  }
 }
 
-START_TEST (random_next_range_10_test) {
-  register unsigned int i;
-  long min, max;
+START_TEST (db_open_test) {
+  int res;
+  char *table_path;
 
-  min = -4;
-  max = 5;
-
-  for (i = 0; i < 10; i++) {
-    long num;
-
-    num = proxy_random_next(min, max);
-    fail_if(num < min, "random number %ld less than minimum %ld", num, min);
-    fail_if(num > max, "random number %ld greater than maximum %ld", num, max);
-  }
+  res = proxy_db_open(NULL, NULL);
+  fail_unless(res == -1, "Failed to handle null arguments");
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL, got %s (%d)",
+    strerror(errno), errno);
 }
 END_TEST
 
-START_TEST (random_next_range_1000_test) {
-  register unsigned int i;
-  long min, max;
-  int count = 10, seen[10];
-
-  min = 0;
-  max = count-1;
-
-  memset(seen, 0, sizeof(seen));
-
-  for (i = 0; i < 1000; i++) {
-    long num;
-
-    num = proxy_random_next(min, max);
-    fail_if(num < min, "random number %ld less than minimum %ld", num, min);
-    fail_if(num > max, "random number %ld greater than maximum %ld", num, max);
-
-    seen[num] = 1;
-  }
-
-  /* In 1000 rounds, the chances of seeing all 10 possible numbers is pretty
-   * good, right?
-   */
-  for (i = 0; i < count; i++) {
-    fail_unless(seen[i] == 1, "Expected to have generated number %d", i);
-  }
+START_TEST (db_close_test) {
 }
 END_TEST
 
-Suite *tests_get_random_suite(void) {
+START_TEST (db_prepare_stmt_test) {
+}
+END_TEST
+
+START_TEST (db_finish_stmt_test) {
+}
+END_TEST
+
+START_TEST (db_bind_stmt_test) {
+}
+END_TEST
+
+START_TEST (db_exec_stmt_test) {
+}
+END_TEST
+
+START_TEST (db_exec_prepared_stmt_test) {
+}
+END_TEST
+
+Suite *tests_get_db_suite(void) {
   Suite *suite;
   TCase *testcase;
 
-  suite = suite_create("random");
+  suite = suite_create("db");
 
   testcase = tcase_create("base");
 
   tcase_add_checked_fixture(testcase, set_up, tear_down);
 
-  tcase_add_test(testcase, random_next_range_10_test);
-  tcase_add_test(testcase, random_next_range_1000_test);
+  tcase_add_test(testcase, db_open_test);
+  tcase_add_test(testcase, db_close_test);
+  tcase_add_test(testcase, db_prepare_stmt_test);
+  tcase_add_test(testcase, db_finish_stmt_test);
+  tcase_add_test(testcase, db_bind_stmt_test);
+  tcase_add_test(testcase, db_exec_stmt_test);
+  tcase_add_test(testcase, db_exec_prepared_stmt_test);
 
   suite_add_tcase(suite, testcase);
   return suite;

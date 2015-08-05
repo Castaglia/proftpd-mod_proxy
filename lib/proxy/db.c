@@ -38,6 +38,11 @@ int proxy_db_exec_stmt(pool *p, const char *stmt, const char **errstr) {
   char *ptr = NULL;
   unsigned int nretries = 0;
 
+  if (stmt == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
   res = sqlite3_exec(proxy_dbh, stmt, NULL, NULL, &ptr);
   while (res != SQLITE_OK) {
     if (res == SQLITE_BUSY) {
@@ -357,7 +362,8 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, const char *stmt,
 int proxy_db_open(pool *p, const char *table_path) {
   int res;
 
-  if (table_path == NULL) {
+  if (p == NULL ||
+      table_path == NULL) {
     errno = EINVAL;
     return -1;
   }
@@ -426,8 +432,8 @@ int proxy_db_open(pool *p, const char *table_path) {
     NULL);
   if (res != SQLITE_OK) {
     pr_trace_msg(trace_channel, 2,
-      "error setting MEMORY journal mode on SQLite database '%s': %s", table_path,
-      sqlite3_errmsg(proxy_dbh));
+      "error setting MEMORY journal mode on SQLite database '%s': %s",
+      table_path, sqlite3_errmsg(proxy_dbh));
   }
 
   prepared_stmts = pr_table_nalloc(db_pool, 0, 4);
@@ -479,18 +485,30 @@ int proxy_db_close(pool *p) {
 }
 
 int proxy_db_init(pool *p) {
+  const char *version;
+
+  if (p == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (db_pool != NULL) {
+    return 0;
+  }
+
   /* Check that the SQLite headers used match the version of the SQLite
    * library used.
    *
    * For now, we only log if there is a difference.
    */
-  if (strcmp(sqlite3_libversion(), SQLITE_VERSION) != 0) {
+  version = sqlite3_libversion();
+  if (strcmp(version, SQLITE_VERSION) != 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "compiled using SQLite version '%s' headers, but linked to "
-      "SQLite version '%s' library", SQLITE_VERSION, sqlite3_libversion());
+      "SQLite version '%s' library", SQLITE_VERSION, version);
   }
 
-  pr_trace_msg(trace_channel, 9, "using SQLite %s", sqlite3_libversion());
+  pr_trace_msg(trace_channel, 9, "using SQLite %s", version);
 
   db_pool = make_sub_pool(p);
   pr_pool_tag(db_pool, "Proxy Database Pool");

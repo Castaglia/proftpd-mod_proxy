@@ -1,40 +1,34 @@
 
-When/how to configure proxy auth for reverse proxying?  (For forward proxying,
-it's easily configured via ProxyForwardMethod.)
+Override user credentials:
 
-  None:
-    No proxy auth; all auth is delegated to backend server.  This means
-    that backend server connection can happen at a) connect time (assuming
-    a balancing policy), or b) at USER time (assuming a per-USER/host policy).
+  Use the URI syntax for specifying username/password, e.g.:
 
-  Proxy Auth:
-    This means that backend server connection MUST happen AFTER successful
-    PASS command, regardless of ReverseConnectPolicy.
+    ftp://username:password@1.2.3.4:21
 
-    OR:
-      reverse_connect at connect time (no proxy auth, balancing policy)
-      reverse_connect at USER time (no proxy auth, sticky policy)
-      reverse_connect at PASS time (proxy auth, any policy)
+  This will make the override specific to reverse proxying (which is fine; that
+  is the requested functionality), and independent of proxy auth or not.
 
-    Failure scenarios:
-      PASS fails (unknown user, password mismatch, etc)
-      PASS succeeds, BUT backend connect fails
-      PASS succeeds, backend connect succeeds, but backend auth (USER or PASS)
-        fails
+  What happens if "password" itself needs to contain the '@' character?
 
-    What does this mean for FEAT, HOST, etc?  Require proxy auth on a per-user
-    basis (ugh!)?  Multiple USER commands?
+Why useful?  Consider doing all user authentication in mod_proxy, in e.g. the
+DMZ; FTP sessions to the backend servers within the LAN all use the SAME
+user/password.  (Note: as a future improvement, parse the directory listings
+and rewrite the user/group names/IDs, when proxy auth is in effect, to help
+complete the illusion.)
 
-    Fortunately, we will NOT have to cache the actual password; at PASS time,
-    we have the normal PASS cmd->arg, and can replay that against the backend
-    server as needed.
+Implementation:
+  Once backend has authenticated, be sure to scrub the list of backend
+  servers' username/password fields, if not null.
 
-And for overriding credentials (forward AND reverse proxying?), how to configure
-that?  Note that this feature is independent of proxy auth; whether or not
-the user has to authenticate to the proxy, the user will still need to
-authenticate to the backend server, and it is the credentials for the backend
-authentication that might be overridden.
+API Tests:
+  URI parser
+  need new fields in struct proxy_conn for user, pass.
 
-If we support SQL query overrides (preferable), then the lookup query would
-use both %U and %{0} for the backend URI selected.  Query would return USER
-and PASS to use!
+Integration Tests:
+  proxy_reverse_user_creds_login
+  proxy_reverse_user_creds_login_failed_bad_dst_user
+  proxy_reverse_user_creds_login_failed_bad_dst_passwd
+
+  proxy_forward_user_creds_login
+  proxy_forward_user_creds_login_failed_bad_dst_user
+  proxy_forward_user_creds_login_failed_bad_dst_passwd

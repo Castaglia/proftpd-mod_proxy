@@ -1,6 +1,6 @@
 /*
- * ProFTPD - mod_proxy API testsuite
- * Copyright (c) 2012-2015 TJ Saunders <tj@castaglia.org>
+ * ProFTPD - mod_proxy testsuite
+ * Copyright (c) 2015 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,41 +22,41 @@
  * source distribution.
  */
 
-/* Testsuite management */
+/* Proxy TLS API tests. */
 
-#ifndef MOD_PROXY_TESTS_H
-#define MOD_PROXY_TESTS_H
+#include "tests.h"
 
-#include "mod_proxy.h"
+static pool *p = NULL;
 
-#include "proxy/random.h"
-#include "proxy/db.h"
-#include "proxy/conn.h"
-#include "proxy/netio.h"
-#include "proxy/inet.h"
-#include "proxy/uri.h"
-#include "proxy/tls.h"
-#include "proxy/session.h"
-#include "proxy/reverse.h"
-#include "proxy/ftp/ctrl.h"
-#include "proxy/ftp/sess.h"
+static void set_up(void) {
+  if (p == NULL) {
+    p = make_sub_pool(NULL);
+  }
+}
 
-#ifdef HAVE_CHECK_H
-# include <check.h>
-#else
-# error "Missing Check installation; necessary for ProFTPD testsuite"
-#endif
+static void tear_down(void) {
+  if (p) {
+    destroy_pool(p);
+    p = NULL;
+  }
+}
 
-Suite *tests_get_conn_suite(void);
-Suite *tests_get_db_suite(void);
-Suite *tests_get_inet_suite(void);
-Suite *tests_get_netio_suite(void);
-Suite *tests_get_random_suite(void);
-Suite *tests_get_reverse_suite(void);
-Suite *tests_get_tls_suite(void);
-Suite *tests_get_uri_suite(void);
+START_TEST (tls_use_tls_test) {
+}
+END_TEST
 
-unsigned int recvd_signal_flags;
-extern pid_t mpid;
+Suite *tests_get_tls_suite(void) {
+  Suite *suite;
+  TCase *testcase;
 
-#endif /* MOD_PROXY_TESTS_H */
+  suite = suite_create("tls");
+
+  testcase = tcase_create("base");
+
+  tcase_add_checked_fixture(testcase, set_up, tear_down);
+
+  tcase_add_test(testcase, tls_use_tls_test);
+
+  suite_add_tcase(suite, testcase);
+  return suite;
+}

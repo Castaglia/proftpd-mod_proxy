@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy URI implementation
- * Copyright (c) 2012-2013 TJ Saunders
+ * Copyright (c) 2012-2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -98,8 +98,107 @@ static char *uri_parse_host(pool *p, const char *orig_uri,
   return host;
 }
 
+/* Determine whether "username:password@" are present.  If so, then parse it
+ * out, and return a pointer to the portion of the URI after the parsed-out
+ * userinfo.
+ */
+static char *uri_parse_userinfo(pool *p, const char *orig_uri,
+    const char *uri, char **username, char **password) {
+  char *ptr, *ptr2, *rem_uri = NULL, *userinfo, *user = NULL, *passwd = NULL;
+
+  /* We have either:
+   *
+   *  host<:...>
+   *  [host]<:...>
+   *
+   * thus no user info, OR:
+   *
+   *  username:password@host...
+   *  username:password@[host]...
+   *  username:@host...
+   *  username:pass@word@host...
+   *  user@domain.com:pass@word@host...
+   *
+   * all of which have at least one occurrence of the '@' character.
+   */
+
+  ptr = strchr(uri, '@');
+  if (ptr == NULL) {
+    /* No '@' character at all?  No user info, then. */
+
+    if (username != NULL) {
+      *username = NULL;
+    }
+
+    if (password != NULL) {
+      *password = NULL;
+    }
+
+    return uri;
+  }
+
+  /* To handle the case where the password field might itself contain an
+   * '@' character, we first search from the end for '@'.  If found, then we
+   * search for '@' from the beginning.  If also found, AND if both ocurrences
+   * are the same, then we have a plain "username:password@" string.
+   *
+   * Note that we can handle '@' characters within passwords (or usernames),
+   * but we currently cannot handle ':' characters within usernames.
+   */
+
+  ptr2 = strrchr(uri, '@');
+  if (ptr2 != NULL) {
+    if (ptr != ptr2) {
+      /* Use the last found '@' as the delimiter. */
+      ptr = ptr2;
+    }
+  }
+
+  userinfo = pstrndup(p, uri, ptr - uri);
+  rem_uri = ptr + 1;
+
+  ptr = strchr(userinfo, ':');
+  if (ptr == NULL) {
+    pr_trace_msg(trace_channel, 4,
+      "badly formatted userinfo '%.100s' (missing ':' character) in "
+      "URI '%.100s', ignoring", userinfo, orig_uri);
+
+    if (username != NULL) {
+      *username = NULL;
+    }
+
+    if (password != NULL) {
+      *password = NULL;
+    }
+
+    return rem_uri;
+  }
+
+  user = pstrndup(p, userinfo, ptr - userinfo);
+  if (username != NULL) {
+    *username = user;
+  }
+
+  /* Watch for empty passwords. */
+  if (*(ptr+1) == '\0') {
+    passwd = pstrdup(p, "");
+
+  } else {
+    passwd = pstrdup(p, ptr + 1);
+  }
+
+  if (password != NULL) {
+    *password = passwd;
+  }
+
+  pr_trace_msg(trace_channel, 17,
+    "parsed username '%s', password '%s' out of URI '%s'", user, passwd,
+    orig_uri);
+  return rem_uri;
+}
+
 int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
-    unsigned int *port) {
+    unsigned int *port, char **username, char **password) {
   char *ptr, *ptr2;
   int res;
   size_t len;
@@ -159,6 +258,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
    *  scheme://host:port/
    *  scheme://host:port
    *  scheme://host
+   *  scheme://username:password@host...
    *
    * And, in the case where 'host' is an IPv6 address:
    *
@@ -166,15 +266,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
    *  scheme://[host]:port/
    *  scheme://[host]:port
    *  scheme://[host]
-   *
-   * Note that:
-   *
-   *  scheme://user:password@....
-   *
-   * should fail because <password> is not a valid number.
-   *
-   * XXX Should I use w3c's libwww HTParse for parsing, or
-   * uriparser.sourceforge.net (a C++ library), or...?
+   *  scheme://username:password@[host]...
    */
 
   /* We explicitly do NOT support URL-encoded characters in the URIs we
@@ -189,11 +281,11 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
     return -1;
   }
 
+  ptr = uri_parse_userinfo(p, uri, ptr, username, password);
+
   ptr2 = strchr(ptr, ':');
   if (ptr2 == NULL) {
     *host = uri_parse_host(p, uri, ptr, NULL);
-
-    /* XXX How to configure "implicit" FTPS, if at all? */
 
     if (strncmp(*scheme, "ftp", 4) == 0 ||
         strncmp(*scheme, "ftps", 5) == 0) {

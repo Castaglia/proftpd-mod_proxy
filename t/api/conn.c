@@ -49,10 +49,14 @@ START_TEST (conn_create_test) {
   fail_unless(pconn == NULL, "Failed to handle null arguments");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
 
+  mark_point();
+
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(NULL, url);
   fail_unless(pconn == NULL, "Failed to handle null pool argument");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+
+  mark_point();
 
   pconn = proxy_conn_create(p, NULL);
   fail_unless(pconn == NULL, "Failed to handle null URL argument");
@@ -62,15 +66,21 @@ START_TEST (conn_create_test) {
    * supply well-formed URLs in these tests.
    */
 
+  mark_point();
+
   url = "http://127.0.0.1:80";
   pconn = proxy_conn_create(p, url);
   fail_unless(pconn == NULL, "Failed to handle unsupported protocol/scheme");
   fail_unless(errno == EPERM, "Failed to set errno to EPERM");
 
+  mark_point();
+
   url = "ftp://foo.bar.baz";
   pconn = proxy_conn_create(p, url);
   fail_unless(pconn == NULL, "Failed to handle unresolvable host");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+
+  mark_point();
 
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url);

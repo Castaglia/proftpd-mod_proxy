@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy API testsuite
- * Copyright (c) 2012 TJ Saunders
+ * Copyright (c) 2012-2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,22 +30,28 @@ struct testsuite_info {
 };
 
 static struct testsuite_info suites[] = {
+  { "db",		tests_get_db_suite },
   { "conn", 		tests_get_conn_suite },
+  { "netio",		tests_get_netio_suite },
+  { "inet",		tests_get_inet_suite },
   { "random", 		tests_get_random_suite },
   { "reverse", 		tests_get_reverse_suite },
+  { "tls", 		tests_get_tls_suite },
   { "uri", 		tests_get_uri_suite },
 
   { NULL, NULL }
 };
 
 static Suite *tests_get_suite(const char *suite) { 
-  if (strcmp(suite, "uri") == 0) { 
-    return tests_get_uri_suite();
+  register unsigned int i;
 
-  } else if (strcmp(suite, "reverse") == 0) {
-    return tests_get_reverse_suite();
+  for (i = 0; suites[i].name != NULL; i++) {
+    if (strcmp(suite, suites[i].name) == 0) {
+      return (*suites[i].get_suite)();
+    }
   }
 
+  errno = ENOENT;
   return NULL;
 }
 
@@ -108,7 +114,7 @@ int main(int argc, char *argv[]) {
       nfailed != 1 ? "tests" : "test");
     fprintf(stderr, " Please send email to:\n\n");
     fprintf(stderr, "   tj@castaglia.org\n\n");
-    fprintf(stderr, " containing the `%s' file (in the tests/ directory)\n", log_file);
+    fprintf(stderr, " containing the `%s' file (in the t/ directory)\n", log_file);
     fprintf(stderr, " and the output from running `proftpd -V'\n");
     fprintf(stderr, "-------------------------------------------------\n");
 

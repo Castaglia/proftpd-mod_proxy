@@ -2173,6 +2173,16 @@ array_header *proxy_reverse_json_parse_uris(pool *p, const char *path) {
     return NULL;
   }
 
+  if (st.st_size == 0) {
+    /* Return an empty array for this empty file. */
+    pr_trace_msg(trace_channel, 15,
+      "found no items in empty file '%s'", fh->fh_path);
+
+    (void) pr_fsio_close(fh);
+    uris = make_array(p, 1, sizeof(struct proxy_conn *));
+    return uris;
+  }
+
   if (st.st_size > PROXY_REVERSE_JSON_MAX_FILE_SIZE) {
     pr_trace_msg(trace_channel, 1,
       "'%s' file size (%lu bytes) exceeds max JSON file size (%lu bytes)",
