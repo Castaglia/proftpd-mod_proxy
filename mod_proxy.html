@@ -1008,6 +1008,16 @@ can bring, regardless of the type of proxying:
 </ul>
 
 <p>
+When using <code>mod_proxy</code> for proxying, <b>all</b> data transfers
+(<i>e.g.</i> file uploads/downloads, directory listings, etc) pass through
+<code>mod_proxy</code>; data transfers do <b>not</b> occur directly between
+the "frontend" clients and the "backend" servers.  This happens so that
+clients are <b>completely</b> unaware of the network structure for the
+backend servers; this is especially important when reverse proxying, where
+it means that the client sees <code>mod_proxy</code> <em>as the real</em> FTP
+server.
+
+<p>
 <i>Forward Proxying</i><br>
 One of the most common benefits of a forward proxy is having controlled access,
 by clients within an internal LAN, to outside servers.  FTP makes this sort
