@@ -41,6 +41,14 @@ static int forward_retry_count = PROXY_DEFAULT_RETRY_COUNT;
 
 static const char *trace_channel = "proxy.forward";
 
+int proxy_forward_use_proxy_auth(void) {
+  if (proxy_method == PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH) {
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
 int proxy_forward_init(pool *p, const char *tables_dir) {
   return 0;
 }

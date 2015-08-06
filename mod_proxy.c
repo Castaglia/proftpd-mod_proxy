@@ -2969,9 +2969,48 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
 
   if (successful) {
     char *user;
+    int proxy_auth = FALSE;
 
     user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
     session.user = user;
+
+    switch (proxy_role) {
+      case PROXY_ROLE_FORWARD:
+        proxy_auth = proxy_forward_use_proxy_auth();
+        break;
+
+      case PROXY_ROLE_REVERSE:
+        proxy_auth = proxy_reverse_use_proxy_auth();
+        break;
+    }
+
+    /* Unless proxy auth happened, we set the session groups to null,
+     * to avoid unexpected behavior when looking up e.g. <Limit> sections.
+     */
+    if (proxy_auth == FALSE) {
+      if (session.group != NULL) {
+        pr_trace_msg(trace_channel, 9,
+          "clearing unauthenticated primary group name '%s' for user '%s'",
+          session.group, session.user);
+        session.group = NULL;
+      }
+
+      if (session.groups != NULL) {
+        register unsigned int i;
+
+        pr_trace_msg(trace_channel, 9,
+          "clearing %d unauthenticated additional group %s for user '%s':",
+          session.groups->nelts, session.groups->nelts != 1 ? "names" : "name",
+          session.user);
+        for (i = 0; i < session.groups->nelts; i++) {
+          pr_trace_msg(trace_channel, 9,
+            "  clearing additional group name '%s'",
+            ((char **) session.groups->elts)[i]);
+        }
+
+        session.groups = NULL;
+      }
+    }
 
     /* XXX Do we need to set other login-related fields here?  E.g.
      * session.uid, session.gid, etc?
@@ -3061,13 +3100,116 @@ MODRET proxy_type(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   return PR_HANDLED(cmd);
 }
 
+static int proxy_get_cmd_group(cmd_rec *cmd) {
+  cmdtable *cmdtab;
+  int idx;
+  unsigned int h;
+
+  idx = cmd->stash_index;
+  h = cmd->stash_hash;
+
+  cmdtab = pr_stash_get_symbol2(PR_SYM_CMD, cmd->argv[0], NULL, &idx, &h);
+  while (cmdtab != NULL) {
+    pr_signals_handle();
+
+    if (cmdtab->group == NULL ||
+        cmdtab->cmd_type != CMD) {
+      cmdtab = pr_stash_get_symbol2(PR_SYM_CMD, cmd->argv[0], cmdtab, &idx, &h);
+      continue;
+    }
+
+    cmd->group = pstrdup(cmd->pool, cmdtab->group);
+    return 0;
+  }
+
+  if (cmd->group == NULL) {
+    errno = ENOENT;
+    return -1;
+  }
+
+  return 0;
+}
+
+static int proxy_have_limit(cmd_rec *cmd, char **resp_code) {
+  int res;
+
+  /* Some commands get a free pass. */
+  switch (cmd->cmd_id) {
+    case PR_CMD_ACCT_ID:
+    case PR_CMD_EPRT_ID:
+    case PR_CMD_EPSV_ID:
+    case PR_CMD_FEAT_ID:
+    case PR_CMD_PASS_ID:
+    case PR_CMD_PASV_ID:
+    case PR_CMD_PORT_ID:
+    case PR_CMD_QUIT_ID:
+    case PR_CMD_SYST_ID:
+    case PR_CMD_USER_ID:
+      return 0;
+
+    default:
+      break;
+  }
+
+  /* Note: since we use a PRE_CMD ANY handler here, the core code does NOT
+   * actually look up the specific records for this command.  This means that
+   * that the command's command group may not be known.  But to honor any
+   * group-based <Limit> sections, we need to look up the command group.
+   */
+  if (cmd->group == NULL) {
+    if (proxy_get_cmd_group(cmd) < 0) {
+      pr_trace_msg(trace_channel, 5,
+        "error finding group for command '%s': %s", cmd->argv[0],
+        strerror(errno));
+    }
+  }
+
+  res = dir_check(cmd->tmp_pool, cmd, cmd->group, session.cwd, NULL);
+  if (res == 0) {
+    /* The appropriate response code depends on the command, unfortunately.
+     * See RFC 959, Section 5.4 for the gory details.
+     */
+    switch (cmd->cmd_id) {
+      case PR_CMD_ALLO_ID:
+      case PR_CMD_MODE_ID:
+      case PR_CMD_REST_ID:
+      case PR_CMD_STRU_ID:
+      case PR_CMD_TYPE_ID:
+        *resp_code = R_501;
+        break;
+
+      default:
+        *resp_code = R_550;
+        break;
+    }
+
+    errno = EPERM;
+    return -1;
+  }
+
+  return 0;
+}
+
 MODRET proxy_any(cmd_rec *cmd) {
   int block_responses = TRUE;
   struct proxy_session *proxy_sess;
   modret_t *mr = NULL;
+  char *resp_code = R_550;
 
   if (proxy_engine == FALSE) {
     return PR_DECLINED(cmd);
+  }
+
+  /* Honor any <Limit> sections for this comand. */
+  if (proxy_have_limit(cmd, &resp_code) < 0) {
+    int xerrno = errno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "%s denied by <Limit> configuration", cmd->argv[0]);
+    pr_response_add_err(resp_code, "%s: %s", cmd->argv[0], strerror(xerrno));
+    pr_cmd_set_errno(cmd, xerrno);
+    errno = xerrno;
+    return PR_ERROR(cmd);
   }
 
   pr_response_block(FALSE);

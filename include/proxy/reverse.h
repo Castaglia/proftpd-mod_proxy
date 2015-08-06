@@ -58,4 +58,7 @@ array_header *proxy_reverse_json_parse_uris(pool *p, const char *path);
  */
 int proxy_reverse_connect_get_policy(const char *policy);
 
+/* Returns TRUE if the Reverse API is using proxy auth, FALSE otherwise. */
+int proxy_reverse_use_proxy_auth(void);
+
 #endif /* MOD_PROXY_REVERSE_H */

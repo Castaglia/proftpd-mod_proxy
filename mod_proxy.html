@@ -1393,6 +1393,43 @@ When a URL uses the "username:password" syntax for including the credentials
 to use for that connection, <code>mod_proxy</code> will use those URI
 credentials when logging in to that backend server.
 
+<p><a name="ProxyLimitByGroup">
+<font color=red>Question</font>: I have configured <code>mod_proxy</code> to
+block the <code>LIST</code> command for one group of users, like so:
+<pre>
+  &lt;Limit LIST&gt;
+    DenyGroup somegroup
+  &lt;/Limit&gt;
+</pre>
+But this <code>&lt;Limit&gt;</code> is not working.  Is this a bug?<br>
+<font color=blue>Answer</font>:  No, it is not a bug.  It is, unfortunately,
+expected behavior.
+
+<p>
+The <code>&lt;Limit&gt;</code> mechanism works on the <b>authenticated</b>
+user/group names.  And in many cases, it is <b>not</b> <code>mod_proxy</code>
+which authenticates the user, it is the backend server.  Thus it is the
+backend server which knows the groups to which the authenticated user belongs;
+<code>mod_proxy</code> only knows that the <code>USER</code> name was
+successfully authenticated by the backend user.  Thus <em>group</em>-based
+limits cannot be honored.
+
+<p>
+However, <b>if</b> proxy auth <b>is</b> enabled, then group-based limits will
+work.  This means using either the following when forward proxying:
+<pre>
+  ProxyRole forward
+
+  # Either of these two methods result in proxy auth
+  ProxyForwardMethod proxyuser,user@host
+  ProxyForwardMethod proxyuser@host,user
+</pre>
+or this, when reverse proxying:
+<pre>
+  ProxyRole reverse
+  ProxyOptions UseReverseProxyAuth
+</pre>
+
 <p>
 <hr>
 <h2><a name="Installation">Installation</a></h2>

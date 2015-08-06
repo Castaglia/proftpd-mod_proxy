@@ -54,4 +54,7 @@ int proxy_forward_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
  */
 int proxy_forward_get_method(const char *);
 
+/* Returns TRUE if the Forward API is using proxy auth, FALSE otherwise. */
+int proxy_forward_use_proxy_auth(void);
+
 #endif /* MOD_PROXY_FORWARD_H */
