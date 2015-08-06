@@ -66,6 +66,10 @@ static int reverse_retry_count = PROXY_DEFAULT_RETRY_COUNT;
 #define PROXY_REVERSE_JSON_MAX_FILE_SIZE		(1024 * 1024 * 5)
 #define PROXY_REVERSE_JSON_MAX_ITEMS			1000
 
+/* PerHost/PerUser table limits */
+#define PROXY_REVERSE_PERHOST_MAX_ENTRIES		8192
+#define PROXY_REVERSE_PERUSER_MAX_ENTRIES		8192
+
 static const char *trace_channel = "proxy.reverse";
 
 static void clear_user_creds(void) {
@@ -1265,7 +1269,59 @@ static struct proxy_conn *reverse_db_peruser_next(pool *p,
 
 static int reverse_db_peruser_used(pool *p, unsigned int vhost_id,
     int backend_id) {
-  /* TODO: anything to do here? */
+  int count, res;
+  const char *stmt, *errstr = NULL;
+  array_header *results;
+
+  /* To prevent database bloating too much, delete all of the entries
+   * in the table if we're over our limit.
+   */
+
+  stmt = "SELECT COUNT(*) FROM proxy_vhost_reverse_per_user;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return -1;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return -1;
+  }
+
+  if (results->nelts != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "expected 1 result from statement '%s', got %d", stmt,
+      results->nelts);
+    errno = EINVAL;
+    return -1;
+  }
+
+  count = atoi(((char **) results->elts)[0]);
+  if (count <= PROXY_REVERSE_PERUSER_MAX_ENTRIES) {
+    return 0;
+  }
+
+  pr_trace_msg(trace_channel, 5,
+    "PerUser entry count (%d) exceeds max (%d), purging", count,
+    PROXY_REVERSE_PERUSER_MAX_ENTRIES);
+
+  stmt = "DELETE FROM proxy_vhost_reverse_per_user;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return -1;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return -1;
+  }
+
   return 0;
 }
 
@@ -1402,7 +1458,59 @@ static struct proxy_conn *reverse_db_perhost_next(pool *p,
 
 static int reverse_db_perhost_used(pool *p, unsigned int vhost_id,
     int backend_id) {
-  /* TODO: anything to do here? */
+  int count, res;
+  const char *stmt, *errstr = NULL;
+  array_header *results;
+
+  /* To prevent database bloating too much, delete all of the entries
+   * in the table if we're over our limit.
+   */
+
+  stmt = "SELECT COUNT(*) FROM proxy_vhost_reverse_per_host;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return -1;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return -1;
+  }
+
+  if (results->nelts != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "expected 1 result from statement '%s', got %d", stmt,
+      results->nelts);
+    errno = EINVAL;
+    return -1;
+  }
+
+  count = atoi(((char **) results->elts)[0]);
+  if (count <= PROXY_REVERSE_PERHOST_MAX_ENTRIES) {
+    return 0;
+  }
+
+  pr_trace_msg(trace_channel, 5,
+    "PerHost entry count (%d) exceeds max (%d), purging", count,
+    PROXY_REVERSE_PERHOST_MAX_ENTRIES);
+
+  stmt = "DELETE FROM proxy_vhost_reverse_per_host;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return -1;
+  }
+ 
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return -1;
+  }
+
   return 0;
 }
 
