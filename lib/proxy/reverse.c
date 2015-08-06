@@ -1817,6 +1817,14 @@ static int reverse_connect(pool *p, struct proxy_session *proxy_sess) {
   return -1;
 }
 
+int proxy_reverse_use_proxy_auth(void) {
+  if (proxy_opts & PROXY_OPT_USE_REVERSE_PROXY_AUTH) {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
 int proxy_reverse_init(pool *p, const char *tables_dir) {
   int res, xerrno = 0;
   server_rec *s;
