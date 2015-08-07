@@ -465,6 +465,15 @@ static int reverse_db_update_backend(pool *p, unsigned vhost_id,
   const char *stmt, *errstr = NULL;
   array_header *results;
 
+  /* TODO: Right now, we simply overwrite/track the very latest connect ms.
+   * But this could unfairly skew policies such as LowestResponseTime or
+   * FastestConnect, as when the server in question had higher latency for that
+   * particular connection, due to e.g. OCSP response cache expiration.
+   *
+   * Another way would to be average the given connect ms with the previous
+   * one (if present), and store that.  Something to ponder for the future.
+   */
+
   stmt = "UPDATE proxy_vhost_backends SET conn_count = conn_count + ?, connect_ms = ? WHERE vhost_id = ? AND backend_id = ?;";
   res = proxy_db_prepare_stmt(p, stmt);
   if (res < 0) {
