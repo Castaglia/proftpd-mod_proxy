@@ -51,7 +51,8 @@ int proxy_ftp_sess_get_feat(pool *p, struct proxy_session *proxy_sess) {
     xerrno = errno;
 
     pr_trace_msg(trace_channel, 4,
-      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+      "error sending %s to backend: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
     destroy_pool(tmp_pool);
 
     errno = xerrno;
@@ -64,7 +65,7 @@ int proxy_ftp_sess_get_feat(pool *p, struct proxy_session *proxy_sess) {
     xerrno = errno;
 
     pr_trace_msg(trace_channel, 4,
-      "error receiving %s response from backend: %s", cmd->argv[0],
+      "error receiving %s response from backend: %s", (char *) cmd->argv[0],
       strerror(xerrno));
     destroy_pool(tmp_pool);
 
@@ -74,8 +75,8 @@ int proxy_ftp_sess_get_feat(pool *p, struct proxy_session *proxy_sess) {
 
   if (resp->num[0] != '2') {
     pr_trace_msg(trace_channel, 4,
-      "received unexpected %s response code %s from backend", cmd->argv[0],
-      resp->num);
+      "received unexpected %s response code %s from backend",
+      (char *) cmd->argv[0], resp->num);
     destroy_pool(tmp_pool);
     errno = EPERM;
     return -1;
@@ -128,7 +129,7 @@ static pr_response_t *send_recv(pool *p, conn_t *conn, cmd_rec *cmd,
     xerrno = errno;
 
     pr_trace_msg(trace_channel, 4,
-      "error sending '%s %s' to backend: %s", cmd->argv[0], cmd->arg,
+      "error sending '%s %s' to backend: %s", (char *) cmd->argv[0], cmd->arg,
       strerror(xerrno));
 
     errno = xerrno;
@@ -140,7 +141,7 @@ static pr_response_t *send_recv(pool *p, conn_t *conn, cmd_rec *cmd,
     xerrno = errno;
 
     pr_trace_msg(trace_channel, 4,
-      "error receiving %s response from backend: %s", cmd->argv[0],
+      "error receiving %s response from backend: %s", (char *) cmd->argv[0],
       strerror(xerrno));
 
     errno = xerrno;
@@ -180,8 +181,8 @@ int proxy_ftp_sess_send_host(pool *p, struct proxy_session *proxy_sess) {
 
   if (resp->num[0] != '2') {
     pr_trace_msg(trace_channel, 4,
-      "received unexpected %s response code %s from backend", cmd->argv[0],
-      resp->num);
+      "received unexpected %s response code %s from backend",
+      (char *) cmd->argv[0], resp->num);
     destroy_pool(tmp_pool);
     errno = EPERM;
     return -1;
@@ -266,8 +267,8 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
 
   if (resp->num[0] != '2') {
     pr_trace_msg(trace_channel, 4,
-      "received unexpected %s response code %s from backend", cmd->argv[0],
-      resp->num);
+      "received unexpected %s response code %s from backend",
+      (char *) cmd->argv[0], resp->num);
 
     proxy_netio_use(PR_NETIO_STRM_CTRL, NULL);
     destroy_pool(tmp_pool);
@@ -312,8 +313,8 @@ int proxy_ftp_sess_send_pbsz_prot(pool *p, struct proxy_session *proxy_sess) {
 
     if (resp->num[0] != '2') {
       pr_trace_msg(trace_channel, 4,
-        "received unexpected %s response code %s from backend", cmd->argv[0],
-        resp->num);
+        "received unexpected %s response code %s from backend",
+        (char *) cmd->argv[0], resp->num);
       destroy_pool(tmp_pool);
       errno = EPERM;
       return -1;
@@ -345,8 +346,8 @@ int proxy_ftp_sess_send_pbsz_prot(pool *p, struct proxy_session *proxy_sess) {
 
     if (resp->num[0] != '2') {
       pr_trace_msg(trace_channel, 4,
-        "received unexpected %s response code %s from backend", cmd->argv[0],
-        resp->num);
+        "received unexpected %s response code %s from backend",
+        (char *) cmd->argv[0], resp->num);
       destroy_pool(tmp_pool);
       errno = EPERM;
       return -1;

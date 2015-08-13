@@ -123,12 +123,14 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", actv_cmd->argv[0], strerror(xerrno));
+      "error sending %s to backend: %s", (char *) actv_cmd->argv[0],
+      strerror(xerrno));
 
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
-    pr_response_add_err(error_code, "%s: %s", cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(error_code, "%s: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -140,13 +142,14 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", actv_cmd->argv[0],
-      strerror(xerrno));
+      "error receiving %s response from backend: %s",
+      (char *) actv_cmd->argv[0], strerror(xerrno));
 
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
-    pr_response_add_err(error_code, "%s: %s", cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(error_code, "%s: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -155,8 +158,8 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
 
   if (resp->num[0] != '2') {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "received non-2xx response from backend for %s: %s %s", actv_cmd->argv[0],
-      resp->num, resp->msg);
+      "received non-2xx response from backend for %s: %s %s",
+      (char *) actv_cmd->argv[0], resp->num, resp->msg);
 
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
@@ -177,7 +180,8 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
     }
 
     errno = xerrno = EINVAL;
-    pr_response_add_err(error_code, "%s: %s", cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(error_code, "%s: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
 
     errno = xerrno;
     return -1;
@@ -246,9 +250,11 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", pasv_cmd->argv[0], strerror(xerrno));
+      "error sending %s to backend: %s", (char *) pasv_cmd->argv[0],
+      strerror(xerrno));
 
-    pr_response_add_err(error_code, "%s: %s", cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(error_code, "%s: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -260,10 +266,11 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", pasv_cmd->argv[0],
-      strerror(xerrno));
+      "error receiving %s response from backend: %s",
+      (char *) pasv_cmd->argv[0], strerror(xerrno));
 
-    pr_response_add_err(error_code, "%s: %s", cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(error_code, "%s: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -276,7 +283,7 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
   if (strncmp(resp->num, passive_respcode, 4) != 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "received response code %s, but expected %s for %s command", resp->num,
-      passive_respcode, pasv_cmd->argv[0]);
+      passive_respcode, (char *) pasv_cmd->argv[0]);
 
     if (cmd_id == PR_CMD_EPSV_ID) {
       /* If using EPSV failed, try again using PASV, and switch the
@@ -316,10 +323,11 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
     xerrno = errno;
 
     pr_trace_msg("proxy", 2, "error parsing %s response '%s': %s",
-      pasv_cmd->argv[0], resp->msg, strerror(xerrno));
+      (char *) pasv_cmd->argv[0], resp->msg, strerror(xerrno));
 
     xerrno = EPERM;
-    pr_response_add_err(error_code, "%s: %s", cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(error_code, "%s: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -335,12 +343,13 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
   if (pr_netaddr_cmp(remote_addr,
       proxy_sess->backend_ctrl_conn->remote_addr) != 0) {
     pr_trace_msg("proxy", 1,
-      "Refused %s address %s (address mismatch with %s)", pasv_cmd->argv[0],
-      pr_netaddr_get_ipstr(remote_addr),
+      "Refused %s address %s (address mismatch with %s)",
+      (char *) pasv_cmd->argv[0], pr_netaddr_get_ipstr(remote_addr),
       pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr));
     xerrno = EPERM;
 
-    pr_response_add_err(error_code, "%s: %s", cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(error_code, "%s: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -349,10 +358,11 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
 
   if (remote_port < 1024) {
     pr_trace_msg("proxy", 1, "Refused %s port %hu (below 1024)",
-      pasv_cmd->argv[0], remote_port);
+      (char *) pasv_cmd->argv[0], remote_port);
     xerrno = EPERM;
 
-    pr_response_add_err(error_code, "%s: %s", cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(error_code, "%s: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
