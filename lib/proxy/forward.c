@@ -516,7 +516,8 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", user_cmd->argv[0], strerror(xerrno));
+      "error sending %s to backend: %s", (char *) user_cmd->argv[0],
+      strerror(xerrno));
 
     errno = xerrno;
     return -1;
@@ -527,7 +528,7 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", cmd->argv[0],
+      "error receiving %s response from backend: %s", (char *) cmd->argv[0],
       strerror(xerrno));
 
     errno = xerrno;
@@ -664,7 +665,8 @@ static int forward_handle_pass_passthru(cmd_rec *cmd,
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+      "error sending %s to backend: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
 
     errno = xerrno;
     return -1;
@@ -675,7 +677,7 @@ static int forward_handle_pass_passthru(cmd_rec *cmd,
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", cmd->argv[0],
+      "error receiving %s response from backend: %s", (char *) cmd->argv[0],
       strerror(xerrno));
 
     errno = xerrno;

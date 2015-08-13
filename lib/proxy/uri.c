@@ -134,7 +134,7 @@ static char *uri_parse_userinfo(pool *p, const char *orig_uri,
       *password = NULL;
     }
 
-    return uri;
+    return pstrdup(p, uri);
   }
 
   /* To handle the case where the password field might itself contain an

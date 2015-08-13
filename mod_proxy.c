@@ -77,9 +77,11 @@ MODRET proxy_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+      "error sending %s to backend: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
 
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -105,10 +107,11 @@ MODRET proxy_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     }
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", cmd->argv[0],
+      "error receiving %s response from backend: %s", (char *) cmd->argv[0],
       strerror(xerrno));
 
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -448,7 +451,7 @@ MODRET set_proxydatatransferpolicy(cmd_rec *cmd) {
 
     } else {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unsupported DataTransferPolicy: ",
-        cmd->argv[1], NULL));
+        (char *) cmd->argv[1], NULL));
     }
   }
 
@@ -458,7 +461,7 @@ MODRET set_proxydatatransferpolicy(cmd_rec *cmd) {
       cmd_id != PR_CMD_EPRT_ID &&
       cmd_id != 0) {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unsupported DataTransferPolicy: ",
-      cmd->argv[1], NULL));
+      (char *) cmd->argv[1], NULL));
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
@@ -521,7 +524,7 @@ MODRET set_proxyforwardmethod(cmd_rec *cmd) {
   forward_method = proxy_forward_get_method(cmd->argv[1]);
   if (forward_method < 0) {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
-      "unknown/unsupported forward method: ", cmd->argv[1], NULL));
+      "unknown/unsupported forward method: ", (char *) cmd->argv[1], NULL));
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
@@ -557,12 +560,13 @@ MODRET set_proxyforwardto(cmd_rec *cmd) {
     flags = pr_filter_parse_flags(cmd->tmp_pool, cmd->argv[2]);
     if (flags < 0) {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
-        ": badly formatted flags parameter: '", cmd->argv[2], "'", NULL));
+        ": badly formatted flags parameter: '", (char *) cmd->argv[2], "'",
+        NULL));
     }
 
     if (flags == 0) {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
-        ": unknown filter flags '", cmd->argv[2], "'", NULL));
+        ": unknown filter flags '", (char *) cmd->argv[2], "'", NULL));
     }
 
     regex_flags |= flags;
@@ -634,7 +638,7 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
 
     } else {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxyOption '",
-        cmd->argv[i], "'", NULL));
+        (char *) cmd->argv[i], "'", NULL));
     }
   }
 
@@ -675,7 +679,7 @@ MODRET set_proxyreverseconnectpolicy(cmd_rec *cmd) {
   connect_policy = proxy_reverse_connect_get_policy(cmd->argv[1]);
   if (connect_policy < 0) {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
-      "unknown/unsupported connect policy: ", cmd->argv[1], NULL));
+      "unknown/unsupported connect policy: ", (char *) cmd->argv[1], NULL));
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
@@ -712,9 +716,10 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
      */
 
     if (strncmp(cmd->argv[1], "file:", 5) == 0) {
-      char *path;
+      char *param, *path;
 
-      path = cmd->argv[1] + 5;
+      param = cmd->argv[1]; 
+      path = param + 5;
 
       /* If the path contains the %U variable, then defer loading of
        * this file until the USER name is known.
@@ -764,8 +769,8 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
 
       pconn = proxy_conn_create(c->pool, cmd->argv[1]);
       if (pconn == NULL) {
-        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing '", cmd->argv[1],
-          "': ", strerror(errno), NULL));
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing '",
+          (char *) cmd->argv[1], "': ", strerror(errno), NULL));
       }
 
       *((struct proxy_conn **) push_array(backend_servers)) = pconn;
@@ -781,8 +786,8 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
 
       pconn = proxy_conn_create(c->pool, cmd->argv[i]);
       if (pconn == NULL) {
-        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing '", cmd->argv[i],
-          "': ", strerror(errno), NULL));
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing '",
+          (char *) cmd->argv[i], "': ", strerror(errno), NULL));
       }
 
       *((struct proxy_conn **) push_array(backend_servers)) = pconn;
@@ -812,8 +817,8 @@ MODRET set_proxyrole(cmd_rec *cmd) {
     role = PROXY_ROLE_REVERSE;
 
   } else {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown proxy role '", cmd->argv[1],
-      "'", NULL));
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown proxy role '",
+      (char *) cmd->argv[1], "'", NULL));
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
@@ -835,8 +840,8 @@ MODRET set_proxysourceaddress(cmd_rec *cmd) {
   src_addr = pr_netaddr_get_addr2(cmd->server->pool, cmd->argv[1], NULL,
     addr_flags);
   if (src_addr == NULL) {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to resolve '", cmd->argv[1],
-      "'", NULL));
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to resolve '",
+      (char *) cmd->argv[1], "'", NULL));
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
@@ -849,36 +854,38 @@ MODRET set_proxysourceaddress(cmd_rec *cmd) {
 MODRET set_proxytables(cmd_rec *cmd) {
   int res;
   struct stat st;
+  char *path;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT);
 
-  if (*cmd->argv[1] != '/') {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "must be a full path: '",
-      cmd->argv[1], "'", NULL));
+  path = cmd->argv[1];
+  if (*path != '/') {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "must be a full path: '", path,
+      "'", NULL));
   }
 
-  res = stat(cmd->argv[1], &st);
+  res = stat(path, &st);
   if (res < 0) {
     char *proxy_chroot;
 
     if (errno != ENOENT) {
-      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to stat '", cmd->argv[1],
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to stat '", path,
         "': ", strerror(errno), NULL));
     }
 
     pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-      ": ProxyTables directory '%s' does not exist, creating it", cmd->argv[1]);
+      ": ProxyTables directory '%s' does not exist, creating it", path);
 
     /* Create the directory. */
-    res = proxy_mkpath(cmd->tmp_pool, cmd->argv[1], geteuid(), getegid(), 0755);
+    res = proxy_mkpath(cmd->tmp_pool, path, geteuid(), getegid(), 0755);
     if (res < 0) {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to create directory '",
-        cmd->argv[1], "': ", strerror(errno), NULL));
+        path, "': ", strerror(errno), NULL));
     }
 
     /* Also create the empty/ directory underneath, for the chroot. */
-    proxy_chroot = pdircat(cmd->tmp_pool, cmd->argv[1], "empty", NULL);
+    proxy_chroot = pdircat(cmd->tmp_pool, path, "empty", NULL);
 
     res = proxy_mkpath(cmd->tmp_pool, proxy_chroot, geteuid(), getegid(), 0111);
     if (res < 0) {
@@ -887,20 +894,20 @@ MODRET set_proxytables(cmd_rec *cmd) {
     }
 
     pr_log_debug(DEBUG2, MOD_PROXY_VERSION
-      ": created ProxyTables directory '%s'", cmd->argv[1]);
+      ": created ProxyTables directory '%s'", path);
 
   } else {
     char *proxy_chroot;
 
     if (!S_ISDIR(st.st_mode)) {
-      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to use '", cmd->argv[1],
-        ": Not a directory", NULL));
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to use '", path,
+        "': Not a directory", NULL));
     }
 
     /* See if the chroot directory empty/ already exists as well.  And enforce
      * the permissions on that directory.
      */
-    proxy_chroot = pdircat(cmd->tmp_pool, cmd->argv[1], "empty", NULL);
+    proxy_chroot = pdircat(cmd->tmp_pool, path, "empty", NULL);
 
     res = stat(proxy_chroot, &st);
     if (res < 0) {
@@ -935,7 +942,7 @@ MODRET set_proxytables(cmd_rec *cmd) {
     }
   }
 
-  (void) add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  (void) add_config_param_str(cmd->argv[0], 1, path);
   return PR_HANDLED(cmd);
 }
 
@@ -949,7 +956,7 @@ MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
 
   if (pr_str_get_duration(cmd->argv[1], &timeout) < 0) {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing timeout value '",
-      cmd->argv[1], "': ", strerror(errno), NULL));
+      (char *) cmd->argv[1], "': ", strerror(errno), NULL));
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
@@ -963,24 +970,27 @@ MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
 MODRET set_proxytlscacertfile(cmd_rec *cmd) {
 #ifdef PR_USE_OPENSSL
   int res;
+  char *path;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
+  path = cmd->argv[1];
+
   PRIVS_ROOT
-  res = file_exists(cmd->argv[1]);
+  res = file_exists(path);
   PRIVS_RELINQUISH
 
   if (!res) {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", cmd->argv[1],
-      "' does not exist", NULL));
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", path, "' does not exist",
+      NULL));
   }
 
-  if (*cmd->argv[1] != '/') {
+  if (*path != '/') {
     CONF_ERROR(cmd, "parameter must be an absolute path");
   }
 
-  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  add_config_param_str(cmd->argv[0], 1, path);
   return PR_HANDLED(cmd);
 #else
   CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
@@ -991,23 +1001,26 @@ MODRET set_proxytlscacertfile(cmd_rec *cmd) {
 MODRET set_proxytlscacertpath(cmd_rec *cmd) {
 #ifdef PR_USE_OPENSSL
   int res;
+  char *path;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
+  path = cmd->argv[1];
+
   PRIVS_ROOT
-  res = dir_exists(cmd->argv[1]);
+  res = dir_exists(path);
   PRIVS_RELINQUISH
 
   if (!res) {
     CONF_ERROR(cmd, "parameter must be a directory path");
   }
 
-  if (*cmd->argv[1] != '/') {
+  if (*path != '/') {
     CONF_ERROR(cmd, "parameter must be an absolute path");
   }
 
-  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  add_config_param_str(cmd->argv[0], 1, path);
   return PR_HANDLED(cmd);
 #else
   CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
@@ -1018,24 +1031,27 @@ MODRET set_proxytlscacertpath(cmd_rec *cmd) {
 MODRET set_proxytlscacrlfile(cmd_rec *cmd) {
 #ifdef PR_USE_OPENSSL
   int res;
+  char *path;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
+  path = cmd->argv[1];
+
   PRIVS_ROOT
-  res = file_exists(cmd->argv[1]);
+  res = file_exists(path);
   PRIVS_RELINQUISH
 
   if (!res) {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", cmd->argv[1],
-      "' does not exist", NULL));
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", path, "' does not exist",
+      NULL));
   }
 
-  if (*cmd->argv[1] != '/') {
+  if (*path != '/') {
     CONF_ERROR(cmd, "parameter must be an absolute path");
   }
 
-  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  add_config_param_str(cmd->argv[0], 1, path);
   return PR_HANDLED(cmd);
 #else
   CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
@@ -1046,23 +1062,26 @@ MODRET set_proxytlscacrlfile(cmd_rec *cmd) {
 MODRET set_proxytlscacrlpath(cmd_rec *cmd) {
 #ifdef PR_USE_OPENSSL
   int res;
+  char *path;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
+  path = cmd->argv[1];
+
   PRIVS_ROOT
-  res = dir_exists(cmd->argv[1]);
+  res = dir_exists(path);
   PRIVS_RELINQUISH
 
   if (!res) {
     CONF_ERROR(cmd, "parameter must be a directory path");
   }
 
-  if (*cmd->argv[1] != '/') {
+  if (*path != '/') {
     CONF_ERROR(cmd, "parameter must be an absolute path");
   }
 
-  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  add_config_param_str(cmd->argv[0], 1, path);
   return PR_HANDLED(cmd);
 #else
   CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
@@ -1073,24 +1092,27 @@ MODRET set_proxytlscacrlpath(cmd_rec *cmd) {
 MODRET set_proxytlscertfile(cmd_rec *cmd) {
 #ifdef PR_USE_OPENSSL
   int res;
+  char *path;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
+  path = cmd->argv[1];
+
   PRIVS_ROOT
-  res = file_exists(cmd->argv[1]);
+  res = file_exists(path);
   PRIVS_RELINQUISH
 
   if (!res) {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", cmd->argv[1],
-      "' does not exist", NULL));
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", path, "' does not exist",
+      NULL));
   }
 
-  if (*cmd->argv[1] != '/') {
+  if (*path != '/') {
     CONF_ERROR(cmd, "parameter must be an absolute path");
   }
 
-  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  add_config_param_str(cmd->argv[0], 1, path);
   return PR_HANDLED(cmd);
 #else
   CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
@@ -1101,24 +1123,27 @@ MODRET set_proxytlscertfile(cmd_rec *cmd) {
 MODRET set_proxytlscertkeyfile(cmd_rec *cmd) {
 #ifdef PR_USE_OPENSSL
   int res;
+  char *path;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
+  path = cmd->argv[1];
+
   PRIVS_ROOT
-  res = file_exists(cmd->argv[1]);
+  res = file_exists(path);
   PRIVS_RELINQUISH
 
   if (!res) {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", cmd->argv[1],
-      "' does not exist", NULL));
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", path, "' does not exist",
+      NULL));
   }
 
-  if (*cmd->argv[1] != '/') {
+  if (*path != '/') {
     CONF_ERROR(cmd, "parameter must be an absolute path");
   }
 
-  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
+  add_config_param_str(cmd->argv[0], 1, path);
   return PR_HANDLED(cmd);
 #else
   CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
@@ -1226,6 +1251,7 @@ MODRET set_proxytlspresharedkey(cmd_rec *cmd) {
 #ifdef PR_USE_OPENSSL
 # if defined(PSK_MAX_PSK_LEN)
   size_t identity_len, path_len;
+  char *path;
 
   CHECK_ARGS(cmd, 2);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
@@ -1246,14 +1272,15 @@ MODRET set_proxytlspresharedkey(cmd_rec *cmd) {
    * format of the key at the given path.  Support for other formats, e.g.
    * bcrypt or somesuch, will be added later.
    */
-  path_len = strlen(cmd->argv[2]);
+  path = cmd->argv[2];
+  path_len = strlen(path);
   if (path_len < 5 ||
       strncmp(cmd->argv[2], "hex:", 4) != 0) {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
-      "unsupported ProxyTLSPreSharedKey format: ", cmd->argv[2], NULL))
+      "unsupported ProxyTLSPreSharedKey format: ", path, NULL))
   }
 
-  (void) add_config_param_str(cmd->argv[0], 2, cmd->argv[1], cmd->argv[2]);
+  (void) add_config_param_str(cmd->argv[0], 2, cmd->argv[1], path);
 # else
   pr_log_debug(DEBUG0,
     "%s is not supported by this build/version of OpenSSL, ignoring",
@@ -1514,9 +1541,11 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+      "error sending %s to backend: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
 
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -1546,7 +1575,8 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
     if (backend_conn == NULL) {
       xerrno = errno;
 
-      pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+      pr_response_add_err(R_425, _("%s: %s"), (char *) cmd->argv[0],
+        strerror(xerrno));
       pr_response_flush(&resp_err_list);
 
       errno = xerrno;
@@ -1594,7 +1624,8 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
         proxy_sess->backend_data_conn = NULL;
       }
 
-      pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+      pr_response_add_err(R_425, _("%s: %s"), (char *) cmd->argv[0],
+        strerror(xerrno));
       pr_response_flush(&resp_err_list);
 
       errno = xerrno;
@@ -1649,10 +1680,11 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", cmd->argv[0],
+      "error receiving %s response from backend: %s", (char *) cmd->argv[0],
       strerror(xerrno));
 
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     if (proxy_sess->backend_data_conn != NULL) {
@@ -1702,7 +1734,8 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
 
     pr_response_block(TRUE);
 
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -1722,7 +1755,8 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
         proxy_sess->frontend_data_conn = session.d = NULL;
       }
 
-      pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+      pr_response_add_err(R_425, _("%s: %s"), (char *) cmd->argv[0],
+        strerror(xerrno));
       pr_response_flush(&resp_err_list);
     
       errno = xerrno;
@@ -1798,7 +1832,8 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
     if (frontend_conn == NULL) {
       xerrno = errno;
 
-      pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+      pr_response_add_err(R_425, _("%s: %s"), (char *) cmd->argv[0],
+        strerror(xerrno));
       pr_response_flush(&resp_err_list);
 
       errno = xerrno;
@@ -1894,7 +1929,8 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     xerrno = EPERM;
     pr_response_block(TRUE);
 
-    pr_response_add_err(R_425, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(R_425, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -2014,7 +2050,8 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
       pr_timer_remove(PR_TIMER_STALLED, ANY_MODULE);
       pr_response_block(TRUE);
 
-      pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+      pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+        strerror(xerrno));
       pr_response_flush(&resp_err_list);
 
       errno = xerrno;
@@ -2171,7 +2208,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
         if (res < 0) {
           xerrno = errno;
 
-          pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0],
+          pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
             strerror(xerrno));
           pr_response_flush(&resp_err_list);
 
@@ -2231,7 +2268,7 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     xerrno = errno;
 
     pr_trace_msg("proxy", 2, "error parsing EPRT command '%s': %s",
-      cmd->argv[1], strerror(xerrno));
+      (char *) cmd->argv[1], strerror(xerrno));
 
     if (xerrno == EPROTOTYPE) {
 #ifdef PR_USE_IPV6
@@ -2502,7 +2539,8 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     proxy_inet_close(session.pool, data_conn);
     pr_response_block(TRUE);
 
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -2574,7 +2612,8 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "Unable to handle PASV for IPv6 address '%s', rejecting command",
           pr_netaddr_get_ipstr(session.c->local_addr));
-        pr_response_add_err(R_501, "%s: %s", cmd->argv[0], strerror(xerrno));
+        pr_response_add_err(R_501, "%s: %s", (char *) cmd->argv[0],
+          strerror(xerrno));
 
         pr_cmd_set_errno(cmd, xerrno);
         errno = xerrno;
@@ -2641,7 +2680,8 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     proxy_sess->frontend_data_conn = session.d = NULL;
     pr_response_block(TRUE);
 
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -2675,7 +2715,7 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     xerrno = errno;
 
     pr_trace_msg("proxy", 2, "error parsing PORT command '%s': %s",
-      cmd->argv[1], strerror(xerrno));
+      (char *) cmd->argv[1], strerror(xerrno));
 
     pr_response_add_err(R_501, _("Illegal PORT command"));
     pr_response_flush(&resp_err_list);
@@ -2871,7 +2911,9 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int xerrno = errno;
 
     if (xerrno != EINVAL) {
-      pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+      pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+        strerror(xerrno));
+
     } else {
       pr_response_add_err(R_530, _("Login incorrect."));
     }
@@ -2956,7 +2998,9 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int xerrno = errno;
 
     if (xerrno != EINVAL) {
-      pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+      pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+        strerror(xerrno));
+
     } else {
       pr_response_add_err(R_530, _("Login incorrect."));
     }
@@ -3035,9 +3079,11 @@ MODRET proxy_type(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+      "error sending %s to backend: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
 
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -3049,10 +3095,11 @@ MODRET proxy_type(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", cmd->argv[0],
+      "error receiving %s response from backend: %s", (char *) cmd->argv[0],
       strerror(xerrno));
 
-    pr_response_add_err(R_500, _("%s: %s"), cmd->argv[0], strerror(xerrno));
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -3159,7 +3206,7 @@ static int proxy_have_limit(cmd_rec *cmd, char **resp_code) {
   if (cmd->group == NULL) {
     if (proxy_get_cmd_group(cmd) < 0) {
       pr_trace_msg(trace_channel, 5,
-        "error finding group for command '%s': %s", cmd->argv[0],
+        "error finding group for command '%s': %s", (char *) cmd->argv[0],
         strerror(errno));
     }
   }
@@ -3205,8 +3252,9 @@ MODRET proxy_any(cmd_rec *cmd) {
     int xerrno = errno;
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "%s denied by <Limit> configuration", cmd->argv[0]);
-    pr_response_add_err(resp_code, "%s: %s", cmd->argv[0], strerror(xerrno));
+      "%s denied by <Limit> configuration", (char *) cmd->argv[0]);
+    pr_response_add_err(resp_code, "%s: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
     pr_cmd_set_errno(cmd, xerrno);
     errno = xerrno;
     return PR_ERROR(cmd);

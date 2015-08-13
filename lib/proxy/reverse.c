@@ -883,14 +883,15 @@ static cmd_rec *reverse_db_sql_cmd_create(pool *parent_pool, int argc, ...) {
   cmd->pool = cmd_pool;
 
   cmd->argc = argc;
-  cmd->argv = (char **) pcalloc(cmd->pool, argc * sizeof(char *));
+  cmd->argv = pcalloc(cmd->pool, argc * sizeof(void *));
 
   /* Hmmm... */
   cmd->tmp_pool = cmd->pool;
 
   va_start(argp, argc);
-  for (i = 0; i < argc; i++)
+  for (i = 0; i < argc; i++) {
     cmd->argv[i] = va_arg(argp, char *);
+  }
   va_end(argp);
 
   return cmd;
@@ -2477,7 +2478,8 @@ static int send_user(struct proxy_session *proxy_sess, cmd_rec *cmd,
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+      "error sending %s to backend: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
 
     errno = xerrno;
     return -1;
@@ -2488,7 +2490,7 @@ static int send_user(struct proxy_session *proxy_sess, cmd_rec *cmd,
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", cmd->argv[0],
+      "error receiving %s response from backend: %s", (char *) cmd->argv[0],
       strerror(xerrno));
 
     errno = xerrno;
@@ -2619,7 +2621,8 @@ static int send_pass(struct proxy_session *proxy_sess, cmd_rec *cmd,
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", cmd->argv[0], strerror(xerrno));
+      "error sending %s to backend: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
 
     errno = xerrno;
     return -1;
@@ -2630,7 +2633,7 @@ static int send_pass(struct proxy_session *proxy_sess, cmd_rec *cmd,
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", cmd->argv[0],
+      "error receiving %s response from backend: %s", (char *) cmd->argv[0],
       strerror(xerrno));
 
     errno = xerrno;
