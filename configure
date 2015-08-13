@@ -3201,7 +3201,7 @@ else
   { echo "$as_me:$LINENO: result: no" >&5
 echo "${ECHO_T}no" >&6; }
 fi
-rm -f -r conftest*
+rm -f conftest*
 
 
 { echo "$as_me:$LINENO: checking for library containing strerror" >&5
@@ -3355,7 +3355,7 @@ if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
 else
   ac_cv_header_stdc=no
 fi
-rm -f -r conftest*
+rm -f conftest*
 
 fi
 
@@ -3376,7 +3376,7 @@ if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
 else
   ac_cv_header_stdc=no
 fi
-rm -f -r conftest*
+rm -f conftest*
 
 fi
 
@@ -3779,7 +3779,7 @@ if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
 else
   ac_cv_header_stdc=no
 fi
-rm -f -r conftest*
+rm -f conftest*
 
 fi
 
@@ -3800,7 +3800,7 @@ if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
 else
   ac_cv_header_stdc=no
 fi
-rm -f -r conftest*
+rm -f conftest*
 
 fi
 
@@ -3891,7 +3891,8 @@ fi
 
 
 
-for ac_header in stdlib.h unistd.h limits.h fcntl.h sys/sysctl.h sys/sysinfo.h
+
+for ac_header in sqlite3.h stdlib.h unistd.h limits.h fcntl.h sys/sysctl.h sys/sysinfo.h
 do
 as_ac_Header=`echo "ac_cv_header_$ac_header" | $as_tr_sh`
 if { as_var=$as_ac_Header; eval "test \"\${$as_var+set}\" = set"; }; then
@@ -5208,7 +5209,7 @@ do
     cat >>$CONFIG_STATUS <<_ACEOF
     # First, check the format of the line:
     cat >"\$tmp/defines.sed" <<\\CEOF
-/^[	 ]*#[	 ]*undef[	 ][	 ]*$ac_word_re[	 ]*/b def
+/^[	 ]*#[	 ]*undef[	 ][	 ]*$ac_word_re[	 ]*\$/b def
 /^[	 ]*#[	 ]*define[	 ][	 ]*$ac_word_re[(	 ]/b def
 b
 :def

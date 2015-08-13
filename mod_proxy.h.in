@@ -35,6 +35,12 @@
 # include <sys/mman.h>
 #endif
 
+/* Define if you have the sqlite3.h header.  */
+#undef HAVE_SQLITE3_H
+#if !defined(HAVE_SQLITE3_H)
+# error "SQLite library/headers required"
+#endif
+
 /* Define if you have the random(3) function.  */
 #undef HAVE_RANDOM
 
