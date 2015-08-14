@@ -376,6 +376,12 @@ The currently implemented options are:
     ProFTPD module can be used to handle the <code>PROXY</code> command on
     the receiving side, <i>i.e.</i> when using <code>proftpd</code> as the
     backend/destination server.
+
+    <p>
+    <b>Note</b>: do <b>not</b> use this option unless the backend server
+    <em>does</em> support the <code>PROXY</code> protocol.  Otherwise, the
+    <code>PROXY</code> protocol message will only confuse the backend server,
+    possibly leading to connection/login failures.
   </li>
 
   <p>

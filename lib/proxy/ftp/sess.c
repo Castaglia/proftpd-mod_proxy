@@ -77,6 +77,28 @@ int proxy_ftp_sess_get_feat(pool *p, struct proxy_session *proxy_sess) {
     pr_trace_msg(trace_channel, 4,
       "received unexpected %s response code %s from backend",
       (char *) cmd->argv[0], resp->num);
+
+    /* Note: If the UseProxyProtocol ProxyOption is enabled, AND if the
+     * response message mentions a "PROXY" command, we will optimistically
+     * try this FEAT command again.  Why?  It could be that the backend
+     * server in question does not support the PROXY protocol, but the
+     * configuration is telling mod_proxy to use it.  The FEAT command
+     * would be the first command/response to read the backend control
+     * connection's response to that "PROXY" command, and thus would appear
+     * to fail like this.
+     */
+    if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL) {
+      if (strstr(resp->msg, "PROXY") != NULL) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "UseProxyProtocol ProxyOption in effect, but backend server %s does "
+          "not support PROXY protocol ('%s %s'), retrying FEAT",
+          pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr),
+          resp->num, resp->msg);
+        destroy_pool(tmp_pool);
+        return proxy_ftp_sess_get_feat(p, proxy_sess);
+      }
+    }
+
     destroy_pool(tmp_pool);
     errno = EPERM;
     return -1;
@@ -217,18 +239,20 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
     /* If TLS is required, then fail now. */
     if (uri_tls == PROXY_TLS_ENGINE_ON ||
         use_tls == PROXY_TLS_ENGINE_ON) {
+      const char *ip_str;
+
+      ip_str = pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr);
 
       if (uri_tls == PROXY_TLS_ENGINE_ON) {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "backend server %s does not support AUTH TLS (see FEAT response) but "
-          "URI '%.100s' requires TLS, failing connection",
+          "URI '%.100s' requires TLS, failing connection", ip_str,
           proxy_conn_get_uri(proxy_sess->dst_pconn));
 
       } else if (use_tls == PROXY_TLS_ENGINE_ON) {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "backend server %s does not support AUTH TLS (see FEAT response) but "
-          "ProxyTLSEngine requires TLS, failing connection",
-          pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr));
+          "ProxyTLSEngine requires TLS, failing connection", ip_str);
       }
 
       errno = EPERM;
