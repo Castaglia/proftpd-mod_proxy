@@ -99,7 +99,7 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
        */
       active_cmd = cmd->argv[0];
 
-      if (strcmp(active_cmd, C_EPRT) == 0) {
+      if (pr_cmd_cmp(cmd, PR_CMD_EPRT_ID) == 0) {
         /* If the remote host does not mention EPRT in its features, fall back
          * to using PORT.
          */
@@ -248,7 +248,7 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
        */
       passive_cmd = cmd->argv[0];
 
-      if (strcmp(passive_cmd, C_EPSV) == 0) {
+      if (pr_cmd_cmp(cmd, PR_CMD_EPSV_ID) == 0) {
         /* If the remote host does not mention EPSV in its features, fall back
          * to using PASV.
          */
