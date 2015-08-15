@@ -34,6 +34,65 @@ static const char *feat_crlf = "\r\n";
 
 static const char *trace_channel = "proxy.ftp.sess";
 
+/* Many FTP servers (e.g. IIS) use the semicolon delimiter syntax, as used
+ * for listing the MLSD/MLST facts, for other FEAT values (e.g. AUTH, PROT,
+ * etc).
+ *
+ * NOTE: Should this return a table rather than an array, for easier lookup
+ * of parsed values by callers?
+ */
+static int parse_feat(pool *p, const char *feat, array_header **res) {
+  char *ptr, *ptr2 = NULL;
+  array_header *vals;
+  size_t len;
+
+  vals = make_array(p, 1, sizeof(char *));
+
+  /* No semicolons in this value?  No work to do...*/
+  ptr = strchr(feat, ';');
+  if (ptr == NULL) {
+    *((char **) push_array(vals)) = pstrdup(p, feat);
+    *res = vals;
+    return vals->nelts;
+  }
+
+  len = ptr - feat;
+  if (len > 0) {
+    *((char **) push_array(vals)) = pstrndup(p, feat, len);
+  }
+
+  /* Watch for any sequences of just semicolons. */
+  while (*ptr == ';') {
+    pr_signals_handle();
+    ptr++;
+  }
+
+  ptr2 = strchr(ptr, ';');
+  while (ptr2 != NULL) {
+    pr_signals_handle();
+
+    len = ptr2 - ptr;
+    if (len > 0) {
+      *((char **) push_array(vals)) = pstrndup(p, ptr, len);
+    }
+ 
+    ptr = ptr2;
+    while (*ptr == ';') {
+      pr_signals_handle();
+      ptr++;
+    }
+
+    ptr2 = strchr(ptr, ';');
+  }
+
+  /* Since the semicolon delimiter syntax uses a trailing semicolon,
+   * we shouldn't need to worry about something like "...;FOO".  Right?
+   */
+
+  *res = vals;
+  return vals->nelts;
+}
+
 int proxy_ftp_sess_get_feat(pool *p, struct proxy_session *proxy_sess) {
   pool *tmp_pool;
   int res, xerrno = 0;
@@ -79,25 +138,16 @@ int proxy_ftp_sess_get_feat(pool *p, struct proxy_session *proxy_sess) {
       (char *) cmd->argv[0], resp->num);
 
     /* Note: If the UseProxyProtocol ProxyOption is enabled, AND if the
-     * response message mentions a "PROXY" command, we will optimistically
-     * try this FEAT command again.  Why?  It could be that the backend
-     * server in question does not support the PROXY protocol, but the
-     * configuration is telling mod_proxy to use it.  The FEAT command
-     * would be the first command/response to read the backend control
-     * connection's response to that "PROXY" command, and thus would appear
-     * to fail like this.
+     * response message mentions a "PROXY" command, we might read an
+     * error response here that is NOT actually for the FEAT command we just
+     * sent.
+     *
+     * A backend FTP server which does not understand the PROXY protocol
+     * will treat it as a normal FTP command, and respond.  And that will
+     * put us, the client, out of lockstep with the server, for how do we know
+     * that we need to read that error response FIRST, then send another
+     * command?
      */
-    if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL) {
-      if (strstr(resp->msg, "PROXY") != NULL) {
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "UseProxyProtocol ProxyOption in effect, but backend server %s does "
-          "not support PROXY protocol ('%s %s'), retrying FEAT",
-          pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr),
-          resp->num, resp->msg);
-        destroy_pool(tmp_pool);
-        return proxy_ftp_sess_get_feat(p, proxy_sess);
-      }
-    }
 
     destroy_pool(tmp_pool);
     errno = EPERM;
@@ -217,6 +267,7 @@ int proxy_ftp_sess_send_host(pool *p, struct proxy_session *proxy_sess) {
 int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
   int uri_tls, use_tls, xerrno;
   char *auth_feat;
+  array_header *auth_feats = NULL;
   pool *tmp_pool;
   cmd_rec *cmd;
   pr_response_t *resp;
@@ -267,15 +318,40 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
     return 0;
   }
 
-  if (strcasecmp(auth_feat, "AUTH SSL") == 0) {
-    /* Legacy FTPS server; log and ignore this for now. */
-    pr_trace_msg(trace_channel, 9,
-      "backend server %s provides legacy FTPS support via '%s', ignoring",
-      pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr),
-      auth_feat);
+  tmp_pool = make_sub_pool(p);
+
+  /* Note: the FEAT response against IIS servers shows e.g.:
+   *
+   * 211-Extended features supported:
+   *  LANG EN*
+   *  UTF8
+   *  AUTH TLS;TLS-C;SSL;TLS-P;
+   *  PBSZ
+   *  PROT C;P;
+   *  CCC
+   *  HOST
+   *  SIZE
+   *  MDTM
+   *  REST STREAM
+   * 211 END
+   *
+   * Note how the AUTH and PROT values are not exactly as specified
+   * in RFC 4217.  This means we'll need to deal with as is.  There will
+   * be other servers with other FEAT response formats, too.
+   */
+  if (parse_feat(tmp_pool, auth_feat, &auth_feats) > 0) {
+    register unsigned int i;
+
+    pr_trace_msg(trace_channel, 9, "parsed FEAT value '%s' into %d values",
+      auth_feat, auth_feats->nelts);
+    for (i = 0; i < auth_feats->nelts; i++) {
+      char *val;
+
+      val = ((char **) auth_feats->elts)[i];
+      pr_trace_msg(trace_channel, 9, " %s", val);
+    }
   }
 
-  tmp_pool = make_sub_pool(p);
   cmd = pr_cmd_alloc(tmp_pool, 2, C_AUTH, "TLS");
   cmd->arg = pstrdup(tmp_pool, "TLS");
 

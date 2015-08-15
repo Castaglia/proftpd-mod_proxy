@@ -98,6 +98,23 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
        * the backend server.
        */
       active_cmd = cmd->argv[0];
+
+      if (strcmp(active_cmd, C_EPRT) == 0) {
+        /* If the remote host does not mention EPRT in its features, fall back
+         * to using PORT.
+         */
+        if (pr_table_get(proxy_sess->backend_features, C_EPRT, NULL) == NULL) {
+          pr_trace_msg(trace_channel, 19,
+            "EPRT not supported by backend server (via FEAT), using PORT");
+          if (proxy_sess->dataxfer_policy == PR_CMD_EPRT_ID) {
+            proxy_sess->dataxfer_policy = PR_CMD_PORT_ID;
+          }
+
+          active_cmd = C_PORT;
+          cmd_id = PR_CMD_PORT_ID;
+        }
+      }
+
       break;
   }
 
@@ -230,6 +247,23 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
        * the backend server.
        */
       passive_cmd = cmd->argv[0];
+
+      if (strcmp(passive_cmd, C_EPSV) == 0) {
+        /* If the remote host does not mention EPSV in its features, fall back
+         * to using PASV.
+         */
+        if (pr_table_get(proxy_sess->backend_features, C_EPSV, NULL) == NULL) {
+          pr_trace_msg(trace_channel, 19,
+            "EPSV not supported by backend server (via FEAT), using PASV");
+          if (proxy_sess->dataxfer_policy == PR_CMD_EPSV_ID) {
+            proxy_sess->dataxfer_policy = PR_CMD_PASV_ID;
+          }
+
+          passive_cmd = C_PASV;
+          cmd_id = PR_CMD_PASV_ID;
+        }
+      }
+
       break;
   }
 
