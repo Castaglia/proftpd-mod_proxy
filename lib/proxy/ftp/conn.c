@@ -79,6 +79,8 @@ conn_t *proxy_ftp_conn_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn,
     return NULL;
   }
 
+  pr_trace_msg(trace_channel, 9,
+    "accepted connection from backend server '%s'", conn->remote_name);
   return conn;
 }
 
@@ -165,6 +167,9 @@ conn_t *proxy_ftp_conn_connect(pool *p, pr_netaddr_t *bind_addr,
   }
 
   pr_inet_set_nonblock(session.pool, conn);
+
+  pr_trace_msg(trace_channel, 9,
+    "connected to backend server '%s'", conn->remote_name);
   return opened;
 }
 
