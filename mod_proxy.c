@@ -67,7 +67,8 @@ static const char *proxy_tables_dir = NULL;
 
 static const char *trace_channel = "proxy";
 
-MODRET proxy_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess) {
+MODRET proxy_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess,
+    pr_response_t **rp) {
   int res, xerrno;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
@@ -129,6 +130,11 @@ MODRET proxy_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   pr_response_block(TRUE);
+
+  if (rp != NULL) {
+    *rp = resp;
+  }
+
   return PR_HANDLED(cmd);
 }
 
@@ -1569,7 +1575,8 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
     }
 
     pr_trace_msg(trace_channel, 17,
-      "connecting to backend server for passive data transfer");
+      "connecting to backend server for passive data transfer for %s",
+      (char *) cmd->argv[0]);
     backend_conn = proxy_ftp_conn_connect(cmd->pool, bind_addr,
       proxy_sess->backend_data_addr, FALSE);
     if (backend_conn == NULL) {
@@ -1613,7 +1620,8 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
 
   } else if (proxy_sess->backend_sess_flags & SF_PORT) {
     pr_trace_msg(trace_channel, 17,
-      "accepting connection from backend server for active data transfer");
+      "accepting connection from backend server for active data "
+      "transfer for %s", (char *) cmd->argv[0]);
     backend_conn = proxy_ftp_conn_accept(cmd->pool,
       proxy_sess->backend_data_conn, proxy_sess->backend_ctrl_conn, FALSE);
     if (backend_conn == NULL) {
@@ -1744,7 +1752,8 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
 
   if (proxy_sess->frontend_sess_flags & SF_PASSIVE) {
     pr_trace_msg(trace_channel, 17,
-      "accepting connection from frontend server for passive data transfer");
+      "accepting connection from frontend server for passive data "
+      "transfer for %s", (char *) cmd->argv[0]);
     frontend_conn = proxy_ftp_conn_accept(cmd->pool,
       proxy_sess->frontend_data_conn, proxy_sess->frontend_ctrl_conn, TRUE);
     if (frontend_conn == NULL) {
@@ -1826,7 +1835,8 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
     }
 
     pr_trace_msg(trace_channel, 17,
-      "connecting to frontend server for active data transfer");
+      "connecting to frontend server for active data transfer for %s",
+      (char *) cmd->argv[0]);
     frontend_conn = proxy_ftp_conn_connect(cmd->pool, bind_addr,
       proxy_sess->frontend_data_addr, TRUE);
     if (frontend_conn == NULL) {
@@ -2496,8 +2506,8 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
-    pr_response_add_err(R_425, _("Unable to build data connection: "
-      "Internal error"));
+    pr_response_add_err(R_425,
+      _("Unable to build data connection: Internal error"));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -2878,6 +2888,69 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   return PR_HANDLED(cmd);
 }
 
+MODRET proxy_feat(cmd_rec *cmd, struct proxy_session *proxy_sess) {
+  modret_t *mr = NULL;
+  pr_response_t *resp = NULL;
+
+  mr = proxy_cmd(cmd, proxy_sess, &resp);
+
+  /* If we don't already have our backend feature table allocated, as
+   * when the backend server won't support the FEAT command until AFTER
+   * authentication occurs, then try to piggyback on the frontend client's
+   * FEAT command, and fill our table now.
+   */
+
+  if (proxy_sess->backend_features == NULL) {
+    if (MODRET_ISHANDLED(mr) &&
+        resp != NULL) {
+      const char *feat_crlf = "\r\n";
+      char *feats, *token;
+      size_t token_len = 0;
+
+      pr_trace_msg(trace_channel, 9,
+        "populating backend features based on FEAT response to frontend "
+        "client");
+
+      proxy_sess->backend_features = pr_table_nalloc(proxy_pool, 0, 4);
+
+      feats = pstrdup(cmd->tmp_pool, resp->msg);
+      token = pr_str_get_token2(&feats, (char *) feat_crlf, &token_len);
+      while (token != NULL) {
+        pr_signals_handle();
+
+        if (token_len > 0) {
+          /* The FEAT response lines in which we are interested all start with
+           * a single space, per RFC spec.  Ignore any other lines.
+           */
+          if (token[0] == ' ') {
+            char *key, *val, *ptr;
+
+            /* Find the next space in the string, to delimit our key/value
+             * pairs.
+             */
+            ptr = strchr(token + 1, ' ');
+            if (ptr != NULL) {
+              key = pstrndup(proxy_pool, token + 1, ptr - token - 1);
+              val = pstrdup(proxy_pool, ptr + 1);
+
+            } else {
+              key = pstrdup(proxy_pool, token + 1);
+              val = pstrdup(proxy_pool, "");
+            }
+
+            pr_table_add(proxy_sess->backend_features, key, val, 0);
+          }
+        }
+
+        feats = token + token_len + 1;
+        token = pr_str_get_token2(&feats, (char *) feat_crlf, &token_len);
+      }
+    }
+  }
+
+  return mr;
+}
+
 MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *block_responses) {
   int successful = FALSE, res;
@@ -2892,7 +2965,7 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     /* If we've already authenticated, then let the backend server deal
      * with this.
      */
-    return proxy_cmd(cmd, proxy_sess);
+    return proxy_cmd(cmd, proxy_sess, NULL);
   }
 
   switch (proxy_role) {
@@ -2979,7 +3052,7 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     /* If we've already authenticated, then let the backend server deal with
      * this.
      */
-    return proxy_cmd(cmd, proxy_sess);
+    return proxy_cmd(cmd, proxy_sess, NULL);
   }
 
   switch (proxy_role) {
@@ -3386,13 +3459,18 @@ MODRET proxy_any(cmd_rec *cmd) {
          */
         if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
           if (proxy_opts & PROXY_OPT_SHOW_FEATURES) {
-            mr = proxy_cmd(cmd, proxy_sess);
+            mr = proxy_feat(cmd, proxy_sess);
             return mr;
           }
         }
 
         return PR_DECLINED(cmd);
+
+      } else {
+        mr = proxy_feat(cmd, proxy_sess);
+        return mr;      
       }
+      break;
 
     case PR_CMD_HOST_ID:
       /* TODO is there any value in handling the HOST command locally?
@@ -3451,7 +3529,7 @@ MODRET proxy_any(cmd_rec *cmd) {
     }
   }
 
-  return proxy_cmd(cmd, proxy_sess);
+  return proxy_cmd(cmd, proxy_sess, NULL);
 }
 
 /* Event handlers
