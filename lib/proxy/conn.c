@@ -370,6 +370,12 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
   if (res < 0) {
     int xerrno = errno;
 
+    /* Note: IF mod_proxy is running on localhost, and the connect attempt
+     * fails with ENETUNREACH, it means that the remote address is a PUBLIC
+     * IP address; connections from localhost will of course fail, since
+     * localhost is not a reachable network from a public IP.
+     */
+
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error starting connect to %s#%u: %s", remote_ipstr, remote_port,
       strerror(xerrno));

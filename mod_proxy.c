@@ -267,6 +267,11 @@ static int proxy_rmpath(pool *p, const char *path) {
   struct dirent *dent;
   int res, xerrno = 0;
 
+  if (path == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
   dirh = opendir(path);
   if (dirh == NULL) {
     xerrno = errno;
@@ -612,7 +617,7 @@ MODRET set_proxyforwardto(cmd_rec *cmd) {
 /* usage: ProxyLog path|"none" */
 MODRET set_proxylog(cmd_rec *cmd) {
   CHECK_ARGS(cmd, 1);
-  CHECK_CONF(cmd, CONF_ROOT);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
   (void) add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
   return PR_HANDLED(cmd);
@@ -948,7 +953,7 @@ MODRET set_proxytables(cmd_rec *cmd) {
     }
   }
 
-  (void) add_config_param_str(cmd->argv[0], 1, path);
+  add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
   return PR_HANDLED(cmd);
 }
 
@@ -1673,11 +1678,11 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
     pr_inet_set_nonblock(session.pool, backend_conn);
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "active data connection opened - local  : %s:%d",
+      "active backend data connection opened - local  : %s:%d",
       pr_netaddr_get_ipstr(backend_conn->local_addr),
       backend_conn->local_port);
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "active data connection opened - remote : %s:%d",
+      "active backend data connection opened - remote : %s:%d",
       pr_netaddr_get_ipstr(backend_conn->remote_addr),
       backend_conn->remote_port);
   }
@@ -1750,6 +1755,8 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
     return -1;
   }
 
+  /* Now establish a data connection with the frontend client. */
+
   if (proxy_sess->frontend_sess_flags & SF_PASSIVE) {
     pr_trace_msg(trace_channel, 17,
       "accepting connection from frontend server for passive data "
@@ -1811,11 +1818,11 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
     pr_inet_set_nonblock(session.pool, frontend_conn);
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "passive data connection opened - local  : %s:%d",
+      "passive backend data connection opened - local  : %s:%d",
       pr_netaddr_get_ipstr(frontend_conn->local_addr),
       frontend_conn->local_port);
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "passive data connection opened - remote : %s:%d",
+      "passive backend data connection opened - remote : %s:%d",
       pr_netaddr_get_ipstr(frontend_conn->remote_addr),
       frontend_conn->remote_port);
 
@@ -1994,7 +2001,6 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
 
     tv.tv_sec = timeout;
     tv.tv_usec = 0;
-    res = -1;
 
     pr_signals_handle();
 
@@ -2058,12 +2064,12 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
       }
 
       pr_timer_remove(PR_TIMER_STALLED, ANY_MODULE);
-      pr_response_block(TRUE);
 
       pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
         strerror(xerrno));
       pr_response_flush(&resp_err_list);
 
+      pr_response_block(TRUE);
       errno = xerrno;
       return PR_ERROR(cmd);
     }
