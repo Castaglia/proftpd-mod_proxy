@@ -1474,66 +1474,68 @@ MODRET set_proxytlsverifyserver(cmd_rec *cmd) {
 #endif /* PR_USE_OPENSSL */
 }
 
-/* mod_proxy event/dispatch loop. */
-static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
+static void proxy_process_cmd(void) {
+  int res = 0;
+  cmd_rec *cmd = NULL;
 
-  while (TRUE) {
-    int res = 0;
-    cmd_rec *cmd = NULL;
+  /* TODO: Insert select(2) call here, where we wait for readability on
+   * the client control connection.
+   *
+   * Bonus points for handling aborts on either control connection,
+   * broken data connections, blocked/slow writes to client (how much
+   * can/should we buffer?  what about short writes to the client?),
+   * timeouts, etc.
+   */
 
-    pr_signals_handle();
-
-    /* TODO: Insert select(2) call here, where we wait for readability on
-     * the client control connection.
-     *
-     * Bonus points for handling aborts on either control connection,
-     * broken data connections, blocked/slow writes to client (how much
-     * can/should we buffer?  what about short writes to the client?),
-     * timeouts, etc.
-     */
-
-    res = pr_cmd_read(&cmd);
-    if (res < 0) {
-      if (PR_NETIO_ERRNO(session.c->instrm) == EINTR) {
-        /* Simple interrupted syscall */
-        continue;
-      }
+  res = pr_cmd_read(&cmd);
+  if (res < 0) {
+    if (PR_NETIO_ERRNO(session.c->instrm) == EINTR) {
+      /* Simple interrupted syscall */
+      return;
+    }
 
 #ifndef PR_DEVEL_NO_DAEMON
-      /* Otherwise, EOF */
-      pr_session_disconnect(NULL, PR_SESS_DISCONNECT_CLIENT_EOF, NULL);
+    /* Otherwise, EOF */
+    pr_session_disconnect(NULL, PR_SESS_DISCONNECT_CLIENT_EOF, NULL);
 #else
-      return;
+    return;
 #endif /* PR_DEVEL_NO_DAEMON */
-    }
+  }
 
-    pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
+  pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
 
-    if (cmd) {
-      /* We unblock responses here so that if any PRE_CMD handlers generate
-       * responses (usually errors), those responses are sent to the
-       * connecting client.
-       */
-      pr_response_block(FALSE);
+  if (cmd) {
+    /* We unblock responses here so that if any PRE_CMD handlers generate
+     * responses (usually errors), those responses are sent to the
+     * connecting client.
+     */
+    pr_response_block(FALSE);
 
-      /* TODO: If we need to, we can exert finer-grained control over
-       * command dispatching/routing here.  For example, this is where we
-       * could block responses for PRE_CMD handlers, or skip certain
-       * modules' handlers.
-       */
+    /* TODO: If we need to, we can exert finer-grained control over
+     * command dispatching/routing here.  For example, this is where we
+     * could block responses for PRE_CMD handlers, or skip certain
+     * modules' handlers.
+     */
 
-      pr_cmd_dispatch(cmd);
-      destroy_pool(cmd->pool);
+    pr_cmd_dispatch(cmd);
+    destroy_pool(cmd->pool);
 
-      pr_response_block(TRUE);
+    pr_response_block(TRUE);
 
-    } else {
-      pr_event_generate("core.invalid-command", NULL);
-      pr_response_send(R_500, _("Invalid command: try being more creative"));
-    }
+  } else {
+    pr_event_generate("core.invalid-command", NULL);
+    pr_response_send(R_500, _("Invalid command: try being more creative"));
+  }
 
-    /* Release any working memory allocated in inet */
-    pr_inet_clear();
+  /* Release any working memory allocated in inet */
+  pr_inet_clear();
+}
+
+/* mod_proxy event/dispatch loop. */
+static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
+  while (TRUE) {
+    pr_signals_handle();
+    proxy_process_cmd();
   }
 }
 
@@ -2032,7 +2034,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     fd_set rfds;
     struct timeval tv;
     int data_eof = FALSE, data_fd = -1;
-    int backend_ctrlfd, frontend_data = FALSE, maxfd = -1;
+    int backend_ctrlfd, frontend_ctrlfd, frontend_data = FALSE, maxfd = -1;
     conn_t *src_data_conn = NULL, *dst_data_conn = NULL;
 
     tv.tv_sec = 15;
@@ -2041,11 +2043,6 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     pr_signals_handle();
 
     FD_ZERO(&rfds);
-
-    /* XXX If we wanted to allow/support commands during transfers, we would
-     * also need to add the frontend_ctrl_conn instrm fd here for reading.
-     * And possibly for ABOR commands, SIGURG.
-     */
 
     /* The source/origin data connection depends on our direction:
      * downloads (IO_RD) from the backend, uploads (IO_WR) to the frontend.
@@ -2068,6 +2065,12 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     FD_SET(backend_ctrlfd, &rfds);
     if (backend_ctrlfd > maxfd) {
       maxfd = backend_ctrlfd;
+    }
+
+    frontend_ctrlfd = PR_NETIO_FD(proxy_sess->frontend_ctrl_conn->instrm);
+    FD_SET(frontend_ctrlfd, &rfds);
+    if (frontend_ctrlfd > maxfd) {
+      maxfd = frontend_ctrlfd;
     }
 
     if (src_data_conn != NULL) {
@@ -2118,6 +2121,11 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
         "timed out waiting for readability on control/data connections, "
         "trying again");
       continue;
+    }
+
+    /* Any commands from the frontend client take priority */
+    if (FD_ISSET(frontend_ctrlfd, &rfds)) {
+      proxy_process_cmd();
     }
 
     if (src_data_conn != NULL) {
