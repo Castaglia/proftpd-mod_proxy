@@ -3555,8 +3555,10 @@ MODRET proxy_any(cmd_rec *cmd) {
         return PR_DECLINED(cmd);
 
       } else {
-        mr = proxy_feat(cmd, proxy_sess);
-        return mr;      
+        if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+          mr = proxy_feat(cmd, proxy_sess);
+          return mr;      
+        }
       }
       break;
 
