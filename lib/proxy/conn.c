@@ -349,6 +349,28 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     bind_addr = local_addr;
   }
 
+  /* Note: IF mod_proxy is running on localhost, and the connection to be
+   * made is to a public IP address, then this connect(2) attempt would most
+   * likely fail with ENETUNREACH, since localhost is a loopback network,
+   * and of course not reachable from a public IP.  Thus we check for this
+   * edge case (which happens often for development).
+   */
+  if (pr_netaddr_is_loopback(bind_addr) == TRUE) {
+    const char *local_name;
+    pr_netaddr_t *local_addr;
+
+    local_name = pr_netaddr_get_localaddr_str(p);
+    local_addr = pr_netaddr_get_addr(p, local_name, NULL);
+
+    if (local_addr != NULL) {
+      pr_trace_msg(trace_channel, 14,
+        "%s is a loopback address, and unable to reach %s; using %s instead",
+        pr_netaddr_get_ipstr(bind_addr), remote_ipstr,
+        pr_netaddr_get_ipstr(local_addr));
+      bind_addr = local_addr;
+    }
+  }
+
   server_conn = pr_inet_create_conn(p, -1, bind_addr, INPORT_ANY, FALSE);
   if (server_conn == NULL) {
     int xerrno = errno;
@@ -369,12 +391,6 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     ntohs(pr_netaddr_get_port(remote_addr)));
   if (res < 0) {
     int xerrno = errno;
-
-    /* Note: IF mod_proxy is running on localhost, and the connect attempt
-     * fails with ENETUNREACH, it means that the remote address is a PUBLIC
-     * IP address; connections from localhost will of course fail, since
-     * localhost is not a reachable network from a public IP.
-     */
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error starting connect to %s#%u: %s", remote_ipstr, remote_port,

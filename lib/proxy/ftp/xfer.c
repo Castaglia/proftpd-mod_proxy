@@ -55,8 +55,8 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
   if (data_conn == NULL) {
     xerrno = errno;
 
-    pr_response_add_err(error_code, _("Unable to build data connection: "
-      "Internal error"));
+    pr_response_add_err(error_code,
+      _("Unable to build data connection: Internal error"));
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
@@ -196,11 +196,10 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
         error_code, proxy_sess);
     }
 
-    errno = xerrno = EINVAL;
-    pr_response_add_err(error_code, "%s: %s", (char *) cmd->argv[0],
-      strerror(xerrno));
+    pr_response_add_err(error_code, resp->msg);
+    pr_response_flush(&resp_err_list);
 
-    errno = xerrno;
+    errno = EINVAL;
     return -1;
   }
 

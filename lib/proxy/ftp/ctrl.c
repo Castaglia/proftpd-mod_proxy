@@ -30,7 +30,7 @@
 static const char *trace_channel = "proxy.ftp.ctrl";
 
 static char *ftp_telnet_gets(char *buf, size_t buflen,
-    pr_netio_stream_t *nstrm) {
+    pr_netio_stream_t *nstrm, conn_t *conn) {
   char *buf_ptr = buf;
   unsigned char cp;
   int nread, saw_newline = FALSE;
@@ -61,6 +61,12 @@ static char *ftp_telnet_gets(char *buf, size_t buflen,
         if (buf_ptr != buf) {
           *buf_ptr = '\0';
           return buf;
+        }
+
+        if (nread == 0) {
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "read EOF from %s", conn->remote_name);
+          errno = EPERM;
         }
 
         return NULL;
@@ -155,7 +161,8 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
     pr_signals_handle();
 
     memset(buf, '\0', sizeof(buf));
-    if (ftp_telnet_gets(buf, sizeof(buf)-1, ctrl_conn->instrm) == NULL) {
+    if (ftp_telnet_gets(buf, sizeof(buf)-1, ctrl_conn->instrm,
+        ctrl_conn) == NULL) {
       return NULL;
     }
 
