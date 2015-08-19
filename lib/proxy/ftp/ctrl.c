@@ -358,8 +358,9 @@ int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *ctrl_conn, cmd_rec *cmd) {
 
   } else {
     pr_trace_msg(trace_channel, 9,
-      "proxied %s command from frontend to backend", cmd->argv[0]);
-    res = proxy_netio_printf(ctrl_conn->outstrm, "%s\r\n", cmd->argv[0]);
+      "proxied %s command from frontend to backend", (char *) cmd->argv[0]);
+    res = proxy_netio_printf(ctrl_conn->outstrm, "%s\r\n",
+      (char *) cmd->argv[0]);
   }
 
   return res;
@@ -391,3 +392,89 @@ int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp,
   return 0;
 }
 
+int proxy_ftp_ctrl_handle_async(pool *p, conn_t *backend_conn,
+    conn_t *frontend_conn) {
+  if (!(proxy_sess_state & PROXY_SESS_STATE_CONNECTED)) {
+    /* Nothing to do if we're not yet connected to the backend server. */
+    return 0;
+  }
+
+  while (TRUE) {
+    fd_set rfds;
+    struct timeval tv;
+    int ctrlfd, res, xerrno = 0;
+
+    /* By using a timeout of zero, we effect a poll on the fd. */
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+
+    pr_signals_handle();
+
+    FD_ZERO(&rfds);
+
+    ctrlfd = PR_NETIO_FD(backend_conn->instrm);
+    FD_SET(ctrlfd, &rfds);
+
+    res = select(ctrlfd + 1, &rfds, NULL, NULL, &tv);
+    if (res < 0) {
+      xerrno = errno;
+
+      if (xerrno == EINTR) {
+        pr_signals_handle();
+        continue;
+      }
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error calling select(2) on backend control connection (fd %d): %s",
+        ctrlfd, strerror(xerrno));
+      return 0;
+    }
+
+    if (res == 0) {
+      /* Nothing there. */
+      break;
+    }
+
+    pr_trace_msg(trace_channel, 19,
+      "select(2) reported %d for backend %s (fd %d)", res,
+      backend_conn->remote_name, ctrlfd);
+
+    if (FD_ISSET(ctrlfd, &rfds)) {
+      unsigned int resp_nlines = 0;
+      pr_response_t *resp;
+
+      pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
+
+      pr_trace_msg(trace_channel, 9, "reading async response from backend %s",
+        backend_conn->remote_name);
+
+      resp = proxy_ftp_ctrl_recv_resp(p, backend_conn, &resp_nlines);
+      if (resp == NULL) {
+        xerrno = errno;
+
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error receiving response from backend control connection: %s",
+          strerror(xerrno));
+
+        errno = xerrno;
+        return -1;
+      }
+
+      res = proxy_ftp_ctrl_send_resp(p, frontend_conn, resp, resp_nlines);
+      if (res < 0) {
+        xerrno = errno;
+
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error sending response to frontend control connection: %s",
+          strerror(xerrno));
+
+        errno = xerrno;
+        return -1;
+      }
+    }
+
+    break;
+  }
+
+  return 0;
+}

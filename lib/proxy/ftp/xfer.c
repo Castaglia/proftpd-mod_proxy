@@ -51,6 +51,21 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
     bind_addr = session.c->local_addr;
   }
 
+  if (pr_netaddr_is_loopback(bind_addr) == TRUE) {
+    const char *local_name;
+    pr_netaddr_t *local_addr;
+
+    local_name = pr_netaddr_get_localaddr_str(cmd->pool);
+    local_addr = pr_netaddr_get_addr(cmd->pool, local_name, NULL);
+
+    if (local_addr != NULL) {
+      pr_trace_msg(trace_channel, 14,
+        "%s is a loopback address, using %s instead",
+        pr_netaddr_get_ipstr(bind_addr), pr_netaddr_get_ipstr(local_addr));
+      bind_addr = local_addr;
+    }
+  }
+
   data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr, FALSE);
   if (data_conn == NULL) {
     xerrno = errno;
@@ -196,7 +211,7 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
         error_code, proxy_sess);
     }
 
-    pr_response_add_err(error_code, resp->msg);
+    pr_response_add_err(error_code, "%s", resp->msg);
     pr_response_flush(&resp_err_list);
 
     errno = EINVAL;
