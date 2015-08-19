@@ -1640,6 +1640,15 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
       return -1;
     }
 
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "passive backend data connection opened - local  : %s:%d",
+      pr_netaddr_get_ipstr(backend_conn->local_addr),
+      backend_conn->local_port);
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "passive backend data connection opened - remote : %s:%d",
+      pr_netaddr_get_ipstr(backend_conn->remote_addr),
+      backend_conn->remote_port);
+
   } else if (proxy_sess->backend_sess_flags & SF_PORT) {
     pr_trace_msg(trace_channel, 17,
       "accepting connection from backend server for active data "
@@ -1835,11 +1844,11 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
     pr_inet_set_nonblock(session.pool, frontend_conn);
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "passive backend data connection opened - local  : %s:%d",
+      "passive frontend data connection opened - local  : %s:%d",
       pr_netaddr_get_ipstr(frontend_conn->local_addr),
       frontend_conn->local_port);
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "passive backend data connection opened - remote : %s:%d",
+      "passive frontend data connection opened - remote : %s:%d",
       pr_netaddr_get_ipstr(frontend_conn->remote_addr),
       frontend_conn->remote_port);
 
@@ -1907,6 +1916,15 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
     }
 
     proxy_sess->frontend_data_conn = session.d = frontend_conn;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "active frontend data connection opened - local  : %s:%d",
+      pr_netaddr_get_ipstr(frontend_conn->local_addr),
+      frontend_conn->local_port);
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "active frontend data connection opened - remote : %s:%d",
+      pr_netaddr_get_ipstr(frontend_conn->remote_addr),
+      frontend_conn->remote_port);
   }
 
   *frontend = frontend_conn;
@@ -2013,10 +2031,11 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
   while (TRUE) {
     fd_set rfds;
     struct timeval tv;
-    int frontend_data = FALSE, maxfd = -1, timeout = 15;
+    int data_eof = FALSE, data_fd = -1;
+    int backend_ctrlfd, frontend_data = FALSE, maxfd = -1;
     conn_t *src_data_conn = NULL, *dst_data_conn = NULL;
 
-    tv.tv_sec = timeout;
+    tv.tv_sec = 15;
     tv.tv_usec = 0;
 
     pr_signals_handle();
@@ -2045,15 +2064,17 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
         break;
     }
 
-    FD_SET(PR_NETIO_FD(proxy_sess->backend_ctrl_conn->instrm), &rfds);
-    if (PR_NETIO_FD(proxy_sess->backend_ctrl_conn->instrm) > maxfd) {
-      maxfd = PR_NETIO_FD(proxy_sess->backend_ctrl_conn->instrm);
+    backend_ctrlfd = PR_NETIO_FD(proxy_sess->backend_ctrl_conn->instrm);
+    FD_SET(backend_ctrlfd, &rfds);
+    if (backend_ctrlfd > maxfd) {
+      maxfd = backend_ctrlfd;
     }
 
     if (src_data_conn != NULL) {
-      FD_SET(PR_NETIO_FD(src_data_conn->instrm), &rfds);
-      if (PR_NETIO_FD(src_data_conn->instrm) > maxfd) {
-        maxfd = PR_NETIO_FD(src_data_conn->instrm);
+      data_fd = PR_NETIO_FD(src_data_conn->instrm);
+      FD_SET(data_fd, &rfds);
+      if (data_fd > maxfd) {
+        maxfd = data_fd;
       }
     }
 
@@ -2100,9 +2121,12 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     }
 
     if (src_data_conn != NULL) {
-      if (FD_ISSET(PR_NETIO_FD(src_data_conn->instrm), &rfds)) {
+      if (FD_ISSET(data_fd, &rfds)) {
         /* Some data arrived on the data connection... */
         pr_buffer_t *pbuf = NULL;
+
+        pr_trace_msg(trace_channel, 19,
+          "handling data connection during data transfer");
 
         pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
  
@@ -2119,13 +2143,22 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
           pr_timer_reset(PR_TIMER_STALLED, ANY_MODULE);
 
           if (pbuf->remaining == 0) {
-            /* EOF on the data connection; close BOTH of them. */
+            /* EOF on the data connection; close BOTH of them.  In many
+             * cases, closing these connections causes any buffered data to
+             * be flushed out to the waiting peer.
+             */
+
+            pr_trace_msg(trace_channel, 19,
+              "read EOF on data connection, closing frontend/backend data "
+              "connections");
 
             proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
             proxy_sess->backend_data_conn = NULL;
 
             pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
             proxy_sess->frontend_data_conn = session.d = NULL;
+
+            data_eof = TRUE;
 
           } else {
             size_t remaining = pbuf->remaining;
@@ -2166,9 +2199,20 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
       }
     }
 
-    if (FD_ISSET(PR_NETIO_FD(proxy_sess->backend_ctrl_conn->instrm), &rfds)) {
+    /* Look for a response on the backend control connection if either a)
+     * select(2) said its readable, or b) if we've received EOF on the
+     * data connection.
+     */
+
+    if (FD_ISSET(backend_ctrlfd, &rfds) || data_eof) {
       /* Some data arrived on the ctrl connection... */
-      pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
+
+      if (data_eof == FALSE) {
+        pr_trace_msg(trace_channel, 19,
+          "handling backend control message during data transfer");
+
+        pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
+      }
 
       resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool,
         proxy_sess->backend_ctrl_conn, &resp_nlines);
