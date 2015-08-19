@@ -1579,6 +1579,23 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
       bind_addr = session.c->local_addr;
     }
 
+    if (pr_netaddr_is_loopback(bind_addr) == TRUE) {
+      const char *local_name;
+      pr_netaddr_t *local_addr;
+
+      local_name = pr_netaddr_get_localaddr_str(cmd->pool);
+      local_addr = pr_netaddr_get_addr(cmd->pool, local_name, NULL);
+
+      if (local_addr != NULL) {
+        pr_trace_msg(trace_channel, 14,
+          "%s is a loopback address, and unable to reach %s; using %s instead",
+          pr_netaddr_get_ipstr(bind_addr),
+          pr_netaddr_get_ipstr(proxy_sess->backend_data_addr),
+          pr_netaddr_get_ipstr(local_addr));
+        bind_addr = local_addr;
+      }
+    }
+
     pr_trace_msg(trace_channel, 17,
       "connecting to backend server for passive data transfer for %s",
       (char *) cmd->argv[0]);
@@ -3339,10 +3356,31 @@ MODRET proxy_any(cmd_rec *cmd) {
     return PR_ERROR(cmd);
   }
 
+  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+
+  /* Backend servers can send "asynchronous" messages to us; we need to check
+   * for them.
+   */
+  if (proxy_ftp_ctrl_handle_async(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+      proxy_sess->frontend_ctrl_conn) < 0) {
+    int xerrno = errno;
+
+    pr_trace_msg(trace_channel, 7,
+      "error checking for async messages from the backend server: %s",
+      strerror(xerrno));
+
+    if (xerrno == ECONNRESET ||
+        xerrno == ECONNABORTED ||
+        xerrno == ENOENT ||
+        xerrno == EPIPE) {
+      pr_session_disconnect(&proxy_module,
+        PR_SESS_DISCONNECT_BY_APPLICATION,
+        "Backend control connection lost");
+    }
+  }
+
   pr_response_block(FALSE);
   pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
- 
-  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
 
   /* Commands related to logins and data transfers are handled separately. */
 
