@@ -1581,7 +1581,8 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
       bind_addr = session.c->local_addr;
     }
 
-    if (pr_netaddr_is_loopback(bind_addr) == TRUE) {
+    if (pr_netaddr_is_loopback(bind_addr) == TRUE &&
+        pr_netaddr_is_loopback(proxy_sess->backend_ctrl_conn->remote_addr) != TRUE) {
       const char *local_name;
       pr_netaddr_t *local_addr;
 
@@ -1744,7 +1745,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
     res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
       proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
 
-    if (proxy_sess->frontend_data_conn) {
+    if (session.d != NULL) {
       pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
       proxy_sess->frontend_data_conn = session.d = NULL;
     }
@@ -1763,7 +1764,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
   if (res < 0) {
     xerrno = errno;
 
-    if (proxy_sess->frontend_data_conn != NULL) {
+    if (session.d != NULL) {
       pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
       proxy_sess->frontend_data_conn = session.d = NULL;
     }
@@ -2030,6 +2031,8 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
    * burden.  Configurable?)
    */
 
+  proxy_sess->frontend_sess_flags |= SF_XFER;
+
   while (TRUE) {
     fd_set rfds;
     struct timeval tv;
@@ -2094,7 +2097,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
         "error calling select(2) while transferring data: %s",
         strerror(xerrno));
 
-      if (proxy_sess->frontend_data_conn != NULL) {
+      if (session.d != NULL) {
         pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
         proxy_sess->frontend_data_conn = session.d = NULL;
       }
@@ -2105,6 +2108,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
       }
 
       pr_timer_remove(PR_TIMER_STALLED, ANY_MODULE);
+      proxy_sess->frontend_sess_flags &= ~SF_XFER;
 
       pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
         strerror(xerrno));
@@ -2123,10 +2127,18 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
       continue;
     }
 
+#if 0
     /* Any commands from the frontend client take priority */
+
+    /* NOTE: This is temporarily disabled, until I can better handle an
+     * ABOR command on the frontend control connection whilst in the middle
+     * of a data transfer.
+     */
     if (FD_ISSET(frontend_ctrlfd, &rfds)) {
       proxy_process_cmd();
+      pr_response_block(FALSE);
     }
+#endif
 
     if (src_data_conn != NULL) {
       if (FD_ISSET(data_fd, &rfds)) {
@@ -2163,9 +2175,12 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
             proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
             proxy_sess->backend_data_conn = NULL;
 
-            pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-            proxy_sess->frontend_data_conn = session.d = NULL;
+            if (session.d != NULL) {
+              pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+              proxy_sess->frontend_data_conn = session.d = NULL;
+            }
 
+            proxy_sess->frontend_sess_flags &= ~SF_XFER;
             data_eof = TRUE;
 
           } else {
@@ -2199,8 +2214,12 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
               proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
               proxy_sess->backend_data_conn = NULL;
 
-              pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-              proxy_sess->frontend_data_conn = session.d = NULL;
+              if (session.d != NULL) {
+                pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+                proxy_sess->frontend_data_conn = session.d = NULL;
+              }
+
+              proxy_sess->frontend_sess_flags &= ~SF_XFER;
             }
           }
         }
@@ -2227,10 +2246,10 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
       if (resp == NULL) {
         xerrno = errno;
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "error receiving response from control connection: %s",
+          "error receiving response from backend control connection: %s",
           strerror(xerrno));
 
-        if (proxy_sess->frontend_data_conn != NULL) {
+        if (session.d != NULL) {
           pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
           proxy_sess->frontend_data_conn = session.d = NULL;
         }
@@ -2248,7 +2267,11 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
         if (xerrno == ECONNRESET ||
             xerrno == ECONNABORTED ||
             xerrno == ENOENT ||
-            xerrno == EPIPE) {
+            xerrno == EPIPE ||
+            xerrno == EPERM) {
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "backend control connection closed (%s), closing proxy session",
+            strerror(xerrno));
           pr_session_disconnect(&proxy_module,
             PR_SESS_DISCONNECT_BY_APPLICATION,
             "Backend control connection lost");
@@ -2265,7 +2288,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
         if (resp->num[0] != '1') {
           switch (xfer_direction) {
             case PR_NETIO_IO_RD:
-              if (proxy_sess->frontend_data_conn != NULL) {
+              if (session.d != NULL) {
                 pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
                 proxy_sess->frontend_data_conn = session.d = NULL;
               }
@@ -2324,6 +2347,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
 
   pr_throttle_pause(bytes_transferred, TRUE);
 
+  proxy_sess->frontend_sess_flags &= ~SF_XFER;
   pr_response_clear(&resp_list);
   pr_response_clear(&resp_err_list);
 
@@ -3317,9 +3341,12 @@ static int proxy_get_cmd_group(cmd_rec *cmd) {
     return 0;
   }
 
+  /* Note that some commands legitimately have no group (G_NONE is NULL), thus
+   * the absense of a group could simply indicate G_NONE.
+   */
   if (cmd->group == NULL) {
-    errno = ENOENT;
-    return -1;
+    pr_trace_msg(trace_channel, 15,
+      "found group 'NONE' for command '%s'", (char *) cmd->argv[0]);
   }
 
   return 0;
@@ -3596,7 +3623,7 @@ MODRET proxy_any(cmd_rec *cmd) {
         return PR_ERROR(cmd);
       }
       break;
- 
+
     /* RFC 2228 commands */
     case PR_CMD_ADAT_ID:
     case PR_CMD_AUTH_ID:

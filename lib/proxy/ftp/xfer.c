@@ -37,7 +37,7 @@ static const char *trace_channel = "proxy.ftp.xfer";
 
 int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
     const char *error_code, struct proxy_session *proxy_sess) {
-  int res, xerrno = 0;
+  int backend_family, bind_family, res, xerrno = 0;
   cmd_rec *actv_cmd;
   pr_netaddr_t *bind_addr = NULL;
   pr_response_t *resp;
@@ -51,7 +51,8 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
     bind_addr = session.c->local_addr;
   }
 
-  if (pr_netaddr_is_loopback(bind_addr) == TRUE) {
+  if (pr_netaddr_is_loopback(bind_addr) == TRUE &&
+      pr_netaddr_is_loopback(proxy_sess->backend_ctrl_conn->remote_addr) != TRUE) {
     const char *local_name;
     pr_netaddr_t *local_addr;
 
@@ -63,6 +64,42 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
         "%s is a loopback address, using %s instead",
         pr_netaddr_get_ipstr(bind_addr), pr_netaddr_get_ipstr(local_addr));
       bind_addr = local_addr;
+    }
+  }
+
+  /* Need to check the family of the bind addr against the family of the
+   * backend server.
+   */
+  backend_family = pr_netaddr_get_family(proxy_sess->backend_ctrl_conn->remote_addr);
+  bind_family = pr_netaddr_get_family(bind_addr);
+  if (bind_family == backend_family) {
+#ifdef PR_USE_IPV6
+    if (pr_netaddr_use_ipv6()) {
+      /* Make sure that the family is NOT IPv6, even though the local and
+       * remote families match.  The PORT command cannot be used for IPv6
+       * addresses.
+       */
+      if (bind_family == AF_INET6) {
+        pr_netaddr_t *mapped_addr;
+
+        mapped_addr = pr_netaddr_v6tov4(cmd->pool, bind_addr);
+        if (mapped_addr != NULL) {
+          bind_addr = mapped_addr;
+        }
+      }
+    }
+#endif /* PR_USE_IPV6 */
+  } else {
+    if (backend_family == AF_INET) {
+      pr_netaddr_t *mapped_addr;
+
+      /* In this scenario, the remote pper is an IPv4 (or IPv4-mapped IPv6)
+       * peer, so make sure we use an IPv4 local address.
+       */
+      mapped_addr = pr_netaddr_v6tov4(cmd->pool, bind_addr);
+      if (mapped_addr != NULL) {
+        bind_addr = mapped_addr;
+      }
     }
   }
 

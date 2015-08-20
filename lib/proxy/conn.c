@@ -355,7 +355,8 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
    * and of course not reachable from a public IP.  Thus we check for this
    * edge case (which happens often for development).
    */
-  if (pr_netaddr_is_loopback(bind_addr) == TRUE) {
+  if (pr_netaddr_is_loopback(bind_addr) == TRUE &&
+      pr_netaddr_is_loopback(remote_addr) != TRUE) {
     const char *local_name;
     pr_netaddr_t *local_addr;
 

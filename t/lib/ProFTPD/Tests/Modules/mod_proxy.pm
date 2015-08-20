@@ -13054,8 +13054,8 @@ EOC
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       # We configured a TransferRate of 1 KB/sec, and retrieved 8 KB;
-      # thus make sure that the transfer time is more than 8 secs.
-      $self->assert($xfer_elapsed > 8,
+      # thus make sure that the transfer time is more(-ish) than 8 secs.
+      $self->assert($xfer_elapsed > 7.9,
         test_msg("Expected > 8 secs, got $xfer_elapsed"));
     };
 
@@ -14125,8 +14125,6 @@ sub proxy_reverse_limit_list_deny_group {
   };
 
   my ($port, $config_user, $config_group) = config_write($config_file, $config);
-
-print STDERR "config: User $config_user, Group $config_group\n";
 
   if (open(my $fh, ">> $config_file")) {
     print $fh <<EOC;
