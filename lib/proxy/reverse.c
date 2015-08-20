@@ -1831,8 +1831,10 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
 
   /* Get the features supported by the backend server. */
   if (proxy_ftp_sess_get_feat(p, proxy_sess) < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to determine features of backend server: %s", strerror(errno));
+    if (errno != EPERM) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to determine features of backend server: %s", strerror(errno));
+    }
   }
 
   pr_response_block(TRUE);
