@@ -383,6 +383,21 @@ static void proxy_remove_symbols(void) {
 
 static void proxy_restrict_session(void) {
   const char *proxy_chroot = NULL;
+  config_rec *c;
+  char *xferlog = PR_XFERLOG_PATH;
+
+  /* Open the TransferLog here, BEFORE we chroot. */
+  c = find_config(main_server->conf, CONF_PARAM, "TransferLog", FALSE);
+  if (c != NULL) {
+    xferlog = c->argv[0];
+  }
+
+  if (strncasecmp(xferlog, "none", 5) == 0) {
+    xferlog_open(NULL);
+
+  } else {
+    xferlog_open(xferlog);
+  }
 
   PRIVS_ROOT
 
@@ -3099,7 +3114,7 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
   if (successful) {
     config_rec *c;
     const char *notes_key = "mod_auth.orig-user";
-    char *user, *xferlog = PR_XFERLOG_PATH;
+    char *user;
 
     /* For 2xx/3xx responses (others?), stash the user name appropriately. */
     user = cmd->arg;
@@ -3108,19 +3123,6 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     if (pr_table_add_dup(session.notes, notes_key, user, 0) < 0) {
       pr_log_debug(DEBUG3, "error stashing '%s' in session.notes: %s",
         notes_key, strerror(errno));
-    }
-
-    /* Open the TransferLog here. */
-    c = find_config(main_server->conf, CONF_PARAM, "TransferLog", FALSE);
-    if (c != NULL) {
-      xferlog = c->argv[0];
-    }
-
-    if (strncasecmp(xferlog, "none", 5) == 0) {
-      xferlog_open(NULL);
-
-    } else {
-      xferlog_open(xferlog);
     }
 
     /* Handle DefaultTransferMode here. */
