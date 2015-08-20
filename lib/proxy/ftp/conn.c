@@ -166,10 +166,10 @@ conn_t *proxy_ftp_conn_connect(pool *p, pr_netaddr_t *bind_addr,
     return NULL;
   }
 
-  pr_inet_set_nonblock(session.pool, conn);
+  pr_inet_set_nonblock(session.pool, opened);
 
   pr_trace_msg(trace_channel, 9,
-    "connected to backend server '%s'", conn->remote_name);
+    "connected to backend server '%s'", opened->remote_name);
   return opened;
 }
 
