@@ -66,6 +66,12 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
     }
   }
 
+  if (proxy_sess->backend_data_conn != NULL) {
+    /* Make sure that we only have one backend data connection. */
+    proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_sess->backend_data_conn = NULL;
+  }
+
   data_conn = proxy_ftp_conn_listen(cmd->tmp_pool, bind_addr, FALSE);
   if (data_conn == NULL) {
     xerrno = errno;
@@ -76,12 +82,6 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
 
     errno = xerrno;
     return -1;
-  }
-
-  if (proxy_sess->backend_data_conn != NULL) {
-    /* Make sure that we only have one backend data connection. */
-    proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
-    proxy_sess->backend_data_conn = NULL;
   }
 
   proxy_sess->backend_data_conn = data_conn;
@@ -370,7 +370,7 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
   if (remote_addr == NULL) {
     xerrno = errno;
 
-    pr_trace_msg("proxy", 2, "error parsing %s response '%s': %s",
+    pr_trace_msg(trace_channel, 2, "error parsing %s response '%s': %s",
       (char *) pasv_cmd->argv[0], resp->msg, strerror(xerrno));
 
     xerrno = EPERM;
@@ -390,7 +390,7 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
 
   if (pr_netaddr_cmp(remote_addr,
       proxy_sess->backend_ctrl_conn->remote_addr) != 0) {
-    pr_trace_msg("proxy", 1,
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "Refused %s address %s (address mismatch with %s)",
       (char *) pasv_cmd->argv[0], pr_netaddr_get_ipstr(remote_addr),
       pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr));
@@ -405,7 +405,8 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
   }
 
   if (remote_port < 1024) {
-    pr_trace_msg("proxy", 1, "Refused %s port %hu (below 1024)",
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "Refused %s port %hu (below 1024)",
       (char *) pasv_cmd->argv[0], remote_port);
     xerrno = EPERM;
 

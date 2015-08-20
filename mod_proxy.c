@@ -2352,7 +2352,7 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   if (remote_addr == NULL) {
     xerrno = errno;
 
-    pr_trace_msg("proxy", 2, "error parsing EPRT command '%s': %s",
+    pr_trace_msg(trace_channel, 2, "error parsing EPRT command '%s': %s",
       (char *) cmd->argv[1], strerror(xerrno));
 
     if (xerrno == EPROTOTYPE) {

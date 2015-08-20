@@ -80,7 +80,7 @@ conn_t *proxy_ftp_conn_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn,
   }
 
   pr_trace_msg(trace_channel, 9,
-    "accepted connection from backend server '%s'", conn->remote_name);
+    "accepted connection from server '%s'", conn->remote_name);
   return conn;
 }
 
