@@ -62,6 +62,7 @@ unsigned long proxy_opts = 0UL;
 unsigned int proxy_sess_state = 0U;
 
 static int proxy_engine = FALSE;
+static unsigned int proxy_login_attempts = 0;
 static int proxy_role = PROXY_ROLE_REVERSE;
 static const char *proxy_tables_dir = NULL;
 
@@ -392,14 +393,14 @@ static void proxy_restrict_session(void) {
     xferlog = c->argv[0];
   }
 
+  PRIVS_ROOT
+
   if (strncasecmp(xferlog, "none", 5) == 0) {
     xferlog_open(NULL);
 
   } else {
     xferlog_open(xferlog);
   }
-
-  PRIVS_ROOT
 
   if (getuid() == PR_ROOT_UID) {
     int res;
@@ -3065,6 +3066,24 @@ MODRET proxy_feat(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   return mr;
 }
 
+static void proxy_login_failed(void) {
+  unsigned int max_logins = PROXY_SESS_MAX_LOGIN_ATTEMPTS;
+  config_rec *c;
+
+  c = find_config(main_server->conf, CONF_PARAM, "MaxLoginAttempts", FALSE);
+  if (c != NULL) {
+    max_logins = *((unsigned int *) c->argv[0]);
+  }
+
+  if (max_logins > 0 &&
+      ++proxy_login_attempts >= max_logins) {
+
+    /* Generate an event for the benefit of modules like mod_ban and mod_snmp.
+     */
+    pr_event_generate("mod_auth.max-login-attempts", session.c);
+  }
+}
+
 MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *block_responses) {
   int successful = FALSE, res;
@@ -3142,7 +3161,11 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     }
   }
 
-  return (res == 0 ? PR_DECLINED(cmd) : PR_HANDLED(cmd));
+  if (res == 0) {
+    return PR_DECLINED(cmd);
+  }
+
+  return PR_HANDLED(cmd);
 }
 
 MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
@@ -3181,6 +3204,7 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
 
     pr_response_flush(&resp_err_list);
 
+    proxy_login_failed();
     errno = xerrno;
     return PR_ERROR(cmd);
   }
@@ -3238,6 +3262,10 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     if (proxy_role == PROXY_ROLE_FORWARD) {
       proxy_restrict_session();
     }
+
+  } else {
+    proxy_login_failed();
+    return PR_ERROR(cmd);
   }
 
   return PR_HANDLED(cmd);
