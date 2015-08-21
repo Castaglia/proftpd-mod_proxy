@@ -2638,6 +2638,14 @@ static int send_pass(struct proxy_session *proxy_sess, cmd_rec *cmd,
       "error receiving %s response from backend: %s", (char *) cmd->argv[0],
       strerror(xerrno));
 
+    /* If we receive an EPERM here, it is probably because the backend
+     * closed its control connection, yielding an EOF.  To better indicate
+     * this situation, propagate the error using EPIPE.
+     */
+    if (xerrno == EPERM) {
+      xerrno = EPIPE;
+    }
+
     errno = xerrno;
     return -1;
   }
