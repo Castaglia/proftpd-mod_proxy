@@ -3194,6 +3194,25 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
   if (res < 0) {
     int xerrno = errno;
 
+    if (xerrno == ECONNRESET ||
+        xerrno == ECONNABORTED ||
+        xerrno == EPIPE) {
+  
+      /* This indicates that the backend server closed the control
+       * connection on us.  Given that, the only thing we can do is to close
+       * the frontend connection in turn.
+       */
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "lost backend connection (%s) handling %s command", strerror(xerrno),
+        (char *) cmd->argv[0]);
+
+      pr_response_add_err(R_530, _("Login incorrect."));
+      pr_response_flush(&resp_err_list);
+      pr_session_disconnect(&proxy_module,
+        PR_SESS_DISCONNECT_BY_APPLICATION,
+        "Backend control connection lost");
+    }
+
     if (xerrno != EINVAL) {
       pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
         strerror(xerrno));

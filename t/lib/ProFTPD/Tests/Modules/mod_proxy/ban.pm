@@ -21,6 +21,11 @@ my $TESTS = {
     test_class => [qw(forking mod_ban reverse)],
   },
 
+  proxy_ban_reverse_login_rate => {
+    order => ++$order,
+    test_class => [qw(forking mod_ban reverse)],
+  },
+
   proxy_ban_forward_noproxyauth_max_login_attempts => {
     order => ++$order,
     test_class => [qw(forking forward mod_ban)],
@@ -35,6 +40,9 @@ my $TESTS = {
     order => ++$order,
     test_class => [qw(forking forward mod_ban)],
   },
+
+  # TODO:
+  # proxy_ban_forward_login_rate
 
 };
 
@@ -218,6 +226,148 @@ EOC
       my $expected = "";
       $self->assert($expected eq $conn_ex,
         test_msg("Expected exception '$expected', got '$conn_ex'"));
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_ban_reverse_login_rate {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+  my $vhost_port2 = $vhost_port - 7;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyTimeoutConnect} = '1sec';
+
+  my $ban_tab = File::Spec->rel2abs("$tmpdir/ban.tab");
+  my $timeout_idle = 10;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:10 lock:0 scoreboard:0 signal:0 proxy:20 proxy.db:20 proxy.reverse:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_ban.c' => {
+        BanEngine => 'on',
+        BanLog => $setup->{log_file},
+
+        # This says to ban a client which exceeds the login rate
+        # limit once within the last 1 minute will be banned for 5 secs
+        BanOnEvent => 'LoginRate 2/00:01:00 00:00:05',
+
+        BanTable => $ban_tab,
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+
+      'mod_proxy.c' => $proxy_config,
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      my $client2 = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      eval { $client2->login($setup->{user}, $setup->{passwd}) };
+      unless ($@) {
+        die("Second login succeeded unexpectedly");
+      }
+
+      my $resp_code = $client2->response_code();
+      my $resp_msg = $client2->response_msg();
+
+      my $expected = 530;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = "Login incorrect.";
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
     };
 
     if ($@) {
