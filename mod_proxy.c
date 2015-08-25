@@ -1766,7 +1766,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
       proxy_sess->frontend_data_conn = session.d = NULL;
     }
 
-    if (proxy_sess->backend_data_conn) {
+    if (proxy_sess->backend_data_conn != NULL) {
       proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
       proxy_sess->backend_data_conn = NULL;
     }
