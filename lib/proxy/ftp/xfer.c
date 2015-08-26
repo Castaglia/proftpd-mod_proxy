@@ -35,7 +35,7 @@ extern pr_response_t *resp_list, *resp_err_list;
 
 static const char *trace_channel = "proxy.ftp.xfer";
 
-int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
+int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
     const char *error_code, struct proxy_session *proxy_sess) {
   int backend_family, bind_family, res, xerrno = 0;
   cmd_rec *actv_cmd;
@@ -45,6 +45,53 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
   conn_t *data_conn = NULL;
   char *active_cmd;
   const char *resp_msg;
+
+  switch (policy_id) {
+    case PR_CMD_PORT_ID:
+      active_cmd = C_PORT;
+      break;
+
+    case PR_CMD_EPRT_ID:
+      /* If the remote host does not mention EPRT in its features, fall back
+       * to using PORT.
+       */
+      active_cmd = C_EPRT;
+      if (pr_table_get(proxy_sess->backend_features, C_EPRT, NULL) == NULL) {
+        pr_trace_msg(trace_channel, 19,
+          "EPRT not supported by backend server (via FEAT), using PORT");
+        if (proxy_sess->dataxfer_policy == PR_CMD_EPRT_ID) {
+          proxy_sess->dataxfer_policy = PR_CMD_PORT_ID;
+        }
+
+        active_cmd = C_PORT;
+        policy_id = PR_CMD_PORT_ID;
+      }
+      break;
+
+    default:
+      /* In this case, the cmd we were given is the one we should send to
+       * the backend server.
+       */
+      active_cmd = cmd->argv[0];
+
+      if (pr_cmd_cmp(cmd, PR_CMD_EPRT_ID) == 0) {
+        /* If the remote host does not mention EPRT in its features, fall back
+         * to using PORT.
+         */
+        if (pr_table_get(proxy_sess->backend_features, C_EPRT, NULL) == NULL) {
+          pr_trace_msg(trace_channel, 19,
+            "EPRT not supported by backend server (via FEAT), using PORT");
+          if (proxy_sess->dataxfer_policy == PR_CMD_EPRT_ID) {
+            proxy_sess->dataxfer_policy = PR_CMD_PORT_ID;
+          }
+
+          active_cmd = C_PORT;
+          policy_id = PR_CMD_PORT_ID;
+        }
+      }
+
+      break;
+  }
 
   bind_addr = proxy_sess->src_addr;
   if (bind_addr == NULL) {
@@ -77,13 +124,18 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
     if (pr_netaddr_use_ipv6()) {
       /* Make sure that the family is NOT IPv6, even though the local and
        * remote families match.  The PORT command cannot be used for IPv6
-       * addresses.
+       * addresses -- but EPRT CAN be used for IPv6 addresses.
        */
-      if (bind_family == AF_INET6) {
+      if (bind_family == AF_INET6 &&
+          policy_id == PR_CMD_PORT_ID) {
         pr_netaddr_t *mapped_addr;
 
         mapped_addr = pr_netaddr_v6tov4(cmd->pool, bind_addr);
         if (mapped_addr != NULL) {
+          pr_trace_msg(trace_channel, 9,
+            "converting local IPv6 address '%s' to IPv4 address '%s' for "
+            "active transfer using PORT", pr_netaddr_get_ipstr(bind_addr),
+            pr_netaddr_get_ipstr(mapped_addr));
           bind_addr = mapped_addr;
         }
       }
@@ -93,11 +145,15 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
     if (backend_family == AF_INET) {
       pr_netaddr_t *mapped_addr;
 
-      /* In this scenario, the remote pper is an IPv4 (or IPv4-mapped IPv6)
+      /* In this scenario, the remote peer is an IPv4 (or IPv4-mapped IPv6)
        * peer, so make sure we use an IPv4 local address.
        */
       mapped_addr = pr_netaddr_v6tov4(cmd->pool, bind_addr);
       if (mapped_addr != NULL) {
+        pr_trace_msg(trace_channel, 9,
+          "converting local IPv6 address '%s' to IPv4 address '%s' for "
+          "active transfer with IPv4 peer", pr_netaddr_get_ipstr(bind_addr),
+          pr_netaddr_get_ipstr(mapped_addr));
         bind_addr = mapped_addr;
       }
     }
@@ -122,53 +178,6 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
   }
 
   proxy_sess->backend_data_conn = data_conn;
-
-  switch (cmd_id) {
-    case PR_CMD_PORT_ID:
-      active_cmd = C_PORT;
-      break;
-
-    case PR_CMD_EPRT_ID:
-      /* If the remote host does not mention EPRT in its features, fall back
-       * to using PORT.
-       */
-      active_cmd = C_EPRT;
-      if (pr_table_get(proxy_sess->backend_features, C_EPRT, NULL) == NULL) {
-        pr_trace_msg(trace_channel, 19,
-          "EPRT not supported by backend server (via FEAT), using PORT");
-        if (proxy_sess->dataxfer_policy == PR_CMD_EPRT_ID) {
-          proxy_sess->dataxfer_policy = PR_CMD_PORT_ID;
-        }
-
-        active_cmd = C_PORT;
-        cmd_id = PR_CMD_PORT_ID;
-      }
-      break;
-
-    default:
-      /* In this case, the cmd we were given is the one we should send to
-       * the backend server.
-       */
-      active_cmd = cmd->argv[0];
-
-      if (pr_cmd_cmp(cmd, PR_CMD_EPRT_ID) == 0) {
-        /* If the remote host does not mention EPRT in its features, fall back
-         * to using PORT.
-         */
-        if (pr_table_get(proxy_sess->backend_features, C_EPRT, NULL) == NULL) {
-          pr_trace_msg(trace_channel, 19,
-            "EPRT not supported by backend server (via FEAT), using PORT");
-          if (proxy_sess->dataxfer_policy == PR_CMD_EPRT_ID) {
-            proxy_sess->dataxfer_policy = PR_CMD_PORT_ID;
-          }
-
-          active_cmd = C_PORT;
-          cmd_id = PR_CMD_PORT_ID;
-        }
-      }
-
-      break;
-  }
 
   switch (pr_cmd_get_id(active_cmd)) {
     case PR_CMD_PORT_ID:
@@ -233,7 +242,7 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
-    if (cmd_id == PR_CMD_EPRT_ID) {
+    if (policy_id == PR_CMD_EPRT_ID) {
       /* If using EPRT failed, try again using PORT, and switch the
        * DataTransferPolicy (if EPRT) to be PORT, for future attempts.
        */
@@ -258,7 +267,7 @@ int proxy_ftp_xfer_prepare_active(int cmd_id, cmd_rec *cmd,
   return 0;
 }
 
-pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
+pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
     const char *error_code, struct proxy_session *proxy_sess) {
   int res, xerrno = 0;
   cmd_rec *pasv_cmd;
@@ -269,9 +278,9 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
   char *passive_cmd, *passive_respcode = NULL;
 
   /* Whether we send a PASV (and expect 227) or an EPSV (and expect 229)
-   * need to depend on the cmd_id.
+   * need to depend on the policy_id.
    */
-  switch (cmd_id) {
+  switch (policy_id) {
     case PR_CMD_PASV_ID:
       passive_cmd = C_PASV;
       break;
@@ -289,7 +298,7 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
         }
 
         passive_cmd = C_PASV;
-        cmd_id = PR_CMD_PASV_ID;
+        policy_id = PR_CMD_PASV_ID;
       }
       break;
 
@@ -311,7 +320,7 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
           }
 
           passive_cmd = C_PASV;
-          cmd_id = PR_CMD_PASV_ID;
+          policy_id = PR_CMD_PASV_ID;
         }
       }
 
@@ -370,7 +379,7 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int cmd_id, cmd_rec *cmd,
       "received response code %s, but expected %s for %s command", resp->num,
       passive_respcode, (char *) pasv_cmd->argv[0]);
 
-    if (cmd_id == PR_CMD_EPSV_ID) {
+    if (policy_id == PR_CMD_EPSV_ID) {
       /* If using EPSV failed, try again using PASV, and switch the
        * DataTransferPolicy (if EPSV) to be PASV, for future attempts.
        */
