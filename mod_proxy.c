@@ -1581,6 +1581,74 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
     return -1;
   }
 
+  /* Now we should receive the initial response from the backend server. */
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
+  if (resp == NULL) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error receiving %s response from backend: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
+
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    if (proxy_sess->backend_data_conn != NULL) {
+      proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+      proxy_sess->backend_data_conn = NULL;
+    }
+
+    errno = xerrno;
+    return -1;
+  }
+
+  /* If the backend server responds with 4xx/5xx here, close the frontend
+   * data connection.
+   */
+  if (resp->num[0] == '4' || resp->num[0] == '5') {
+    res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
+      proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
+
+    if (session.d != NULL) {
+      pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+      proxy_sess->frontend_data_conn = session.d = NULL;
+    }
+
+    if (proxy_sess->backend_data_conn != NULL) {
+      proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+      proxy_sess->backend_data_conn = NULL;
+    }
+
+    errno = EPERM;
+    return -1;
+  }
+
+  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
+    proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
+  if (res < 0) {
+    xerrno = errno;
+
+    if (session.d != NULL) {
+      pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+      proxy_sess->frontend_data_conn = session.d = NULL;
+    }
+
+    if (proxy_sess->backend_data_conn != NULL) {
+      proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+      proxy_sess->backend_data_conn = NULL;
+    }
+
+    pr_response_block(TRUE);
+
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return -1;
+  }
+
   /* XXX Should handle EPSV_ALL here, too. */
   if (proxy_sess->backend_sess_flags & SF_PASSIVE) {
     pr_netaddr_t *bind_addr = NULL;
@@ -1730,74 +1798,6 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
       "active backend data connection opened - remote : %s:%d",
       pr_netaddr_get_ipstr(backend_conn->remote_addr),
       backend_conn->remote_port);
-  }
-
-  /* Now we should receive the initial response from the backend server. */
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
-  if (resp == NULL) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error receiving %s response from backend: %s", (char *) cmd->argv[0],
-      strerror(xerrno));
-
-    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
-      strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    if (proxy_sess->backend_data_conn != NULL) {
-      proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
-      proxy_sess->backend_data_conn = NULL;
-    }
-
-    errno = xerrno;
-    return -1;
-  }
-
-  /* If the backend server responds with 4xx/5xx here, close the frontend
-   * data connection.
-   */
-  if (resp->num[0] == '4' || resp->num[0] == '5') {
-    res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
-      proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
-
-    if (session.d != NULL) {
-      pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-      proxy_sess->frontend_data_conn = session.d = NULL;
-    }
-
-    if (proxy_sess->backend_data_conn != NULL) {
-      proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
-      proxy_sess->backend_data_conn = NULL;
-    }
-
-    errno = EPERM;
-    return -1;
-  }
-
-  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
-    proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
-  if (res < 0) {
-    xerrno = errno;
-
-    if (session.d != NULL) {
-      pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-      proxy_sess->frontend_data_conn = session.d = NULL;
-    }
-
-    if (proxy_sess->backend_data_conn != NULL) {
-      proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
-      proxy_sess->backend_data_conn = NULL;
-    }
-
-    pr_response_block(TRUE);
-
-    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
-      strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return -1;
   }
 
   /* Now establish a data connection with the frontend client. */
