@@ -1558,6 +1558,11 @@ static int tls_connect(conn_t *conn, const char *host_name,
 
   pr_trace_msg(trace_channel, 9, "sending SNI '%s'", conn->remote_name);
   SSL_set_tlsext_host_name(ssl, conn->remote_name);
+
+# if defined(TLSEXT_STATUSTYPE_ocsp)
+  pr_trace_msg(trace_channel, 9, "requesting stapled OCSP response");
+  SSL_set_tlsext_status_type(ssl, TLSEXT_STATUSTYPE_ocsp);
+# endif /* OCSP support */
 #endif /* OPENSSL_NO_TLSEXT */
 
   if (nstrm->strm_type == PR_NETIO_STRM_DATA) {
@@ -2244,6 +2249,52 @@ static unsigned int tls_psk_cb(SSL *ssl, const char *psk_hint, char *identity,
   return psklen;
 }
 #endif /* PSK support */
+
+#if !defined(OPENSSL_NO_TLSEXT) && defined(TLSEXT_STATUSTYPE_ocsp)
+/* TODO: Do more than just log the received stapled OCSP response. */
+static int tls_ocsp_response_cb(SSL *ssl, void *user_data) {
+  BIO *bio = NULL;
+  char *data = NULL;
+  long datalen;
+  const unsigned char *ptr;
+  int len, res = 1;
+
+  bio = BIO_new(BIO_s_mem());
+
+  len = SSL_get_tlsext_status_ocsp_resp(ssl, &ptr);
+  BIO_puts(bio, "OCSP response: ");
+  if (ptr == NULL) {
+    BIO_puts(bio, "no response sent\n");
+
+  } else {
+    OCSP_RESPONSE *resp;
+
+    resp = d2i_OCSP_RESPONSE(NULL, &ptr, len);
+    if (resp == NULL) {
+      BIO_puts(bio, "response parse error\n");
+      BIO_dump_indent(bio, (char *) ptr, len, 4);
+      res = 0;
+
+    } else {
+      BIO_puts(bio, "\n======================================\n");
+      OCSP_RESPONSE_print(bio, resp, 0);
+      BIO_puts(bio, "======================================\n");
+      OCSP_RESPONSE_free(resp);
+    }
+  }
+
+  datalen = BIO_get_mem_data(bio, &data);
+  if (data) {
+    data[datalen] = '\0';
+  }
+
+  pr_trace_msg(trace_channel, 1, "%s", "stapled OCSP response:");
+  pr_trace_msg(trace_channel, 1, "%s", data);
+
+  BIO_free(bio);
+  return res;
+}
+#endif /* OCSP support */
 
 #if !defined(OPENSSL_NO_TLSEXT)
 struct proxy_tls_next_proto {
@@ -3381,6 +3432,10 @@ int proxy_tls_sess_init(pool *p) {
     SSL_CTX_set_psk_client_callback(ssl_ctx, tls_psk_cb);
   }
 # endif /* PSK support */
+
+# if !defined(OPENSSL_NO_TLSEXT) && defined(TLSEXT_STATUSTYPE_ocsp)
+  SSL_CTX_set_tlsext_status_cb(ssl_ctx, tls_ocsp_response_cb);
+# endif /* OCSP support */
 
   if (tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
     SSL_CTX_set_info_callback(ssl_ctx, tls_info_cb);
