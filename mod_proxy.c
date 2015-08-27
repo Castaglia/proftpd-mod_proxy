@@ -3610,7 +3610,10 @@ MODRET proxy_any(cmd_rec *cmd) {
 
         mr = proxy_data(proxy_sess, cmd);
 
-        proxy_log_xfer(cmd, 'c');
+        if (MODRET_ISHANDLED(mr)) {
+          proxy_log_xfer(cmd, 'c');
+        }
+
         destroy_pool(session.xfer.p);
         memset(&session.xfer, 0, sizeof(session.xfer));
 
