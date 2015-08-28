@@ -109,58 +109,72 @@ int proxy_session_setup_env(pool *p, const char *user) {
 
   session.hide_password = TRUE;
 
+  /* Note: the given user name may not be known locally on the proxy; thus
+   * having pr_auth_getpwnam() returning NULL here is not an unexpected
+   * use case.
+   */
+
   pw = pr_auth_getpwnam(p, user);
+  if (pw != NULL) {
+    if (pw->pw_uid == PR_ROOT_UID) {
+      int root_login = FALSE;
 
-  if (pw->pw_uid == PR_ROOT_UID) {
-    pr_event_generate("mod_auth.root-login", NULL);
+      pr_event_generate("mod_auth.root-login", NULL);
 
-    c = find_config(main_server->conf, CONF_PARAM, "RootLogin", FALSE);
-    if (c) {
-      if (*((int *) c->argv[0]) == FALSE) {
+      c = find_config(main_server->conf, CONF_PARAM, "RootLogin", FALSE);
+      if (c != NULL) {
+        root_login = *((int *) c->argv[0]);
+      }
+
+      if (root_login == FALSE) {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "root login attempted, denied by RootLogin configuration");
         pr_log_auth(PR_LOG_NOTICE, "SECURITY VIOLATION: Root login attempted.");
         return -1;
       }
 
-    } else {
+      pr_log_auth(PR_LOG_WARNING, "ROOT proxy login successful");
+    }
+
+    res = pr_auth_is_valid_shell(main_server->conf, pw->pw_shell);
+    if (res == FALSE) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "root login attempted, denied by RootLogin configuration");
-      pr_log_auth(PR_LOG_NOTICE, "SECURITY VIOLATION: Root login attempted.");
+        "authentication for user '%s' failed: Invalid shell", user);
+      pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): Invalid shell: '%s'",
+        user, pw->pw_shell);
       return -1;
     }
+
+    res = pr_auth_banned_by_ftpusers(main_server->conf, pw->pw_name);
+    if (res == TRUE) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "authentication for user '%s' failed: User in " PR_FTPUSERS_PATH, user);
+      pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): User in "
+        PR_FTPUSERS_PATH, pw->pw_name);
+      return -1;
+    }
+  
+    session.user = pstrdup(p, pw->pw_name);
+    session.group = pstrdup(p, pr_auth_gid2name(p, pw->pw_gid));
+
+    session.login_uid = pw->pw_uid;
+    session.login_gid = pw->pw_gid;
+
+  } else {
+    session.user = pstrdup(session.pool, user);
+
+    /* XXX What should session.group, session.login_uid, session.login_gid
+     * be?  Kept as is?
+     */
   }
-
-  res = pr_auth_is_valid_shell(main_server->conf, pw->pw_shell);
-  if (res == FALSE) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "authentication for user '%s' failed: Invalid shell", user);
-    pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): Invalid shell: '%s'",
-      user, pw->pw_shell);
-    return -1;
-  }
-
-  res = pr_auth_banned_by_ftpusers(main_server->conf, pw->pw_name);
-  if (res == TRUE) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "authentication for user '%s' failed: User in " PR_FTPUSERS_PATH, user);
-    pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): User in "
-      PR_FTPUSERS_PATH, pw->pw_name);
-    return -1;
-  }
-
-  session.user = pstrdup(p, pw->pw_name);
-  session.group = pstrdup(p, pr_auth_gid2name(p, pw->pw_gid));
-
-  session.login_uid = pw->pw_uid;
-  session.login_gid = pw->pw_gid;
-
+ 
   if (session.gids == NULL &&
       session.groups == NULL) {
-    res = pr_auth_getgroups(p, pw->pw_name, &session.gids, &session.groups);
-    if (res < 1) {
+    res = pr_auth_getgroups(p, session.user, &session.gids, &session.groups);
+    if (res < 1 &&
+        errno != ENOENT) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "no supplemental groups found for user '%s'", pw->pw_name);
+        "no supplemental groups found for user '%s'", session.user);
     }
   }
 
@@ -191,8 +205,11 @@ int proxy_session_setup_env(pool *p, const char *user) {
     xferlog_open(xferlog);
   }
 
-  res = set_groups(p, pw->pw_gid, session.gids);
-  xerrno = errno;
+  if (pw != NULL) {
+    res = set_groups(p, pw->pw_gid, session.gids);
+    xerrno = errno;
+  }
+
   PRIVS_RELINQUISH
 
   if (res < 0) {
@@ -207,22 +224,18 @@ int proxy_session_setup_env(pool *p, const char *user) {
 
   pr_log_auth(PR_LOG_INFO, "USER %s: Login successful", user);
 
-  if (pw->pw_uid == PR_ROOT_UID) {
-    pr_log_auth(PR_LOG_WARNING, "ROOT proxy login successful");
-  }
-
   pr_scoreboard_update_entry(session.pid,
     PR_SCORE_USER, session.user,
     PR_SCORE_CWD, pr_fs_getcwd(),
     NULL);
 
-  session.user = pstrdup(session.pool, session.user);
-
-  if (session.group) {
+  if (session.group != NULL) {
     session.group = pstrdup(session.pool, session.group);
   }
 
-  session.groups = copy_array_str(session.pool, session.groups);
+  if (session.groups != NULL) {
+    session.groups = copy_array_str(session.pool, session.groups);
+  }
 
   proxy_sess_state |= PROXY_SESS_STATE_PROXY_AUTHENTICATED;
   pr_timer_remove(PR_TIMER_LOGIN, ANY_MODULE);
