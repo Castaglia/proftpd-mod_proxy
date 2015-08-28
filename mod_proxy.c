@@ -1558,31 +1558,13 @@ static void proxy_cmd_loop(server_rec *s, conn_t *conn) {
 /* Command handlers
  */
 
-static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
-    cmd_rec *cmd, conn_t **frontend, conn_t **backend) {
+static int proxy_data_handle_resp(pool *p, struct proxy_session *proxy_sess,
+    cmd_rec *cmd) {
   int res, xerrno = 0;
-  conn_t *frontend_conn = NULL, *backend_conn = NULL;
-  unsigned int resp_nlines = 0;
   pr_response_t *resp;
+  unsigned int resp_nlines = 0;
 
-  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    cmd);
-  if (res < 0) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", (char *) cmd->argv[0],
-      strerror(xerrno));
-
-    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
-      strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return -1;
-  }
-
-  /* Now we should receive the initial response from the backend server. */
-  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+  resp = proxy_ftp_ctrl_recv_resp(p, proxy_sess->backend_ctrl_conn,
     &resp_nlines);
   if (resp == NULL) {
     xerrno = errno;
@@ -1606,7 +1588,8 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
   /* If the backend server responds with 4xx/5xx here, close the frontend
    * data connection.
    */
-  if (resp->num[0] == '4' || resp->num[0] == '5') {
+  if (resp->num[0] == '4' ||
+      resp->num[0] == '5') {
     res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
       proxy_sess->frontend_ctrl_conn, resp, resp_nlines);
 
@@ -1640,6 +1623,30 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
     }
 
     pr_response_block(TRUE);
+
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return -1;
+  }
+
+  return 0;
+}
+
+static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
+    cmd_rec *cmd, conn_t **frontend, conn_t **backend) {
+  int res, xerrno = 0;
+  conn_t *frontend_conn = NULL, *backend_conn = NULL;
+
+  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    cmd);
+  if (res < 0) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error sending %s to backend: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
 
     pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
       strerror(xerrno));
@@ -1727,6 +1734,11 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
       return -1;
     }
 
+    res = proxy_data_handle_resp(cmd->tmp_pool, proxy_sess, cmd);
+    if (res < 0) {
+      return -1;
+    }
+
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "passive backend data connection opened - local  : %s:%d",
       pr_netaddr_get_ipstr(backend_conn->local_addr),
@@ -1737,6 +1749,11 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
       backend_conn->remote_port);
 
   } else if (proxy_sess->backend_sess_flags & SF_PORT) {
+    res = proxy_data_handle_resp(cmd->tmp_pool, proxy_sess, cmd);
+    if (res < 0) {
+      return -1;
+    }
+
     pr_trace_msg(trace_channel, 17,
       "accepting connection from backend server for active data "
       "transfer for %s", (char *) cmd->argv[0]);
