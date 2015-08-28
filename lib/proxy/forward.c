@@ -729,7 +729,8 @@ static int forward_handle_pass_userwithproxyauth(cmd_rec *cmd,
       return -1;
     }
 
-    res = proxy_session_setup_env(proxy_pool, user);
+    res = proxy_session_setup_env(proxy_pool, user,
+      PROXY_SESSION_FL_CHECK_LOGIN_ACL);
     if (res < 0) {
       errno = EINVAL;
       return -1;

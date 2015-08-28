@@ -101,10 +101,10 @@ int proxy_session_check_password(pool *p, const char *user,
   return 0;
 }
 
-int proxy_session_setup_env(pool *p, const char *user) {
+int proxy_session_setup_env(pool *p, const char *user, int flags) {
   struct passwd *pw;
   config_rec *c;
-  int login_acl, i, res, xerrno;
+  int i, res, xerrno;
   const char *xferlog = NULL;
 
   session.hide_password = TRUE;
@@ -178,11 +178,15 @@ int proxy_session_setup_env(pool *p, const char *user) {
     }
   }
 
-  login_acl = login_check_limits(main_server->conf, FALSE, TRUE, &i);
-  if (!login_acl) {
-    pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): Limit configuration "
-      "denies login", user);
-    return -1;
+  if (flags & PROXY_SESSION_FL_CHECK_LOGIN_ACL) {
+    int login_acl;
+
+    login_acl = login_check_limits(main_server->conf, FALSE, TRUE, &i);
+    if (!login_acl) {
+      pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): Limit configuration "
+        "denies login", user);
+      return -1;
+    }
   }
 
   /* XXX Will users want wtmp logging for a proxy login? */

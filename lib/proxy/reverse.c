@@ -2691,6 +2691,9 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *successful, int *block_responses) {
   int res, xerrno;
 
+  /* This CONNECT_AS_PASS flag indicates that we are using proxy auth when
+   * reverse proxying.
+   */
   if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_PASS) {
     if (!(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED)) {
       char *user = NULL;
@@ -2702,7 +2705,8 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
         return -1;
       }
 
-      res = proxy_session_setup_env(proxy_pool, user);
+      res = proxy_session_setup_env(proxy_pool, user,
+        PROXY_SESSION_FL_CHECK_LOGIN_ACL);
       if (res < 0) {
         errno = EINVAL;
         return -1;
@@ -2782,6 +2786,21 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
   res = send_pass(proxy_sess, cmd, successful);
   if (res < 0) {
     return -1;
+  }
+
+  if (reverse_flags != PROXY_REVERSE_FL_CONNECT_AT_PASS) {
+    char *user = NULL;
+
+    /* If we're not using proxy auth, still make sure that everything is
+     * set up properly.
+     */
+
+    user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
+    res = proxy_session_setup_env(proxy_pool, user, 0);
+    if (res < 0) {
+      errno = EINVAL;
+      return -1;
+    }
   }
 
   return 1;
