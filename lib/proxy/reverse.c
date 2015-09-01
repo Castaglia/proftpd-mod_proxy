@@ -2788,7 +2788,8 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     return -1;
   }
 
-  if (reverse_flags != PROXY_REVERSE_FL_CONNECT_AT_PASS) {
+  if (reverse_flags != PROXY_REVERSE_FL_CONNECT_AT_PASS &&
+      *successful == TRUE) {
     char *user = NULL;
 
     /* If we're not using proxy auth, still make sure that everything is
