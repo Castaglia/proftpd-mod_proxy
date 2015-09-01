@@ -104,7 +104,7 @@ int proxy_session_check_password(pool *p, const char *user,
 int proxy_session_setup_env(pool *p, const char *user, int flags) {
   struct passwd *pw;
   config_rec *c;
-  int i, res, xerrno;
+  int i, res = 0, xerrno = 0;
   const char *xferlog = NULL;
 
   session.hide_password = TRUE;
@@ -142,6 +142,7 @@ int proxy_session_setup_env(pool *p, const char *user, int flags) {
         "authentication for user '%s' failed: Invalid shell", user);
       pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): Invalid shell: '%s'",
         user, pw->pw_shell);
+      errno = EPERM;
       return -1;
     }
 
@@ -151,6 +152,7 @@ int proxy_session_setup_env(pool *p, const char *user, int flags) {
         "authentication for user '%s' failed: User in " PR_FTPUSERS_PATH, user);
       pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): User in "
         PR_FTPUSERS_PATH, pw->pw_name);
+      errno = EPERM;
       return -1;
     }
   
@@ -208,6 +210,8 @@ int proxy_session_setup_env(pool *p, const char *user, int flags) {
   } else {
     xferlog_open(xferlog);
   }
+
+  res = xerrno = 0;
 
   if (pw != NULL) {
     res = set_groups(p, pw->pw_gid, session.gids);
