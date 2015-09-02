@@ -188,15 +188,11 @@ static void proxy_log_xfer(cmd_rec *cmd, char abort_flag) {
 
   path = cmd->arg;
 
+  /* XXX Are mod_proxy and mod_xfer both writing this TransferLog entry? */
   xferlog_write(end_time.tv_sec, pr_netaddr_get_sess_remote_name(),
     session.xfer.total_bytes, path,
     (session.sf_flags & SF_ASCII ? 'a' : 'b'), direction,
     'r', session.user, abort_flag, "_");
-
-  pr_log_debug(DEBUG1, "Transfer %s %" PR_LU " bytes in %ld.%02lu seconds",
-    abort_flag == 'c' ? "completed:" : "aborted after",
-    (pr_off_t) session.xfer.total_bytes, (long) end_time.tv_sec,
-    (unsigned long)(end_time.tv_usec / 10000));
 }
 
 static int proxy_mkdir(const char *dir, uid_t uid, gid_t gid, mode_t mode) {
