@@ -1969,7 +1969,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
 }
 
 MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
-  int res, xerrno, xfer_direction, xfer_ok = TRUE;
+  int data_eof = FALSE, res, xerrno, xfer_direction, xfer_ok = TRUE;
   unsigned int resp_nlines = 0;
   pr_response_t *resp;
   conn_t *frontend_conn = NULL, *backend_conn = NULL;
@@ -2069,8 +2069,8 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
   while (TRUE) {
     fd_set rfds;
     struct timeval tv;
-    int data_eof = FALSE, data_fd = -1;
-    int backend_ctrlfd, frontend_ctrlfd, frontend_data = FALSE, maxfd = -1;
+    int backend_ctrlfd = -1, frontend_ctrlfd = -1, datafd = -1, maxfd = -1;
+    int frontend_data = FALSE;
     conn_t *src_data_conn = NULL, *dst_data_conn = NULL;
 
     tv.tv_sec = 15;
@@ -2097,10 +2097,15 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
         break;
     }
 
-    backend_ctrlfd = PR_NETIO_FD(proxy_sess->backend_ctrl_conn->instrm);
-    FD_SET(backend_ctrlfd, &rfds);
-    if (backend_ctrlfd > maxfd) {
-      maxfd = backend_ctrlfd;
+    /* Note: don't start listening for responses from the backend control
+     * connection until we have all of the data (data_eof = TRUE).
+     */
+    if (data_eof == TRUE) {
+      backend_ctrlfd = PR_NETIO_FD(proxy_sess->backend_ctrl_conn->instrm);
+      FD_SET(backend_ctrlfd, &rfds);
+      if (backend_ctrlfd > maxfd) {
+        maxfd = backend_ctrlfd;
+      }
     }
 
     frontend_ctrlfd = PR_NETIO_FD(proxy_sess->frontend_ctrl_conn->instrm);
@@ -2110,10 +2115,10 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     }
 
     if (src_data_conn != NULL) {
-      data_fd = PR_NETIO_FD(src_data_conn->instrm);
-      FD_SET(data_fd, &rfds);
-      if (data_fd > maxfd) {
-        maxfd = data_fd;
+      datafd = PR_NETIO_FD(src_data_conn->instrm);
+      FD_SET(datafd, &rfds);
+      if (datafd > maxfd) {
+        maxfd = datafd;
       }
     }
 
@@ -2167,43 +2172,84 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
      * ABOR command on the frontend control connection whilst in the middle
      * of a data transfer.
      */
-    if (FD_ISSET(frontend_ctrlfd, &rfds)) {
+    if (frontend_ctrlfd >= 0 &&
+        FD_ISSET(frontend_ctrlfd, &rfds)) {
       proxy_process_cmd();
       pr_response_block(FALSE);
     }
 #endif
 
-    if (src_data_conn != NULL) {
-      if (FD_ISSET(data_fd, &rfds)) {
-        /* Some data arrived on the data connection... */
-        pr_buffer_t *pbuf = NULL;
+    if (src_data_conn != NULL &&
+        datafd >= 0 &&
+        FD_ISSET(datafd, &rfds)) {
+      /* Some data arrived on the data connection... */
+      pr_buffer_t *pbuf = NULL;
 
-        pr_trace_msg(trace_channel, 19,
-          "handling data connection during data transfer");
+      pr_trace_msg(trace_channel, 19,
+        "handling data connection during data transfer");
 
-        pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
+      pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
  
-        pbuf = proxy_ftp_data_recv(cmd->tmp_pool, src_data_conn, frontend_data);
-        if (pbuf == NULL) {
-          xerrno = errno;
+      pbuf = proxy_ftp_data_recv(cmd->tmp_pool, src_data_conn, frontend_data);
+      if (pbuf == NULL) {
+        xerrno = errno;
 
-          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "error receiving from source data connection: %s",
-            strerror(xerrno));
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error receiving from source data connection: %s",
+          strerror(xerrno));
+
+      } else {
+        pr_timer_reset(PR_TIMER_NOXFER, ANY_MODULE);
+        pr_timer_reset(PR_TIMER_STALLED, ANY_MODULE);
+
+        if (pbuf->remaining == 0) {
+          /* EOF on the data connection; close BOTH of them.  In many
+           * cases, closing these connections causes any buffered data to
+           * be flushed out to the waiting peer.
+           */
+
+          pr_trace_msg(trace_channel, 19,
+            "read EOF on data connection, closing frontend/backend data "
+            "connections");
+
+          proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+          proxy_sess->backend_data_conn = NULL;
+
+          if (session.d != NULL) {
+            pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+            proxy_sess->frontend_data_conn = session.d = NULL;
+          }
+
+          proxy_sess->frontend_sess_flags &= ~SF_XFER;
+          data_eof = TRUE;
 
         } else {
-          pr_timer_reset(PR_TIMER_NOXFER, ANY_MODULE);
-          pr_timer_reset(PR_TIMER_STALLED, ANY_MODULE);
+          size_t remaining = pbuf->remaining;
 
-          if (pbuf->remaining == 0) {
-            /* EOF on the data connection; close BOTH of them.  In many
-             * cases, closing these connections causes any buffered data to
-             * be flushed out to the waiting peer.
+          pr_trace_msg(trace_channel, 9,
+            "received %lu bytes of data from source data connection",
+            (unsigned long) remaining);
+          session.xfer.total_bytes += remaining;
+
+          bytes_transferred += remaining;
+          pr_throttle_pause(bytes_transferred, FALSE);
+
+          res = proxy_ftp_data_send(cmd->tmp_pool, dst_data_conn, pbuf,
+            !frontend_data);
+          if (res < 0) {
+            xerrno = errno;
+
+            (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+              "error writing %lu bytes of data to sink data connection: %s",
+              (unsigned long) remaining, strerror(xerrno));
+
+            /* If this happens, close our connection prematurely.
+             * XXX Should we try to send an ABOR here, too?  Or SIGURG?
+             * XXX Should we only do this for e.g. Broken pipe?
              */
-
-            pr_trace_msg(trace_channel, 19,
-              "read EOF on data connection, closing frontend/backend data "
-              "connections");
+            (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+              "unable to proxy data between frontend/backend, "
+              "closing data connections");
 
             proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
             proxy_sess->backend_data_conn = NULL;
@@ -2214,65 +2260,28 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
             }
 
             proxy_sess->frontend_sess_flags &= ~SF_XFER;
-            data_eof = TRUE;
-
-          } else {
-            size_t remaining = pbuf->remaining;
-
-            pr_trace_msg(trace_channel, 9,
-              "received %lu bytes of data from source data connection",
-              (unsigned long) remaining);
-            session.xfer.total_bytes += remaining;
-
-            bytes_transferred += remaining;
-            pr_throttle_pause(bytes_transferred, FALSE);
-
-            res = proxy_ftp_data_send(cmd->tmp_pool, dst_data_conn, pbuf,
-              !frontend_data);
-            if (res < 0) {
-              xerrno = errno;
-
-              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-                "error writing %lu bytes of data to sink data connection: %s",
-                (unsigned long) remaining, strerror(xerrno));
-
-              /* If this happens, close our connection prematurely.
-               * XXX Should we try to send an ABOR here, too?  Or SIGURG?
-               * XXX Should we only do this for e.g. Broken pipe?
-               */
-              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-                "unable to proxy data between frontend/backend, "
-                "closing data connections");
-
-              proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
-              proxy_sess->backend_data_conn = NULL;
-
-              if (session.d != NULL) {
-                pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-                proxy_sess->frontend_data_conn = session.d = NULL;
-              }
-
-              proxy_sess->frontend_sess_flags &= ~SF_XFER;
-            }
           }
         }
       }
     }
 
-    /* Look for a response on the backend control connection if either a)
-     * select(2) said its readable, or b) if we've received EOF on the
-     * data connection.
+    /* Look for a response on the backend control connection if we've received
+     * EOF on the data connection.
+     *
+     * Note that the backend control connection might be readable before we've
+     * reached EOF on the data connection, but if we read its response in the
+     * middle of the transfer, we risk data truncation.  I.e. the backend
+     * control response of e.g. 226 might be racing the data connection EOF, and
+     * we don't want to read the 226 response and ASSUME that we have all of
+     * the data; we need the explicit EOF for that.
      */
 
-    if (FD_ISSET(backend_ctrlfd, &rfds) || data_eof) {
+    if (data_eof == TRUE &&
+        backend_ctrlfd >= 0 &&
+        FD_ISSET(backend_ctrlfd, &rfds)) {
+
       /* Some data arrived on the ctrl connection... */
-
-      if (data_eof == FALSE) {
-        pr_trace_msg(trace_channel, 19,
-          "handling backend control message during data transfer");
-
-        pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
-      }
+      pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
 
       resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool,
         proxy_sess->backend_ctrl_conn, &resp_nlines);
