@@ -57,9 +57,9 @@ pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn,
     return pbuf;
   }
 
-  /* XXX Reset TimeoutIdle timer, TimeoutNoTransfer timer.  Are there
-   * separate versions of these timers for frontend, backend?
-   */
+  pr_timer_reset(PR_TIMER_NOXFER, ANY_MODULE);
+  pr_timer_reset(PR_TIMER_STALLED, ANY_MODULE);
+  pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
 
   pr_event_generate("mod_proxy.data-read", pbuf);
   pr_trace_msg(trace_channel, 15, "received %d bytes of data", nread);
@@ -128,9 +128,9 @@ int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf,
     return -1;
   }
 
-  /* XXX Reset TimeoutIdle timer, TimeoutNoTransfer timer.  Are there
-   * separate versions of these timers for frontend, backend?
-   */
+  pr_timer_reset(PR_TIMER_NOXFER, ANY_MODULE);
+  pr_timer_reset(PR_TIMER_STALLED, ANY_MODULE);
+  pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
 
   if (nwrote == pbuf->remaining) {
     pbuf->current = NULL;

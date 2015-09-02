@@ -188,6 +188,9 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
      * This indicates the last line in the multiline response -- and the
      * character after the numerics MUST be a space.
      *
+     * Unfortunately, some FTP servers (IIS, for instance) will use multiline
+     * responses whose continuation lines do NOT start with the mandated
+     * space (as for a multiline STAT response on a file, for example).  Sigh.
      */
     if (resp == NULL) {
       /* First line of a possibly multiline response (or just the only line). */
@@ -250,8 +253,15 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
             pr_trace_msg(trace_channel, 1,
               "non-numeric characters in end of response data: '%c%c%c'",
               buf[0], buf[1], buf[2]);
-            errno = EINVAL;
-            return NULL;
+
+            /* NOTE: We could/should be strict here, and require conformant
+             * responses only.  For now, though, we'll proxy through the
+             * backend's response to the frontend client, to let it decide
+             * how it wants to handle this response data.
+             */
+            resp->msg = pstrcat(p, resp->msg, "\r\n", buf, NULL);
+            count++;
+            continue;
           }
 
           if (buf[3] != ' ') {

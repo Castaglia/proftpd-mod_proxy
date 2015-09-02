@@ -2219,7 +2219,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
           } else {
             size_t remaining = pbuf->remaining;
 
-            (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            pr_trace_msg(trace_channel, 9,
               "received %lu bytes of data from source data connection",
               (unsigned long) remaining);
             session.xfer.total_bytes += remaining;
