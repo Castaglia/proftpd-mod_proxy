@@ -15776,7 +15776,10 @@ EOC
     if (open(my $fh, "< $xfer_log")) {
       my $line = <$fh>;
       chomp($line);
-      close($fh);
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDOUT "$line\n";
+      }
 
       my $expected = '^\S+\s+\S+\s+\d+\s+\d+:\d+:\d+\s+\d+\s+\d+\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+_\s+o\s+r\s+(\S+)\s+ftp\s+0\s+\*\s+c$';
 
@@ -15811,6 +15814,14 @@ EOC
         $expected = $user;
         $self->assert($expected eq $user_name,
           test_msg("Expected user '$expected', got '$user_name'"));
+      }
+
+      my $next_line = <$fh>;
+      close($fh);
+      chomp($next_line);
+
+      if (length($next_line) > 0) {
+        die("Expected only one TransferLog entry, got more than one");
       }
 
     } else {
