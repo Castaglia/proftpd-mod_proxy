@@ -1991,7 +1991,8 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
 }
 
 MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
-  int data_eof = FALSE, res, xerrno, xfer_direction, xfer_ok = TRUE;
+  int data_eof = FALSE, dst_xerrno = 0, res, xerrno;
+  int xfer_direction, xfer_ok = TRUE;
   unsigned int resp_nlines = 0;
   pr_response_t *resp;
   conn_t *frontend_conn = NULL, *backend_conn = NULL;
@@ -2095,7 +2096,14 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     int frontend_data = FALSE;
     conn_t *src_data_conn = NULL, *dst_data_conn = NULL;
 
-    tv.tv_sec = data_eof ? proxy_sess->linger_timeout : 15;
+    if (data_eof == TRUE ||
+        xfer_ok == FALSE) {
+      tv.tv_sec = proxy_sess->linger_timeout;
+
+    } else {
+      tv.tv_sec = 15;
+    }
+
     tv.tv_usec = 0;
 
     pr_signals_handle();
@@ -2120,9 +2128,11 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     }
 
     /* Note: don't start listening for responses from the backend control
-     * connection until we have all of the data (data_eof = TRUE).
+     * connection until we have all of the data (data_eof = TRUE), OR if
+     * encountered some other error with the transfer.
      */
-    if (data_eof == TRUE) {
+    if (data_eof == TRUE ||
+        xfer_ok == FALSE) {
       backend_ctrlfd = PR_NETIO_FD(proxy_sess->backend_ctrl_conn->instrm);
       FD_SET(backend_ctrlfd, &rfds);
       if (backend_ctrlfd > maxfd) {
@@ -2180,18 +2190,22 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     }
 
     if (res == 0) {
-      if (data_eof) {
-        /* We've timed out waiting for the end-of-transfer response on the
-         * backend control connection.
-         */
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "timed out waiting for end-of-transfer response from backend server, "
-          "terminating transfer");
+      if (data_eof == TRUE ||
+          xfer_ok == FALSE) {
+
+        if (data_eof) {
+          /* We've timed out waiting for the end-of-transfer response on the
+           * backend control connection.
+           */
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "timed out waiting for end-of-transfer response from backend "
+            "server, terminating transfer");
+        }
 
         pr_timer_remove(PR_TIMER_STALLED, ANY_MODULE);
         proxy_sess->frontend_sess_flags &= ~SF_XFER;
 
-        xerrno = ETIMEDOUT;
+        xerrno = data_eof ? ETIMEDOUT : dst_xerrno;
         pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
           strerror(xerrno));
         pr_response_flush(&resp_err_list);
@@ -2283,8 +2297,8 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
             xerrno = errno;
 
             (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-              "error writing %lu bytes of data to sink data connection: %s",
-              (unsigned long) remaining, strerror(xerrno));
+              "error writing %lu bytes of data to destination data "
+              "connection: %s", (unsigned long) remaining, strerror(xerrno));
 
             /* If this happens, close our connection prematurely.
              * XXX Should we try to send an ABOR here, too?  Or SIGURG?
@@ -2303,6 +2317,8 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
             }
 
             proxy_sess->frontend_sess_flags &= ~SF_XFER;
+            xfer_ok = FALSE;
+            dst_xerrno = xerrno;
           }
         }
       }
@@ -2319,7 +2335,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
      * the data; we need the explicit EOF for that.
      */
 
-    if (data_eof == TRUE &&
+    if ((data_eof == TRUE || xfer_ok == FALSE) &&
         backend_ctrlfd >= 0 &&
         FD_ISSET(backend_ctrlfd, &rfds)) {
 
