@@ -3326,16 +3326,19 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
       }
 
       if (session.groups != NULL) {
-        register unsigned int i;
+        if (session.groups->nelts > 0) {
+          register unsigned int i;
 
-        pr_trace_msg(trace_channel, 9,
-          "clearing %d unauthenticated additional group %s for user '%s':",
-          session.groups->nelts, session.groups->nelts != 1 ? "names" : "name",
-          session.user);
-        for (i = 0; i < session.groups->nelts; i++) {
           pr_trace_msg(trace_channel, 9,
-            "  clearing additional group name '%s'",
-            ((char **) session.groups->elts)[i]);
+            "clearing %d unauthenticated additional group %s for user '%s':",
+            session.groups->nelts,
+            session.groups->nelts != 1 ? "names" : "name", session.user);
+
+          for (i = 0; i < session.groups->nelts; i++) {
+            pr_trace_msg(trace_channel, 9,
+              "  clearing additional group name '%s'",
+              ((char **) session.groups->elts)[i]);
+          }
         }
 
         session.groups = NULL;
