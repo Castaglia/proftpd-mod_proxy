@@ -60,6 +60,7 @@ servers.
   <li><a href="#ProxySourceAddress">ProxySourceAddress</a>
   <li><a href="#ProxyTables">ProxyTables</a>
   <li><a href="#ProxyTimeoutConnect">ProxyTimeoutConnect</a>
+  <li><a href="#ProxyTimeoutLinger">ProxyTimeoutLinger</a>
   <li><a href="#ProxyTLSCACertificateFile">ProxyTLSCACertificateFile</a>
   <li><a href="#ProxyTLSCACertificatePath">ProxyTLSCACertificatePath</a>
   <li><a href="#ProxyTLSCARevocationFile">ProxyTLSCARevocationFile</a>
@@ -610,6 +611,21 @@ servers, a more aggressively short timeout can be used:
 <pre>
   ProxyTimeoutConnect 1sec
 </pre>
+
+<p>
+<hr>
+<h2><a name="ProxyTimeoutLinger">ProxyTimeoutLinger</a></h2>
+<strong>Syntax:</strong> ProxyTimeoutLinger <em>timeout</em><br>
+<strong>Default:</strong> ProxyTimeoutLinger 3sec<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc1 and later
+
+<p>
+The <code>ProxyTimeoutLinger</code> directive configures the amount of time
+that <code>mod_proxy</code> will wait (<em>lingering</em>), after receiving
+all of the data on the data transfer connection to the backend server, for the
+explicit "end of transfer" response from the backend server, before giving up.
 
 <p>
 <hr>

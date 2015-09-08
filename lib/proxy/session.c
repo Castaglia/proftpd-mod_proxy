@@ -48,6 +48,7 @@ struct proxy_session *proxy_session_alloc(pool *p) {
   /* Fill in the defaults for the session members. */
   proxy_sess->connect_timeout = -1;
   proxy_sess->connect_timerno = -1;
+  proxy_sess->linger_timeout = -1;
 
   return proxy_sess;
 }

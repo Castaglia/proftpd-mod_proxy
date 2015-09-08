@@ -34,6 +34,7 @@ struct proxy_session {
 
   int connect_timeout;
   int connect_timerno;
+  int linger_timeout;
 
   /* Frontend connection */
   conn_t *frontend_ctrl_conn;

@@ -49,6 +49,9 @@
 /* How long (in secs) to wait to connect to real server? */
 #define PROXY_CONNECT_DEFAULT_TIMEOUT	5
 
+/* How long (in secs) to wait for the end-of-data-transfer response? */
+#define PROXY_LINGER_DEFAULT_TIMEOUT	3
+
 extern module xfer_module;
 
 /* From response.c */
@@ -980,6 +983,29 @@ MODRET set_proxytimeoutconnect(cmd_rec *cmd) {
   if (pr_str_get_duration(cmd->argv[1], &timeout) < 0) {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing timeout value '",
       (char *) cmd->argv[1], "': ", strerror(errno), NULL));
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = pcalloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = timeout;
+
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxyTimeoutLinger secs */
+MODRET set_proxytimeoutlinger(cmd_rec *cmd) {
+  int timeout = -1;
+  config_rec *c = NULL;
+  char *timespec;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  timespec = cmd->argv[1];
+
+  if (pr_str_get_duration(timespec, &timeout) < 0) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing timeout value '",
+      timespec, "': ", strerror(errno), NULL));
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
@@ -2069,7 +2095,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     int frontend_data = FALSE;
     conn_t *src_data_conn = NULL, *dst_data_conn = NULL;
 
-    tv.tv_sec = 15;
+    tv.tv_sec = data_eof ? proxy_sess->linger_timeout : 15;
     tv.tv_usec = 0;
 
     pr_signals_handle();
@@ -2154,6 +2180,27 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     }
 
     if (res == 0) {
+      if (data_eof) {
+        /* We've timed out waiting for the end-of-transfer response on the
+         * backend control connection.
+         */
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "timed out waiting for end-of-transfer response from backend server, "
+          "terminating transfer");
+
+        pr_timer_remove(PR_TIMER_STALLED, ANY_MODULE);
+        proxy_sess->frontend_sess_flags &= ~SF_XFER;
+
+        xerrno = ETIMEDOUT;
+        pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+          strerror(xerrno));
+        pr_response_flush(&resp_err_list);
+
+        pr_response_block(TRUE);
+        errno = xerrno;
+        return PR_ERROR(cmd);
+     }
+
       /* XXX Have MAX_RETRIES logic here. */
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "timed out waiting for readability on control/data connections, "
@@ -4104,6 +4151,14 @@ static int proxy_sess_init(void) {
     proxy_sess->connect_timeout = PROXY_CONNECT_DEFAULT_TIMEOUT;
   }
 
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyTimeoutLinger", FALSE);
+  if (c != NULL) {
+    proxy_sess->linger_timeout = *((int *) c->argv[0]);
+
+  } else {
+    proxy_sess->linger_timeout = PROXY_LINGER_DEFAULT_TIMEOUT;
+  }
+
   /* Every proxy session starts off in the ProxyTables/empty/ directory. */
   sess_dir = pdircat(proxy_pool, proxy_tables_dir, "empty", NULL);
   if (pr_fsio_chdir_canon(sess_dir, TRUE) < 0) {
@@ -4179,6 +4234,7 @@ static conftable proxy_conftab[] = {
   { "ProxySourceAddress",	set_proxysourceaddress,		NULL },
   { "ProxyTables",		set_proxytables,		NULL },
   { "ProxyTimeoutConnect",	set_proxytimeoutconnect,	NULL },
+  { "ProxyTimeoutLinger",	set_proxytimeoutlinger,		NULL },
 
   /* TLS support */
   { "ProxyTLSCACertificateFile",set_proxytlscacertfile,		NULL },
