@@ -114,7 +114,7 @@ The currently supported policies are:
   </li>
 
   <p>
-  <li><code>passive<code>
+  <li><code>passive</code>
     <p>
     Regardless of the commands sent by the client, <code>mod_proxy</code>
     will use only <em>passive</em> data transfers (<i>i.e.</i> using
@@ -1161,7 +1161,6 @@ proxying:
 Here's an example <code>mod_proxy</code> configuration for reverse proxying,
 with lookup of per-user backend servers:
 <pre>
-<pre>
   &lt;IfModule mod_proxy.c&gt;
     ProxyEngine on
     ProxyLog /path/to/proxy.log
@@ -1292,6 +1291,8 @@ purposes, the module also uses <a href="http://www.proftpd.org/docs/howto/Tracin
   <li>proxy.tls
   <li>proxy.uri
 </ul>
+
+<p>
 Thus for trace logging, to aid in debugging, you would use the following in
 your <code>proftpd.conf</code>:
 <pre>
@@ -1482,7 +1483,7 @@ Then follow the usual steps:
   make install
 </pre>
 <b>Note</b>: <code>mod_proxy</code> uses the
-<a href="http://www.sqlite.org"><code>SQLite<code></a> library; thus the
+<a href="http://www.sqlite.org"><code>SQLite</code></a> library; thus the
 <code>sqlite3</code> development library/headers <b>must</b> be installed for
 building <code>mod_proxy</code>.
 
