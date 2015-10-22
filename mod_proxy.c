@@ -52,6 +52,7 @@
 /* How long (in secs) to wait for the end-of-data-transfer response? */
 #define PROXY_LINGER_DEFAULT_TIMEOUT	3
 
+extern xaset_t *server_list;
 extern module xfer_module;
 
 /* From response.c */
@@ -519,7 +520,7 @@ MODRET set_proxyengine(cmd_rec *cmd) {
 
 /* usage: ProxyForwardEnabled on|off */
 MODRET set_proxyforwardenabled(cmd_rec *cmd) {
-  int enabled = -1, res;
+  int enabled = -1, *note = NULL, res;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_CLASS);
@@ -530,7 +531,10 @@ MODRET set_proxyforwardenabled(cmd_rec *cmd) {
   }
 
   /* Stash this setting in the notes for this class. */
-  res = pr_class_add_note(PROXY_FORWARD_ENABLED_NOTE, &enabled, sizeof(int));
+  note = palloc(cmd->server->pool, sizeof(int));
+  *note = enabled;
+
+  res = pr_class_add_note(PROXY_FORWARD_ENABLED_NOTE, note, sizeof(int));
   if (res < 0) {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error storing parameter: ",
       strerror(errno), NULL));
@@ -3892,8 +3896,22 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
   config_rec *c;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyEngine", FALSE);
-  if (c) {
+  if (c != NULL) {
     engine = *((int *) c->argv[0]);
+
+  } else {
+    server_rec *s;
+
+    for (s = (server_rec *) server_list->xas_list; s; s = s->next) {
+      c = find_config(s->conf, CONF_PARAM, "ProxyEngine", FALSE);
+      if (c != NULL) {
+        engine = *((int *) c->argv[0]);
+      }
+
+      if (engine) {
+        break;
+      }
+    }
   }
 
   if (engine == FALSE) {
