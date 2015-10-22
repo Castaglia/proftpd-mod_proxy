@@ -1527,7 +1527,7 @@ static int tls_add_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
 
 static int tls_connect(conn_t *conn, const char *host_name,
     pr_netio_stream_t *nstrm) {
-  int blocking, nstrm_type, res = 0, xerrno = 0;
+  int blocking, res = 0, xerrno = 0;
   char *subj = NULL;
   SSL *ssl = NULL;
   BIO *rbio = NULL, *wbio = NULL;
@@ -1629,7 +1629,7 @@ static int tls_connect(conn_t *conn, const char *host_name,
     if (handshake_timed_out) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "TLS negotiation timed out (%u seconds)", handshake_timeout);
-      tls_end_sess(ssl, nstrm_type, 0);
+      tls_end_sess(ssl, nstrm->strm_type, 0);
       return -4;
     }
 
@@ -1699,7 +1699,7 @@ static int tls_connect(conn_t *conn, const char *host_name,
       pr_event_generate("mod_proxy.tls-data-handshake-failed", &errcode);
     }
 
-    tls_end_sess(ssl, nstrm_type, 0);
+    tls_end_sess(ssl, nstrm->strm_type, 0);
     return -3;
   }
 
@@ -1766,7 +1766,7 @@ static int tls_connect(conn_t *conn, const char *host_name,
   }
 
   if (check_server_cert(ssl, conn, host_name) < 0) {
-    tls_end_sess(ssl, nstrm_type, 0);
+    tls_end_sess(ssl, nstrm->strm_type, 0);
     return -1;
   }
 
@@ -3160,7 +3160,7 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
 #  ifdef SSL3_RT_HEADER
   } else if (version == 0 &&
              content_type == SSL3_RT_HEADER &&
-             SSL3_RT_HEADER_LENGTH) {
+             buflen == SSL3_RT_HEADER_LENGTH) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "[tls.msg] %s protocol record message (%u %s)", action_str,
       (unsigned int) buflen, bytes_str);

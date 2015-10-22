@@ -358,17 +358,17 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
   if (pr_netaddr_is_loopback(bind_addr) == TRUE &&
       pr_netaddr_is_loopback(remote_addr) != TRUE) {
     const char *local_name;
-    pr_netaddr_t *local_addr;
+    pr_netaddr_t *new_local_addr;
 
     local_name = pr_netaddr_get_localaddr_str(p);
-    local_addr = pr_netaddr_get_addr(p, local_name, NULL);
+    new_local_addr = pr_netaddr_get_addr(p, local_name, NULL);
 
-    if (local_addr != NULL) {
+    if (new_local_addr != NULL) {
       pr_trace_msg(trace_channel, 14,
         "%s is a loopback address, and unable to reach %s; using %s instead",
         pr_netaddr_get_ipstr(bind_addr), remote_ipstr,
-        pr_netaddr_get_ipstr(local_addr));
-      bind_addr = local_addr;
+        pr_netaddr_get_ipstr(new_local_addr));
+      bind_addr = new_local_addr;
     }
   }
 

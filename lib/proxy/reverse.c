@@ -1025,6 +1025,7 @@ static array_header *reverse_db_peruser_backends_by_sql(pool *p,
     return NULL;
   }
 
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseServers", FALSE);
   while (c != NULL) {
     const char *named_query, *uri;
     array_header *backends = NULL;
@@ -1043,6 +1044,8 @@ static array_header *reverse_db_peruser_backends_by_sql(pool *p,
         FALSE);
       continue;
     }
+
+    named_query = uri + 5;
 
     if (quoted_user == NULL) {
       quoted_user = reverse_db_sql_quote_str(p, (char *) user);
