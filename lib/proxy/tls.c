@@ -1134,7 +1134,7 @@ static int tls_verify_cb(int ok, X509_STORE_CTX *ctx) {
 
     /* Catch a too long certificate chain here. */
     if (verify_depth > PROXY_TLS_VERIFY_DEPTH) {
-        X509_STORE_CTX_set_error(ctx, X509_V_ERR_CERT_CHAIN_TOO_LONG);
+      X509_STORE_CTX_set_error(ctx, X509_V_ERR_CERT_CHAIN_TOO_LONG);
     }
 
     verify_error = X509_STORE_CTX_get_error(ctx);
@@ -1181,7 +1181,7 @@ static int tls_verify_cb(int ok, X509_STORE_CTX *ctx) {
     }
 
     if (tls_verify_server == FALSE) {
-      pr_trace_msg(trace_channel, 3,
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "ProxyTLSVerifyServer off, ignoring failed certificate verification");
       ok = 1;
     }
