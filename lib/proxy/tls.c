@@ -30,10 +30,6 @@
 #include "proxy/session.h"
 #include "proxy/tls.h"
 
-#ifdef HAVE_MLOCK
-# include <sys/mman.h>
-#endif
-
 #ifdef PR_USE_OPENSSL
 
 extern xaset_t *server_list;
