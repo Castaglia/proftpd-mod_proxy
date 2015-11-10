@@ -136,9 +136,10 @@ pr_netio_t *proxy_netio_unset(int strm_type, const char *fn) {
 }
 
 int proxy_netio_set(int strm_type, pr_netio_t *netio) {
-  (void) pr_unregister_netio(strm_type);
 
   if (netio != NULL) {
+    (void) pr_unregister_netio(strm_type);
+
     if (pr_register_netio(netio, strm_type) < 0) {
       pr_trace_msg(trace_channel, 3,
         "error registering previous %s NetIO: %s",
@@ -150,18 +151,19 @@ int proxy_netio_set(int strm_type, pr_netio_t *netio) {
 }
 
 int proxy_netio_close(pr_netio_stream_t *nstrm) {
-  int res, xerrno;
+  int strm_type = -1, res, xerrno;
   pr_netio_t *curr_netio = NULL;
 
   if (nstrm != NULL) {
-    curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_close");
+    strm_type = nstrm->strm_type;
+    curr_netio = proxy_netio_unset(strm_type, "netio_close");
   }
 
   res = pr_netio_close(nstrm);
   xerrno = errno;
 
   if (nstrm != NULL) {
-    proxy_netio_set(nstrm->strm_type, curr_netio);
+    proxy_netio_set(strm_type, curr_netio);
   }
 
   errno = xerrno;

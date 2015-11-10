@@ -2236,8 +2236,10 @@ sub proxy_reverse_frontend_backend_tls_list_pasv {
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
-        TLSOptions => 'NoSessionReuseRequired EnableDiags',
+        TLSOptions => 'NoCertRequest NoSessionReuseRequired EnableDiags',
         TLSTimeoutHandshake => 5,
+        TLSVerifyClient => 'off',
+        TLSVerifyServer => 'off',
       },
 
       'mod_delay.c' => {
@@ -2275,6 +2277,10 @@ sub proxy_reverse_frontend_backend_tls_list_pasv {
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
+
+    TLSVerifyClient off
+    TLSVerifyServer off
+    TLSOptions EnableDiags NoCertRequest NoSessionReuseRequired
   </IfModule>
 </VirtualHost>
 EOC
@@ -2307,6 +2313,7 @@ EOC
       sleep(2);
 
       my $ssl_opts = {
+        SSL_verify_mode => $IO::Socket::SSL::SSL_VERIFY_NONE,
       };
 
       my $client_opts = {
@@ -2336,9 +2343,22 @@ EOC
       }
  
       my $resp_msg = $client->last_message();
+      my $expected = '226 Transfer complete';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response '$expected', got '$resp_msg'"));
+
+      # Do the LIST again; there are some reports that a first transfer
+      # might succeed, but subsequent ones will fail.
+      $res = $client->list();
+      unless ($res) {
+        die("LIST failed unexpectedly: " . $client->last_message() .
+          "(" . IO::Socket::SSL::errstr() . ")");
+      }
+
+      $resp_msg = $client->last_message();
       $client->quit();
 
-      my $expected = '226 Transfer complete';
+      $expected = '226 Transfer complete';
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response '$expected', got '$resp_msg'"));
     };

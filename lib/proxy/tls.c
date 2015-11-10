@@ -2166,7 +2166,11 @@ static int netio_install_ctrl(void) {
   netio->shutdown = netio_shutdown_cb;
   netio->write = netio_write_cb;
 
-  proxy_netio_use(PR_NETIO_STRM_CTRL, netio);
+  if (proxy_netio_use(PR_NETIO_STRM_CTRL, netio) < 0) {
+    return -1;
+  }
+
+  tls_ctrl_netio = netio;
   return 0;
 }
 
@@ -2192,7 +2196,11 @@ static int netio_install_data(void) {
   netio->shutdown = netio_shutdown_cb;
   netio->write = netio_write_cb;
 
-  proxy_netio_use(PR_NETIO_STRM_DATA, netio);
+  if (proxy_netio_use(PR_NETIO_STRM_DATA, netio) < 0) {
+    return -1;
+  }
+
+  tls_data_netio = netio;
   return 0;
 }
 

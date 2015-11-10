@@ -49,7 +49,7 @@ void proxy_inet_close(pool *p, conn_t *conn) {
 
   if (conn != NULL) {
     pr_netio_t *in_netio = NULL, *out_netio = NULL;
-    int instrm_type, outstrm_type;
+    int instrm_type = -1, outstrm_type = -1;
 
     if (conn->instrm != NULL) {
       instrm_type = conn->instrm->strm_type; 
@@ -58,7 +58,14 @@ void proxy_inet_close(pool *p, conn_t *conn) {
 
     if (conn->outstrm != NULL) {
       outstrm_type = conn->outstrm->strm_type; 
-      out_netio = proxy_netio_unset(outstrm_type, "inet_close");
+
+      /* Note: it is IMPORTANT that we only call proxy_netio_unset() IFF
+       * the stream types are different.  Otherwise, we risk popping too
+       * many NetIOs off the stack, as it were.
+       */
+      if (outstrm_type != instrm_type) {
+        out_netio = proxy_netio_unset(outstrm_type, "inet_close");
+      }
     }
 
     /* Note that we do our own close here, rather than relying on the
@@ -103,26 +110,32 @@ void proxy_inet_close(pool *p, conn_t *conn) {
 }
 
 int proxy_inet_connect(pool *p, conn_t *conn, pr_netaddr_t *addr, int port) {
-  int res, xerrno;
+  int instrm_type = -1, outstrm_type = -1, res, xerrno;
   pr_netio_t *in_netio = NULL, *out_netio = NULL;
 
   if (conn->instrm != NULL) {
+    instrm_type = conn->instrm->strm_type;
+
     in_netio = proxy_netio_unset(conn->instrm->strm_type, "inet_connect");
   }
 
   if (conn->outstrm != NULL) {
-    out_netio = proxy_netio_unset(conn->outstrm->strm_type, "inet_connect");
+    outstrm_type = conn->outstrm->strm_type;
+
+    if (outstrm_type != instrm_type) {
+      out_netio = proxy_netio_unset(conn->outstrm->strm_type, "inet_connect");
+    }
   }
 
   res = pr_inet_connect(p, conn, addr, port);
   xerrno = errno;
 
-  if (conn->instrm != NULL) {
-    proxy_netio_set(conn->instrm->strm_type, in_netio);
+  if (in_netio != NULL) {
+    proxy_netio_set(instrm_type, in_netio);
   }
 
-  if (conn->outstrm != NULL) {
-    proxy_netio_set(conn->outstrm->strm_type, out_netio);
+  if (out_netio != NULL) {
+    proxy_netio_set(outstrm_type, out_netio);
   }
 
   errno = xerrno;
@@ -130,26 +143,32 @@ int proxy_inet_connect(pool *p, conn_t *conn, pr_netaddr_t *addr, int port) {
 }
 
 int proxy_inet_listen(pool *p, conn_t *conn, int backlog, int flags) {
-  int res, xerrno;
+  int instrm_type = -1, outstrm_type = -1, res, xerrno;
   pr_netio_t *in_netio = NULL, *out_netio = NULL;
 
   if (conn->instrm != NULL) {
+    instrm_type = conn->instrm->strm_type;
+
     in_netio = proxy_netio_unset(conn->instrm->strm_type, "inet_listen");
   }
 
   if (conn->outstrm != NULL) {
-    out_netio = proxy_netio_unset(conn->outstrm->strm_type, "inet_listen");
+    outstrm_type = conn->outstrm->strm_type;
+
+    if (outstrm_type != instrm_type) {
+      out_netio = proxy_netio_unset(conn->outstrm->strm_type, "inet_listen");
+    }
   }
 
   res = pr_inet_listen(p, conn, backlog, flags);
   xerrno = errno;
 
-  if (conn->instrm != NULL) {
-    proxy_netio_set(conn->instrm->strm_type, in_netio);
+  if (in_netio != NULL) {
+    proxy_netio_set(instrm_type, in_netio);
   }
 
-  if (conn->outstrm != NULL) {
-    proxy_netio_set(conn->outstrm->strm_type, out_netio);
+  if (out_netio != NULL) {
+    proxy_netio_set(outstrm_type, out_netio);
   }
 
   errno = xerrno;
@@ -160,7 +179,7 @@ conn_t *proxy_inet_openrw(pool *p, conn_t *conn, pr_netaddr_t *addr,
     int strm_type, int fd, int rfd, int wfd, int resolve) {
   int xerrno;
   conn_t *new_conn;
-  pr_netio_t *curr_netio;
+  pr_netio_t *curr_netio = NULL;
 
   curr_netio = proxy_netio_unset(strm_type, "inet_openrw");
   new_conn = pr_inet_openrw(p, conn, addr, strm_type, fd, rfd, wfd, resolve);
