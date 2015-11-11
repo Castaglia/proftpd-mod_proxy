@@ -466,8 +466,11 @@ int proxy_db_close(pool *p) {
   }
 
   if (proxy_dbh != NULL) {
+    pool *tmp_pool;
     sqlite3_stmt *pstmt;
     int res;
+
+    tmp_pool = make_sub_pool(p);
 
     /* Make sure to close/finish any prepared statements associated with
      * the database.
@@ -475,24 +478,28 @@ int proxy_db_close(pool *p) {
     pstmt = sqlite3_next_stmt(proxy_dbh, NULL);
     while (pstmt != NULL) {
       sqlite3_stmt *next;
+      const char *sql;
 
       pr_signals_handle();
 
       next = sqlite3_next_stmt(proxy_dbh, pstmt);
+      sql = pstrdup(tmp_pool, sqlite3_sql(pstmt));
 
       res = sqlite3_finalize(pstmt);
       if (res != SQLITE_OK) {
         pr_trace_msg(trace_channel, 2,
-          "error finishing prepared statement '%s': %s",
-          sqlite3_sql(pstmt), sqlite3_errmsg(proxy_dbh));
+          "error finishing prepared statement '%s': %s", sql,
+          sqlite3_errmsg(proxy_dbh));
 
       } else {
         pr_trace_msg(trace_channel, 18,
-          "finished prepared statement '%s'", sqlite3_sql(pstmt));
+          "finished prepared statement '%s'", sql);
       }
 
       pstmt = next;
     }
+
+    destroy_pool(tmp_pool);
 
     res = sqlite3_close(proxy_dbh);
     if (res != SQLITE_OK) {
