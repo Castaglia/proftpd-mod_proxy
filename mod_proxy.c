@@ -3977,6 +3977,9 @@ static void proxy_shutdown_ev(const void *event_data, void *user_data) {
   proxy_reverse_free(proxy_pool);
   proxy_db_free();
 
+  /* XXX Don't delete the database files wholesale, once schema versioning
+   * is implemented.
+   */
   PRIVS_ROOT
   (void) proxy_rmpath(proxy_pool, proxy_tables_dir);
   PRIVS_RELINQUISH

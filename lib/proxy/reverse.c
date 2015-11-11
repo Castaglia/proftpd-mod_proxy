@@ -412,6 +412,13 @@ static int reverse_db_add_backend(pool *p, unsigned int vhost_id,
   if (res < 0) {
     return -1;
   }
+
+  res = proxy_db_bind_stmt(p, stmt, 3, PROXY_DB_BIND_TYPE_INT,
+    (void *) &backend_id);
+  if (res < 0) {
+    return -1;
+  }
+
   pr_trace_msg(trace_channel, 13,
     "adding backend '%.100s' to database table at index %d", backend_uri,
     backend_id);
@@ -454,6 +461,9 @@ static int reverse_db_add_backends(pool *p, unsigned int vhost_id,
       errno = xerrno;
       return -1;
     }
+
+    pr_trace_msg(trace_channel, 18,
+      "added database entry for backend '%.100s' (ID %u)", backend_uri, i);
   }
 
   return 0;
@@ -462,49 +472,57 @@ static int reverse_db_add_backends(pool *p, unsigned int vhost_id,
 static int reverse_db_update_backend(pool *p, unsigned vhost_id,
     int backend_id, int conn_incr, long connect_ms) {
   /* Increment the conn count for this backend ID. */
-  int res;
+  int res, idx = 1;
   const char *stmt, *errstr = NULL;
   array_header *results;
 
   /* TODO: Right now, we simply overwrite/track the very latest connect ms.
-   * But this could unfairly skew policies such as LowestResponseTime or
-   * FastestConnect, as when the server in question had higher latency for that
-   * particular connection, due to e.g. OCSP response cache expiration.
+   * But this could unfairly skew policies such as LeastResponseTime, as when
+   * the server in question had higher latency for that particular connection,
+   * due to e.g. OCSP response cache expiration.
    *
    * Another way would to be average the given connect ms with the previous
    * one (if present), and store that.  Something to ponder for the future.
    */
 
-  stmt = "UPDATE proxy_vhost_backends SET conn_count = conn_count + ?, connect_ms = ? WHERE vhost_id = ? AND backend_id = ?;";
+  if (connect_ms > 0) {
+    stmt = "UPDATE proxy_vhost_backends SET conn_count = conn_count + ?, connect_ms = ? WHERE vhost_id = ? AND backend_id = ?;";
+  } else {
+    stmt = "UPDATE proxy_vhost_backends SET conn_count = conn_count + ? WHERE vhost_id = ? AND backend_id = ?;";
+  }
+
   res = proxy_db_prepare_stmt(p, stmt);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, stmt, idx, PROXY_DB_BIND_TYPE_INT,
     (void *) &conn_incr);
   if (res < 0) {
     return -1;
   }
 
+  idx++;
+
   if (connect_ms > 0) {
-    res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_LONG,
+    res = proxy_db_bind_stmt(p, stmt, idx, PROXY_DB_BIND_TYPE_LONG,
       (void *) &connect_ms);
-  } else {
-    res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_NULL, NULL);
+    if (res < 0) {
+      return -1;
+    }
+
+    idx++;
   }
 
-  if (res < 0) {
-    return -1;
-  }
-
-  res = proxy_db_bind_stmt(p, stmt, 3, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, stmt, idx, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 4, PROXY_DB_BIND_TYPE_INT,
+  idx++;
+
+  res = proxy_db_bind_stmt(p, stmt, idx, PROXY_DB_BIND_TYPE_INT,
     (void *) &backend_id);
   if (res < 0) {
     return -1;
@@ -830,6 +848,61 @@ static int reverse_db_leastconns_next(pool *p, unsigned int vhost_id) {
 }
 
 static int reverse_db_leastconns_used(pool *p, unsigned int vhost_id,
+    int backend_id) {
+  /* TODO: anything to do here? */
+  return 0;
+}
+
+/* ProxyReverseConnectPolicy: LeastResponseTime */
+
+/* Note: "least response time" is determined by calculating the following
+ * for each backend server:
+ *
+ *  N = connection count * connect time (ms)
+ *
+ * and choosing the backend with the lowest value for N.  If there are no
+ * backend servers with connect time values, choose the one with the lowest
+ * connection count.
+ */
+static int reverse_db_leastresponsetime_next(pool *p, unsigned int vhost_id) {
+  int backend_id = 0, res;
+  const char *stmt, *errstr = NULL;
+  array_header *results;
+
+  stmt = "SELECT backend_id FROM proxy_vhost_backends WHERE vhost_id = ? ORDER BY (conn_count * connect_ms) ASC LIMIT 1;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return -1;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+    (void *) &vhost_id);
+  if (res < 0) {
+    return -1;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return -1;
+  }
+
+  if (results->nelts == 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "expected results from statement '%s', got %d", stmt,
+      results->nelts);
+    errno = EINVAL;
+    return -1;
+  }
+
+  /* Just pick the first index/backend returned. */
+  backend_id = atoi(((char **) results->elts)[0]);
+  return backend_id;
+}
+
+static int reverse_db_leastresponsetime_used(pool *p, unsigned int vhost_id,
     int backend_id) {
   /* TODO: anything to do here? */
   return 0;
@@ -1588,6 +1661,16 @@ static struct proxy_conn *reverse_connect_next_backend(pool *p,
       }
       break;
 
+    case PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME:
+      idx = reverse_db_leastresponsetime_next(p, vhost_id);
+      if (idx >= 0) {
+        pr_trace_msg(trace_channel, 11,
+          "LEAST_RESPONSE_TIME policy: selected index %d of %u", idx,
+          reverse_backends->nelts-1);
+        pconn = conns[idx];
+      }
+      break;
+
     case PROXY_REVERSE_CONNECT_POLICY_PER_USER:
       pconn = reverse_db_peruser_next(p, vhost_id, policy_data);
       if (pconn != NULL) {
@@ -1654,6 +1737,10 @@ static int reverse_connect_index_used(pool *p, unsigned int vhost_id,
 
     case PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS:
       res = reverse_db_leastconns_used(p, vhost_id, idx);
+      break;
+
+    case PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME:
+      res = reverse_db_leastresponsetime_used(p, vhost_id, idx);
       break;
 
     case PROXY_REVERSE_CONNECT_POLICY_PER_USER:
@@ -1960,6 +2047,10 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
   }
 
   reverse_db_path = pdircat(p, tables_dir, "proxy-reverse.db", NULL);
+
+  /* XXX Don't delete the database files wholesale, once schema versioning
+   * is implemented.
+   */
   if (file_exists(reverse_db_path)) {
     pr_log_debug(DEBUG9, MOD_PROXY_VERSION
       ": deleting existing database file '%s'", reverse_db_path);
@@ -2071,6 +2162,7 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
     switch (connect_policy) {
       case PROXY_REVERSE_CONNECT_POLICY_RANDOM:
       case PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS:
+      case PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME:
       case PROXY_REVERSE_CONNECT_POLICY_PER_USER:
       case PROXY_REVERSE_CONNECT_POLICY_PER_HOST:
         /* No preparation needed at this time. */
@@ -2124,7 +2216,7 @@ int proxy_reverse_sess_exit(pool *p) {
     int res;
 
     res = reverse_db_update_backend(p, main_server->sid, reverse_backend_id,
-      -1, 0);
+      -1, -1);
     if (res < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "error updating backend ID %d: %s", reverse_backend_id,
@@ -2458,10 +2550,8 @@ int proxy_reverse_connect_get_policy(const char *policy) {
   } else if (strncasecmp(policy, "PerHost", 8) == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_PER_HOST;
 
-#if 0
-  } else if (strncasecmp(policy, "LowestResponseTime", 19) == 0) {
-    return PROXY_REVERSE_CONNECT_POLICY_LOWEST_RESPONSE_TIME;
-#endif
+  } else if (strncasecmp(policy, "LeastResponseTime", 18) == 0) {
+    return PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME;
   }
 
   errno = ENOENT;

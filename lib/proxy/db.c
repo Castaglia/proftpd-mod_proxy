@@ -33,6 +33,13 @@ static sqlite3 *proxy_dbh = NULL;
 
 static const char *trace_channel = "proxy.db";
 
+#define PROXY_DB_SQLITE_TRACE_LEVEL		17
+
+static void db_trace(void *user_data, const char *trace_msg) {
+  pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+    "(sqlite3): %s", trace_msg);
+}
+
 int proxy_db_exec_stmt(pool *p, const char *stmt, const char **errstr) {
   int res;
   char *ptr = NULL;
@@ -455,6 +462,10 @@ int proxy_db_open(pool *p, const char *table_path) {
       table_path, sqlite3_errmsg(proxy_dbh));
   }
 
+  if (pr_trace_get_level(trace_channel) >= PROXY_DB_SQLITE_TRACE_LEVEL) {
+    sqlite3_trace(proxy_dbh, db_trace, NULL);
+  }
+
   prepared_stmts = pr_table_nalloc(db_pool, 0, 4);
   return 0;
 }
@@ -466,8 +477,11 @@ int proxy_db_close(pool *p) {
   }
 
   if (proxy_dbh != NULL) {
+    pool *tmp_pool;
     sqlite3_stmt *pstmt;
     int res;
+
+    tmp_pool = make_sub_pool(p);
 
     /* Make sure to close/finish any prepared statements associated with
      * the database.
@@ -475,24 +489,28 @@ int proxy_db_close(pool *p) {
     pstmt = sqlite3_next_stmt(proxy_dbh, NULL);
     while (pstmt != NULL) {
       sqlite3_stmt *next;
+      const char *sql;
 
       pr_signals_handle();
 
       next = sqlite3_next_stmt(proxy_dbh, pstmt);
+      sql = pstrdup(tmp_pool, sqlite3_sql(pstmt));
 
       res = sqlite3_finalize(pstmt);
       if (res != SQLITE_OK) {
         pr_trace_msg(trace_channel, 2,
-          "error finishing prepared statement '%s': %s",
-          sqlite3_sql(pstmt), sqlite3_errmsg(proxy_dbh));
+          "error finishing prepared statement '%s': %s", sql,
+          sqlite3_errmsg(proxy_dbh));
 
       } else {
         pr_trace_msg(trace_channel, 18,
-          "finished prepared statement '%s'", sqlite3_sql(pstmt));
+          "finished prepared statement '%s'", sql);
       }
 
       pstmt = next;
     }
+
+    destroy_pool(tmp_pool);
 
     res = sqlite3_close(proxy_dbh);
     if (res != SQLITE_OK) {

@@ -441,6 +441,13 @@ The currently supported policies are:
   </li>
 
   <p>
+  <li><code>LeastResponseTime</code>
+    Select the backend server with the least response time; this is determined
+    based on the connect time to the backend server, and its number of
+    current connections.
+  </li>
+
+  <p>
   <li><code>PerHost</code>
     <p>
     Select a backend server based on the IP address of the connecting client;
