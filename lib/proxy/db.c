@@ -485,6 +485,10 @@ int proxy_db_close(pool *p) {
         pr_trace_msg(trace_channel, 2,
           "error finishing prepared statement '%s': %s",
           sqlite3_sql(pstmt), sqlite3_errmsg(proxy_dbh));
+
+      } else {
+        pr_trace_msg(trace_channel, 18,
+          "finished prepared statement '%s'", sqlite3_sql(pstmt));
       }
 
       pstmt = next;
@@ -498,6 +502,7 @@ int proxy_db_close(pool *p) {
       return -1;
     }
 
+    pr_trace_msg(trace_channel, 18, "%s", "closed SQLite database");
     proxy_dbh = NULL;
   }
 

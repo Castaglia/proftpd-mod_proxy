@@ -41,6 +41,7 @@ extern xaset_t *server_list;
 static array_header *reverse_backends = NULL;
 static int reverse_backend_id = -1;
 static int reverse_connect_policy = PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN;
+static const char *reverse_db_path = NULL;
 static unsigned long reverse_flags = 0UL;
 static int reverse_retry_count = PROXY_DEFAULT_RETRY_COUNT;
 
@@ -1951,7 +1952,6 @@ int proxy_reverse_use_proxy_auth(void) {
 int proxy_reverse_init(pool *p, const char *tables_dir) {
   int res, xerrno = 0;
   server_rec *s;
-  char *db_path;
 
   if (p == NULL ||
       tables_dir == NULL) {
@@ -1959,31 +1959,34 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
     return -1;
   }
 
-  db_path = pdircat(p, tables_dir, "proxy-reverse.db", NULL);
-  if (file_exists(db_path)) {
+  reverse_db_path = pdircat(p, tables_dir, "proxy-reverse.db", NULL);
+  if (file_exists(reverse_db_path)) {
     pr_log_debug(DEBUG9, MOD_PROXY_VERSION
-      ": deleting existing database file '%s'", db_path);
-    if (unlink(db_path) < 0) {
+      ": deleting existing database file '%s'", reverse_db_path);
+    if (unlink(reverse_db_path) < 0) {
       pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
-        ": error deleting '%s': %s", db_path, strerror(errno));
+        ": error deleting '%s': %s", reverse_db_path, strerror(errno));
     }
   }
 
-  res = proxy_db_open(p, db_path);
+  res = proxy_db_open(p, reverse_db_path);
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
-      ": error opening database '%s': %s", db_path, strerror(xerrno));
+      ": error opening database '%s': %s", reverse_db_path, strerror(xerrno));
+    reverse_db_path = NULL;
     errno = xerrno;
     return -1;
   }
 
-  res = reverse_db_add_schema(p, db_path);
+  res = reverse_db_add_schema(p, reverse_db_path);
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-      ": error adding schema to database '%s': %s", db_path, strerror(xerrno));
+      ": error adding schema to database '%s': %s", reverse_db_path,
+      strerror(xerrno));
     (void) proxy_db_close(p);
+    reverse_db_path = NULL;
     errno = xerrno;
     return -1;
   }
@@ -2000,6 +2003,7 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
         ": error adding database entry for server '%s': %s", s->ServerName,
         strerror(xerrno));
       (void) proxy_db_close(p);
+      reverse_db_path = NULL;
       errno = xerrno;
       return -1;
     }
@@ -2172,6 +2176,15 @@ int proxy_reverse_sess_init(pool *p, const char *tables_dir,
     FALSE);
   if (c != NULL) {
     reverse_connect_policy = *((int *) c->argv[0]);
+  }
+
+  /* Close any database handle inherited from our parent, and open a new
+   * one, per SQLite3 recommendation.
+   */
+  (void) proxy_db_close(proxy_pool);
+  if (proxy_db_open(proxy_pool, reverse_db_path) < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error opening database '%s': %s", reverse_db_path, strerror(errno));
   }
 
   set_reverse_flags();
