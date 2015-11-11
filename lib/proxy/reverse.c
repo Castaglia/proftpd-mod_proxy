@@ -412,6 +412,13 @@ static int reverse_db_add_backend(pool *p, unsigned int vhost_id,
   if (res < 0) {
     return -1;
   }
+
+  res = proxy_db_bind_stmt(p, stmt, 3, PROXY_DB_BIND_TYPE_INT,
+    (void *) &backend_id);
+  if (res < 0) {
+    return -1;
+  }
+
   pr_trace_msg(trace_channel, 13,
     "adding backend '%.100s' to database table at index %d", backend_uri,
     backend_id);
@@ -2040,6 +2047,10 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
   }
 
   reverse_db_path = pdircat(p, tables_dir, "proxy-reverse.db", NULL);
+
+  /* XXX Don't delete the database files wholesale, once schema versioning
+   * is implemented.
+   */
   if (file_exists(reverse_db_path)) {
     pr_log_debug(DEBUG9, MOD_PROXY_VERSION
       ": deleting existing database file '%s'", reverse_db_path);

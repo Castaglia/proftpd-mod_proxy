@@ -800,10 +800,7 @@ sub new {
 }
 
 sub list_tests {
-#  return testsuite_get_runnable_tests($TESTS);
-  return qw(
-    proxy_reverse_config_connect_policy_leastresponsetime
-  );
+  return testsuite_get_runnable_tests($TESTS);
 }
 
 sub config_hash2array {
@@ -12881,10 +12878,6 @@ EOC
   server_stop($pid_file);
 
   $self->assert_child_ok($pid);
-
-unless ($ex) {
-  $ex = 'FOO!';
-}
 
   if ($ex) {
     test_append_logfile($log_file, $ex);

@@ -2546,6 +2546,10 @@ static int tls_db_init(pool *p, const char *tables_dir) {
   }
 
   tls_db_path = pdircat(p, tables_dir, "proxy-tls.db", NULL);
+
+  /* XXX Don't delete the database files wholesale, once schema versioning
+   * is implemented.
+   */
   if (file_exists(tls_db_path)) {
     pr_log_debug(DEBUG9, MOD_PROXY_VERSION
       ": deleting existing database file '%s'", tls_db_path);

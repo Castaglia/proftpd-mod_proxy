@@ -33,6 +33,13 @@ static sqlite3 *proxy_dbh = NULL;
 
 static const char *trace_channel = "proxy.db";
 
+#define PROXY_DB_SQLITE_TRACE_LEVEL		17
+
+static void db_trace(void *user_data, const char *trace_msg) {
+  pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+    "(sqlite3): %s", trace_msg);
+}
+
 int proxy_db_exec_stmt(pool *p, const char *stmt, const char **errstr) {
   int res;
   char *ptr = NULL;
@@ -453,6 +460,10 @@ int proxy_db_open(pool *p, const char *table_path) {
     pr_trace_msg(trace_channel, 2,
       "error setting MEMORY journal mode on SQLite database '%s': %s",
       table_path, sqlite3_errmsg(proxy_dbh));
+  }
+
+  if (pr_trace_get_level(trace_channel) >= PROXY_DB_SQLITE_TRACE_LEVEL) {
+    sqlite3_trace(proxy_dbh, db_trace, NULL);
   }
 
   prepared_stmts = pr_table_nalloc(db_pool, 0, 4);
