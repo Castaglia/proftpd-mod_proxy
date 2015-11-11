@@ -2178,10 +2178,9 @@ int proxy_reverse_sess_init(pool *p, const char *tables_dir,
     reverse_connect_policy = *((int *) c->argv[0]);
   }
 
-  /* Close any database handle inherited from our parent, and open a new
-   * one, per SQLite3 recommendation.
+  /* Make sure we have our own per-session database handle, per SQLite3
+   * recommendation.
    */
-  (void) proxy_db_close(proxy_pool);
   if (proxy_db_open(proxy_pool, reverse_db_path) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error opening database '%s': %s", reverse_db_path, strerror(errno));

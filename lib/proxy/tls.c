@@ -34,6 +34,7 @@
 
 extern xaset_t *server_list;
 
+static const char *tls_db_path = NULL;
 static int tls_engine = PROXY_TLS_ENGINE_AUTO;
 static unsigned long tls_opts = 0UL;
 static int tls_verify_server = TRUE;
@@ -2536,7 +2537,6 @@ static int tls_db_add_vhost(pool *p, server_rec *s) {
 
 static int tls_db_init(pool *p, const char *tables_dir) {
   int res, xerrno = 0;
-  char *db_path;
   server_rec *s;
 
   if (p == NULL ||
@@ -2545,31 +2545,34 @@ static int tls_db_init(pool *p, const char *tables_dir) {
     return -1;
   }
 
-  db_path = pdircat(p, tables_dir, "proxy-tls.db", NULL);
-  if (file_exists(db_path)) {
+  tls_db_path = pdircat(p, tables_dir, "proxy-tls.db", NULL);
+  if (file_exists(tls_db_path)) {
     pr_log_debug(DEBUG9, MOD_PROXY_VERSION
-      ": deleting existing database file '%s'", db_path);
-    if (unlink(db_path) < 0) {
+      ": deleting existing database file '%s'", tls_db_path);
+    if (unlink(tls_db_path) < 0) {
       pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
-        ": error deleting '%s': %s", db_path, strerror(errno));
+        ": error deleting '%s': %s", tls_db_path, strerror(errno));
     }
   }
 
-  res = proxy_db_open(p, db_path);
+  res = proxy_db_open(p, tls_db_path);
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
-      ": error opening database '%s': %s", db_path, strerror(xerrno));
+      ": error opening database '%s': %s", tls_db_path, strerror(xerrno));
+    tls_db_path = NULL;
     errno = xerrno;
     return -1;
   }
 
-  res = tls_db_add_schema(p, db_path);
+  res = tls_db_add_schema(p, tls_db_path);
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-      ": error adding schema to database '%s': %s", db_path, strerror(xerrno));
+      ": error adding schema to database '%s': %s", tls_db_path,
+      strerror(xerrno));
     (void) proxy_db_close(p);
+    tls_db_path = NULL;
     errno = xerrno;
     return -1;
   }
@@ -2582,6 +2585,7 @@ static int tls_db_init(pool *p, const char *tables_dir) {
         ": error adding database entry for server '%s': %s", s->ServerName,
         strerror(xerrno));
       (void) proxy_db_close(p);
+      tls_db_path = NULL;
       errno = xerrno;
       return -1;
     }
@@ -3200,6 +3204,14 @@ int proxy_tls_sess_init(pool *p) {
 
   if (tls_engine == PROXY_TLS_ENGINE_OFF) {
     return 0;
+  }
+
+  /* Make sure we have our own per-session database handle, per SQLite3
+   * recommendation.
+   */
+  if (proxy_db_open(proxy_pool, tls_db_path) < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error opening database '%s': %s", tls_db_path, strerror(errno));
   }
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSOptions", FALSE);
