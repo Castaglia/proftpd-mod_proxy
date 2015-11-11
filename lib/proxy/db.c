@@ -385,8 +385,10 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, const char *stmt,
 
 /* Database opening/closing. */
 
-int proxy_db_open(pool *p, const char *table_path) {
+int proxy_db_open(pool *p, const char *table_path, const char *schema_name) {
   int res;
+  pool *tmp_pool;
+  const char *stmt;
 
   if (p == NULL ||
       table_path == NULL) {
@@ -395,82 +397,58 @@ int proxy_db_open(pool *p, const char *table_path) {
   }
 
   /* If we already have a database handle open, then attach the given
-   * path to our handle.
+   * path to our handle.  Otherwise, open/create the database file first.
    */
-  if (proxy_dbh != NULL) {
-    pool *tmp_pool;
-    const char *stmt;
-    char *db_name = NULL, *ptr;
 
-    tmp_pool = make_sub_pool(p);
-
-    /* Suss out the file name from the table path to use as the database
-     * name.
-     */
-    ptr = strrchr(table_path, '/');
-    if (ptr != NULL) {
-      db_name = pstrdup(tmp_pool, ptr+1);
-
-    } else {
-      db_name = pstrdup(tmp_pool, table_path);
-    }
-
-    ptr = strrchr(db_name, '.');
-    if (ptr != NULL) {
-      *ptr = '\0';
-    }
-
-    ptr = strchr(db_name, '-');
-    if (ptr != NULL) {
-      db_name = sreplace(tmp_pool, db_name, "-", "_", NULL);
-    }
-
-    stmt = pstrcat(tmp_pool, "ATTACH DATABASE '", table_path, "' AS ",
-      db_name, ";", NULL);
-    res = sqlite3_exec(proxy_dbh, stmt, NULL, NULL, NULL);
+  if (proxy_dbh == NULL) {
+    res = sqlite3_open(table_path, &proxy_dbh);
     if (res != SQLITE_OK) {
-      pr_trace_msg(trace_channel, 2,
-        "error attaching database '%s' to existing SQLite handle "
-        "using '%s': %s", table_path, stmt, sqlite3_errmsg(proxy_dbh));
-      destroy_pool(tmp_pool);
+      pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+        ": error opening SQLite database '%s': %s", table_path,
+        sqlite3_errmsg(proxy_dbh));
       errno = EPERM;
       return -1;
     }
 
-    destroy_pool(tmp_pool);
-    return 0;
+    /* Tell SQLite to only use in-memory journals.  This is necessary for
+     * working properly when a chroot is used.  Note that the MEMORY journal
+     * mode of SQLite is supported only for SQLite-3.6.5 and later.
+     */
+    res = sqlite3_exec(proxy_dbh, "PRAGMA journal_mode = MEMORY;", NULL, NULL,
+      NULL);
+    if (res != SQLITE_OK) {
+      pr_trace_msg(trace_channel, 2,
+        "error setting MEMORY journal mode on SQLite database '%s': %s",
+        table_path, sqlite3_errmsg(proxy_dbh));
+    }
+
+    if (pr_trace_get_level(trace_channel) >= PROXY_DB_SQLITE_TRACE_LEVEL) {
+      sqlite3_trace(proxy_dbh, db_trace, NULL);
+    }
+
+    prepared_stmts = pr_table_nalloc(db_pool, 0, 4);
   }
 
-  res = sqlite3_open(table_path, &proxy_dbh);
+  tmp_pool = make_sub_pool(p);
+
+  stmt = pstrcat(tmp_pool, "ATTACH DATABASE '", table_path, "' AS ",
+    schema_name, ";", NULL);
+  res = sqlite3_exec(proxy_dbh, stmt, NULL, NULL, NULL);
   if (res != SQLITE_OK) {
     pr_trace_msg(trace_channel, 2,
-      "error opening SQLite database '%s': %s", table_path,
+      "error attaching database '%s' (as '%s') to existing SQLite handle "
+      "using '%s': %s", table_path, schema_name, stmt,
       sqlite3_errmsg(proxy_dbh));
+    destroy_pool(tmp_pool);
     errno = EPERM;
     return -1;
   }
 
-  /* Tell SQLite to only use in-memory journals.  This is necessary for
-   * working properly when a chroot is used.  Note that the MEMORY journal mode
-   * of SQLite is supported only for SQLite-3.6.5 and later.
-   */
-  res = sqlite3_exec(proxy_dbh, "PRAGMA journal_mode = MEMORY;", NULL, NULL,
-    NULL);
-  if (res != SQLITE_OK) {
-    pr_trace_msg(trace_channel, 2,
-      "error setting MEMORY journal mode on SQLite database '%s': %s",
-      table_path, sqlite3_errmsg(proxy_dbh));
-  }
-
-  if (pr_trace_get_level(trace_channel) >= PROXY_DB_SQLITE_TRACE_LEVEL) {
-    sqlite3_trace(proxy_dbh, db_trace, NULL);
-  }
-
-  prepared_stmts = pr_table_nalloc(db_pool, 0, 4);
+  destroy_pool(tmp_pool);
   return 0;
 }
 
-int proxy_db_close(pool *p) {
+int proxy_db_close(pool *p, const char *schema_name) {
   if (p == NULL) {
     errno = EINVAL;
     return -1;
@@ -482,6 +460,27 @@ int proxy_db_close(pool *p) {
     int res;
 
     tmp_pool = make_sub_pool(p);
+
+    /* If we're given a schema name, then just detach that schema from the
+     * database handle.
+     */
+    if (schema_name != NULL) {
+      const char *stmt;
+
+      stmt = pstrcat(tmp_pool, "DETACH DATABASE ", schema_name, ";", NULL);
+      res = sqlite3_exec(proxy_dbh, stmt, NULL, NULL, NULL);
+      if (res != SQLITE_OK) {
+        pr_trace_msg(trace_channel, 2,
+          "error detaching '%s' from existing SQLite handle using '%s': %s",
+          schema_name, stmt, sqlite3_errmsg(proxy_dbh));
+        destroy_pool(tmp_pool);
+        errno = EPERM;
+        return -1;
+      }
+
+      destroy_pool(tmp_pool);
+      return 0;
+    }
 
     /* Make sure to close/finish any prepared statements associated with
      * the database.

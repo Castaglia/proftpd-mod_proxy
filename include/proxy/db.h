@@ -30,11 +30,11 @@
 int proxy_db_init(pool *p);
 int proxy_db_free(void);
 
-/* Create/prepare the database at the given path. */
-int proxy_db_open(pool *p, const char *table_path);
+/* Create/prepare the database (with the given schema name) at the given path */
+int proxy_db_open(pool *p, const char *table_path, const char *schema_name);
 
 /* Close the database. */
-int proxy_db_close(pool *p);
+int proxy_db_close(pool *p, const char *schema_name);
 
 int proxy_db_prepare_stmt(pool *p, const char *stmt);
 int proxy_db_finish_stmt(pool *p, const char *stmt);

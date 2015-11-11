@@ -3965,7 +3965,7 @@ static void proxy_restart_ev(const void *event_data, void *user_data) {
   proxy_reverse_free(proxy_pool);
   proxy_tls_free(proxy_pool);
 
-  res = proxy_db_close(proxy_pool);
+  res = proxy_db_close(proxy_pool, NULL);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error closing database: %s", strerror(errno));
@@ -4209,7 +4209,7 @@ static int proxy_sess_init(void) {
   /* Close any database handle inherited from our parent, and open a new
    * one, per SQLite3 recommendation.
    */
-  (void) proxy_db_close(proxy_pool);
+  (void) proxy_db_close(proxy_pool, NULL);
 
   if (proxy_tls_sess_init(proxy_pool) < 0) {
     pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
