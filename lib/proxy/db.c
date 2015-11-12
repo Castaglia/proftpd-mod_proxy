@@ -448,6 +448,179 @@ int proxy_db_open(pool *p, const char *table_path, const char *schema_name) {
   return 0;
 }
 
+static int get_schema_version(pool *p, const char *schema_name,
+    unsigned int *schema_version) {
+  int res, version;
+  const char *stmt, *errstr = NULL;
+  array_header *results;
+
+  stmt = pstrcat(p, "SELECT version FROM ", schema_name, ".schema_version WHERE schema = ?;", NULL);
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    /* This can happen when the schema_version table does not exist; treat
+     * as "missing".
+     */
+    pr_trace_msg(trace_channel, 5,
+      "error preparing statement '%s', treating as missing schema version",
+      stmt);
+    *schema_version = 0;
+    return 0;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) schema_name);
+  if (res < 0) {
+    return -1;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    *schema_version = 0;
+    return 0;
+  }
+
+  if (results->nelts != 1) {
+    pr_log_debug(DEBUG3, MOD_PROXY_VERSION
+      ": expected 1 result from statement '%s', got %d", stmt,
+      results->nelts);
+    errno = EINVAL;
+    return -1;
+  }
+
+  version = atoi(((char **) results->elts)[0]);
+  if (version < 0) {
+    /* Invalid schema version; treat as "missing". */
+    pr_trace_msg(trace_channel, 5,
+      "statement '%s' yielded invalid schema version %d, treating as missing",
+      stmt, version);
+    *schema_version = 0;
+    return 0;
+  }
+
+  *schema_version = version;
+  return 0;
+}
+
+static int set_schema_version(pool *p, const char *schema_name,
+    unsigned int schema_version) {
+  int res, xerrno = 0;
+  const char *stmt, *errstr = NULL;
+  array_header *results;
+
+  /* CREATE TABLE $schema_name.schema_version (
+   *   schema TEXT NOT NULL PRIMARY KEY,
+   *   version INTEGER NOT NULL
+   * );
+   */
+  stmt = pstrcat(p, "CREATE TABLE IF NOT EXISTS ", schema_name, ".schema_version (schema TEXT NOT NULL PRIMARY KEY, version INTEGER NOT NULL);", NULL);
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
+      ": error executing statement '%s': %s", stmt, errstr);
+    errno = EPERM;
+    return -1;
+  }
+
+  stmt = pstrcat(p, "INSERT INTO ", schema_name, ".schema_version (schema, version) VALUES (?, ?);", NULL);
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    xerrno = errno;
+
+    (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
+      ": error preparing statement '%s': %s", stmt, strerror(xerrno));
+    errno = xerrno;
+    return -1;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) schema_name);
+  if (res < 0) {
+    return -1;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_INT,
+    (void *) &schema_version);
+  if (res < 0) {
+    return -1;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
+      ": error executing statement '%s': %s", stmt,
+      errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return -1;
+  }
+
+  return 0;
+}
+
+int proxy_db_open_with_version(pool *p, const char *table_path,
+    const char *schema_name, unsigned int schema_version, int flags) {
+  pool *tmp_pool;
+  int res, xerrno = 0;
+  unsigned int current_version = 0;
+
+  res = proxy_db_open(p, table_path, schema_name);
+  if (res < 0) {
+    return -1;
+  }
+
+  tmp_pool = make_sub_pool(p);
+  res = get_schema_version(tmp_pool, schema_name, &current_version);
+  if (res < 0) {
+    xerrno = errno;
+
+    destroy_pool(tmp_pool);
+    errno = xerrno;
+    return -1;
+  }
+
+  if (current_version >= schema_version) {
+    pr_trace_msg(trace_channel, 11,
+      "schema version %u >= desired version %u for schema '%s'",
+      current_version, schema_version, schema_name);
+    return 0;
+  }
+
+  if (flags & PROXY_DB_OPEN_FL_ERROR_ON_SCHEMA_VERSION_SKEW) {
+    pr_trace_msg(trace_channel, 5,
+      "schema version %u < desired version %u for schema '%s', failing",
+      current_version, schema_version, schema_name);
+    destroy_pool(tmp_pool);
+    errno = EPERM;
+    return -1;
+  }
+
+  proxy_db_close(p, schema_name);
+  if (unlink(table_path) < 0) {
+    pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
+      ": error deleting '%s': %s", table_path, strerror(errno));
+  }
+
+  res = proxy_db_open(p, table_path, schema_name);
+  if (res < 0) {
+    xerrno = errno;
+
+    destroy_pool(tmp_pool);
+    errno = xerrno;
+    return -1;
+  }
+
+  res = set_schema_version(tmp_pool, schema_name, schema_version);
+  xerrno = errno;
+
+  destroy_pool(tmp_pool);
+
+  if (res < 0) {
+    errno = xerrno;
+    return -1;
+  }
+
+  return 0;
+}
+
 int proxy_db_close(pool *p, const char *schema_name) {
   if (p == NULL) {
     errno = EINVAL;

@@ -33,6 +33,15 @@ int proxy_db_free(void);
 /* Create/prepare the database (with the given schema name) at the given path */
 int proxy_db_open(pool *p, const char *table_path, const char *schema_name);
 
+/* Create/prepare the database (with the given schema name) at the given path.
+ * If the database/schema already exists, check that its schema version is
+ * greater than or equal to the given minimum version.  If not, delete that
+ * database and create a new one.
+ */
+int proxy_db_open_with_version(pool *p, const char *table_path,
+  const char *schema_name, unsigned int schema_version, int flags);
+#define PROXY_DB_OPEN_FL_ERROR_ON_SCHEMA_VERSION_SKEW		0x001
+
 /* Close the database. */
 int proxy_db_close(pool *p, const char *schema_name);
 
