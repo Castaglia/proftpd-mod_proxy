@@ -263,6 +263,8 @@ static int proxy_mkpath(pool *p, const char *path, uid_t uid, gid_t gid,
   return 0;
 }
 
+/* Currently only needed if mod_proxy is built as a DSO module. */
+#if defined(PR_SHARED_MODULE)
 static int proxy_rmpath(pool *p, const char *path) {
   DIR *dirh;
   struct dirent *dent;
@@ -337,6 +339,7 @@ static int proxy_rmpath(pool *p, const char *path) {
 
   return res;
 }
+#endif /* PR_SHARED_MODULE */
 
 static void proxy_remove_symbols(void) {
   int res;
@@ -3976,13 +3979,6 @@ static void proxy_shutdown_ev(const void *event_data, void *user_data) {
   proxy_forward_free(proxy_pool);
   proxy_reverse_free(proxy_pool);
   proxy_db_free();
-
-  /* XXX Don't delete the database files wholesale, once schema versioning
-   * is implemented.
-   */
-  PRIVS_ROOT
-  (void) proxy_rmpath(proxy_pool, proxy_tables_dir);
-  PRIVS_RELINQUISH
 
   destroy_pool(proxy_pool);
   proxy_pool = NULL;

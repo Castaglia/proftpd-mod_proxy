@@ -99,6 +99,7 @@ static int netio_install_ctrl(void);
 static int netio_install_data(void);
 
 #define PROXY_TLS_DB_SCHEMA_NAME		"proxy_tls"
+#define PROXY_TLS_DB_SCHEMA_VERSION		1
 
 static int handshake_timeout_cb(CALLBACK_FRAME) {
   handshake_timed_out = TRUE;
@@ -2473,7 +2474,16 @@ static int tls_db_add_schema(pool *p, const char *db_path) {
    *   vhost_name TEXT NOT NULL
    * );
    */
-  stmt = "CREATE TABLE " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_vhosts (vhost_id INTEGER NOT NULL PRIMARY KEY, vhost_name TEXT NOT NULL);";
+  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_vhosts (vhost_id INTEGER NOT NULL PRIMARY KEY, vhost_name TEXT NOT NULL);";
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr);
+    errno = EPERM;
+    return -1;
+  }
+
+  stmt = "DELETE FROM " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_vhosts;";
   res = proxy_db_exec_stmt(p, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -2489,7 +2499,7 @@ static int tls_db_add_schema(pool *p, const char *db_path) {
    *   FOREIGN KEY (vhost_id) REFERENCES proxy_tls_vhosts (vhost_id)
    * );
    */
-  stmt = "CREATE TABLE " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_sessions (backend_uri STRING NOT NULL PRIMARY KEY, vhost_id INTEGER NOT NULL, session TEXT NOT NULL, FOREIGN KEY (vhost_id) REFERENCES proxy_tls_hosts (vhost_id));";
+  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_sessions (backend_uri STRING NOT NULL PRIMARY KEY, vhost_id INTEGER NOT NULL, session TEXT NOT NULL, FOREIGN KEY (vhost_id) REFERENCES proxy_tls_hosts (vhost_id));";
   res = proxy_db_exec_stmt(p, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -2497,6 +2507,8 @@ static int tls_db_add_schema(pool *p, const char *db_path) {
     errno = EPERM;
     return -1;
   }
+
+  /* Note that we deliberately do NOT truncate the session cache table. */
 
   return 0;
 }
@@ -2551,24 +2563,14 @@ static int tls_db_init(pool *p, const char *tables_dir) {
 
   tls_db_path = pdircat(p, tables_dir, "proxy-tls.db", NULL);
 
-  /* XXX Don't delete the database files wholesale, once schema versioning
-   * is implemented.
-   */
-  if (file_exists(tls_db_path)) {
-    pr_log_debug(DEBUG9, MOD_PROXY_VERSION
-      ": deleting existing database file '%s'", tls_db_path);
-    if (unlink(tls_db_path) < 0) {
-      pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
-        ": error deleting '%s': %s", tls_db_path, strerror(errno));
-    }
-  }
-
-  res = proxy_db_open(p, tls_db_path, PROXY_TLS_DB_SCHEMA_NAME);
+  res = proxy_db_open_with_version(p, tls_db_path, PROXY_TLS_DB_SCHEMA_NAME,
+    PROXY_TLS_DB_SCHEMA_VERSION, 0);
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
-      ": error opening database '%s' for schema '%s': %s", tls_db_path,
-      PROXY_TLS_DB_SCHEMA_NAME, strerror(xerrno));
+      ": error opening database '%s' for schema '%s', version %u: %s",
+      tls_db_path, PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION,
+      strerror(xerrno));
     tls_db_path = NULL;
     errno = xerrno;
     return -1;
@@ -3218,10 +3220,12 @@ int proxy_tls_sess_init(pool *p) {
   /* Make sure we have our own per-session database handle, per SQLite3
    * recommendation.
    */
-  if (proxy_db_open(proxy_pool, tls_db_path, PROXY_TLS_DB_SCHEMA_NAME) < 0) {
+  if (proxy_db_open_with_version(proxy_pool, tls_db_path,
+      PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION, 0) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error opening database '%s' for schema '%s': %s", tls_db_path,
-      PROXY_TLS_DB_SCHEMA_NAME, strerror(errno));
+      "error opening database '%s' for schema '%s', version %u: %s",
+      tls_db_path, PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION,
+      strerror(errno));
   }
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSOptions", FALSE);
