@@ -2483,15 +2483,6 @@ static int tls_db_add_schema(pool *p, const char *db_path) {
     return -1;
   }
 
-  stmt = "DELETE FROM " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_vhosts;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
-  if (res < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr);
-    errno = EPERM;
-    return -1;
-  }
-
   /* CREATE TABLE proxy_tls.proxy_tls_sessions (
    *   backend_uri STRING NOT NULL PRIMARY KEY,
    *   vhost_id INTEGER NOT NULL,
@@ -2510,6 +2501,23 @@ static int tls_db_add_schema(pool *p, const char *db_path) {
 
   /* Note that we deliberately do NOT truncate the session cache table. */
 
+  return 0;
+}
+
+static int tls_truncate_db_tables(pool *p) {
+  int res;
+  const char *stmt, *errstr = NULL;
+
+  stmt = "DELETE FROM " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_vhosts;";
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr);
+    errno = EPERM;
+    return -1;
+  }
+
+  /* Note that we deliberately do NOT truncate the session cache table. */
   return 0;
 }
 
@@ -2582,6 +2590,15 @@ static int tls_db_init(pool *p, const char *tables_dir) {
     (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
       ": error creating schema in database '%s' for '%s': %s", tls_db_path,
       PROXY_TLS_DB_SCHEMA_NAME, strerror(xerrno));
+    (void) proxy_db_close(p, PROXY_TLS_DB_SCHEMA_NAME);
+    tls_db_path = NULL;
+    errno = xerrno;
+    return -1;
+  }
+
+  res = tls_truncate_db_tables(p);
+  if (res < 0) {
+    xerrno = errno;
     (void) proxy_db_close(p, PROXY_TLS_DB_SCHEMA_NAME);
     tls_db_path = NULL;
     errno = xerrno;

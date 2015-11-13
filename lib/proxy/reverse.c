@@ -269,15 +269,6 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
    *  unhealthy_reason TEXT
    */
 
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
-  if (res < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr);
-    errno = EPERM;
-    return -1;
-  }
-
   /* CREATE TABLE proxy_reverse.proxy_vhost_backends (
    *   backend_id INTEGER NOT NULL PRIMARY KEY,
    *   vhost_id INTEGER NOT NULL,
@@ -288,15 +279,6 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
    * );
    */
   stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends (backend_id INTEGER NOT NULL PRIMARY KEY, vhost_id INTEGER NOT NULL, backend_uri TEXT NOT NULL, conn_count INTEGER NOT NULL, connect_ms INTEGER, FOREIGN KEY (vhost_id) REFERENCES proxy_hosts (vhost_id));";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
-  if (res < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr);
-    errno = EPERM;
-    return -1;
-  }
-
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends;";
   res = proxy_db_exec_stmt(p, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -321,15 +303,6 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
     return -1;
   }
 
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_roundrobin;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
-  if (res < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr);
-    errno = EPERM;
-    return -1;
-  }
-
   /* CREATE TABLE proxy_reverse.proxy_vhost_reverse_shuffle (
    *   vhost_id INTEGER NOT NULL,
    *   avail_backend_id INTEGER NOT NULL,
@@ -338,15 +311,6 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
    * );
    */
   stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_shuffle (vhost_id INTEGER NOT NULL, avail_backend_id INTEGER NOT NULL, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id), FOREIGN KEY (avail_backend_id) REFERENCES proxy_vhost_backends (backend_id));";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
-  if (res < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr);
-    errno = EPERM;
-    return -1;
-  }
-
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_shuffle;";
   res = proxy_db_exec_stmt(p, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -371,15 +335,6 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
     return -1;
   }
 
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
-  if (res < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr);
-    errno = EPERM;
-    return -1;
-  }
-
   /* CREATE TABLE proxy_reverse.proxy_vhost_reverse_per_host (
    *   vhost_id INTEGER NOT NULL,
    *   ip_addr TEXT NOT NULL PRIMARY KEY,
@@ -388,6 +343,58 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
    * );
    */
   stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_host (vhost_id INTEGER NOT NULL, ip_addr TEXT NOT NULL PRIMARY KEY, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr);
+    errno = EPERM;
+    return -1;
+  }
+
+  return 0;
+}
+
+static int reverse_truncate_db_tables(pool *p) {
+  int res;
+  const char *stmt, *errstr = NULL;
+
+  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts;";
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr);
+    errno = EPERM;
+    return -1;
+  }
+
+  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends;";
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr);
+    errno = EPERM;
+    return -1;
+  }
+
+  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_roundrobin;";
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr);
+    errno = EPERM;
+    return -1;
+  }
+
+  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_shuffle;";
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr);
+    errno = EPERM;
+    return -1;
+  }
+
+  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user;";
   res = proxy_db_exec_stmt(p, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -2124,6 +2131,15 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
     (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
       ": error creating schema in database '%s' for '%s': %s", reverse_db_path,
       PROXY_REVERSE_DB_SCHEMA_NAME, strerror(xerrno));
+    (void) proxy_db_close(p, PROXY_REVERSE_DB_SCHEMA_NAME);
+    reverse_db_path = NULL;
+    errno = xerrno;
+    return -1;
+  }
+
+  res = reverse_truncate_db_tables(p);
+  if (res < 0) {
+    xerrno = errno;
     (void) proxy_db_close(p, PROXY_REVERSE_DB_SCHEMA_NAME);
     reverse_db_path = NULL;
     errno = xerrno;
