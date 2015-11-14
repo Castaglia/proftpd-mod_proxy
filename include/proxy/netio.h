@@ -36,6 +36,11 @@ int proxy_netio_set(int strm_type, pr_netio_t *netio);
  */
 int proxy_netio_use(int strm_type, pr_netio_t *netio);
 
+/* Returns the netio that the Proxy NetIO API is using for a given stream
+ * type, if any.
+ */
+int proxy_netio_using(int strm_type, pr_netio_t **netio);
+
 /* Proxied versions of the core NetIO API functions; see include/netio.h. */
 
 pr_netio_stream_t *proxy_netio_open(pool *p, int strm_type, int fd, int mode);
@@ -52,6 +57,8 @@ int proxy_netio_postopen(pr_netio_stream_t *nstrm);
 
 int proxy_netio_read(pr_netio_stream_t *nstrm, char *buf, size_t bufsz,
   int bufmin);
+
+void proxy_netio_reset_poll_interval(pr_netio_stream_t *nstrm);
 
 void proxy_netio_set_poll_interval(pr_netio_stream_t *nstrm, unsigned int secs);
 

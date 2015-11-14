@@ -75,6 +75,11 @@ my $TESTS = {
     test_class => [qw(forking mod_tls reverse)],
   },
 
+  proxy_reverse_frontend_backend_tls_roundrobin_login_after_host => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls reverse)],
+  },
+
   proxy_reverse_frontend_backend_tls_list_pasv => {
     order => ++$order,
     test_class => [qw(forking mod_tls reverse)],
@@ -135,6 +140,11 @@ my $TESTS = {
     test_class => [qw(forking mod_tls forward)],
   },
 
+  proxy_forward_frontend_backend_tls_login_after_host => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
   proxy_forward_frontend_backend_tls_list_pasv => {
     order => ++$order,
     test_class => [qw(forking mod_tls forward)],
@@ -147,7 +157,21 @@ sub new {
 }
 
 sub list_tests {
-  return testsuite_get_runnable_tests($TESTS);
+#  return testsuite_get_runnable_tests($TESTS);
+# These tests all appear to exhibit similar symptoms; they do not receive the
+# 226 response from the backend server for the LIST command.
+#    proxy_reverse_config_backend_tls_connect_policy_per_user
+#    proxy_reverse_config_backend_tls_verify_server_off
+#    proxy_forward_backend_tls_list_pasv
+  return qw(
+    proxy_reverse_backend_tls_list_pasv
+  );
+
+#  return qw(
+#    proxy_reverse_frontend_backend_tls_roundrobin_login_after_host
+#  );
+#    proxy_reverse_frontend_backend_tls_peruser_login_after_host
+#    proxy_forward_frontend_backend_tls_login_after_host
 }
 
 sub set_up {
@@ -638,7 +662,7 @@ sub proxy_reverse_frontend_tls_login_tlslogin {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 auth:10 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 auth:10 tls:20 proxy:20 proxy.conn:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.tls:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
@@ -713,6 +737,7 @@ EOC
         SSL_use_cert => 1,
         SSL_cert_file => $client_cert_file,
         SSL_key_file => $client_cert_file,
+        SSL_ca_file => $ca_file,
       };
  
       my $client_opts = {
@@ -903,6 +928,7 @@ EOC
       sleep(2);
 
       my $ssl_opts = {
+        SSL_ca_file => $ca_file,
       };
 
       my $client_opts = {
@@ -1026,7 +1052,7 @@ sub proxy_reverse_backend_tls_login {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.db:20 proxy.netio:20 proxy.tls:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.ftp.sess:20',
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.db:20 proxy.netio:20 proxy.tls:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.ftp.sess:20 tls:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
@@ -1070,6 +1096,7 @@ sub proxy_reverse_backend_tls_login {
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
+    TLSOptions EnableDiags
   </IfModule>
 </VirtualHost>
 EOC
@@ -2040,7 +2067,7 @@ sub proxy_reverse_backend_tls_list_pasv {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.db:20 proxy.netio:20 proxy.tls:20 proxy.reverse:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.ftp.sess:20 tls:20',
+    Trace => 'DEFAULT:10 event:10 lock:0 netio:20 scoreboard:0 signal:0 proxy:20 proxy.db:20 proxy.netio:20 proxy.tls:20 proxy.reverse:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.ftp.sess:20 tls:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
@@ -2084,6 +2111,7 @@ sub proxy_reverse_backend_tls_list_pasv {
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
+    TLSOptions EnableDiags
   </IfModule>
 </VirtualHost>
 EOC
@@ -2123,7 +2151,7 @@ EOC
       }
 
       my $buf;
-      $conn->read($buf, 8192, 10);
+      $conn->read($buf, 8192, 5);
       eval { $conn->close() };
 
       my $resp_code = $client->response_code();
@@ -4451,6 +4479,7 @@ EOC
       sleep(2);
 
       my $ssl_opts = {
+        SSL_ca_file => $ca_file,
       };
 
       my $client_opts = {

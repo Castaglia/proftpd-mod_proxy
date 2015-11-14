@@ -71,6 +71,7 @@ struct proxy_session {
 #define PROXY_SESS_MAX_LOGIN_ATTEMPTS			3
 
 struct proxy_session *proxy_session_alloc(pool *p);
+int proxy_session_free(pool *p, struct proxy_session *proxy_sess);
 
 int proxy_session_check_password(pool *p, const char *user, const char *passwd);
 int proxy_session_setup_env(pool *p, const char *user, int flags);

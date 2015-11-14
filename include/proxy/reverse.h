@@ -35,6 +35,7 @@ int proxy_reverse_free(pool *p);
 int proxy_reverse_have_authenticated(cmd_rec *cmd);
 int proxy_reverse_sess_init(pool *p, const char *tables_dir,
   struct proxy_session *proxy_sess);
+int proxy_reverse_sess_free(pool *p, struct proxy_session *proxy_sess);
 int proxy_reverse_sess_exit(pool *p);
 
 int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,

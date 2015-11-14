@@ -91,11 +91,14 @@ int proxy_conn_connect_timeout_cb(CALLBACK_FRAME) {
 
   pr_event_generate("mod_proxy.timeout-connect", NULL);
 
+#if 0
+  /* XXX We might not want to disconnect the frontend client here, right? */
   pr_log_pri(PR_LOG_NOTICE, "%s", "Connect timed out, disconnected");
   pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_TIMEOUT,
     "ProxyTimeoutConnect");
+#endif
 
-  /* Do not restart the timer (should never be reached). */
+  /* Do not restart the timer. */
   return 0;
 }
 
@@ -404,7 +407,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
 
   if (res == 0) {
     pr_netio_stream_t *nstrm;
-    int nstrm_mode = PR_NETIO_IO_RD;
+    int connected = FALSE, nstrm_mode = PR_NETIO_IO_RD;
 
     if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL) {
       /* Rather than waiting for the stream to be readable (because the
@@ -433,47 +436,21 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
 
     proxy_netio_set_poll_interval(nstrm, 1);
 
-    switch (proxy_netio_poll(nstrm)) {
-      case 1: {
-        /* Aborted, timed out.  Note that we shouldn't reach here. */
-        pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-        proxy_netio_close(nstrm);
-        pr_inet_close(p, server_conn);
+    while (!connected) {
+      int polled;
 
-        errno = ETIMEDOUT;
-        return NULL;
-      }
+      pr_signals_handle();
 
-      case -1: {
-        /* Error */
-        int xerrno = errno;
-
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "error connecting to %s#%u: %s", remote_ipstr, remote_port,
-          strerror(xerrno));
-
-        pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-        proxy_netio_close(nstrm);
-        pr_inet_close(p, server_conn);
-
-        errno = xerrno;
-        return NULL;
-      }
-
-      default: {
-        /* Connected */
-        server_conn->mode = CM_OPEN;
-        pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
-        pr_table_remove(session.notes, "mod_proxy.proxy-connect-addr", NULL);
-
-        res = pr_inet_get_conn_info(server_conn, server_conn->listen_fd);
-        if (res < 0) {
-          int xerrno = errno;
+      polled = proxy_netio_poll(nstrm);
+      switch (polled) {
+        case 1: {
+          /* Aborted, timed out.  Note that we shouldn't reach here. */
+          int xerrno = ETIMEDOUT;
 
           (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "error obtaining local socket info on fd %d: %s",
-            server_conn->listen_fd, strerror(xerrno));
-
+            "error connecting to %s#%u: %s", remote_ipstr, remote_port,
+            strerror(xerrno));
+          pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
           proxy_netio_close(nstrm);
           pr_inet_close(p, server_conn);
 
@@ -481,7 +458,52 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
           return NULL;
         }
 
-        break;
+        case -1: {
+          /* Error */
+          int xerrno = errno;
+
+          if (xerrno == EINTR) {
+            /* Treat this as a timeout. */
+            xerrno = ETIMEDOUT;
+          }
+
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "error connecting to %s#%u: %s", remote_ipstr, remote_port,
+            strerror(xerrno));
+
+          pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
+          proxy_netio_close(nstrm);
+          pr_inet_close(p, server_conn);
+
+          errno = xerrno;
+          return NULL;
+        }
+
+        default: {
+          /* Connected */
+          server_conn->mode = CM_OPEN;
+          pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
+          pr_table_remove(session.notes, "mod_proxy.proxy-connect-addr", NULL);
+
+          res = pr_inet_get_conn_info(server_conn, server_conn->listen_fd);
+          if (res < 0) {
+            int xerrno = errno;
+
+            (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+              "error obtaining local socket info on fd %d: %s",
+              server_conn->listen_fd, strerror(xerrno));
+
+            proxy_netio_close(nstrm);
+            pr_inet_close(p, server_conn);
+
+            errno = xerrno;
+            return NULL;
+          }
+
+          proxy_netio_reset_poll_interval(nstrm);
+          connected = TRUE;
+          break;
+        }
       }
     }
   }

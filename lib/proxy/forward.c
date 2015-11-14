@@ -58,16 +58,20 @@ int proxy_forward_free(pool *p) {
   return 0;
 }
 
+int proxy_forward_sess_free(pool *p, struct proxy_session *proxy_sess) {
+  /* Reset any state. */
+
+  proxy_method = PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH;
+  forward_retry_count = PROXY_DEFAULT_RETRY_COUNT;
+
+  return 0;
+}
+
 int proxy_forward_sess_init(pool *p, const char *tables_dir,
     struct proxy_session *proxy_sess) {
   config_rec *c;
   int allowed = FALSE;
   void *enabled = NULL;
-
-  c = find_config(main_server->conf, CONF_PARAM, "ProxyForwardMethod", FALSE);
-  if (c != NULL) {
-    proxy_method = *((int *) c->argv[0]);
-  }
 
   /* By default, only allow connections from RFC1918 addresses to use
    * forward proxying.  Otherwise, it must be from an explicitly allowed
@@ -102,6 +106,11 @@ int proxy_forward_sess_init(pool *p, const char *tables_dir,
   if (allowed == FALSE) {
     errno = EPERM;
     return -1;
+  }
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyForwardMethod", FALSE);
+  if (c != NULL) {
+    proxy_method = *((int *) c->argv[0]);
   }
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyRetryCount", FALSE);

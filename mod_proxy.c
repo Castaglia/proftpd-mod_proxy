@@ -72,6 +72,12 @@ static const char *proxy_tables_dir = NULL;
 
 static const char *trace_channel = "proxy";
 
+/* Necessary function prototypes. */
+static int proxy_sess_init(void);
+static void proxy_timeoutidle_ev(const void *, void *);
+static void proxy_timeoutnoxfer_ev(const void *, void *);
+static void proxy_timeoutstalled_ev(const void *, void *);
+
 MODRET proxy_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess,
     pr_response_t **rp) {
   int res, xerrno;
@@ -3597,8 +3603,7 @@ MODRET proxy_any(cmd_rec *cmd) {
         xerrno == ENOENT ||
         xerrno == EPIPE) {
       pr_session_disconnect(&proxy_module,
-        PR_SESS_DISCONNECT_BY_APPLICATION,
-        "Backend control connection lost");
+        PR_SESS_DISCONNECT_BY_APPLICATION, "Backend control connection lost");
     }
   }
 
@@ -3627,6 +3632,10 @@ MODRET proxy_any(cmd_rec *cmd) {
         mr = proxy_eprt(cmd, proxy_sess);
         pr_response_block(TRUE);
         return mr;
+
+      } else {
+        pr_response_send(R_530, _("Access denied"));
+        return PR_ERROR(cmd);
       }
       break;
 
@@ -3635,6 +3644,10 @@ MODRET proxy_any(cmd_rec *cmd) {
         mr = proxy_epsv(cmd, proxy_sess);
         pr_response_block(TRUE);
         return mr;
+
+      } else {
+        pr_response_send(R_530, _("Access denied"));
+        return PR_ERROR(cmd);
       }
       break;
 
@@ -3643,6 +3656,10 @@ MODRET proxy_any(cmd_rec *cmd) {
         mr = proxy_pasv(cmd, proxy_sess);
         pr_response_block(TRUE);
         return mr;
+
+      } else {
+        pr_response_send(R_530, _("Access denied"));
+        return PR_ERROR(cmd);
       }
       break;
 
@@ -3651,6 +3668,10 @@ MODRET proxy_any(cmd_rec *cmd) {
         mr = proxy_port(cmd, proxy_sess);
         pr_response_block(TRUE);
         return mr;
+
+      } else {
+        pr_response_send(R_530, _("Access denied"));
+        return PR_ERROR(cmd);
       }
       break;
 
@@ -3975,6 +3996,54 @@ static void proxy_restart_ev(const void *event_data, void *user_data) {
   }
 }
 
+static void proxy_sess_reinit_ev(const void *event_data, void *user_data) {
+  struct proxy_session *proxy_sess;
+  int res;
+
+  /* A HOST command changed the main_server pointer; reinitialize ourselves. */
+
+  pr_event_unregister(&proxy_module, "core.exit", proxy_exit_ev);
+  pr_event_unregister(&proxy_module, "core.session-reinit",
+    proxy_sess_reinit_ev);
+  pr_event_unregister(&proxy_module, "mod_proxy.ctrl-read", proxy_ctrl_read_ev);
+  pr_event_unregister(&proxy_module, "core.timeout-idle", proxy_timeoutidle_ev);
+  pr_event_unregister(&proxy_module, "core.timeout-no-transfer",
+    proxy_timeoutnoxfer_ev);
+  pr_event_unregister(&proxy_module, "core.timeout-stalled",
+    proxy_timeoutstalled_ev);
+
+  /* Reset static variables, other session state. Note that we explicitly
+   * do NOT reset the proxy_tables_dir variable; that is set during postparse,
+   * and affects the entire daemon process.
+   */
+
+  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+  if (proxy_sess != NULL) {
+    proxy_tls_sess_free(proxy_pool);
+    proxy_reverse_sess_free(proxy_pool, proxy_sess);
+    proxy_forward_sess_free(proxy_pool, proxy_sess);
+
+    (void) pr_table_remove(session.notes, "mod_proxy.proxy-session", NULL);
+    proxy_session_free(proxy_pool, proxy_sess);
+  }
+
+  (void) close(proxy_logfd);
+  proxy_logfd = -1;
+
+  (void) proxy_db_close(proxy_pool, NULL);
+
+  proxy_engine = FALSE;
+  proxy_opts = 0UL;
+  proxy_login_attempts = 0;
+  proxy_role = PROXY_ROLE_REVERSE;
+
+  res = proxy_sess_init();
+  if (res < 0) {
+    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_SESSION_INIT_FAILED,
+      NULL);
+  }
+}
+
 static void proxy_shutdown_ev(const void *event_data, void *user_data) {
   proxy_forward_free(proxy_pool);
   proxy_reverse_free(proxy_pool);
@@ -4068,6 +4137,13 @@ static int proxy_sess_init(void) {
   int res;
   struct proxy_session *proxy_sess;
   const char *sess_dir = NULL;
+
+  /* We have to register our HOST handler here, even if ProxyEngine is off,
+   * as the current vhost may be disabled BUT the requested vhost may be
+   * enabled.
+   */
+  pr_event_register(&proxy_module, "core.session-reinit",
+    proxy_sess_reinit_ev, NULL);
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyEngine", FALSE);
   if (c != NULL) {

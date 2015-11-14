@@ -76,6 +76,33 @@ int proxy_netio_use(int strm_type, pr_netio_t *netio) {
   return res;
 }
 
+int proxy_netio_using(int strm_type, pr_netio_t **netio) {
+  int res;
+
+  if (netio == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  switch (strm_type) {
+    case PR_NETIO_STRM_CTRL:
+      *netio = ctrl_netio;
+      res = 0;
+      break;
+
+    case PR_NETIO_STRM_DATA:
+      *netio = data_netio;
+      res = 0;
+      break;
+
+    default:
+      errno = ENOENT;
+      res = -1;
+  }
+
+  return res;
+}
+
 pr_netio_t *proxy_netio_unset(int strm_type, const char *fn) {
   pr_netio_t *netio = NULL;
 
@@ -243,6 +270,14 @@ int proxy_netio_read(pr_netio_stream_t *nstrm, char *buf, size_t bufsz,
 
   errno = xerrno;
   return res;
+}
+
+void proxy_netio_reset_poll_interval(pr_netio_stream_t *nstrm) {
+  pr_netio_t *curr_netio = NULL;
+
+  curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_reset_poll_interval");
+  pr_netio_reset_poll_interval(nstrm);
+  proxy_netio_set(nstrm->strm_type, curr_netio);
 }
 
 void proxy_netio_set_poll_interval(pr_netio_stream_t *nstrm,
