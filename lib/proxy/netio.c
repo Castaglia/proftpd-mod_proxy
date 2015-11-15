@@ -136,10 +136,27 @@ pr_netio_t *proxy_netio_unset(int strm_type, const char *fn) {
 }
 
 int proxy_netio_set(int strm_type, pr_netio_t *netio) {
+  /* Note: we DO want to unregister the register stream type, assuming we
+   * have a NetIO of our own to use for that type.
+   */
+  switch (strm_type) {
+    case PR_NETIO_STRM_CTRL:
+      if (ctrl_netio != NULL) {
+        (void) pr_unregister_netio(strm_type);
+      }
+      break;
+
+    case PR_NETIO_STRM_DATA:
+      if (data_netio != NULL) {
+        (void) pr_unregister_netio(strm_type);
+      }
+      break;
+
+    default:
+      break;
+  }
 
   if (netio != NULL) {
-    (void) pr_unregister_netio(strm_type);
-
     if (pr_register_netio(netio, strm_type) < 0) {
       pr_trace_msg(trace_channel, 3,
         "error registering previous %s NetIO: %s",

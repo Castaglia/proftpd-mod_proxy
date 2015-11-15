@@ -116,14 +116,14 @@ int proxy_inet_connect(pool *p, conn_t *conn, pr_netaddr_t *addr, int port) {
   if (conn->instrm != NULL) {
     instrm_type = conn->instrm->strm_type;
 
-    in_netio = proxy_netio_unset(conn->instrm->strm_type, "inet_connect");
+    in_netio = proxy_netio_unset(instrm_type, "inet_connect");
   }
 
   if (conn->outstrm != NULL) {
     outstrm_type = conn->outstrm->strm_type;
 
     if (outstrm_type != instrm_type) {
-      out_netio = proxy_netio_unset(conn->outstrm->strm_type, "inet_connect");
+      out_netio = proxy_netio_unset(outstrm_type, "inet_connect");
     }
   }
 
@@ -149,14 +149,14 @@ int proxy_inet_listen(pool *p, conn_t *conn, int backlog, int flags) {
   if (conn->instrm != NULL) {
     instrm_type = conn->instrm->strm_type;
 
-    in_netio = proxy_netio_unset(conn->instrm->strm_type, "inet_listen");
+    in_netio = proxy_netio_unset(instrm_type, "inet_listen");
   }
 
   if (conn->outstrm != NULL) {
     outstrm_type = conn->outstrm->strm_type;
 
     if (outstrm_type != instrm_type) {
-      out_netio = proxy_netio_unset(conn->outstrm->strm_type, "inet_listen");
+      out_netio = proxy_netio_unset(outstrm_type, "inet_listen");
     }
   }
 

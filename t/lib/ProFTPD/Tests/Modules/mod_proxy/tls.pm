@@ -713,6 +713,7 @@ EOC
         SSL_use_cert => 1,
         SSL_cert_file => $client_cert_file,
         SSL_key_file => $client_cert_file,
+        SSL_ca_file => $ca_file,
       };
  
       my $client_opts = {
@@ -903,6 +904,7 @@ EOC
       sleep(2);
 
       my $ssl_opts = {
+        SSL_ca_file => $ca_file,
       };
 
       my $client_opts = {
@@ -4451,6 +4453,7 @@ EOC
       sleep(2);
 
       my $ssl_opts = {
+        SSL_ca_file => $ca_file,
       };
 
       my $client_opts = {
