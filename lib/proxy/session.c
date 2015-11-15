@@ -53,6 +53,38 @@ struct proxy_session *proxy_session_alloc(pool *p) {
   return proxy_sess;
 }
 
+int proxy_session_free(pool *p, struct proxy_session *proxy_sess) {
+  conn_t *conn;
+
+  if (proxy_sess == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  /* Close any open connections. */
+
+  conn = proxy_sess->frontend_data_conn;
+  if (conn != NULL) {
+    pr_inet_close(p, conn);
+    proxy_sess->frontend_data_conn = session.d = NULL;
+  }
+
+  conn = proxy_sess->backend_ctrl_conn;
+  if (conn != NULL) {
+    pr_inet_close(p, conn);
+    proxy_sess->backend_ctrl_conn = NULL;
+  }
+
+  conn = proxy_sess->backend_data_conn;
+  if (conn != NULL) {
+    pr_inet_close(p, conn);
+    proxy_sess->backend_data_conn = NULL;
+  }
+
+  destroy_pool(proxy_sess->pool);
+  return 0;
+}
+
 int proxy_session_check_password(pool *p, const char *user,
     const char *passwd) {
   int res;

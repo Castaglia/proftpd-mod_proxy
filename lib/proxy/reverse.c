@@ -2305,6 +2305,19 @@ static void set_reverse_flags(void) {
   }
 }
 
+int proxy_reverse_sess_free(pool *p, struct proxy_session *proxy_sess) {
+  /* Reset any state. */
+
+  reverse_backends = NULL;
+  reverse_backend_id = -1;
+  reverse_connect_policy = PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN;
+  reverse_flags = 0UL;
+  reverse_retry_count = PROXY_DEFAULT_RETRY_COUNT;
+
+  proxy_db_close(p, PROXY_REVERSE_DB_SCHEMA_NAME);
+  return 0;
+}
+
 int proxy_reverse_sess_init(pool *p, const char *tables_dir,
     struct proxy_session *proxy_sess) {
   int res;

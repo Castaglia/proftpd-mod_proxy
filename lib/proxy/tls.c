@@ -3507,7 +3507,48 @@ int proxy_tls_sess_init(pool *p) {
 
 int proxy_tls_sess_free(pool *p) {
 #ifdef PR_USE_OPENSSL
-/* TODO: Unregister NetIOs, free ssl, ssl_ctx, etc. */
+  /* Reset any state, but only if we have not already negotiated an SSL
+   * session.
+   */
+
+  if (session.rfc2228_mech == NULL) {
+    handshake_timeout = 30;
+
+    tls_engine = PROXY_TLS_ENGINE_AUTO;
+    tls_opts = 0UL;
+    tls_verify_server = TRUE;
+    tls_cipher_suite = NULL;
+
+# if defined(PSK_MAX_PSK_LEN)
+    tls_psk_name = NULL;
+    tls_psk_bn = NULL;
+    tls_psk_used = FALSE;
+# endif /* PSK support */
+
+    proxy_db_close(p, PROXY_TLS_DB_SCHEMA_NAME);
+
+    if (ssl_ctx != NULL) {
+      SSL_CTX_free(ssl_ctx);
+
+      if (init_ssl_ctx() < 0) {
+        return -1;
+      }
+    }
+
+    if (tls_ctrl_netio != NULL) {
+      pr_netio_t *using_netio = NULL;
+
+      if (proxy_netio_using(PR_NETIO_STRM_CTRL, &using_netio) == 0) {
+        if (using_netio == tls_ctrl_netio) {
+          proxy_netio_use(PR_NETIO_STRM_CTRL, NULL);
+        }
+      }
+
+      destroy_pool(tls_ctrl_netio->pool);
+      tls_ctrl_netio = NULL;
+    }
+  }
 #endif /* PR_USE_OPENSSL */
+
   return 0;
 }
