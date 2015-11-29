@@ -3371,25 +3371,42 @@ int proxy_tls_sess_init(pool *p) {
 
     } else {
       long verify_flags = 0;
+      X509_VERIFY_PARAM *verify_param;
 
-# ifdef X509_V_FLAG_CRL_CHECK
-      verify_flags |= X509_V_FLAG_CRL_CHECK;
-# endif
-# ifdef X509_V_FLAG_CRL_CHECK_ALL
-      verify_flags |= X509_V_FLAG_CRL_CHECK_ALL;
-# endif
-# ifdef X509_V_FLAG_CHECK_SS_SIGNATURE
-      verify_flags |= X509_V_FLAG_CHECK_SS_SIGNATURE;
-# endif
-# ifdef X509_V_FLAG_TRUSTED_FIRST
-      verify_flags |= X509_V_FLAG_TRUSTED_FIRST;
-# endif
+      /* Provision our CRL store.  Then make sure that the X509 verification
+       * routines use it.
+       */
 
       SSL_CTX_set_cert_store(ssl_ctx, crl_store);
 
-# ifdef SSL_CTX_set_cert_flags
-      SSL_CTX_set_cert_flags(ssl_ctx, verify_flags);
+      verify_param = X509_VERIFY_PARAM_new();
+
+# if defined(X509_V_FLAG_CRL_CHECK)
+      verify_flags |= X509_V_FLAG_CRL_CHECK;
 # endif
+# if defined(X509_V_FLAG_CRL_CHECK_ALL)
+      verify_flags |= X509_V_FLAG_CRL_CHECK_ALL;
+# endif
+# if defined(X509_V_FLAG_CHECK_SS_SIGNATURE)
+      verify_flags |= X509_V_FLAG_CHECK_SS_SIGNATURE;
+# endif
+# if defined(X509_V_FLAG_TRUSTED_FIRST)
+      verify_flags |= X509_V_FLAG_TRUSTED_FIRST;
+# endif
+# if defined(X509_V_FLAG_PARTIAL_CHAIN)
+      verify_flags |= X509_V_FLAG_PARTIAL_CHAIN;
+# endif
+
+      if (X509_VERIFY_PARAM_set_flags(verify_param, verify_flags) != 1) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error preparing X509 verification parameters: %s", get_errors());
+
+      } else {
+        if (SSL_CTX_set1_param(ssl_ctx, verify_param) != 1) {
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "error setting X509 verification parameters: %s", get_errors());
+        }
+      }
     }
   }
 
