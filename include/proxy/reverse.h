@@ -52,7 +52,8 @@ array_header *proxy_reverse_json_parse_uris(pool *p, const char *path);
 #define PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME	4
 #define PROXY_REVERSE_CONNECT_POLICY_SHUFFLE			5
 #define PROXY_REVERSE_CONNECT_POLICY_PER_USER			6
-#define PROXY_REVERSE_CONNECT_POLICY_PER_HOST			7
+#define PROXY_REVERSE_CONNECT_POLICY_PER_GROUP			7
+#define PROXY_REVERSE_CONNECT_POLICY_PER_HOST			8
 
 /* Return the policy ID for the given string, or -1 if the given policy
  * is not recognized/supported.

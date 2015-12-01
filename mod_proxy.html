@@ -448,6 +448,21 @@ The currently supported policies are:
   </li>
 
   <p>
+  <li><code>PerGroup</code>
+    <p>
+    Select a backend server based on the primary group of the authenticated
+    <code>USER</code> name used by the connecting client; any future
+    connections using that same <code>USER</code> name will be routed to the
+    same backend server.
+
+    <p>
+    <b>Note</b>: use of this <code>ProxyReverseConnectPolicy</code> also
+    <b>requires</b> use of the <code>UseReverseProxyAuth</code>
+    <code>ProxyOption</code>, as authenticating the given <code>USER</code>
+    name is required for discovering the primary group of that user.
+  </li>
+
+  <p>
   <li><code>PerHost</code>
     <p>
     Select a backend server based on the IP address of the connecting client;
@@ -1184,6 +1199,26 @@ with lookup of per-user backend servers:
   &lt;/IfModule&gt;
 </pre>
 
+Similarly, you can use a <i>per-group</i> lookup for the backend servers when
+reverse proxying:
+<pre>
+  &lt;IfModule mod_proxy.c&gt;
+    ProxyEngine on
+    ProxyLog /path/to/proxy.log
+    ProxyTables /var/ftp/proxy
+
+    ProxyRole reverse
+    ProxyReverseConnectPolicy PerGroup
+    ProxyOptions UseReverseProxyAuth
+
+    # We need to provide a pool of backend servers as a fallback
+    ProxyReverseServers ftp://ftp-backend1.example.com:2121 ftp://ftp-backend2.example.com:2121 ...
+
+    # Look up per-group backend servers from group-specific JSON files
+    ProxyReverseServers file:/var/ftp/proxy/backends/%g.json
+  &lt;/IfModule&gt;
+</pre>
+
 <p>
 In order to support FTP over SSL/TLS (FTPS) connections from <em>clients</em>
 when reverse proxying, simply include your normal <code>mod_tls</code>
@@ -1265,6 +1300,7 @@ server.
 <p>
 The <em>sticky</em> policies are:
 <ul>
+  <li><code>PerGroup</code>
   <li><code>PerHost</code>
   <li><code>PerUser</code>
 </ul>
