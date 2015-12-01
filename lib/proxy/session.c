@@ -227,8 +227,6 @@ int proxy_session_setup_env(pool *p, const char *user, int flags) {
   /* XXX Will users want wtmp logging for a proxy login? */
   session.wtmp_log = FALSE;
 
-  PRIVS_ROOT
-
   c = find_config(main_server->conf, CONF_PARAM, "TransferLog", FALSE);
   if (c == NULL) {
     xferlog = PR_XFERLOG_PATH;
@@ -236,6 +234,8 @@ int proxy_session_setup_env(pool *p, const char *user, int flags) {
   } else {
     xferlog = c->argv[0];
   }
+
+  PRIVS_ROOT
 
   if (strncasecmp(xferlog, "none", 5) == 0) {
     xferlog_open(NULL);

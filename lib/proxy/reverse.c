@@ -70,9 +70,10 @@ static const char *reverse_db_path = NULL;
 #define PROXY_REVERSE_JSON_MAX_FILE_SIZE		(1024 * 1024 * 5)
 #define PROXY_REVERSE_JSON_MAX_ITEMS			1000
 
-/* PerHost/PerUser table limits */
+/* PerHost/PerUser/PerGroup table limits */
 #define PROXY_REVERSE_PERHOST_MAX_ENTRIES		8192
 #define PROXY_REVERSE_PERUSER_MAX_ENTRIES		8192
+#define PROXY_REVERSE_PERGROUP_MAX_ENTRIES		8192
 
 static const char *trace_channel = "proxy.reverse";
 
@@ -321,12 +322,28 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
 
   /* CREATE TABLE proxy_reverse.proxy_vhost_reverse_per_user (
    *   vhost_id INTEGER NOT NULL,
-   *   user TEXT NOT NULL PRIMARY KEY,
+   *   user_name TEXT NOT NULL PRIMARY KEY,
    *   backend_uri TEXT,
    *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id)
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user (vhost_id INTEGER NOT NULL, user TEXT NOT NULL PRIMARY KEY, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user (vhost_id INTEGER NOT NULL, user_name TEXT NOT NULL PRIMARY KEY, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr);
+    errno = EPERM;
+    return -1;
+  }
+
+  /* CREATE TABLE proxy_reverse.proxy_vhost_reverse_per_group (
+   *   vhost_id INTEGER NOT NULL,
+   *   group_name TEXT NOT NULL PRIMARY KEY,
+   *   backend_uri TEXT,
+   *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id)
+   * );
+   */
+  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_group (vhost_id INTEGER NOT NULL, group_name TEXT NOT NULL PRIMARY KEY, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
   res = proxy_db_exec_stmt(p, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -395,6 +412,15 @@ static int reverse_truncate_db_tables(pool *p) {
   }
 
   stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user;";
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr);
+    errno = EPERM;
+    return -1;
+  }
+
+  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_group;";
   res = proxy_db_exec_stmt(p, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -972,40 +998,36 @@ static int reverse_db_leastresponsetime_used(pool *p, unsigned int vhost_id,
   return 0;
 }
 
-/* ProxyReverseConnectPolicy: PerUser */
+/* Shared/common routines for PerUser and PerGroup. */
 
-static array_header *reverse_db_peruser_get(pool *p, unsigned int vhost_id,
-    const char *user) {
-  int res;
-  const char *stmt, *errstr = NULL;
-  array_header *results;
+static array_header *reverse_db_parse_uris(pool *p, array_header *uris) {
+  array_header *pconns = NULL;
+  register unsigned int i;
 
-  stmt = "SELECT backend_uri FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user WHERE vhost_id = ? AND user = ?;";
-  res = proxy_db_prepare_stmt(p, stmt);
-  if (res < 0) {
-    return NULL;
+  pconns = make_array(p, 0, sizeof(struct proxy_conn *));
+
+  for (i = 0; i < uris->nelts; i++) {
+    char *uri;
+    struct proxy_conn *pconn;
+
+    pr_signals_handle();
+    uri = ((char **) uris->elts)[i];
+
+    /* Skip blank/empty URIs. */
+    if (*uri == '\0') {
+      continue;
+    }
+
+    pconn = proxy_conn_create(p, uri);
+    if (pconn == NULL) {
+      pr_trace_msg(trace_channel, 9, "skipping malformed URL '%s'", uri);
+      continue;
+    }
+
+    *((struct proxy_conn **) push_array(pconns)) = pconn;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
-  if (res < 0) {
-    return NULL;
-  }
-
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT, (void *) user);
-  if (res < 0) {
-    return NULL;
-  }
-
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
-  if (results == NULL) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
-    errno = EPERM;
-    return NULL;
-  }
-
-  return results;
+  return pconns;
 }
 
 /* SQL support routines. */
@@ -1063,52 +1085,22 @@ static const char *reverse_db_sql_quote_str(pool *p, char *str) {
   return res->data;
 }
 
-/* Look for any user-specific ProxyReverseServers and load them, either
- * from file or SQL or whateever.  Randomly choose from one of those
- * backends.  If no user-specific backends are found, use the existing
+/* Look for any user/group-specific ProxyReverseServers and load them, either
+ * from file or SQL or whatever.  Randomly choose from one of those
+ * backends.  If no user/group-specific backends are found, use the existing
  * "global" list.
  */
 
-static array_header *reverse_db_peruser_parse_uris(pool *p,
-    array_header *uris) {
-  array_header *pconns = NULL;
-  register unsigned int i;
-
-  pconns = make_array(p, 0, sizeof(struct proxy_conn *));
-
-  for (i = 0; i < uris->nelts; i++) {
-    char *uri;
-    struct proxy_conn *pconn;
-
-    pr_signals_handle();
-    uri = ((char **) uris->elts)[i];
-
-    /* Skip blank/empty URIs. */
-    if (*uri == '\0') {
-      continue;
-    }
-
-    pconn = proxy_conn_create(p, uri);
-    if (pconn == NULL) {
-      pr_trace_msg(trace_channel, 9, "skipping malformed URL '%s'", uri);
-      continue;
-    }
-
-    *((struct proxy_conn **) push_array(pconns)) = pconn;
-  }
-
-  return pconns;
-}
-
-static array_header *reverse_db_peruser_sql_parse_uris(pool *p,
-    cmdtable *sql_cmdtab, const char *user, const char *named_query) {
+static array_header *reverse_db_pername_sql_parse_uris(pool *p,
+    cmdtable *sql_cmdtab, const char *name, int per_user,
+    const char *named_query) {
   array_header *backends, *results;
   pool *tmp_pool;
   cmd_rec *cmd;
   modret_t *res;
 
   tmp_pool = make_sub_pool(p);
-  cmd = reverse_db_sql_cmd_create(tmp_pool, 3, "sql_lookup", named_query, user);
+  cmd = reverse_db_sql_cmd_create(tmp_pool, 3, "sql_lookup", named_query, name);
   res = pr_module_call(sql_cmdtab->m, sql_cmdtab->handler, cmd);
   if (res == NULL ||
       MODRET_ISERROR(res)) {
@@ -1123,12 +1115,13 @@ static array_header *reverse_db_peruser_sql_parse_uris(pool *p,
   if (results->nelts == 0) {
     destroy_pool(tmp_pool);
     pr_trace_msg(trace_channel, 10,
-      "SQLNamedQuery '%s' returned zero rows for user '%s'", named_query, user);
+      "SQLNamedQuery '%s' returned zero rows for %s '%s'", named_query,
+      per_user ? "user" : "group", name);
     errno = ENOENT;
     return NULL;
   }
 
-  backends = reverse_db_peruser_parse_uris(p, results);
+  backends = reverse_db_parse_uris(p, results);
   destroy_pool(tmp_pool);
 
   if (backends != NULL) {
@@ -1138,18 +1131,18 @@ static array_header *reverse_db_peruser_sql_parse_uris(pool *p,
     }
 
     pr_trace_msg(trace_channel, 10,
-      "SQLNamedQuery '%s' returned %d URLs for user '%s'", named_query,
-       backends->nelts, user);
+      "SQLNamedQuery '%s' returned %d URLs for %s '%s'", named_query,
+       backends->nelts, per_user ? "user" : "group", name);
   }
 
   return backends;
 }
 
-static array_header *reverse_db_peruser_backends_by_sql(pool *p,
-    const char *user) {
+static array_header *reverse_db_pername_backends_by_sql(pool *p,
+    const char *name, int per_user) {
   config_rec *c;
   array_header *sql_backends = NULL;
-  const char *quoted_user = NULL;
+  const char *quoted_name = NULL;
   cmdtable *sql_cmdtab;
 
   sql_cmdtab = pr_stash_get_symbol2(PR_SYM_HOOK, "sql_lookup", NULL, NULL,
@@ -1158,7 +1151,7 @@ static array_header *reverse_db_peruser_backends_by_sql(pool *p,
     /* No mod_sql backend loaded; no lookups to do. */
     pr_trace_msg(trace_channel, 18,
       "no 'sql_lookup' symbol found (mod_sql not loaded?), skipping "
-      "per-user SQL lookups");
+      "%s SQL lookups", per_user ? "per-user" : "per-group");
     errno = EPERM;
     return NULL;
   }
@@ -1185,16 +1178,16 @@ static array_header *reverse_db_peruser_backends_by_sql(pool *p,
 
     named_query = uri + 5;
 
-    if (quoted_user == NULL) {
-      quoted_user = reverse_db_sql_quote_str(p, (char *) user);
+    if (quoted_name == NULL) {
+      quoted_name = reverse_db_sql_quote_str(p, (char *) name);
     }
 
     pr_trace_msg(trace_channel, 17,
-      "loading user-specific ProxyReverseServers SQLNamedQuery '%s'",
-      named_query);
+      "loading %s-specific ProxyReverseServers SQLNamedQuery '%s'",
+      per_user ? "user" : "group", named_query);
 
-    backends = reverse_db_peruser_sql_parse_uris(p, sql_cmdtab, quoted_user,
-      named_query);
+    backends = reverse_db_pername_sql_parse_uris(p, sql_cmdtab, quoted_name,
+      per_user, named_query);
     if (backends == NULL) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "error reading ProxyReverseServers SQLNamedQuery '%s': %s", named_query,
@@ -1224,8 +1217,8 @@ static array_header *reverse_db_peruser_backends_by_sql(pool *p,
   return sql_backends;
 }
 
-static array_header *reverse_db_peruser_backends_by_json(pool *p,
-    const char *user) {
+static array_header *reverse_db_pername_backends_by_json(pool *p,
+    const char *name, int per_user) {
   config_rec *c;
   array_header *file_backends = NULL;
 
@@ -1238,11 +1231,25 @@ static array_header *reverse_db_peruser_backends_by_json(pool *p,
     pr_signals_handle();
 
     uri = c->argv[1];
-    if (uri == NULL ||
-        strstr(uri, "%U") == NULL) {
+    if (uri == NULL) {
       c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
         FALSE);
       continue;
+    }
+
+    if (per_user) {
+      if (strstr(uri, "%U") == NULL) {
+        c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
+          FALSE);
+        continue;
+      }
+
+    } else {
+      if (strstr(uri, "%g") == NULL) {
+        c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
+          FALSE);
+        continue;
+      }
     }
 
     if (strncmp(uri, "file:", 5) != 0) {
@@ -1251,10 +1258,16 @@ static array_header *reverse_db_peruser_backends_by_json(pool *p,
       continue;
     }
 
-    path = sreplace(p, (char *) (uri + 5), "%U", user, NULL);
+    if (per_user) {
+      path = sreplace(p, (char *) (uri + 5), "%U", name, NULL);
+
+    } else {
+      path = sreplace(p, (char *) (uri + 5), "%g", name, NULL);
+    }
 
     pr_trace_msg(trace_channel, 17,
-      "loading user-specific ProxyReverseServers file '%s'", path);
+      "loading %s-specific ProxyReverseServers file '%s'",
+      per_user ? "user" : "group", path);
 
     PRIVS_ROOT
     backends = proxy_reverse_json_parse_uris(p, path);
@@ -1290,24 +1303,61 @@ static array_header *reverse_db_peruser_backends_by_json(pool *p,
   return file_backends;
 }
 
-static array_header *reverse_db_peruser_backends(pool *p, const char *user) {
-  array_header *file_backends, *sql_backends, *user_backends = NULL;
+static array_header *reverse_db_pername_backends(pool *p, const char *name,
+    int per_user) {
+  array_header *file_backends, *sql_backends, *backends = NULL;
 
-  file_backends = reverse_db_peruser_backends_by_json(p, user);
+  file_backends = reverse_db_pername_backends_by_json(p, name, per_user);
   if (file_backends != NULL) {
-    user_backends = file_backends;
+    backends = file_backends;
   }
 
-  sql_backends = reverse_db_peruser_backends_by_sql(p, user);
+  sql_backends = reverse_db_pername_backends_by_sql(p, name, per_user);
   if (sql_backends != NULL) {
-    if (user_backends != NULL) {
-      (void) array_cat2(user_backends, sql_backends);
+    if (backends != NULL) {
+      (void) array_cat2(backends, sql_backends);
     } else {
-      user_backends = sql_backends;
+      backends = sql_backends;
     }
   }
 
-  return user_backends;
+  return backends;
+}
+
+/* ProxyReverseConnectPolicy: PerUser */
+
+static array_header *reverse_db_peruser_get(pool *p, unsigned int vhost_id,
+    const char *user) {
+  int res;
+  const char *stmt, *errstr = NULL;
+  array_header *results;
+
+  stmt = "SELECT backend_uri FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user WHERE vhost_id = ? AND user_name = ?;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return NULL;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+    (void *) &vhost_id);
+  if (res < 0) {
+    return NULL;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT, (void *) user);
+  if (res < 0) {
+    return NULL;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return NULL;
+  }
+
+  return results;
 }
 
 static struct proxy_conn *reverse_db_peruser_init(pool *p,
@@ -1317,7 +1367,7 @@ static struct proxy_conn *reverse_db_peruser_init(pool *p,
   const char *stmt, *uri, *errstr = NULL;
   array_header *user_backends = NULL, *results;
 
-  user_backends = reverse_db_peruser_backends(p, user);
+  user_backends = reverse_db_pername_backends(p, user, TRUE);
   if (user_backends != NULL) {
     backend_count = user_backends->nelts;
     conns = user_backends->elts;
@@ -1350,7 +1400,7 @@ static struct proxy_conn *reverse_db_peruser_init(pool *p,
    * choose another?
    */
 
-  stmt = "INSERT INTO " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user (vhost_id, user, backend_uri) VALUES (?, ?, ?);";
+  stmt = "INSERT INTO " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user (vhost_id, user_name, backend_uri) VALUES (?, ?, ?);";
   res = proxy_db_prepare_stmt(p, stmt);
   if (res < 0) {
     return NULL;
@@ -1398,7 +1448,7 @@ static struct proxy_conn *reverse_db_peruser_next(pool *p,
     /* This can happen the very first time; perform an on-demand discovery
      * of the backends for this user, and try again.
      */
- 
+
     pconn = reverse_db_peruser_init(p, vhost_id, user);
     if (pconn == NULL) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1460,6 +1510,208 @@ static int reverse_db_peruser_used(pool *p, unsigned int vhost_id,
     PROXY_REVERSE_PERUSER_MAX_ENTRIES);
 
   stmt = "DELETE FROM proxy_vhost_reverse_per_user;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return -1;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return -1;
+  }
+
+  return 0;
+}
+
+/* ProxyReverseConnectPolicy: PerGroup */
+
+static array_header *reverse_db_pergroup_get(pool *p, unsigned int vhost_id,
+    const char *group) {
+  int res;
+  const char *stmt, *errstr = NULL;
+  array_header *results;
+
+  stmt = "SELECT backend_uri FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_group WHERE vhost_id = ? AND group_name = ?;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return NULL;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+    (void *) &vhost_id);
+  if (res < 0) {
+    return NULL;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT, (void *) group);
+  if (res < 0) {
+    return NULL;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return NULL;
+  }
+
+  return results;
+}
+
+static struct proxy_conn *reverse_db_pergroup_init(pool *p,
+    unsigned int vhost_id, const char *group) {
+  struct proxy_conn **conns, *pconn = NULL;
+  int backend_count = 0, res;
+  const char *stmt, *uri, *errstr = NULL;
+  array_header *group_backends = NULL, *results;
+
+  group_backends = reverse_db_pername_backends(p, group, FALSE);
+  if (group_backends != NULL) {
+    backend_count = group_backends->nelts;
+    conns = group_backends->elts;
+
+  } else {
+    pr_trace_msg(trace_channel, 11,
+      "using global ProxyReverseServers list for group '%s'", group);
+    backend_count = reverse_backends->nelts;
+    conns = reverse_backends->elts;
+  }
+
+  if (backend_count == 1) {
+    pconn = conns[0];
+
+  } else {
+    size_t group_len;
+    unsigned int h;
+    int idx;
+
+    group_len = strlen(group);
+    h = str2hash(group, group_len);
+    idx = h % backend_count;
+
+    pconn = conns[idx];
+  }
+
+  /* TODO: What happens if the chosen backend URI cannot be used, e.g.
+   * because it is down/unreachable?  In reverse_try_connect(), we'll know
+   * that it failed to connect, but how to tunnel that back down here, to
+   * choose another?
+   */
+
+  stmt = "INSERT INTO " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_group (vhost_id, group_name, backend_uri) VALUES (?, ?, ?);";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return NULL;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+    (void *) &vhost_id);
+  if (res < 0) {
+    return NULL;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT, (void *) group);
+  if (res < 0) {
+    return NULL;
+  }
+
+  uri = proxy_conn_get_uri(pconn);
+  res = proxy_db_bind_stmt(p, stmt, 3, PROXY_DB_BIND_TYPE_TEXT, (void *) uri);
+  if (res < 0) {
+    return NULL;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return NULL;
+  }
+
+  return pconn;
+}
+
+static struct proxy_conn *reverse_db_pergroup_next(pool *p,
+    unsigned int vhost_id, const char *group) {
+  array_header *results;
+  struct proxy_conn *pconn = NULL;
+
+  results = reverse_db_pergroup_get(p, vhost_id, group);
+  if (results == NULL) {
+    return NULL;
+  }
+
+  if (results->nelts == 0) {
+    /* This can happen the very first time; perform an on-demand discovery
+     * of the backends for this group, and try again.
+     */
+
+    pconn = reverse_db_pergroup_init(p, vhost_id, group);
+    if (pconn == NULL) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error preparing database for ProxyReverseConnectPolicy "
+        "PerGroup for group '%s': %s", group, strerror(errno));
+      errno = EPERM;
+      return NULL;
+    }
+
+  } else {
+    char **vals;
+
+    vals = results->elts;
+    pconn = proxy_conn_create(p, vals[0]);
+  }
+
+  return pconn;
+}
+
+static int reverse_db_pergroup_used(pool *p, unsigned int vhost_id,
+    int backend_id) {
+  int count, res;
+  const char *stmt, *errstr = NULL;
+  array_header *results;
+
+  /* To prevent database bloating too much, delete all of the entries
+   * in the table if we're over our limit.
+   */
+
+  stmt = "SELECT COUNT(*) FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_group;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return -1;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return -1;
+  }
+
+  if (results->nelts != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "expected 1 result from statement '%s', got %d", stmt,
+      results->nelts);
+    errno = EINVAL;
+    return -1;
+  }
+
+  count = atoi(((char **) results->elts)[0]);
+  if (count <= PROXY_REVERSE_PERGROUP_MAX_ENTRIES) {
+    return 0;
+  }
+
+  pr_trace_msg(trace_channel, 5,
+    "PerGroup entry count (%d) exceeds max (%d), purging", count,
+    PROXY_REVERSE_PERGROUP_MAX_ENTRIES);
+
+  stmt = "DELETE FROM proxy_vhost_reverse_per_group;";
   res = proxy_db_prepare_stmt(p, stmt);
   if (res < 0) {
     return -1;
@@ -1667,6 +1919,20 @@ static int reverse_db_perhost_used(pool *p, unsigned int vhost_id,
 
 /* ProxyReverseServers API/handling */
 
+static int reverse_policy_is_sticky(int policy_id) {
+  switch (policy_id) {
+    case PROXY_REVERSE_CONNECT_POLICY_PER_USER:
+    case PROXY_REVERSE_CONNECT_POLICY_PER_GROUP:
+    case PROXY_REVERSE_CONNECT_POLICY_PER_HOST:
+      return TRUE;
+
+    default:
+      break;
+  }
+
+  return FALSE;
+}
+
 static struct proxy_conn *reverse_connect_next_backend(pool *p,
     unsigned int vhost_id, void *policy_data) {
   struct proxy_conn **conns, *pconn = NULL;
@@ -1677,7 +1943,7 @@ static struct proxy_conn *reverse_connect_next_backend(pool *p,
   /* Sticky policies such as PerUser might have their own ways of looking up
    * other backends to use.
    */
-  if (reverse_connect_policy != PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
+  if (reverse_policy_is_sticky(reverse_connect_policy) == TRUE) {
     if (reverse_backends->nelts == 1) {
       reverse_backend_id = 0;
       return conns[0];
@@ -1740,6 +2006,15 @@ static struct proxy_conn *reverse_connect_next_backend(pool *p,
       if (pconn != NULL) {
         pr_trace_msg(trace_channel, 11,
           "PER_USER policy: selected backend '%.100s' for user '%s'",
+          proxy_conn_get_uri(pconn), (const char *) policy_data);
+      }
+      break;
+
+    case PROXY_REVERSE_CONNECT_POLICY_PER_GROUP:
+      pconn = reverse_db_pergroup_next(p, vhost_id, policy_data);
+      if (pconn != NULL) {
+        pr_trace_msg(trace_channel, 11,
+          "PER_GROUP policy: selected backend '%.100s' for user '%s'",
           proxy_conn_get_uri(pconn), (const char *) policy_data);
       }
       break;
@@ -1809,6 +2084,10 @@ static int reverse_connect_index_used(pool *p, unsigned int vhost_id,
 
     case PROXY_REVERSE_CONNECT_POLICY_PER_USER:
       res = reverse_db_peruser_used(p, vhost_id, idx);
+      break;
+
+    case PROXY_REVERSE_CONNECT_POLICY_PER_GROUP:
+      res = reverse_db_pergroup_used(p, vhost_id, idx);
       break;
 
     case PROXY_REVERSE_CONNECT_POLICY_PER_HOST:
@@ -2150,6 +2429,7 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
     config_rec *c;
     array_header *backends = NULL;
     int connect_policy = reverse_connect_policy;
+    unsigned long opts = 0UL;
 
     res = reverse_db_add_vhost(p, s);
     if (res < 0) {
@@ -2180,9 +2460,10 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
           defer = TRUE;
         }
 
-        /* Skip any %U-bearing URIs. */
+        /* Skip any %U- or %g-bearing URIs. */
         if (defer == FALSE &&
-            strstr(uri, "%U") != NULL) {
+            (strstr(uri, "%U") != NULL ||
+             strstr(uri, "%g") != NULL)) {
           defer = TRUE;
         }
 
@@ -2217,6 +2498,18 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
     c = find_config(s->conf, CONF_PARAM, "ProxyReverseConnectPolicy", FALSE);
     if (c != NULL) {
       connect_policy = *((int *) c->argv[0]);
+    }
+
+    c = find_config(s->conf, CONF_PARAM, "ProxyOptions", FALSE);
+    while (c != NULL) {
+      unsigned long o;
+
+      pr_signals_handle();
+
+      o = *((unsigned long *) c->argv[0]);
+      opts |= o;
+
+      c = find_config_next(c, c->next, CONF_PARAM, "ProxyOptions", FALSE);
     }
 
     /* Note that we use a separate variable for the ConnectPolicy here, so
@@ -2261,6 +2554,16 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
         }
         break;
 
+      case PROXY_REVERSE_CONNECT_POLICY_PER_GROUP:
+        if (!(opts & PROXY_OPT_USE_REVERSE_PROXY_AUTH)) {
+          pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
+            ": PerGroup ProxyReverseConnectPolicy for server '%s' requires the "
+            "UseReverseProxyAuth ProxyOption", s->ServerName);
+          errno = EPERM;
+          return -1;
+        }
+        break;
+
       default:
         break;
     }
@@ -2291,7 +2594,7 @@ int proxy_reverse_sess_exit(pool *p) {
   return 0;
 }
 
-static void set_reverse_flags(void) {
+static int set_reverse_flags(void) {
   if (proxy_opts & PROXY_OPT_USE_REVERSE_PROXY_AUTH) {
     reverse_flags = PROXY_REVERSE_FL_CONNECT_AT_PASS;
 
@@ -2299,10 +2602,23 @@ static void set_reverse_flags(void) {
     if (reverse_connect_policy == PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
       reverse_flags = PROXY_REVERSE_FL_CONNECT_AT_USER;
 
+    } else if (reverse_connect_policy == PROXY_REVERSE_CONNECT_POLICY_PER_GROUP) {
+      /* Incompatible configuration: PerGroup balancing requires that the USER
+       * name be authenticated, in order to discovery the primary group name.
+       */
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "ReverseProxyConnectPolicy PerGroup requires the UseReverseProxyAuth ProxyOption, rejecting connection due to incompatible configuration");
+      pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
+        ": ReverseProxyConnectPolicy PerGroup requires the UseReverseProxyAuth ProxyOption, rejecting connection due to incompatible configuration");
+      errno = EINVAL;
+      return -1;
+
     } else {
       reverse_flags = PROXY_REVERSE_FL_CONNECT_AT_SESS_INIT;
     }
   }
+
+  return 0;
 }
 
 int proxy_reverse_sess_free(pool *p, struct proxy_session *proxy_sess) {
@@ -2358,7 +2674,9 @@ int proxy_reverse_sess_init(pool *p, const char *tables_dir,
       PROXY_REVERSE_DB_SCHEMA_VERSION, strerror(errno));
   }
 
-  set_reverse_flags();
+  if (set_reverse_flags() < 0) {
+    return -1;
+  }
 
   if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_SESS_INIT) {
     res = reverse_connect(p, proxy_sess);
@@ -2627,6 +2945,9 @@ int proxy_reverse_connect_get_policy(const char *policy) {
   } else if (strncasecmp(policy, "PerUser", 8) == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_PER_USER;
 
+  } else if (strncasecmp(policy, "PerGroup", 9) == 0) {
+    return PROXY_REVERSE_CONNECT_POLICY_PER_GROUP;
+
   } else if (strncasecmp(policy, "PerHost", 8) == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_PER_HOST;
 
@@ -2876,7 +3197,7 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *successful, int *block_responses) {
   int res, xerrno;
 
-  /* This CONNECT_AS_PASS flag indicates that we are using proxy auth when
+  /* This CONNECT_AT_PASS flag indicates that we are using proxy auth when
    * reverse proxying.
    */
   if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_PASS) {
@@ -2906,20 +3227,30 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     if (!(proxy_sess_state & PROXY_SESS_STATE_CONNECTED)) {
       register unsigned int i;
       int connected = FALSE;
-      char *user = NULL;
+      char *user = NULL, *group = NULL, *connect_name = NULL;
       cmd_rec *user_cmd;
 
       /* If we're using a sticky policy, we need to know the USER name that was
        * sent.
        */
-      if (reverse_connect_policy == PROXY_REVERSE_CONNECT_POLICY_PER_USER) {
-        user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
+      if (reverse_policy_is_sticky(reverse_connect_policy) == TRUE) {
+        user = connect_name = pr_table_get(session.notes, "mod_auth.orig-user",
+          NULL);
+
+        /* If the sticky policy in question is PerGroup, then we also need
+         * to know the authenticated user's primary group name.
+         */
+        if (proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED) {
+          if (reverse_connect_policy == PROXY_REVERSE_CONNECT_POLICY_PER_GROUP) {
+            group = connect_name = session.group;
+          }
+        }
       }
 
       for (i = 0; i < reverse_retry_count; i++) {
         pr_signals_handle();
 
-        res = reverse_try_connect(proxy_pool, proxy_sess, user);
+        res = reverse_try_connect(proxy_pool, proxy_sess, connect_name);
         if (res == 0) {
           connected = TRUE;
           break;

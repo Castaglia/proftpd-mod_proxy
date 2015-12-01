@@ -760,10 +760,11 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
       param = cmd->argv[1]; 
       path = param + 5;
 
-      /* If the path contains the %U variable, then defer loading of
+      /* If the path contains the %U or %g variables, then defer loading of
        * this file until the USER name is known.
        */
-      if (strstr(path, "%U") == NULL) {    
+      if (strstr(path, "%U") == NULL &&
+          strstr(path, "%g") == NULL) {
         int xerrno;
 
         /* For now, load the list of servers at sess init time.  In
