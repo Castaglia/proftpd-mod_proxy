@@ -442,6 +442,7 @@ The currently supported policies are:
 
   <p>
   <li><code>LeastResponseTime</code>
+    <p>
     Select the backend server with the least response time; this is determined
     based on the connect time to the backend server, and its number of
     current connections.
@@ -847,7 +848,7 @@ The <code>ProxyTLSEngine</code> directive configures the use of SSL/TLS for
   </li>
 
   <p>
-  <li>em>off</em>
+  <li><em>off</em>
     <p> 
     Use of SSL/TLS is <b>disabled</b>; backend servers which do support SSL/TLS
     will be ignored, and only FTP will be used.
@@ -987,6 +988,8 @@ The allowed protocols are:
   </tr>
 
 </table>
+
+<p>
 To support both SSLv3 and TLSv1, simply list both parameters for the
 <code>ProxyTLSProtocol</code> directive, <i>e.g.</i>:
 <pre>
@@ -1354,6 +1357,8 @@ according to need, demand, inclination, and time:
   <li>Directory format translation (<i>e.g.</i> <code>LIST</code> to <code>MLSD</code>)
   <li>SFTP/SCP support
 </ul>
+
+<p>
 See the GitHub <a href="https://github.com/Castaglia/proftpd-mod_proxy/issues">issues</a> page for current bugs and feature requests, and to report issues.
 
 <p><a name="FAQ">
@@ -1361,7 +1366,7 @@ See the GitHub <a href="https://github.com/Castaglia/proftpd-mod_proxy/issues">i
 
 <p><a name="ProxyRoundRobinVsLeastConns">
 <font color=red>Question</font>: I have heard a lot about both "round robin"
-and "least conns" for load balancing.  Which is better for FTP connections?><br>
+and "least conns" for load balancing.  Which is better for FTP connections?<br>
 <font color=blue>Answer</font>:  There is not an easy answer to this, because
 it really comes down to the type of traffic that your FTP servers will see.
 
