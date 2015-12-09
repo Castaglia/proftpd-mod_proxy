@@ -27,7 +27,7 @@
 
 #include "conf.h"
 #include "privs.h"
-#include "lib/json.h"
+#include "ccan-json.h"
 
 #include <signal.h>
 
