@@ -373,6 +373,21 @@ The currently implemented options are:
   </li>
 
   <p>
+  <li><code>UseDirectDataTransfers</code><br>
+    <p>
+    The <code>mod_proxy</code> module will, by default, proxy all data transfers
+    through the proxy server.  Some sites may wish to have the FTP data
+    transfers occur directly between the frontend client and the backend server,
+    to avoid the latency/overhead of the proxying.  Use this option to
+    enable these direct data transfers (akin to <b>D</b>irect <b>S</b>erver
+    <b>R</b>eturn, or DSR), for both forward and reverse proxy roles:
+    <pre>
+  # Enable data transfers directly from frontend client to/from backend server
+  ProxyOptions UseDirectDataTransfers
+    </pre>
+  </li>
+
+  <p>
   <li><code>UseProxyProtocol</code><br>
     <p>
     When <code>mod_proxy</code> connects to the backend/destination server,

@@ -3332,15 +3332,19 @@ int proxy_tls_sess_init(pool *p) {
 
     verify_param = X509_VERIFY_PARAM_new();
 
+#if 0
+/* NOTE: Many server certs may not have a CRL provider configured; such certs
+ * would be deemed invalid/unusable by these CRL_CHECK flags.  So they are
+ * disabled, for now.
+ */
 # if defined(X509_V_FLAG_CRL_CHECK)
     verify_flags |= X509_V_FLAG_CRL_CHECK;
 # endif
 # if defined(X509_V_FLAG_CRL_CHECK_ALL)
     verify_flags |= X509_V_FLAG_CRL_CHECK_ALL;
 # endif
-# if defined(X509_V_FLAG_CHECK_SS_SIGNATURE)
-    verify_flags |= X509_V_FLAG_CHECK_SS_SIGNATURE;
-# endif
+#endif
+
 # if defined(X509_V_FLAG_TRUSTED_FIRST)
     verify_flags |= X509_V_FLAG_TRUSTED_FIRST;
 # endif

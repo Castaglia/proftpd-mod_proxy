@@ -80,7 +80,7 @@ static void proxy_timeoutstalled_ev(const void *, void *);
 
 MODRET proxy_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess,
     pr_response_t **rp) {
-  int res, xerrno;
+  int res, xerrno = 0;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
 
@@ -146,6 +146,81 @@ MODRET proxy_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess,
     *rp = resp;
   }
 
+  return PR_HANDLED(cmd);
+}
+
+MODRET proxy_data_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess) {
+  int res, xerrno = 0;
+  modret_t *mr;
+  pr_response_t *resp = NULL;
+  unsigned int resp_nlines = 0;
+
+  mr = proxy_cmd(cmd, proxy_sess, &resp);
+  if (!MODRET_ISHANDLED(mr)) {
+    pr_response_block(TRUE);
+    return mr;
+  }
+
+  if (resp->num[0] != '1') {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "recieved non-1xx response from backend for %s: %s %s",
+      (char *) cmd->argv[0], resp->num, resp->msg);
+
+    pr_response_block(FALSE);
+    pr_response_add_err(resp->num, "%s", resp->msg);
+    pr_response_flush(&resp_err_list);
+
+    pr_response_block(TRUE);
+    errno = EINVAL;
+    return PR_ERROR(cmd);
+  }
+
+  /* Now we wait for our closing response. */
+  resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    &resp_nlines);
+  if (resp == NULL) {
+    xerrno = errno;
+
+    pr_response_block(FALSE);
+
+    /* For a certain number of conditions, if we cannot read the response
+     * from the backend, then we should just close the frontend, otherwise
+     * we might "leak" to the client the fact that we are fronting some
+     * backend server rather than being the server.
+     */
+    if (xerrno == ECONNRESET ||
+        xerrno == ECONNABORTED ||
+        xerrno == ENOENT ||
+        xerrno == EPIPE) {
+      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
+        "Backend control connection lost");
+    }
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error receiving %s response from backend: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
+
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    pr_response_block(TRUE);
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  pr_response_block(FALSE);
+  res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
+    resp, resp_nlines);
+  if (res < 0) {
+    xerrno = errno;
+
+    pr_response_block(TRUE);
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  pr_response_block(TRUE);
   return PR_HANDLED(cmd);
 }
 
@@ -674,6 +749,9 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
 
     } else if (strncmp(cmd->argv[i], "UseReverseProxyAuth", 20) == 0) {
       opts |= PROXY_OPT_USE_REVERSE_PROXY_AUTH;
+
+    } else if (strncmp(cmd->argv[i], "UseDirectDataTransfers", 23) == 0) {
+      opts |= PROXY_OPT_USE_DIRECT_DATA_TRANSFERS;
 
     } else {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxyOption '",
@@ -3630,6 +3708,13 @@ MODRET proxy_any(cmd_rec *cmd) {
 
     case PR_CMD_EPRT_ID:
       if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+        if (proxy_opts & PROXY_OPT_USE_DIRECT_DATA_TRANSFERS) {
+          /* For direct data transfers, we proxy EPRT commands directly to the
+           * backend server.
+           */
+          break;
+        }
+
         mr = proxy_eprt(cmd, proxy_sess);
         pr_response_block(TRUE);
         return mr;
@@ -3642,6 +3727,13 @@ MODRET proxy_any(cmd_rec *cmd) {
 
     case PR_CMD_EPSV_ID:
       if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+        if (proxy_opts & PROXY_OPT_USE_DIRECT_DATA_TRANSFERS) {
+          /* For direct data transfers, we proxy EPSV commands directly to the
+           * backend server.
+           */
+          break;
+        }
+
         mr = proxy_epsv(cmd, proxy_sess);
         pr_response_block(TRUE);
         return mr;
@@ -3654,6 +3746,13 @@ MODRET proxy_any(cmd_rec *cmd) {
 
     case PR_CMD_PASV_ID:
       if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+        if (proxy_opts & PROXY_OPT_USE_DIRECT_DATA_TRANSFERS) {
+          /* For direct data transfers, we proxy PASV commands directly to the
+           * backend server.
+           */
+          break;
+        }
+
         mr = proxy_pasv(cmd, proxy_sess);
         pr_response_block(TRUE);
         return mr;
@@ -3666,6 +3765,13 @@ MODRET proxy_any(cmd_rec *cmd) {
 
     case PR_CMD_PORT_ID:
       if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+        if (proxy_opts & PROXY_OPT_USE_DIRECT_DATA_TRANSFERS) {
+          /* For direct data transfers, we proxy PORT commands directly to the
+           * backend server.
+           */
+          break;
+        }
+
         mr = proxy_port(cmd, proxy_sess);
         pr_response_block(TRUE);
         return mr;
@@ -3693,7 +3799,19 @@ MODRET proxy_any(cmd_rec *cmd) {
       if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
         session.xfer.p = make_sub_pool(session.pool);
         session.xfer.direction = PR_NETIO_IO_WR;
-        mr = proxy_data(proxy_sess, cmd);
+
+        if (proxy_opts & PROXY_OPT_USE_DIRECT_DATA_TRANSFERS) {
+          /* For direct data transfers, we proxy data transfer commands
+           * directly to the backend server.  Since data transfer commands
+           * involve two responsese (the initial 1xx, then the closing 2xx),
+           * we need to handle them more carefully.
+           */
+          mr = proxy_data_cmd(cmd, proxy_sess);
+
+        } else {
+          mr = proxy_data(proxy_sess, cmd);
+        }
+
         destroy_pool(session.xfer.p);
         memset(&session.xfer, 0, sizeof(session.xfer));
 
@@ -3725,7 +3843,17 @@ MODRET proxy_any(cmd_rec *cmd) {
         session.xfer.p = make_sub_pool(session.pool);
         gettimeofday(&session.xfer.start_time, NULL);
 
-        mr = proxy_data(proxy_sess, cmd);
+        if (proxy_opts & PROXY_OPT_USE_DIRECT_DATA_TRANSFERS) {
+          /* For direct data transfers, we proxy data transfer commands
+           * directly to the backend server.  Since data transfer commands
+           * involve two responsese (the initial 1xx, then the closing 2xx),
+           * we need to handle them more carefully.
+           */
+          mr = proxy_data_cmd(cmd, proxy_sess);
+
+        } else {
+          mr = proxy_data(proxy_sess, cmd);
+        }
 
         if (MODRET_ISHANDLED(mr)) {
           proxy_log_xfer(cmd, 'c');
@@ -3809,9 +3937,15 @@ MODRET proxy_any(cmd_rec *cmd) {
    * the command.
    */
   if (!(proxy_sess_state & PROXY_SESS_STATE_CONNECTED)) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "declining to proxy %s command: not connected to backend server",
+      (char *) cmd->argv[0]);
     return PR_DECLINED(cmd);
   }
 
+  /* XXX Should any other commands, like TYPE or SYST, also be allowed through
+   * to the backend server, prior to authentication?
+   */
   if (pr_cmd_cmp(cmd, PR_CMD_QUIT_ID) != 0) {
     /* If we have connected to a backend server, but we have NOT authenticated
      * to that backend server, then reject all commands as "out of sequence"
