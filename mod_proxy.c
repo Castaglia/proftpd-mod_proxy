@@ -23,7 +23,7 @@
  *
  * -----DO NOT EDIT BELOW THIS LINE-----
  * $Archive: mod_proxy.a $
- * $Libraries: -lsqlite3 $
+ * $Libraries: -lsqlite3$
  */
 
 #include "mod_proxy.h"
