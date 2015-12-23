@@ -263,7 +263,7 @@ int proxy_session_setup_env(pool *p, const char *user, int flags) {
   session.proc_prefix = pstrdup(session.pool, session.c->remote_name);
   session.sf_flags = 0;
 
-  pr_scoreboard_update_entry(session.pid,
+  pr_scoreboard_entry_update(session.pid,
     PR_SCORE_USER, session.user,
     PR_SCORE_CWD, pr_fs_getcwd(),
     NULL);
