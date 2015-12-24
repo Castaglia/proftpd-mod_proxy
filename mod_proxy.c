@@ -1372,6 +1372,9 @@ MODRET set_proxytlsoptions(cmd_rec *cmd) {
     } else if (strcmp(cmd->argv[i], "NoSessionCache") == 0) {
       opts |= PROXY_TLS_OPT_NO_SESSION_CACHE;
 
+    } else if (strcmp(cmd->argv[i], "NoSessionTickets") == 0) {
+      opts |= PROXY_TLS_OPT_NO_SESSION_TICKETS;
+
     } else {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxyTLSOption '",
         cmd->argv[i], "'", NULL));

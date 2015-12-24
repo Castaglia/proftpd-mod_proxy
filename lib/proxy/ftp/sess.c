@@ -285,7 +285,13 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
 
   auth_feat = pr_table_get(proxy_sess->backend_features, C_AUTH, NULL);
   if (auth_feat == NULL) {
-    /* Backend server does not indicate that it supports AUTH via FEAT. */
+    /* Backend server does not indicate that it supports AUTH via FEAT.
+     *
+     * Even though this is the case, we will still try to send the AUTH
+     * command.  A malicious attacker could be modifying the plaintext
+     * FEAT listing, to make us think that TLS is not supported, and thus
+     * prevent us from encrypting the session (a la "SSL stripping").
+     */
 
     /* If TLS is required, then fail now. */
     if (uri_tls == PROXY_TLS_ENGINE_ON ||
@@ -297,25 +303,18 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
       if (uri_tls == PROXY_TLS_ENGINE_ON) {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "backend server %s does not support AUTH TLS (see FEAT response) but "
-          "URI '%.100s' requires TLS, failing connection", ip_str,
+          "URI '%.100s' requires TLS, attempting anyway", ip_str,
           proxy_conn_get_uri(proxy_sess->dst_pconn));
 
       } else if (use_tls == PROXY_TLS_ENGINE_ON) {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "backend server %s does not support AUTH TLS (see FEAT response) but "
-          "ProxyTLSEngine requires TLS, failing connection", ip_str);
+          "ProxyTLSEngine requires TLS, attempting anyway", ip_str);
       }
-
-      errno = EPERM;
-      return -1;
     }
 
-    /* Tell the Proxy NetIO API to NOT try to use our TLS NetIO. */
-    proxy_netio_use(PR_NETIO_STRM_CTRL, NULL);
-
     pr_trace_msg(trace_channel, 9,
-      "backend server does not support AUTH TLS (via FEAT), skipping");
-    return 0;
+      "backend server does not support AUTH TLS (via FEAT)");
   }
 
   tmp_pool = make_sub_pool(p);
