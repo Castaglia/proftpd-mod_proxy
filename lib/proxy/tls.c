@@ -46,6 +46,15 @@ static int tls_psk_used = FALSE;
 # define PROXY_TLS_MIN_PSK_LEN			20
 #endif /* PSK support */
 
+/* The SSL_set_session_ticket_ext() API was not fixed until OpenSSL-1.0.2e.
+ * Thus mod_proxy's caching/reuse of session tickets will not work properly
+ * before that version.
+ */
+#if defined(SSL_CTRL_SET_TLSEXT_TICKET_KEYS) && \
+    OPENSSL_VERSION_NUMBER >= 0x1000205fL
+# define PROXY_TLS_USE_SESSION_TICKETS		1
+#endif
+
 static const char *trace_channel = "proxy.tls";
 static const char *timing_channel = "timing";
 
@@ -90,6 +99,9 @@ static int handshake_timed_out = FALSE;
 #define PROXY_TLS_MAX_SESSION_AGE		86400
 #define PROXY_TLS_MAX_SESSION_COUNT		1000
 
+/* Ticket caching */
+#define PROXY_TLS_MAX_TICKET_COUNT		1000
+
 static SSL_CTX *ssl_ctx = NULL;
 static pr_netio_t *tls_ctrl_netio = NULL;
 static pr_netio_t *tls_data_netio = NULL;
@@ -99,7 +111,11 @@ static int netio_install_ctrl(void);
 static int netio_install_data(void);
 
 #define PROXY_TLS_DB_SCHEMA_NAME		"proxy_tls"
-#define PROXY_TLS_DB_SCHEMA_VERSION		1
+#define PROXY_TLS_DB_SCHEMA_VERSION		2
+
+/* Indices for data stashed in SSL objects */
+#define PROXY_TLS_IDX_TICKET_KEY		2
+#define PROXY_TLS_IDX_HAD_TICKET		3
 
 static int handshake_timeout_cb(CALLBACK_FRAME) {
   handshake_timed_out = TRUE;
@@ -108,23 +124,37 @@ static int handshake_timeout_cb(CALLBACK_FRAME) {
 
 static const char *get_errors(void) {
   unsigned int count = 0;
-  unsigned long e = ERR_get_error();
+  unsigned long error_code;
   BIO *bio = NULL;
   char *data = NULL;
   long datalen;
-  const char *str = "(unknown)";
+  const char *error_data = NULL, *str = "(unknown)";
+  int error_flags = 0;
 
   /* Use ERR_print_errors() and a memory BIO to build up a string with
    * all of the error messages from the error queue.
    */
-  if (e) {
+
+  error_code = ERR_get_error_line_data(NULL, NULL, &error_data, &error_flags);
+  if (error_code) {
     bio = BIO_new(BIO_s_mem());
   }
 
-  while (e) {
+  while (error_code) {
     pr_signals_handle();
-    BIO_printf(bio, "\n  (%u) %s", ++count, ERR_error_string(e, NULL));
-    e = ERR_get_error();
+
+    if (error_flags & ERR_TXT_STRING) {
+      BIO_printf(bio, "\n  (%u) %s [%s]", ++count,
+        ERR_error_string(error_code, NULL), error_data);
+
+    } else {
+      BIO_printf(bio, "\n  (%u) %s", ++count,
+        ERR_error_string(error_code, NULL));
+    }
+
+    error_data = NULL;
+    error_flags = 0;
+    error_code = ERR_get_error_line_data(NULL, NULL, &error_data, &error_flags);
   }
 
   datalen = BIO_get_mem_data(bio, &data);
@@ -1527,6 +1557,364 @@ static int tls_add_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
   return 0;
 }
 
+#if defined(PROXY_TLS_USE_SESSION_TICKETS)
+static int tls_db_add_ticket(pool *p, const char *key,
+    const unsigned char *ticket, size_t ticket_len) {
+  int res, vhost_id, xerrno = 0;
+  const char *stmt, *errstr = NULL;
+  BIO *bio, *b64;
+  char *data = NULL;
+  long datalen = 0;
+  array_header *results;
+
+  if (ticket == NULL ||
+      ticket_len == 0) {
+    return 0;
+  }
+
+  bio = BIO_new(BIO_s_mem());
+  b64 = BIO_new(BIO_f_base64());
+  BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
+  bio = BIO_push(b64, bio);
+
+  res = BIO_write(bio, (void *) ticket, ticket_len);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error writing base64-encoded session ticket: %s", get_errors());
+  }
+  (void) BIO_flush(bio);
+
+  datalen = BIO_get_mem_data(bio, &data);
+  if (data == NULL) {
+    pr_trace_msg(trace_channel, 9,
+      "no base64 data found for session ticket, not caching");
+    BIO_free(bio);
+    return 0;
+  }
+
+  data[datalen] = '\0';
+
+  /* We use INSERT OR REPLACE here to get upsert semantics; we only want/
+   * need one session ticket per URI.
+   */
+  stmt = "INSERT OR REPLACE INTO proxy_tls_tickets (vhost_id, backend_uri, ticket) VALUES (?, ?, ?);";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    xerrno = errno;
+
+    BIO_free_all(bio);
+    errno = xerrno;
+    return -1;
+  }
+
+  vhost_id = main_server->sid;
+  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+    (void *) &vhost_id);
+  if (res < 0) {
+    xerrno = errno;
+
+    BIO_free_all(bio);
+    errno = xerrno;
+    return -1;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) key);
+  if (res < 0) {
+    xerrno = errno;
+
+    BIO_free_all(bio);
+    errno = xerrno;
+    return -1;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 3, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) data);
+  if (res < 0) {
+    xerrno = errno;
+
+    BIO_free_all(bio);
+    errno = xerrno;
+    return -1;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+
+    BIO_free_all(bio);
+    errno = EPERM;
+    return -1;
+  }
+
+  BIO_free_all(bio);
+
+  pr_trace_msg(trace_channel, 17, "cached session ticket for key '%s'", key);
+  return 0;
+}
+
+static int tls_db_remove_ticket(pool *p, const char *key) {
+  int res, vhost_id;
+  const char *stmt, *errstr = NULL;
+  array_header *results;
+
+  stmt = "DELETE FROM proxy_tls_tickets WHERE vhost_id = ? AND backend_uri = ?;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return -1;
+  }
+
+  vhost_id = main_server->sid;
+  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+    (void *) &vhost_id);
+  if (res < 0) {
+    return -1;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) key);
+  if (res < 0) {
+    return -1;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return -1;
+  }
+
+  return 0;
+}
+
+static int tls_db_get_ticket(pool *p, const char *key, unsigned char **ticket,
+    size_t *ticket_len) {
+  int res, vhost_id;
+  BIO *bio, *b64;
+  const char *stmt, *errstr = NULL;
+  array_header *results;
+  char blob[8192], *data = NULL;
+  unsigned char *ticket_data = NULL;
+  size_t datalen;
+
+  stmt = "SELECT ticket FROM " PROXY_TLS_DB_SCHEMA_NAME
+    ".proxy_tls_tickets WHERE vhost_id = ? AND backend_uri = ?;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return -1;
+  }
+
+  vhost_id = main_server->sid;
+  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+    (void *) &vhost_id);
+  if (res < 0) {
+    return -1;
+  }
+
+  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) key);
+  if (res < 0) {
+    return -1;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return -1;
+  }
+
+  if (results->nelts == 0) {
+    errno = ENOENT;
+    return -1;
+  }
+
+  data = ((char **) results->elts)[0];
+  datalen = strlen(data);
+
+  bio = BIO_new_mem_buf(data, datalen);
+  b64 = BIO_new(BIO_f_base64());
+  BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
+  bio = BIO_push(b64, bio);
+
+  res = BIO_read(bio, blob, sizeof(blob));
+  if (res <= 0) {
+    pr_trace_msg(trace_channel, 3,
+      "error converting database entry to session ticket: %s", get_errors());
+    BIO_free_all(bio);
+    errno = ENOENT;
+    return -1;
+  }
+
+  *ticket_len = res;
+  ticket_data = palloc(p, res);
+  memcpy(ticket_data, blob, res);
+  *ticket = ticket_data;
+
+  pr_memscrub(blob, res);
+  BIO_free_all(bio);
+  return 0;
+}
+
+static int tls_db_get_ticket_count(pool *p) {
+  int count = 0, res;
+  const char *stmt, *errstr = NULL;
+  array_header *results;
+
+  stmt = "SELECT COUNT(*) FROM " PROXY_TLS_DB_SCHEMA_NAME
+    ".proxy_tls_tickets;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return -1;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
+    errno = EPERM;
+    return -1;
+  }
+
+  if (results->nelts != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "expected 1 result from statement '%s', got %d", stmt,
+      results->nelts);
+    errno = EINVAL;
+    return -1;
+  }
+
+  count = atoi(((char **) results->elts)[0]);
+  return count;
+}
+
+static int tls_add_cached_ticket(pool *p, SSL *ssl) {
+  char *ticket_key = NULL;
+  unsigned char *ticket = NULL;
+  SSL_SESSION *sess = NULL;
+  int *had_ticket, res, ticket_count, ticket_len = 0, xerrno = 0;
+
+  if (tls_opts & PROXY_TLS_OPT_NO_SESSION_TICKETS) {
+    pr_trace_msg(trace_channel, 19,
+      "NoSessionTickets ProxyTLSOption in effect, not caching session ticket");
+    return 0;
+  }
+
+  ticket_count = tls_db_get_ticket_count(p);
+  if (ticket_count < 0) {
+    return -1;
+  }
+
+  if (ticket_count >= PROXY_TLS_MAX_TICKET_COUNT) {
+    pr_trace_msg(trace_channel, 14,
+      "Maximum number of cached tickets (%d) reached, not caching session "
+      "ticket", PROXY_TLS_MAX_TICKET_COUNT);
+    return 0;
+  }
+
+  ticket_key = SSL_get_ex_data(ssl, PROXY_TLS_IDX_TICKET_KEY);
+  had_ticket = SSL_get_ex_data(ssl, PROXY_TLS_IDX_HAD_TICKET);
+
+  pr_trace_msg(trace_channel, 19,
+    "caching session ticket using key '%s'", ticket_key);
+
+  sess = SSL_get1_session(ssl);
+  ticket = sess->tlsext_tick;
+  ticket_len = sess->tlsext_ticklen;
+
+  /* Note: if we provide a session ticket, but find we did not receive
+   * a new one from the server, then we should delete this old ticket.
+   */
+
+  if (ticket_len == 0) {
+    if (*had_ticket == TRUE) {
+      tls_db_remove_ticket(p, ticket_key);
+    }
+
+    return 0;
+  }
+
+  /* Note: it's rather naughty to be referencing the session ticket
+   * members directly, but OpenSSL doesn't provide accessors for it.
+   */
+  res = tls_db_add_ticket(p, ticket_key, ticket, ticket_len);
+  xerrno = errno;
+  SSL_SESSION_free(sess);
+
+  if (res < 0) {
+    pr_trace_msg(trace_channel, 9,
+      "error storing session ticket using key '%s': %s", ticket_key,
+      strerror(xerrno));
+
+  } else {
+    pr_trace_msg(trace_channel, 19,
+      "successfully cached session ticket (%d bytes) using key '%s'",
+      ticket_len, ticket_key);
+  }
+
+  return 0;
+}
+
+static int tls_get_cached_ticket(pool *p, SSL *ssl, const char *host,
+    int port, const char *ticket_key) {
+  unsigned char *ticket = NULL;
+  size_t ticket_len = 0;
+  int *had_ticket = NULL, res;
+
+  if (tls_opts & PROXY_TLS_OPT_NO_SESSION_TICKETS) {
+    pr_trace_msg(trace_channel, 19,
+      "NoSessionTickets ProxyTLSOption in effect, not using sessions tickets");
+    SSL_set_options(ssl, SSL_OP_NO_TICKET);
+    return 0;
+  }
+
+  if (ticket_key == NULL) {
+    char port_str[32];
+    memset(port_str, '\0', sizeof(port_str));
+    snprintf(port_str, sizeof(port_str)-1, "%d", port);
+    ticket_key = pstrcat(p, "ftp://", host, ":", port_str, NULL);
+  }
+
+  had_ticket = pcalloc(p, sizeof(int));
+  pr_trace_msg(trace_channel, 19,
+    "looking for cached session ticket using key '%s'", ticket_key);
+
+  res = tls_db_get_ticket(p, ticket_key, &ticket, &ticket_len);
+  if (res == 0) {
+    pr_trace_msg(trace_channel, 12,
+      "found cached session ticket using key '%s' (%lu bytes)", ticket_key,
+      (unsigned long) ticket_len);
+    *had_ticket = TRUE;
+    if (SSL_set_session_ticket_ext(ssl, ticket, (int) ticket_len) != 1) {
+      pr_trace_msg(trace_channel, 3,
+        "error provisioning session ticket: %s", get_errors());
+    }
+
+  } else {
+    if (errno == ENOENT) {
+      pr_trace_msg(trace_channel, 19,
+        "no cached session tickets found for key '%s'", ticket_key);
+
+    } else {
+      pr_trace_msg(trace_channel, 9,
+        "error getting cached session ticket using key '%s': %s", ticket_key,
+        strerror(errno));
+    }
+  }
+
+  /* Stash our ticket key, and whether we had a ticket, in the SSL object,
+   * for use by the callback.
+   */
+  SSL_set_ex_data(ssl, PROXY_TLS_IDX_TICKET_KEY, (void *) ticket_key);
+  SSL_set_ex_data(ssl, PROXY_TLS_IDX_HAD_TICKET, (void *) had_ticket);
+
+  return 0;
+}
+#endif /* PROXY_TLS_USE_SESSION_TICKETS */
+
 static int tls_connect(conn_t *conn, const char *host_name,
     pr_netio_stream_t *nstrm) {
   int blocking, res = 0, xerrno = 0;
@@ -1568,13 +1956,25 @@ static int tls_connect(conn_t *conn, const char *host_name,
 #endif /* OPENSSL_NO_TLSEXT */
 
   if (nstrm->strm_type == PR_NETIO_STRM_DATA) {
+
     /* If we're opening a data connection, reuse the SSL data from the
-     * session on the control connection.
+     * session on the control connection (including any session IDs and/or
+     * tickets).
      */
     SSL_copy_session_id(ssl, tls_ctrl_ssl);
 
   } else if (nstrm->strm_type == PR_NETIO_STRM_CTRL) {
     tls_get_cached_sess(nstrm->strm_pool, ssl, host_name, conn->remote_port);
+
+# if defined(PROXY_TLS_USE_SESSION_TICKETS)
+    if (tls_get_cached_ticket(nstrm->strm_pool, ssl, host_name,
+        conn->remote_port, NULL) == 0) {
+      pr_trace_msg(trace_channel, 9,
+        "sending session ticket extension for ctrl connection");
+    }
+# else
+    SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_TICKET);
+# endif /* Session ticket support */
   }
 
   /* If configured, set a timer for the handshake. */
@@ -1728,6 +2128,10 @@ static int tls_connect(conn_t *conn, const char *host_name,
     if (reused == 0) {
       tls_add_cached_sess(nstrm->strm_pool, ssl, host_name, conn->remote_port);
     }
+
+#if defined(PROXY_TLS_USE_SESSION_TICKETS)
+    tls_add_cached_ticket(nstrm->strm_pool, ssl);
+#endif /* PROXY_TLS_USE_SESSION_TICKETS */
   }
 
   /* Manually update the raw bytes counters with the network IO from the
@@ -2424,11 +2828,6 @@ static int init_ssl_ctx(void) {
   ssl_opts |= SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION;
 #endif
 
-  /* Disable SSL tickets, for now. */
-#ifdef SSL_OP_NO_TICKET
-  ssl_opts |= SSL_OP_NO_TICKET;
-#endif
-
   /* Disable SSL compression. */
 #ifdef SSL_OP_NO_COMPRESSION
   ssl_opts |= SSL_OP_NO_COMPRESSION;
@@ -2499,7 +2898,27 @@ static int tls_db_add_schema(pool *p, const char *db_path) {
     return -1;
   }
 
-  /* Note that we deliberately do NOT truncate the session cache table. */
+#if defined(PROXY_TLS_USE_SESSION_TICKETS)
+  /* CREATE TABLE proxy_tls.proxy_tls_tickets (
+   *   backend_uri STRING NOT NULL PRIMARY KEY,
+   *   vhost_id INTEGER NOT NULL,
+   *   ticket TEXT NOT NULL,
+   *   FOREIGN KEY (vhost_id) REFERENCES proxy_tls_vhosts (vhost_id)
+   * );
+   */
+  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_tickets (backend_uri STRING NOT NULL PRIMARY KEY, vhost_id INTEGER NOT NULL, ticket TEXT NOT NULL, FOREIGN KEY (vhost_id) REFERENCES proxy_tls_hosts (vhost_id));";
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr);
+    errno = EPERM;
+    return -1;
+  }
+#endif /* PROXY_TLS_USE_SESSION_TICKETS */
+
+  /* Note that we deliberately do NOT truncate the session cache or session
+   * ticket tables.
+   */
 
   return 0;
 }
@@ -3132,6 +3551,12 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
             case 2:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'ServerHello' Handshake message (%u %s)",
+                action_str, version_str, (unsigned int) buflen, bytes_str);
+              break;
+
+            case 4:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s 'NewSessionTicket' Handshake message (%u %s)",
                 action_str, version_str, (unsigned int) buflen, bytes_str);
               break;
 
