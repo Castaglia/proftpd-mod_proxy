@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP session routines
- * Copyright (c) 2013-2015 TJ Saunders
+ * Copyright (c) 2013-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -293,7 +293,7 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
      * prevent us from encrypting the session (a la "SSL stripping").
      */
 
-    /* If TLS is required, then fail now. */
+    /* If TLS is required, then complain loudly.  */
     if (uri_tls == PROXY_TLS_ENGINE_ON ||
         use_tls == PROXY_TLS_ENGINE_ON) {
       const char *ip_str;
@@ -335,7 +335,7 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
    * 211 END
    *
    * Note how the AUTH and PROT values are not exactly as specified
-   * in RFC 4217.  This means we'll need to deal with as is.  There will
+   * in RFC 4217.  This means we'll need to deal with it as is.  There will
    * be other servers with other FEAT response formats, too.
    */
   if (parse_feat(tmp_pool, auth_feat, &auth_feats) > 0) {
@@ -351,6 +351,14 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
     }
   }
 
+  /* XXX How should we interoperate with servers that support/want the
+   * older formats, e.g.:
+   *
+   *  AUTH SSL (which automatically assumes PBSZ 0, PROT P)
+   *  AUTH TLS-P (synonym for AUTH SSL)
+   *  AUTH TLS-C (synonym for AUTH TLS)
+   */
+
   cmd = pr_cmd_alloc(tmp_pool, 2, C_AUTH, "TLS");
   cmd->arg = pstrdup(tmp_pool, "TLS");
 
@@ -365,6 +373,10 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
   }
 
   if (resp->num[0] != '2') {
+    /* XXX Some older servers might respond with a 334 response code, per
+     * RFC 2228.  See, for example:
+     *   http://serverfault.com/questions/640978/ftp-alter-server-response-in-transit
+     */
     pr_trace_msg(trace_channel, 4,
       "received unexpected %s response code %s from backend",
       (char *) cmd->argv[0], resp->num);
