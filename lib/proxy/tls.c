@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS implementation
- * Copyright (c) 2015 TJ Saunders
+ * Copyright (c) 2015-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -3359,7 +3359,7 @@ int proxy_tls_sess_init(pool *p) {
 
   } else {
     ca_file = PR_CONFIG_DIR "/cacerts.pem";
-    if (!file_exists(ca_file)) {
+    if (!file_exists(p, ca_file)) {
       pr_trace_msg(trace_channel, 9,
         "warning: no default ProxyTLSCACertificateFile found at '%s'", ca_file);
       ca_file = NULL;

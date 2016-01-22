@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy
- * Copyright (c) 2012-2015 TJ Saunders
+ * Copyright (c) 2012-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1119,7 +1119,7 @@ MODRET set_proxytlscacertfile(cmd_rec *cmd) {
   path = cmd->argv[1];
 
   PRIVS_ROOT
-  res = file_exists(path);
+  res = file_exists(cmd->tmp_pool, path);
   PRIVS_RELINQUISH
 
   if (!res) {
@@ -1150,7 +1150,7 @@ MODRET set_proxytlscacertpath(cmd_rec *cmd) {
   path = cmd->argv[1];
 
   PRIVS_ROOT
-  res = dir_exists(path);
+  res = dir_exists(cmd->tmp_pool, path);
   PRIVS_RELINQUISH
 
   if (!res) {
@@ -1180,7 +1180,7 @@ MODRET set_proxytlscacrlfile(cmd_rec *cmd) {
   path = cmd->argv[1];
 
   PRIVS_ROOT
-  res = file_exists(path);
+  res = file_exists(cmd->tmp_pool, path);
   PRIVS_RELINQUISH
 
   if (!res) {
@@ -1211,7 +1211,7 @@ MODRET set_proxytlscacrlpath(cmd_rec *cmd) {
   path = cmd->argv[1];
 
   PRIVS_ROOT
-  res = dir_exists(path);
+  res = dir_exists(cmd->tmp_pool, path);
   PRIVS_RELINQUISH
 
   if (!res) {
@@ -1241,7 +1241,7 @@ MODRET set_proxytlscertfile(cmd_rec *cmd) {
   path = cmd->argv[1];
 
   PRIVS_ROOT
-  res = file_exists(path);
+  res = file_exists(cmd->tmp_pool, path);
   PRIVS_RELINQUISH
 
   if (!res) {
@@ -1272,7 +1272,7 @@ MODRET set_proxytlscertkeyfile(cmd_rec *cmd) {
   path = cmd->argv[1];
 
   PRIVS_ROOT
-  res = file_exists(path);
+  res = file_exists(cmd->tmp_pool, path);
   PRIVS_RELINQUISH
 
   if (!res) {
