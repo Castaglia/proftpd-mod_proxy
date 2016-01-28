@@ -1119,7 +1119,7 @@ MODRET set_proxytlscacertfile(cmd_rec *cmd) {
   path = cmd->argv[1];
 
   PRIVS_ROOT
-  res = file_exists(cmd->tmp_pool, path);
+  res = file_exists2(cmd->tmp_pool, path);
   PRIVS_RELINQUISH
 
   if (!res) {
@@ -1150,7 +1150,7 @@ MODRET set_proxytlscacertpath(cmd_rec *cmd) {
   path = cmd->argv[1];
 
   PRIVS_ROOT
-  res = dir_exists(cmd->tmp_pool, path);
+  res = dir_exists2(cmd->tmp_pool, path);
   PRIVS_RELINQUISH
 
   if (!res) {
@@ -1180,7 +1180,7 @@ MODRET set_proxytlscacrlfile(cmd_rec *cmd) {
   path = cmd->argv[1];
 
   PRIVS_ROOT
-  res = file_exists(cmd->tmp_pool, path);
+  res = file_exists2(cmd->tmp_pool, path);
   PRIVS_RELINQUISH
 
   if (!res) {
@@ -1211,7 +1211,7 @@ MODRET set_proxytlscacrlpath(cmd_rec *cmd) {
   path = cmd->argv[1];
 
   PRIVS_ROOT
-  res = dir_exists(cmd->tmp_pool, path);
+  res = dir_exists2(cmd->tmp_pool, path);
   PRIVS_RELINQUISH
 
   if (!res) {
@@ -1241,7 +1241,7 @@ MODRET set_proxytlscertfile(cmd_rec *cmd) {
   path = cmd->argv[1];
 
   PRIVS_ROOT
-  res = file_exists(cmd->tmp_pool, path);
+  res = file_exists2(cmd->tmp_pool, path);
   PRIVS_RELINQUISH
 
   if (!res) {
@@ -1272,7 +1272,7 @@ MODRET set_proxytlscertkeyfile(cmd_rec *cmd) {
   path = cmd->argv[1];
 
   PRIVS_ROOT
-  res = file_exists(cmd->tmp_pool, path);
+  res = file_exists2(cmd->tmp_pool, path);
   PRIVS_RELINQUISH
 
   if (!res) {

@@ -3359,7 +3359,7 @@ int proxy_tls_sess_init(pool *p) {
 
   } else {
     ca_file = PR_CONFIG_DIR "/cacerts.pem";
-    if (!file_exists(p, ca_file)) {
+    if (!file_exists2(p, ca_file)) {
       pr_trace_msg(trace_channel, 9,
         "warning: no default ProxyTLSCACertificateFile found at '%s'", ca_file);
       ca_file = NULL;
