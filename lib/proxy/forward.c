@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy forward proxy implementation
- * Copyright (c) 2012-2015 TJ Saunders
+ * Copyright (c) 2012-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -249,9 +249,10 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
     }
   }
 
-  use_tls = proxy_tls_use_tls();
+  use_tls = proxy_tls_using_tls();
   if (use_tls != PROXY_TLS_ENGINE_OFF) {
-    if (proxy_ftp_sess_send_auth_tls(p, proxy_sess) < 0) {
+    if (proxy_ftp_sess_send_auth_tls(p, proxy_sess) < 0 &&
+        errno != ENOSYS) {
       xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -264,6 +265,8 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
       errno = xerrno;
       return -1;
     }
+
+    use_tls = proxy_tls_using_tls();
   }
 
   if (proxy_netio_postopen(server_conn->instrm) < 0) {
@@ -518,7 +521,7 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
         return -1;
       }
 
-      return 1;
+      return -1;
     }
   }
 

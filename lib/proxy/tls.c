@@ -2625,10 +2625,13 @@ static int tls_db_init(pool *p, const char *tables_dir) {
 
   tls_db_path = pdircat(p, tables_dir, "proxy-tls.db", NULL);
 
+  PRIVS_ROOT
   res = proxy_db_open_with_version(p, tls_db_path, PROXY_TLS_DB_SCHEMA_NAME,
     PROXY_TLS_DB_SCHEMA_VERSION, 0);
+  xerrno = errno;
+  PRIVS_RELINQUISH
+
   if (res < 0) {
-    xerrno = errno;
     (void) pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
       ": error opening database '%s' for schema '%s', version %u: %s",
       tls_db_path, PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION,
@@ -2677,7 +2680,22 @@ static int tls_db_init(pool *p, const char *tables_dir) {
 }
 #endif /* PR_USE_OPENSSL */
 
-int proxy_tls_use_tls(void) {
+int proxy_tls_set_tls(int engine) {
+#ifdef PR_USE_OPENSSL
+  if (engine != PROXY_TLS_ENGINE_ON &&
+      engine != PROXY_TLS_ENGINE_OFF &&
+      engine != PROXY_TLS_ENGINE_AUTO) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  tls_engine = engine;
+#endif /* PR_USE_OPENSSL */
+
+  return 0;
+}
+
+int proxy_tls_using_tls(void) {
 #ifdef PR_USE_OPENSSL
   return tls_engine;
 #else
@@ -3280,7 +3298,7 @@ int proxy_tls_sess_init(pool *p) {
 #ifdef PR_USE_OPENSSL
   config_rec *c;
   unsigned int enabled_proto_count = 0, tls_protocol = PROXY_TLS_PROTO_DEFAULT;
-  int disabled_proto;
+  int disabled_proto, res, xerrno = 0;
   const char *enabled_proto_str = NULL;
   char *ca_file = NULL, *ca_path = NULL, *cert_file = NULL, *key_file = NULL,
     *crl_file = NULL, *crl_path = NULL;
@@ -3297,12 +3315,17 @@ int proxy_tls_sess_init(pool *p) {
   /* Make sure we have our own per-session database handle, per SQLite3
    * recommendation.
    */
-  if (proxy_db_open_with_version(proxy_pool, tls_db_path,
-      PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION, 0) < 0) {
+  PRIVS_ROOT
+  res = proxy_db_open_with_version(proxy_pool, tls_db_path,
+    PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION, 0);
+  xerrno = errno;
+  PRIVS_RELINQUISH
+
+  if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error opening database '%s' for schema '%s', version %u: %s",
       tls_db_path, PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION,
-      strerror(errno));
+      strerror(xerrno));
   }
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSOptions", FALSE);
@@ -3490,7 +3513,7 @@ int proxy_tls_sess_init(pool *p) {
   }
 
   if (cert_file != NULL) {
-    int ok = TRUE, res;
+    int ok = TRUE;
 
     PRIVS_ROOT
     res = SSL_CTX_use_certificate_file(ssl_ctx, cert_file, SSL_FILETYPE_PEM);
@@ -3531,7 +3554,6 @@ int proxy_tls_sess_init(pool *p) {
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSPreSharedKey", FALSE);
   if (c != NULL) {
     const char *identity, *path;
-    int res;
 
     pr_signals_handle();
 
@@ -3568,7 +3590,7 @@ int proxy_tls_sess_init(pool *p) {
   }
 
   if (netio_install_ctrl() < 0) {
-    int xerrno = errno;
+    xerrno = errno;
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error installing control connection proxy NetIO: %s", strerror(xerrno));

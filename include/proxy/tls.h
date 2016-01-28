@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS API
- * Copyright (c) 2015 TJ Saunders
+ * Copyright (c) 2015-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -76,7 +76,10 @@ int proxy_tls_free(pool *p);
 int proxy_tls_sess_init(pool *p);
 int proxy_tls_sess_free(pool *p);
 
+/* Programmatically set the ProxyTLSEngine value. */
+int proxy_tls_set_tls(int);
+
 /* Returns the ProxyTLSEngine value; see above. */
-int proxy_tls_use_tls(void);
+int proxy_tls_using_tls(void);
 
 #endif /* MOD_PROXY_TLS_H */

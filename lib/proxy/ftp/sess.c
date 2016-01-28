@@ -46,6 +46,10 @@ static int parse_feat(pool *p, const char *feat, array_header **res) {
   array_header *vals;
   size_t len;
 
+  if (feat == NULL) {
+    return 0;
+  }
+
   vals = make_array(p, 1, sizeof(char *));
 
   /* No semicolons in this value?  No work to do...*/
@@ -273,7 +277,7 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
 
-  use_tls = proxy_tls_use_tls();
+  use_tls = proxy_tls_using_tls();
   if (use_tls == PROXY_TLS_ENGINE_OFF) {
     pr_trace_msg(trace_channel, 19,
       "TLS support not enabled/desired, skipping");
@@ -373,6 +377,13 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
   }
 
   if (resp->num[0] != '2') {
+    if (uri_tls != PROXY_TLS_ENGINE_ON &&
+        use_tls != PROXY_TLS_ENGINE_ON) {
+      proxy_tls_set_tls(PROXY_TLS_ENGINE_OFF);
+      errno = ENOSYS;
+      return -1;
+    }
+
     /* XXX Some older servers might respond with a 334 response code, per
      * RFC 2228.  See, for example:
      *   http://serverfault.com/questions/640978/ftp-alter-server-response-in-transit
@@ -394,7 +405,7 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
 int proxy_ftp_sess_send_pbsz_prot(pool *p, struct proxy_session *proxy_sess) {
   int use_tls;
 
-  use_tls = proxy_tls_use_tls();
+  use_tls = proxy_tls_using_tls();
   if (use_tls == PROXY_TLS_ENGINE_OFF) {
     pr_trace_msg(trace_channel, 19,
       "TLS support not enabled/desired, skipping");

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse proxy implementation
- * Copyright (c) 2012-2015 TJ Saunders
+ * Copyright (c) 2012-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -2198,6 +2198,11 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
   }
 
   if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL) {
+    pr_trace_msg(trace_channel, 17,
+      "sending PROXY protocol message to %s#%u",
+      pr_netaddr_get_ipstr(server_conn->remote_addr),
+      ntohs(pr_netaddr_get_port(server_conn->remote_addr)));
+
     if (proxy_conn_send_proxy(p, server_conn) < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "error sending PROXY message to %s#%u: %s",
@@ -2214,7 +2219,7 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
   proxy_sess->frontend_ctrl_conn = session.c;
   proxy_sess->backend_ctrl_conn = server_conn;
 
-  use_tls = proxy_tls_use_tls();
+  use_tls = proxy_tls_using_tls();
 
   resp = proxy_ftp_ctrl_recv_resp(p, server_conn, &resp_nlines);
   if (resp == NULL) {
@@ -2274,7 +2279,8 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
   pr_response_block(TRUE);
 
   if (use_tls != PROXY_TLS_ENGINE_OFF) {
-    if (proxy_ftp_sess_send_auth_tls(p, proxy_sess) < 0) {
+    if (proxy_ftp_sess_send_auth_tls(p, proxy_sess) < 0 &&
+        errno != ENOSYS) {
       xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -2287,6 +2293,8 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
       errno = xerrno;
       return -1;
     }
+
+    use_tls = proxy_tls_using_tls();
   }
 
   if (proxy_netio_postopen(server_conn->instrm) < 0) {
@@ -2391,10 +2399,13 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
 
   reverse_db_path = pdircat(p, tables_dir, "proxy-reverse.db", NULL);
 
+  PRIVS_ROOT
   res = proxy_db_open_with_version(p, reverse_db_path,
     PROXY_REVERSE_DB_SCHEMA_NAME, PROXY_REVERSE_DB_SCHEMA_VERSION, 0);
+  xerrno = errno;
+  PRIVS_RELINQUISH
+
   if (res < 0) {
-    xerrno = errno;
     (void) pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
       ": error opening database '%s' for schema '%s', version %u: %s",
       reverse_db_path, PROXY_REVERSE_DB_SCHEMA_NAME,
@@ -2636,7 +2647,7 @@ int proxy_reverse_sess_free(pool *p, struct proxy_session *proxy_sess) {
 
 int proxy_reverse_sess_init(pool *p, const char *tables_dir,
     struct proxy_session *proxy_sess) {
-  int res;
+  int res, xerrno = 0;
   config_rec *c;
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyRetryCount", FALSE);
@@ -2666,12 +2677,17 @@ int proxy_reverse_sess_init(pool *p, const char *tables_dir,
   /* Make sure we have our own per-session database handle, per SQLite3
    * recommendation.
    */
-  if (proxy_db_open_with_version(proxy_pool, reverse_db_path,
-      PROXY_REVERSE_DB_SCHEMA_NAME, PROXY_REVERSE_DB_SCHEMA_VERSION, 0) < 0) {
+  PRIVS_ROOT
+  res = proxy_db_open_with_version(proxy_pool, reverse_db_path,
+    PROXY_REVERSE_DB_SCHEMA_NAME, PROXY_REVERSE_DB_SCHEMA_VERSION, 0);
+  xerrno = errno;
+  PRIVS_RELINQUISH
+
+  if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error opening database '%s' for schema '%s', version %u: %s",
       reverse_db_path, PROXY_REVERSE_DB_SCHEMA_NAME,
-      PROXY_REVERSE_DB_SCHEMA_VERSION, strerror(errno));
+      PROXY_REVERSE_DB_SCHEMA_VERSION, strerror(xerrno));
   }
 
   if (set_reverse_flags() < 0) {

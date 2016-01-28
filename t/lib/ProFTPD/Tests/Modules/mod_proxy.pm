@@ -1146,7 +1146,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
       $client->quit();
@@ -1189,54 +1189,26 @@ EOC
 sub proxy_reverse_connect_failed_bad_dst_addr {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'proxy');
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
   $proxy_config->{ProxyReverseServers} = 'ftp://1.2.3.4:5678';
+  $proxy_config->{ProxyRetryCount} = 1;
+  $proxy_config->{ProxyTimeoutConnect} = '1s';
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.db:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     SocketBindTight => 'on',
 
     IfModules => {
@@ -1248,9 +1220,10 @@ sub proxy_reverse_connect_failed_bad_dst_addr {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
@@ -1261,11 +1234,11 @@ sub proxy_reverse_connect_failed_bad_dst_addr {
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   # Open pipes, for use between the parent and child processes.  Specifically,
@@ -1289,7 +1262,6 @@ EOC
         die("Unexpectedly connected successfully");
       }
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -1298,7 +1270,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -1308,18 +1280,10 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
-
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_reverse_connect_failed_non2xx {
@@ -1487,7 +1451,6 @@ sub proxy_reverse_connect_failed_timeout {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  
   my $dst_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   my $listening = IO::Socket::INET->new(
     LocalHost => '127.0.0.1',
@@ -1502,7 +1465,8 @@ sub proxy_reverse_connect_failed_timeout {
   my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
     $vhost_port);
   $proxy_config->{ProxyReverseServers} = "ftp://127.0.0.1:$dst_port";
-  $proxy_config->{ProxyTimeoutConnect} = 1;
+  $proxy_config->{ProxyRetryCount} = 1;
+  $proxy_config->{ProxyTimeoutConnect} = '1s';
 
   my $config = {
     PidFile => $setup->{pid_file},
@@ -1707,7 +1671,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
       $client->quit();
     };
@@ -1879,7 +1843,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       my ($resp_code, $resp_msg) = $client->host($host);
 
       my $expected = 220;
@@ -2081,7 +2045,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       my ($resp_code, $resp_msg) = $client->host($host);
 
       my $expected = 220;
@@ -2135,53 +2099,23 @@ EOC
 sub proxy_reverse_login_extra_user {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'proxy');
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     SocketBindTight => 'on',
 
     IfModules => {
@@ -2194,22 +2128,23 @@ sub proxy_reverse_login_extra_user {
 
     Limit => {
       LOGIN => {
-        DenyUser => $user,
+        DenyUser => $setup->{user},
       },
     },
 
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
   ServerName "Real Server"
 
-  AuthUserFile $auth_user_file
-  AuthGroupFile $auth_group_file
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
   AuthOrder mod_auth_file.c
 
   AllowOverride off
@@ -2218,11 +2153,11 @@ sub proxy_reverse_login_extra_user {
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   # Open pipes, for use between the parent and child processes.  Specifically,
@@ -2241,28 +2176,22 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
-      $client->login($user, $passwd);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
+      $client->login($setup->{user}, $setup->{passwd});
 
-      eval { $client->user($user) };
-      unless ($@) {
-        die("Extra USER succeeded unexpectedly");
-      }
+      # Note that this changed due to Bug#4217
+      my ($resp_code, $resp_msg) = $client->user($setup->{user});
 
-      my $resp_code = $client->response_code();
-      my $resp_msg = $client->response_msg();
-
-      my $expected = 500;
+      my $expected = 230;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = 'Bad sequence of commands';
+      $expected = "User $setup->{user} logged in";
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got $resp_msg"));
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -2271,7 +2200,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -2281,18 +2210,10 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
-
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_reverse_login_extra_pass {
@@ -2404,7 +2325,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       eval { $client->pass($passwd) };
@@ -2567,7 +2488,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       eval { $client->login($user, 'foobar') };
       unless ($@) {
         die("Login succeeded unexpectedly");
@@ -2724,7 +2645,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
       $client->quit();
     };
@@ -2764,54 +2685,24 @@ EOC
 sub proxy_reverse_login_no_backend_proxy_protocol {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'proxy');
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
   $proxy_config->{ProxyOptions} = 'UseProxyProtocol';
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     SocketBindTight => 'on',
 
     IfModules => {
@@ -2824,22 +2715,23 @@ sub proxy_reverse_login_no_backend_proxy_protocol {
 
     Limit => {
       LOGIN => {
-        DenyUser => $user,
+        DenyUser => $setup->{user},
       },
     },
 
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
   ServerName "Real Server"
 
-  AuthUserFile $auth_user_file
-  AuthGroupFile $auth_group_file
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
   AuthOrder mod_auth_file.c
 
   AllowOverride off
@@ -2848,11 +2740,11 @@ sub proxy_reverse_login_no_backend_proxy_protocol {
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   # Open pipes, for use between the parent and child processes.  Specifically,
@@ -2870,9 +2762,9 @@ EOC
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
-      $client->login($user, $passwd);
+      sleep(2);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
+      $client->login($setup->{user}, $setup->{passwd});
       $client->quit();
     };
 
@@ -2884,7 +2776,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -2894,18 +2786,10 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
-
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_reverse_feat {
@@ -3010,7 +2894,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       $client->feat();
@@ -3174,7 +3058,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -3348,7 +3232,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -3522,7 +3406,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my $enoent_dir = '/foo/bar/baz';
@@ -3700,7 +3584,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
       $client->login($user, $passwd);
 
       my $enoent_dir = '/foo/bar/baz';
@@ -3877,7 +3761,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my ($resp_code, $resp_msg) = $client->epsv();
@@ -4037,7 +3921,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my ($resp_code, $resp_msg) = $client->eprt('|1|127.0.0.1|4856|');
@@ -4202,7 +4086,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my ($resp_code, $resp_msg) = $client->eprt('|2|::ffff:127.0.0.1|4856|');
@@ -4380,7 +4264,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
       $client->type('ascii');
 
@@ -4568,7 +4452,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
       $client->type('binary');
 
@@ -4756,7 +4640,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
       $client->type('binary');
 
@@ -4947,7 +4831,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
       $client->type('binary');
 
@@ -5140,7 +5024,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
       $client->type('binary');
 
@@ -5311,7 +5195,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->stor_raw($test_file);
@@ -5489,7 +5373,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->stor_raw($test_file);
@@ -5667,7 +5551,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
       $client->type('binary');
 
@@ -5849,7 +5733,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
       $client->type('binary');
 
@@ -6037,7 +5921,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
       $client->type('binary');
 
@@ -6221,7 +6105,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
       $client->login($user, $passwd);
       $client->type('binary');
 
@@ -6394,7 +6278,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
       $client->type('binary');
 
@@ -6576,7 +6460,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
       $client->type('binary');
 
@@ -6776,7 +6660,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
       $client->type('binary');
 
@@ -6962,7 +6846,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
       $client->type('binary');
 
@@ -7135,7 +7019,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my $unknown_cmd = 'FOOBAR';
@@ -7298,7 +7182,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
 
       # Since we have overridden the credentials vi URI, it shouldn't matter
       # what usernames/passwords we use here.
@@ -7460,7 +7344,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       eval { $client->login($bad_user, $bad_pass) };
       unless ($@) {
         die("Login succeeded unexpectedly");
@@ -7625,7 +7509,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       eval { $client->login($bad_user, $bad_pass) };
       unless ($@) {
         die("Login succeeded unexpectedly");
@@ -7790,7 +7674,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($proxy_user, $proxy_passwd);
 
       my $resp_msg = $client->response_msg();
@@ -7945,7 +7829,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my ($resp_code, $resp_msg) = $client->pasv();
@@ -8128,7 +8012,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my ($resp_code, $resp_msg) = $client->epsv();
@@ -8307,7 +8191,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my ($resp_code, $resp_msg) = $client->pasv();
@@ -8485,7 +8369,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my ($resp_code, $resp_msg) = $client->port('1,2,3,4,192,168');
@@ -8651,7 +8535,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my ($resp_code, $resp_msg) = $client->eprt('|1|1.2.3.4|49152|');
@@ -8818,7 +8702,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       # Wait for more than the frontend TimeoutIdle period
@@ -8987,7 +8871,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       # Wait for more than the frontend TimeoutIdle period
@@ -9159,7 +9043,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       # Wait for more than the frontend TimeoutLogin period
@@ -9318,7 +9202,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       # Wait for more than the frontend TimeoutNoTransfer period
@@ -9487,7 +9371,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       # Wait for more than the frontend TimeoutNoTransfer period
@@ -9656,7 +9540,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->stor_raw('test.txt');
@@ -9838,7 +9722,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->stor_raw('test.txt');
@@ -10025,7 +9909,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -10200,7 +10084,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -10375,7 +10259,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -10550,7 +10434,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -10725,7 +10609,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -10900,7 +10784,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -11075,7 +10959,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -11250,7 +11134,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -11425,7 +11309,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -11600,7 +11484,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -11779,7 +11663,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -11954,7 +11838,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -12133,7 +12017,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -12308,7 +12192,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -12483,7 +12367,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -12663,7 +12547,7 @@ EOC
     eval {
       for (my $i = 0; $i < $nbackends+1; $i++) {
         sleep(2);
-        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
         $client->login($user, $passwd);
         ftp_list($self, $client);
       }
@@ -12821,7 +12705,7 @@ EOC
     eval {
       for (my $i = 0; $i < $nbackends+1; $i++) {
         sleep(2);
-        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
         $client->login($user, $passwd);
         ftp_list($self, $client);
       }
@@ -12979,7 +12863,7 @@ EOC
     eval {
       for (my $i = 0; $i < $nbackends+1; $i++) {
         sleep(2);
-        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
         $client->login($user, $passwd);
         ftp_list($self, $client);
       }
@@ -13137,7 +13021,7 @@ EOC
     eval {
       for (my $i = 0; $i < $nbackends+1; $i++) {
         sleep(2);
-        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
+        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
         $client->login($user, $passwd);
         ftp_list($self, $client);
       }
@@ -14577,54 +14461,24 @@ EOC
 sub proxy_reverse_config_use_reverse_proxy_auth_login_extra_user {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'proxy');
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
   $proxy_config->{ProxyOptions} = 'UseReverseProxyAuth';
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     SocketBindTight => 'on',
 
     IfModules => {
@@ -14636,16 +14490,17 @@ sub proxy_reverse_config_use_reverse_proxy_auth_login_extra_user {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
   ServerName "Real Server"
 
-  AuthUserFile $auth_user_file
-  AuthGroupFile $auth_group_file
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
   AuthOrder mod_auth_file.c
 
   AllowOverride off
@@ -14654,11 +14509,11 @@ sub proxy_reverse_config_use_reverse_proxy_auth_login_extra_user {
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   # Open pipes, for use between the parent and child processes.  Specifically,
@@ -14677,33 +14532,29 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
-      $client->login($user, $passwd);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
+      $client->login($setup->{user}, $setup->{passwd});
 
       my $resp_code = $client->response_code();
       my $expected = 230;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      eval { $client->user($user) };
-      unless ($@) {
-        die("Extra USER succeeded unexpectedly");
-      }
-
-      my $resp_code = $client->response_code();
+      # Note that this behavior changed due to Bug#4217
+      $client->user($setup->{user});
+      $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
 
-      my $expected = 500;
+      my $expected = 230;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = 'Bad sequence of commands';
+      $expected = "User $setup->{user} logged in";
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got $resp_msg"));
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -14712,7 +14563,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -14722,18 +14573,10 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
-
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_reverse_config_use_reverse_proxy_auth_login_extra_pass {
@@ -19827,54 +19670,24 @@ EOC
 sub proxy_forward_noproxyauth_login_extra_user {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'proxy');
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
 
-  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_forward_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
   $proxy_config->{ProxyForwardMethod} = 'user@host';
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -19887,16 +19700,17 @@ sub proxy_forward_noproxyauth_login_extra_user {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
   ServerName "Real Server"
 
-  AuthUserFile $auth_user_file
-  AuthGroupFile $auth_group_file
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
   AuthOrder mod_auth_file.c
 
   AllowOverride off
@@ -19905,11 +19719,11 @@ sub proxy_forward_noproxyauth_login_extra_user {
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   # Open pipes, for use between the parent and child processes.  Specifically,
@@ -19928,28 +19742,24 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
-      $client->login("$user\@127.0.0.1:$vhost_port", $passwd);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
+      $client->login("$setup->{user}\@127.0.0.1:$vhost_port", $setup->{passwd});
 
-      eval { $client->user($user) };
-      unless ($@) {
-        die("Second USER succeeded unexpectedly");
-      }
-
+      # Note that this behavior changed due to Bug#4217
+      $client->user($setup->{user});
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
 
-      my $expected = 500;
+      my $expected = 230;
       $self->assert($resp_code == $expected,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = 'Bad sequence of commands';
+      $expected = "User $setup->{user} logged in";
       $self->assert($resp_msg eq $expected,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -19958,7 +19768,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -19968,18 +19778,10 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
-
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_forward_noproxyauth_login_extra_pass {
@@ -20430,54 +20232,24 @@ EOC
 sub proxy_forward_noproxyauth_login_failed_bad_dst_addr {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'proxy');
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
 
-  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_forward_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
   $proxy_config->{ProxyForwardMethod} = 'user@host';
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 netio:20 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -20490,16 +20262,17 @@ sub proxy_forward_noproxyauth_login_failed_bad_dst_addr {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
   ServerName "Real Server"
 
-  AuthUserFile $auth_user_file
-  AuthGroupFile $auth_group_file
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
   AuthOrder mod_auth_file.c
 
   AllowOverride off
@@ -20508,11 +20281,11 @@ sub proxy_forward_noproxyauth_login_failed_bad_dst_addr {
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   # Open pipes, for use between the parent and child processes.  Specifically,
@@ -20531,10 +20304,10 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
 
       my $bad_addr = '1.2.3.4:5678';
-      eval { $client->login("$user\@$bad_addr", $passwd) };
+      eval { $client->user("$setup->{user}\@$bad_addr") };
       unless ($@) {
         die("Login succeeded unexpectedly");
       }
@@ -20542,9 +20315,7 @@ EOC
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
 
-      my $expected;
-
-      $expected = 530;
+      my $expected = 530;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
@@ -20554,7 +20325,6 @@ EOC
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -20563,7 +20333,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -20573,71 +20343,33 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
-
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_forward_noproxyauth_login_failed_proxy_dst_addr {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'proxy');
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
 
-  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_forward_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
   $proxy_config->{ProxyForwardMethod} = 'user@host';
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -20650,16 +20382,17 @@ sub proxy_forward_noproxyauth_login_failed_proxy_dst_addr {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
   ServerName "Real Server"
 
-  AuthUserFile $auth_user_file
-  AuthGroupFile $auth_group_file
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
   AuthOrder mod_auth_file.c
 
   AllowOverride off
@@ -20668,11 +20401,11 @@ sub proxy_forward_noproxyauth_login_failed_proxy_dst_addr {
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   # Open pipes, for use between the parent and child processes.  Specifically,
@@ -20691,30 +20424,26 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
 
       my $proxy_addr = "127.0.0.1:$port";
-      eval { $client->login("$user\@$proxy_addr", $passwd) };
+      eval { $client->user("$setup->{user}\@$proxy_addr") };
       unless ($@) {
         die("Login succeeded unexpectedly");
       }
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
+      $client->quit();
 
-      my $expected;
-
-      $expected = 530;
+      my $expected = 530;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = "Unable to connect to $proxy_addr: Operation not permitted";
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
-
-      $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -20723,7 +20452,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -20733,18 +20462,10 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
-
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_forward_noproxyauth_login_failed_non2xx {
@@ -20925,54 +20646,24 @@ EOC
 sub proxy_forward_noproxyauth_login_failed_login_limit {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'proxy');
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
 
-  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_forward_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
   $proxy_config->{ProxyForwardMethod} = 'user@host';
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -20985,16 +20676,17 @@ sub proxy_forward_noproxyauth_login_failed_login_limit {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
   ServerName "Real Server"
 
-  AuthUserFile $auth_user_file
-  AuthGroupFile $auth_group_file
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
   AuthOrder mod_auth_file.c
 
   AllowOverride off
@@ -21007,11 +20699,11 @@ sub proxy_forward_noproxyauth_login_failed_login_limit {
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   # Open pipes, for use between the parent and child processes.  Specifically,
@@ -21030,28 +20722,24 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
-      eval { $client->login("$user\@127.0.0.1:$vhost_port", $passwd) };
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
+      eval { $client->user("$setup->{user}\@127.0.0.1:$vhost_port") };
       unless ($@) {
         die("Login succeeded unexpectedly");
       }
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
+      $client->quit();
 
-      my $expected;
-
-      $expected = 530;
+      my $expected = 530;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = "Unable to connect to 127.0.0.1:$vhost_port: Operation not permitted";
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
-
-      $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -21060,7 +20748,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -21070,71 +20758,33 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
-
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_forward_noproxyauth_login_failed_bad_sequence {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'proxy');
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
 
-  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_forward_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
   $proxy_config->{ProxyForwardMethod} = 'user@host';
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -21147,16 +20797,17 @@ sub proxy_forward_noproxyauth_login_failed_bad_sequence {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
   ServerName "Real Server"
 
-  AuthUserFile $auth_user_file
-  AuthGroupFile $auth_group_file
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
   AuthOrder mod_auth_file.c
 
   AllowOverride off
@@ -21165,11 +20816,11 @@ sub proxy_forward_noproxyauth_login_failed_bad_sequence {
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   # Open pipes, for use between the parent and child processes.  Specifically,
@@ -21189,7 +20840,7 @@ EOC
     eval {
       sleep(1);
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
-      $client->user("$user\@127.0.0.1:$vhost_port");
+      $client->user("$setup->{user}\@127.0.0.1:$vhost_port");
       eval { $client->pwd() };
       unless ($@) {
         die("Out-of-sequence command succeeded unexpectedly");
@@ -21197,20 +20848,16 @@ EOC
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
+      $client->quit();
 
-      my $expected;
-
-      $expected = 530;
+      my $expected = 530;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = 'Please login with USER and PASS';
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
-
-      $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -21219,7 +20866,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -21229,18 +20876,10 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
-
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_forward_noproxyauth_login_failed_bad_dst_passwd {
