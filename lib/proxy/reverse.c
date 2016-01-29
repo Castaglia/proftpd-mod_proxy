@@ -279,7 +279,7 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
    *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id)
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends (backend_id INTEGER NOT NULL PRIMARY KEY, vhost_id INTEGER NOT NULL, backend_uri TEXT NOT NULL, conn_count INTEGER NOT NULL, connect_ms INTEGER, FOREIGN KEY (vhost_id) REFERENCES proxy_hosts (vhost_id));";
+  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends (backend_id INTEGER NOT NULL PRIMARY KEY, vhost_id INTEGER NOT NULL, backend_uri TEXT NOT NULL, conn_count INTEGER NOT NULL, connect_ms INTEGER, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
   res = proxy_db_exec_stmt(p, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
