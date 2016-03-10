@@ -9,5 +9,6 @@ tests.log
 .*.swp
 *.la
 *.lo
+*Tests*.log
 *.o
 *~
