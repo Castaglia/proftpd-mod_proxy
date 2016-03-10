@@ -2730,7 +2730,8 @@ static JsonNode *read_json_array(pool *p, pr_fh_t *fh, off_t filesz) {
   off_t len;
 
   len = filesz;
-  buf = ptr = palloc(p, len);
+  buf = ptr = palloc(p, len+1);
+  buf[len] = '\0';
 
   res = pr_fsio_read(fh, buf, len);
   while (res != len) {
