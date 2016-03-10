@@ -27,23 +27,25 @@
 #ifndef MOD_PROXY_TLS_H
 #define MOD_PROXY_TLS_H
 
-#include <openssl/bio.h>
-#include <openssl/err.h>
-#include <openssl/conf.h>
-#include <openssl/crypto.h>
-#include <openssl/evp.h>
-#include <openssl/ssl.h>
-#include <openssl/ssl3.h>
-#include <openssl/x509v3.h>
-#include <openssl/rand.h>
-#if OPENSSL_VERSION_NUMBER > 0x000907000L
-# include <openssl/engine.h>
-# include <openssl/ocsp.h>
+#ifdef PR_USE_OPENSSL
+# include <openssl/bio.h>
+# include <openssl/err.h>
+# include <openssl/conf.h>
+# include <openssl/crypto.h>
+# include <openssl/evp.h>
+# include <openssl/ssl.h>
+# include <openssl/ssl3.h>
+# include <openssl/x509v3.h>
+# include <openssl/rand.h>
+# if OPENSSL_VERSION_NUMBER > 0x000907000L
+#  include <openssl/engine.h>
+#  include <openssl/ocsp.h>
+# endif
+# ifdef PR_USE_OPENSSL_ECC
+#  include <openssl/ec.h>
+#  include <openssl/ecdh.h>
+# endif /* PR_USE_OPENSSL_ECC */
 #endif
-#ifdef PR_USE_OPENSSL_ECC
-# include <openssl/ec.h>
-# include <openssl/ecdh.h>
-#endif /* PR_USE_OPENSSL_ECC */
 
 /* ProxyTLSEngine values */
 #define PROXY_TLS_ENGINE_ON		1
@@ -61,7 +63,7 @@
 #define PROXY_TLS_PROTO_TLS_V1_1	0x0004
 #define PROXY_TLS_PROTO_TLS_V1_2	0x0008
 
-#if OPENSSL_VERSION_NUMBER >= 0x10001000L
+#if defined(PR_USE_OPENSSL) && OPENSSL_VERSION_NUMBER >= 0x10001000L
 # define PROXY_TLS_PROTO_DEFAULT	(PROXY_TLS_PROTO_TLS_V1|PROXY_TLS_PROTO_TLS_V1_1|PROXY_TLS_PROTO_TLS_V1_2)
 #else
 # define PROXY_TLS_PROTO_DEFAULT	(PROXY_TLS_PROTO_TLS_V1)
