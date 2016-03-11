@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy database implementation
- * Copyright (c) 2015 TJ Saunders
+ * Copyright (c) 2015-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -419,6 +419,14 @@ int proxy_db_open(pool *p, const char *table_path, const char *schema_name) {
     if (res != SQLITE_OK) {
       pr_trace_msg(trace_channel, 2,
         "error setting MEMORY journal mode on SQLite database '%s': %s",
+        table_path, sqlite3_errmsg(proxy_dbh));
+    }
+
+    res = sqlite3_exec(proxy_dbh, "PRAGMA temp_store = MEMORY;", NULL, NULL,
+      NULL);
+    if (res != SQLITE_OK) {
+      pr_trace_msg(trace_channel, 2,
+        "error setting MEMORY temp store on SQLite database '%s': %s",
         table_path, sqlite3_errmsg(proxy_dbh));
     }
 
