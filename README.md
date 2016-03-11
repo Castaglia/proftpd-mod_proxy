@@ -1,3 +1,6 @@
+proftpd-mod_proxy
+=================
+
 The `mod_proxy` module for ProFTPD proxies FTP/FTPS connections, supporting
 both forward and reverse proxy configurations.
 
