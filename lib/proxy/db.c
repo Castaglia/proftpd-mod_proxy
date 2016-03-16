@@ -700,7 +700,14 @@ int proxy_db_close(pool *p, const char *schema_name) {
       return -1;
     }
 
-    pr_trace_msg(trace_channel, 18, "%s", "closed SQLite database");
+    if (schema_name == NULL) {
+      pr_trace_msg(trace_channel, 18, "%s", "closed SQLite database");
+
+    } else {
+      pr_trace_msg(trace_channel, 18, "closed SQLite database (schema '%s')",
+        schema_name);
+    }
+
     proxy_dbh = NULL;
   }
 
