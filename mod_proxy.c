@@ -502,6 +502,9 @@ static void proxy_restrict_session(void) {
         proxy_chroot, strerror(xerrno));
       pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_MODULE_ACL,
        "Unable to chroot proxy session");
+
+    } else {
+      pr_trace_msg(trace_channel, 9, "chrooted session to '%s'", proxy_chroot);
     }
 
     if (chdir("/") < 0) {
