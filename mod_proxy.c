@@ -253,6 +253,12 @@ static void proxy_log_xfer(cmd_rec *cmd, char abort_flag) {
     case PR_CMD_RETR_ID:
       direction = 'o';
       break;
+
+    default:
+      pr_trace_msg(trace_channel, 3,
+        "unable to write TransferLog for non-transfer command '%s'",
+        (char *) cmd->argv[0]);
+      return;
   }
 
   memset(&end_time, '\0', sizeof(end_time));
@@ -3269,7 +3275,7 @@ static void proxy_login_failed(void) {
 
 MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *block_responses) {
-  int successful = FALSE, res;
+  int successful = FALSE, res = 0;
 
   /* Remove any exit handlers installed by mod_xfer.  We do this here,
    * rather than in sess_init, since our sess_init is called BEFORE the
@@ -3353,7 +3359,7 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
 
 MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *block_responses) {
-  int successful = FALSE, res;
+  int successful = FALSE, res = 0;
 
   if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
     /* If we've already authenticated, then let the backend server deal with
