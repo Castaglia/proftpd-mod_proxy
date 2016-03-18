@@ -3212,7 +3212,7 @@ static int send_pass(struct proxy_session *proxy_sess, cmd_rec *cmd,
 
 int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *successful, int *block_responses) {
-  int res, xerrno;
+  int res, xerrno = 0;
 
   /* This CONNECT_AT_PASS flag indicates that we are using proxy auth when
    * reverse proxying.
