@@ -410,18 +410,6 @@ int proxy_db_open(pool *p, const char *table_path, const char *schema_name) {
       return -1;
     }
 
-    /* Tell SQLite to only use in-memory journals.  This is necessary for
-     * working properly when a chroot is used.  Note that the MEMORY journal
-     * mode of SQLite is supported only for SQLite-3.6.5 and later.
-     */
-    res = sqlite3_exec(proxy_dbh, "PRAGMA journal_mode = MEMORY;", NULL, NULL,
-      NULL);
-    if (res != SQLITE_OK) {
-      pr_trace_msg(trace_channel, 2,
-        "error setting MEMORY journal mode on SQLite database '%s': %s",
-        table_path, sqlite3_errmsg(proxy_dbh));
-    }
-
     res = sqlite3_exec(proxy_dbh, "PRAGMA temp_store = MEMORY;", NULL, NULL,
       NULL);
     if (res != SQLITE_OK) {
@@ -435,6 +423,9 @@ int proxy_db_open(pool *p, const char *table_path, const char *schema_name) {
     }
 
     prepared_stmts = pr_table_nalloc(db_pool, 0, 4);
+
+    pr_trace_msg(trace_channel, 9, "opened SQLite table '%s' (schema '%s')",
+      table_path, schema_name);
   }
 
   tmp_pool = make_sub_pool(p);
@@ -450,6 +441,19 @@ int proxy_db_open(pool *p, const char *table_path, const char *schema_name) {
     destroy_pool(tmp_pool);
     errno = EPERM;
     return -1;
+  }
+
+  /* Tell SQLite to only use in-memory journals.  This is necessary for
+   * working properly when a chroot is used.  Note that the MEMORY journal mode
+   * of SQLite is supported only for SQLite-3.6.5 and later.
+   */
+
+  stmt = pstrcat(p, "PRAGMA ", schema_name, ".journal_mode = MEMORY;", NULL);
+  res = sqlite3_exec(proxy_dbh, stmt, NULL, NULL, NULL);
+  if (res != SQLITE_OK) {
+    pr_trace_msg(trace_channel, 2,
+      "error setting MEMORY journal mode on SQLite database '%s', "
+      "schema '%s': %s", table_path, schema_name, sqlite3_errmsg(proxy_dbh));
   }
 
   destroy_pool(tmp_pool);
