@@ -3244,7 +3244,7 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     if (!(proxy_sess_state & PROXY_SESS_STATE_CONNECTED)) {
       register unsigned int i;
       int connected = FALSE;
-      char *user = NULL, *group = NULL, *connect_name = NULL;
+      char *user = NULL, *connect_name = NULL;
       cmd_rec *user_cmd;
 
       /* If we're using a sticky policy, we need to know the USER name that was
@@ -3259,7 +3259,7 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
          */
         if (proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED) {
           if (reverse_connect_policy == PROXY_REVERSE_CONNECT_POLICY_PER_GROUP) {
-            group = connect_name = session.group;
+            connect_name = session.group;
           }
         }
       }
