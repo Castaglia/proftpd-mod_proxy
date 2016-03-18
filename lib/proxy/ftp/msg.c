@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP message routines
- * Copyright (c) 2013 TJ Saunders
+ * Copyright (c) 2013-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -73,7 +73,7 @@ const char *proxy_ftp_msg_fmt_ext_addr(pool *p, pr_netaddr_t *addr,
     unsigned short port, int cmd_id, int use_masqaddr) {
   const char *addr_str;
   char delim = '|', *msg;
-  int family;
+  int family = 0;
   size_t addr_strlen, msglen;
 
   if (use_masqaddr) {
@@ -100,6 +100,11 @@ const char *proxy_ftp_msg_fmt_ext_addr(pool *p, pr_netaddr_t *addr,
       family = 2;
       break;
 #endif /* PR_USE_IPV6 */
+
+    default:
+      /* Unlikely to happen. */
+      errno = EINVAL;
+      return NULL;
   }
 
   addr_str = pr_netaddr_get_ipstr(addr);

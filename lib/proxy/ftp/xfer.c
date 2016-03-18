@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP data transfer routines
- * Copyright (c) 2013-2015 TJ Saunders
+ * Copyright (c) 2013-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -44,7 +44,7 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
   unsigned int resp_nlines = 0;
   conn_t *data_conn = NULL;
   char *active_cmd;
-  const char *resp_msg;
+  const char *resp_msg = NULL;
 
   switch (policy_id) {
     case PR_CMD_PORT_ID:
@@ -271,7 +271,7 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
     const char *error_code, struct proxy_session *proxy_sess) {
   int res, xerrno = 0;
   cmd_rec *pasv_cmd;
-  pr_netaddr_t *remote_addr;
+  pr_netaddr_t *remote_addr = NULL;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
   unsigned short remote_port;
