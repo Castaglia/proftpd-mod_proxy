@@ -1285,7 +1285,7 @@ static int tls_db_add_sess(pool *p, const char *key, SSL_SESSION *sess) {
   /* We use INSERT OR REPLACE here to get upsert semantics; we only want/
    * need one cached SSL session per URI.
    */
-  stmt = "INSERT OR REPLACE INTO proxy_tls_sessions (vhost_id, backend_uri, session) VALUES (?, ?, ?);";
+  stmt = "INSERT OR REPLACE INTO " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_sessions (vhost_id, backend_uri, session) VALUES (?, ?, ?);";
   res = proxy_db_prepare_stmt(p, stmt);
   if (res < 0) {
     xerrno = errno;
@@ -1347,7 +1347,7 @@ static int tls_db_remove_sess(pool *p, const char *key) {
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "DELETE FROM proxy_tls_sessions WHERE vhost_id = ? AND backend_uri = ?;";
+  stmt = "DELETE FROM " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_sessions WHERE vhost_id = ? AND backend_uri = ?;";
   res = proxy_db_prepare_stmt(p, stmt);
   if (res < 0) {
     return -1;

@@ -741,7 +741,7 @@ static int reverse_db_shuffle_used(pool *p, unsigned int vhost_id,
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "DELETE FROM proxy_vhost_reverse_shuffle WHERE vhost_id = ? AND avail_backend_id = ?;";
+  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_shuffle WHERE vhost_id = ? AND avail_backend_id = ?;";
   res = proxy_db_prepare_stmt(p, stmt);
   if (res < 0) {
     xerrno = errno;
@@ -782,7 +782,7 @@ static int reverse_db_roundrobin_update(pool *p, unsigned int vhost_id,
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "UPDATE proxy_vhost_reverse_roundrobin SET current_backend_id = ? WHERE vhost_id = ?;";
+  stmt = "UPDATE " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_roundrobin SET current_backend_id = ? WHERE vhost_id = ?;";
   res = proxy_db_prepare_stmt(p, stmt);
   if (res < 0) {
     return -1;
@@ -1509,7 +1509,7 @@ static int reverse_db_peruser_used(pool *p, unsigned int vhost_id,
     "PerUser entry count (%d) exceeds max (%d), purging", count,
     PROXY_REVERSE_PERUSER_MAX_ENTRIES);
 
-  stmt = "DELETE FROM proxy_vhost_reverse_per_user;";
+  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user;";
   res = proxy_db_prepare_stmt(p, stmt);
   if (res < 0) {
     return -1;
@@ -1711,7 +1711,7 @@ static int reverse_db_pergroup_used(pool *p, unsigned int vhost_id,
     "PerGroup entry count (%d) exceeds max (%d), purging", count,
     PROXY_REVERSE_PERGROUP_MAX_ENTRIES);
 
-  stmt = "DELETE FROM proxy_vhost_reverse_per_group;";
+  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_group;";
   res = proxy_db_prepare_stmt(p, stmt);
   if (res < 0) {
     return -1;
@@ -1900,7 +1900,7 @@ static int reverse_db_perhost_used(pool *p, unsigned int vhost_id,
     "PerHost entry count (%d) exceeds max (%d), purging", count,
     PROXY_REVERSE_PERHOST_MAX_ENTRIES);
 
-  stmt = "DELETE FROM proxy_vhost_reverse_per_host;";
+  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_host;";
   res = proxy_db_prepare_stmt(p, stmt);
   if (res < 0) {
     return -1;
