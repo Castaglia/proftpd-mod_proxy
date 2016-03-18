@@ -576,9 +576,9 @@ static int reverse_db_update_backend(pool *p, unsigned vhost_id,
    */
 
   if (connect_ms > 0) {
-    stmt = "UPDATE proxy_vhost_backends SET conn_count = conn_count + ?, connect_ms = ? WHERE vhost_id = ? AND backend_id = ?;";
+    stmt = "UPDATE " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends SET conn_count = conn_count + ?, connect_ms = ? WHERE vhost_id = ? AND backend_id = ?;";
   } else {
-    stmt = "UPDATE proxy_vhost_backends SET conn_count = conn_count + ? WHERE vhost_id = ? AND backend_id = ?;";
+    stmt = "UPDATE " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends SET conn_count = conn_count + ? WHERE vhost_id = ? AND backend_id = ?;";
   }
 
   res = proxy_db_prepare_stmt(p, stmt);
