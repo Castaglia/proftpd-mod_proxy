@@ -1278,6 +1278,12 @@ static array_header *reverse_db_pername_backends_by_json(pool *p,
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "error reading ProxyReverseServers file '%s': %s", path,
         strerror(xerrno));
+
+      if (xerrno == ENOENT) {
+        /* No file for this user?  We're done looking, then. */
+        break;
+      }
+
       c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
         FALSE);
       continue;
