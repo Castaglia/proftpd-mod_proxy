@@ -2672,7 +2672,23 @@ int proxy_reverse_sess_init(pool *p, const char *tables_dir,
     return -1;
   }
 
-  reverse_backends = c->argv[0];
+  /* We need to find the first ProxyReverseServers that are NOT
+   * user/group-specific.
+   */
+
+  while (c != NULL) {
+    const char *uri;
+
+    pr_signals_handle();
+
+    uri = c->argv[1];
+    if (uri == NULL) {
+      reverse_backends = c->argv[0];
+      break;
+    }
+
+    c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers", FALSE);
+  }
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyReverseConnectPolicy",
     FALSE);
