@@ -3153,12 +3153,17 @@ static int send_pass(struct proxy_session *proxy_sess, cmd_rec *cmd,
   uri_user = proxy_conn_get_username(proxy_sess->dst_pconn);
   uri_pass = proxy_conn_get_password(proxy_sess->dst_pconn);
   if (uri_pass != NULL) {
-    /* We have URI-specific password to use, instead of the client-provided
-     * one.
-     */
-    pr_trace_msg(trace_channel, 18,
-      "using URI-specific password instead of client-provided one");
-    cmd->argv[1] = cmd->arg = pstrdup(cmd->pool, uri_pass);
+    size_t uri_passlen;
+
+    uri_passlen = strlen(uri_pass);
+    if (uri_passlen > 0) {
+      /* We have URI-specific password to use, instead of the client-provided
+       * one.
+       */
+      pr_trace_msg(trace_channel, 18,
+        "using URI-specific password instead of client-provided one");
+      cmd->argv[1] = cmd->arg = pstrdup(cmd->pool, uri_pass);
+    }
   }
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
