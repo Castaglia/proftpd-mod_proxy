@@ -1131,8 +1131,9 @@ static array_header *reverse_db_pername_sql_parse_uris(pool *p,
     }
 
     pr_trace_msg(trace_channel, 10,
-      "SQLNamedQuery '%s' returned %d URLs for %s '%s'", named_query,
-       backends->nelts, per_user ? "user" : "group", name);
+      "SQLNamedQuery '%s' returned %d %s for %s '%s'", named_query,
+       backends->nelts, backends->nelts != 1 ? "URLs" : "URL",
+       per_user ? "user" : "group", name);
   }
 
   return backends;
@@ -1941,16 +1942,19 @@ static int reverse_policy_is_sticky(int policy_id) {
 
 static struct proxy_conn *reverse_connect_next_backend(pool *p,
     unsigned int vhost_id, void *policy_data) {
-  struct proxy_conn **conns, *pconn = NULL;
-  int idx = -1;
+  struct proxy_conn **conns = NULL, *pconn = NULL;
+  int idx = -1, nelts = 0;
 
-  conns = reverse_backends->elts;
+  if (reverse_backends != NULL) {
+    conns = reverse_backends->elts;
+    nelts = reverse_backends->nelts;
+  }
 
   /* Sticky policies such as PerUser might have their own ways of looking up
    * other backends to use.
    */
   if (reverse_policy_is_sticky(reverse_connect_policy) == TRUE) {
-    if (reverse_backends->nelts == 1) {
+    if (nelts == 1) {
       reverse_backend_id = 0;
       return conns[0];
     }
@@ -1958,11 +1962,10 @@ static struct proxy_conn *reverse_connect_next_backend(pool *p,
 
   switch (reverse_connect_policy) {
     case PROXY_REVERSE_CONNECT_POLICY_RANDOM:
-      idx = (int) proxy_random_next(0, reverse_backends->nelts-1);      
+      idx = (int) proxy_random_next(0, nelts-1);
       if (idx >= 0) {
         pr_trace_msg(trace_channel, 11,
-          "RANDOM policy: selected index %d of %u", idx,
-          reverse_backends->nelts-1);
+          "RANDOM policy: selected index %d of %u", idx, nelts-1);
         pconn = conns[idx];
       }
       break;
@@ -1971,8 +1974,7 @@ static struct proxy_conn *reverse_connect_next_backend(pool *p,
       idx = reverse_db_roundrobin_next(p, vhost_id);
       if (idx >= 0) {
         pr_trace_msg(trace_channel, 11,
-          "ROUND_ROBIN policy: selected index %d of %u", idx,
-          reverse_backends->nelts-1);
+          "ROUND_ROBIN policy: selected index %d of %u", idx, nelts-1);
         pconn = conns[idx];
       }
       break;
@@ -1981,8 +1983,7 @@ static struct proxy_conn *reverse_connect_next_backend(pool *p,
       idx = reverse_db_shuffle_next(p, vhost_id);
       if (idx >= 0) {
         pr_trace_msg(trace_channel, 11,
-          "SHUFFLE policy: selected index %d of %u", idx,
-          reverse_backends->nelts-1);
+          "SHUFFLE policy: selected index %d of %u", idx, nelts-1);
         pconn = conns[idx];
       }
       break;
@@ -1991,8 +1992,7 @@ static struct proxy_conn *reverse_connect_next_backend(pool *p,
       idx = reverse_db_leastconns_next(p, vhost_id);
       if (idx >= 0) {
         pr_trace_msg(trace_channel, 11,
-          "LEAST_CONNS policy: selected index %d of %u", idx,
-          reverse_backends->nelts-1);
+          "LEAST_CONNS policy: selected index %d of %u", idx, nelts-1);
         pconn = conns[idx];
       }
       break;
@@ -2001,8 +2001,7 @@ static struct proxy_conn *reverse_connect_next_backend(pool *p,
       idx = reverse_db_leastresponsetime_next(p, vhost_id);
       if (idx >= 0) {
         pr_trace_msg(trace_channel, 11,
-          "LEAST_RESPONSE_TIME policy: selected index %d of %u", idx,
-          reverse_backends->nelts-1);
+          "LEAST_RESPONSE_TIME policy: selected index %d of %u", idx, nelts-1);
         pconn = conns[idx];
       }
       break;
@@ -2051,7 +2050,8 @@ static int reverse_connect_index_used(pool *p, unsigned int vhost_id,
     int idx, long connect_ms) {
   int res;
 
-  if (reverse_backends->nelts == 1) {
+  if (reverse_backends != NULL &&
+      reverse_backends->nelts == 1) {
     return 0;
   }
 
