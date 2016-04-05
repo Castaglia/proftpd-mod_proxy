@@ -271,15 +271,15 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
    */
 
   /* CREATE TABLE proxy_reverse.proxy_vhost_backends (
-   *   backend_id INTEGER NOT NULL PRIMARY KEY,
-   *   vhost_id INTEGER NOT NULL,
+   *   vhost_id INTEGER NOT NULL PRIMARY KEY,
+   *   backend_id INTEGER NOT NULL,
    *   backend_uri TEXT NOT NULL,
    *   conn_count INTEGER NOT NULL,
    *   connect_ms INTEGER,
    *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id)
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends (backend_id INTEGER NOT NULL PRIMARY KEY, vhost_id INTEGER NOT NULL, backend_uri TEXT NOT NULL, conn_count INTEGER NOT NULL, connect_ms INTEGER, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends (vhost_id INTEGER NOT NULL PRIMARY KEY, backend_id INTEGER NOT NULL, backend_uri TEXT NOT NULL, conn_count INTEGER NOT NULL, connect_ms INTEGER, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
   res = proxy_db_exec_stmt(p, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -512,12 +512,6 @@ static int reverse_db_add_backend(pool *p, unsigned int vhost_id,
   pr_trace_msg(trace_channel, 13,
     "adding backend '%.100s' to database table at index %d", backend_uri,
     backend_id);
-
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_INT,
-    (void *) &backend_id);
-  if (res < 0) {
-    return -1;
-  }
 
   results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
   if (results == NULL) {
