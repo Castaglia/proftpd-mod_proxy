@@ -46,7 +46,7 @@ static int reverse_retry_count = PROXY_DEFAULT_RETRY_COUNT;
 
 static const char *reverse_db_path = NULL;
 #define PROXY_REVERSE_DB_SCHEMA_NAME		"proxy_reverse"
-#define PROXY_REVERSE_DB_SCHEMA_VERSION		1
+#define PROXY_REVERSE_DB_SCHEMA_VERSION		2
 
 /* Flag that indicates that we should select/connect to the backend server
  * at session init time, i.e. when proxy auth is not required, and we're using
