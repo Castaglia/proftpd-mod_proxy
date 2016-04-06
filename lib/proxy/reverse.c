@@ -1363,7 +1363,7 @@ static array_header *reverse_db_peruser_get(pool *p, unsigned int vhost_id,
 
 static struct proxy_conn *reverse_db_peruser_init(pool *p,
     unsigned int vhost_id, const char *user) {
-  struct proxy_conn **conns, *pconn = NULL;
+  struct proxy_conn **conns = NULL, *pconn = NULL;
   int backend_count = 0, res;
   const char *stmt, *uri, *errstr = NULL;
   array_header *user_backends = NULL, *results;
@@ -1374,10 +1374,18 @@ static struct proxy_conn *reverse_db_peruser_init(pool *p,
     conns = user_backends->elts;
 
   } else {
-    pr_trace_msg(trace_channel, 11,
-      "using global ProxyReverseServers list for user '%s'", user);
-    backend_count = reverse_backends->nelts;
-    conns = reverse_backends->elts;
+    if (reverse_backends != NULL) {
+      pr_trace_msg(trace_channel, 11,
+        "using global ProxyReverseServers list for user '%s'", user);
+      backend_count = reverse_backends->nelts;
+      conns = reverse_backends->elts;
+    }
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "no PerUser servers found for user '%s', and no global "
+      "ProxyReverseServers configured", user);
+    errno = ENOENT;
+    return NULL;
   }
 
   if (backend_count == 1) {
@@ -1565,7 +1573,7 @@ static array_header *reverse_db_pergroup_get(pool *p, unsigned int vhost_id,
 
 static struct proxy_conn *reverse_db_pergroup_init(pool *p,
     unsigned int vhost_id, const char *group) {
-  struct proxy_conn **conns, *pconn = NULL;
+  struct proxy_conn **conns = NULL, *pconn = NULL;
   int backend_count = 0, res;
   const char *stmt, *uri, *errstr = NULL;
   array_header *group_backends = NULL, *results;
@@ -1576,10 +1584,18 @@ static struct proxy_conn *reverse_db_pergroup_init(pool *p,
     conns = group_backends->elts;
 
   } else {
-    pr_trace_msg(trace_channel, 11,
-      "using global ProxyReverseServers list for group '%s'", group);
-    backend_count = reverse_backends->nelts;
-    conns = reverse_backends->elts;
+    if (reverse_backends != NULL) {
+      pr_trace_msg(trace_channel, 11,
+        "using global ProxyReverseServers list for group '%s'", group);
+      backend_count = reverse_backends->nelts;
+      conns = reverse_backends->elts;
+    }
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "no PerGroup servers found for group '%s', and no global "
+      "ProxyReverseServers configured", group);
+    errno = ENOENT;
+    return NULL;
   }
 
   if (backend_count == 1) {
