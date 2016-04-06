@@ -46,7 +46,7 @@ static int reverse_retry_count = PROXY_DEFAULT_RETRY_COUNT;
 
 static const char *reverse_db_path = NULL;
 #define PROXY_REVERSE_DB_SCHEMA_NAME		"proxy_reverse"
-#define PROXY_REVERSE_DB_SCHEMA_VERSION		2
+#define PROXY_REVERSE_DB_SCHEMA_VERSION		3
 
 /* Flag that indicates that we should select/connect to the backend server
  * at session init time, i.e. when proxy auth is not required, and we're using
@@ -322,12 +322,22 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
 
   /* CREATE TABLE proxy_reverse.proxy_vhost_reverse_per_user (
    *   vhost_id INTEGER NOT NULL,
-   *   user_name TEXT NOT NULL PRIMARY KEY,
+   *   user_name TEXT NOT NULL,
    *   backend_uri TEXT,
    *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id)
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user (vhost_id INTEGER NOT NULL, user_name TEXT NOT NULL PRIMARY KEY, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user (vhost_id INTEGER NOT NULL, user_name TEXT NOT NULL, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr);
+    errno = EPERM;
+    return -1;
+  }
+
+  /* CREATE INDEX proxy_reverse.proxy_vhost_reverse_per_user_name_idx */
+  stmt = "CREATE INDEX IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts_reverse_per_user_name_idx ON proxy_vhost_reverse_per_user (user_name);";
   res = proxy_db_exec_stmt(p, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -338,12 +348,22 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
 
   /* CREATE TABLE proxy_reverse.proxy_vhost_reverse_per_group (
    *   vhost_id INTEGER NOT NULL,
-   *   group_name TEXT NOT NULL PRIMARY KEY,
+   *   group_name TEXT NOT NULL,
    *   backend_uri TEXT,
    *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id)
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_group (vhost_id INTEGER NOT NULL, group_name TEXT NOT NULL PRIMARY KEY, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_group (vhost_id INTEGER NOT NULL, group_name TEXT NOT NULL, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr);
+    errno = EPERM;
+    return -1;
+  }
+
+  /* CREATE INDEX proxy_reverse.proxy_vhost_reverse_per_group_name_idx */
+  stmt = "CREATE INDEX IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts_reverse_per_group_name_idx ON proxy_vhost_reverse_per_group (group_name);";
   res = proxy_db_exec_stmt(p, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -354,12 +374,22 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
 
   /* CREATE TABLE proxy_reverse.proxy_vhost_reverse_per_host (
    *   vhost_id INTEGER NOT NULL,
-   *   ip_addr TEXT NOT NULL PRIMARY KEY,
+   *   ip_addr TEXT NOT NULL,
    *   backend_uri TEXT,
    *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id)
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_host (vhost_id INTEGER NOT NULL, ip_addr TEXT NOT NULL PRIMARY KEY, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_host (vhost_id INTEGER NOT NULL, ip_addr TEXT NOT NULL, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error executing '%s': %s", stmt, errstr);
+    errno = EPERM;
+    return -1;
+  }
+
+  /* CREATE INDEX proxy_reverse.proxy_vhost_reverse_per_host_ipaddr_idx */
+  stmt = "CREATE INDEX IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts_reverse_per_host_ipaddr_idx ON proxy_vhost_reverse_per_host (ip_addr);";
   res = proxy_db_exec_stmt(p, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
