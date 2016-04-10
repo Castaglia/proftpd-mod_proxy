@@ -35,6 +35,11 @@ static const char *trace_channel = "proxy.db";
 
 #define PROXY_DB_SQLITE_TRACE_LEVEL		17
 
+static void db_err(void *user_data, int err_code, const char *err_msg) {
+  pr_trace_msg(trace_channel, 1, "(sqlite3): [error %d] %s", err_code,
+    err_msg);
+}
+
 static void db_trace(void *user_data, const char *trace_msg) {
   pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
     "(sqlite3): %s", trace_msg);
@@ -733,6 +738,9 @@ int proxy_db_init(pool *p) {
   if (db_pool != NULL) {
     return 0;
   }
+
+  /* Register an error logging callback with SQLite3. */
+  sqlite3_config(SQLITE_CONFIG_LOG, db_err, NULL);
 
   /* Check that the SQLite headers used match the version of the SQLite
    * library used.
