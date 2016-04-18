@@ -1832,7 +1832,7 @@ static int reverse_db_pergroup_used(pool *p, unsigned int vhost_id,
 /* ProxyReverseConnectPolicy: PerHost */
 
 static array_header *reverse_db_perhost_get(pool *p, unsigned int vhost_id,
-    pr_netaddr_t *addr) {
+    const pr_netaddr_t *addr) {
   int res;
   const char *stmt, *errstr = NULL, *ip;
   array_header *results;
@@ -1926,7 +1926,7 @@ static struct proxy_conn *reverse_db_perhost_init(pool *p,
 }
 
 static struct proxy_conn *reverse_db_perhost_next(pool *p,
-    unsigned int vhost_id, pr_netaddr_t *addr) {
+    unsigned int vhost_id, const pr_netaddr_t *addr) {
   array_header *results;
   struct proxy_conn *pconn = NULL;
 
@@ -2035,7 +2035,7 @@ static int reverse_policy_is_sticky(int policy_id) {
 }
 
 static struct proxy_conn *reverse_connect_next_backend(pool *p,
-    unsigned int vhost_id, void *policy_data) {
+    unsigned int vhost_id, const void *policy_data) {
   struct proxy_conn **conns = NULL, *pconn = NULL;
   int idx = -1, nelts = 0;
 
@@ -2210,7 +2210,8 @@ static int reverse_connect_index_used(pool *p, unsigned int vhost_id,
 }
 
 static struct proxy_conn *get_reverse_server_conn(pool *p,
-    struct proxy_session *proxy_sess, int *backend_id, void *policy_data) {
+    struct proxy_session *proxy_sess, int *backend_id,
+    const void *policy_data) {
   struct proxy_conn *pconn;
 
   pconn = reverse_connect_next_backend(p, main_server->sid, policy_data);
@@ -2231,7 +2232,7 @@ static struct proxy_conn *get_reverse_server_conn(pool *p,
 }
 
 static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
-    void *connect_data) {
+    const void *connect_data) {
   int backend_id = -1, use_tls, xerrno = 0;
   conn_t *server_conn = NULL;
   pr_response_t *resp = NULL;
@@ -2596,14 +2597,19 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
         FALSE);
     }
 
-    res = reverse_db_add_backends(p, s->sid, backends);
-    if (res < 0) {
-      xerrno = errno;
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error adding database entries for ProxyReverseServers: %s",
-        strerror(xerrno));
-      errno = xerrno;
-      return -1;
+    /* What if ALL of the ProxyReverseServers are deferred?  In that case, we
+     * have no backend servers to add at this time.
+     */
+    if (backends != NULL) {
+      res = reverse_db_add_backends(p, s->sid, backends);
+      if (res < 0) {
+        xerrno = errno;
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error adding database entries for ProxyReverseServers: %s",
+          strerror(xerrno));
+        errno = xerrno;
+        return -1;
+      }
     }
 
     c = find_config(s->conf, CONF_PARAM, "ProxyReverseConnectPolicy", FALSE);
@@ -3303,7 +3309,7 @@ static int send_pass(struct proxy_session *proxy_sess, cmd_rec *cmd,
    * necessary.
    */
   if (uri_user != NULL) {
-    char *orig_user;
+    const char *orig_user;
 
     orig_user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
 
@@ -3344,7 +3350,7 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
    */
   if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_PASS) {
     if (!(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED)) {
-      char *user = NULL;
+      const char *user = NULL;
 
       user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
       res = proxy_session_check_password(cmd->pool, user, cmd->arg);
@@ -3369,7 +3375,7 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     if (!(proxy_sess_state & PROXY_SESS_STATE_CONNECTED)) {
       register unsigned int i;
       int connected = FALSE;
-      char *user = NULL, *connect_name = NULL;
+      const char *user = NULL, *connect_name = NULL;
       cmd_rec *user_cmd;
 
       /* If we're using a sticky policy, we need to know the USER name that was
@@ -3448,7 +3454,7 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
 
   if (reverse_flags != PROXY_REVERSE_FL_CONNECT_AT_PASS &&
       *successful == TRUE) {
-    char *user = NULL;
+    const char *user = NULL;
 
     /* If we're not using proxy auth, still make sure that everything is
      * set up properly.
