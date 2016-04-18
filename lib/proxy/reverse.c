@@ -1867,7 +1867,7 @@ static array_header *reverse_db_perhost_get(pool *p, unsigned int vhost_id,
 }
 
 static struct proxy_conn *reverse_db_perhost_init(pool *p,
-    unsigned int vhost_id, pr_netaddr_t *addr) {
+    unsigned int vhost_id, const pr_netaddr_t *addr) {
   struct proxy_conn **conns, *pconn = NULL;
   int res;
   const char *ip, *stmt, *uri, *errstr = NULL;
@@ -2238,7 +2238,7 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
   pr_response_t *resp = NULL;
   unsigned int resp_nlines = 0;
   struct proxy_conn *pconn;
-  pr_netaddr_t *dst_addr;
+  const pr_netaddr_t *dst_addr;
   array_header *other_addrs = NULL;
   uint64_t connecting_ms, connected_ms;
 

@@ -71,7 +71,7 @@ int proxy_forward_sess_init(pool *p, const char *tables_dir,
     struct proxy_session *proxy_sess) {
   config_rec *c;
   int allowed = FALSE;
-  void *enabled = NULL;
+  const void *enabled = NULL;
 
   /* By default, only allow connections from RFC1918 addresses to use
    * forward proxying.  Otherwise, it must be from an explicitly allowed
@@ -156,7 +156,7 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
     pr_response_t **resp, unsigned int *resp_nlines) {
   conn_t *server_conn = NULL;
   int banner_ok = TRUE, use_tls, xerrno = 0;
-  pr_netaddr_t *dst_addr;
+  const pr_netaddr_t *dst_addr;
   array_header *other_addrs = NULL;
 
   dst_addr = proxy_sess->dst_addr;
@@ -445,7 +445,7 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
 
   if (flags & PROXY_FORWARD_USER_PASSTHRU_FL_PARSE_DSTADDR) {
     struct proxy_conn *pconn = NULL;
-    pr_netaddr_t *remote_addr = NULL;
+    const pr_netaddr_t *remote_addr = NULL;
     array_header *other_addrs = NULL;
 
     res = forward_cmd_parse_dst(cmd->tmp_pool, cmd->arg, &user, &pconn);
@@ -591,7 +591,7 @@ static int forward_handle_user_proxyuserwithproxyauth(cmd_rec *cmd,
   if (!(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED)) {
     char *user = NULL;
     struct proxy_conn *pconn = NULL;
-    pr_netaddr_t *remote_addr = NULL;
+    const pr_netaddr_t *remote_addr = NULL;
     array_header *other_addrs = NULL;
 
     res = forward_cmd_parse_dst(cmd->pool, cmd->arg, &user, &pconn);
@@ -731,7 +731,7 @@ static int forward_handle_pass_userwithproxyauth(cmd_rec *cmd,
 
   if (!(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED)) {
     int res;
-    char *user;
+    const char *user;
 
     user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
 

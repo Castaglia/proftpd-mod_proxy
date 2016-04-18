@@ -598,16 +598,16 @@ static ssize_t tls_write(SSL *ssl, const void *buf, size_t len,
     BIO *wbio;
     uint64_t *adaptive_bytes_written_ms = NULL, now;
     off_t *adaptive_bytes_written_count = NULL;
-    void *v;
+    const void *v;
 
     v = pr_table_get(notes, PROXY_TLS_ADAPTIVE_BYTES_COUNT_KEY, NULL);
     if (v != NULL) {
-      adaptive_bytes_written_count = v;
+      adaptive_bytes_written_count = (off_t *) v;
     }
 
     v = pr_table_get(notes, PROXY_TLS_ADAPTIVE_BYTES_MS_KEY, NULL);
     if (v != NULL) {
-      adaptive_bytes_written_ms = v;
+      adaptive_bytes_written_ms = (uint64_t *) v;
     }
 
     (void) pr_gettimeofday_millis(&now);
@@ -1903,11 +1903,11 @@ static int netio_close_cb(pr_netio_stream_t *nstrm) {
   int res = 0;
   SSL *ssl = NULL;
 
-  ssl = pr_table_get(nstrm->notes, PROXY_TLS_NETIO_NOTE, NULL);
+  ssl = (SSL *) pr_table_get(nstrm->notes, PROXY_TLS_NETIO_NOTE, NULL);
   if (ssl != NULL) {
     if (nstrm->strm_type == PR_NETIO_STRM_CTRL &&
         nstrm->strm_mode == PR_NETIO_IO_WR) {
-      struct proxy_session *proxy_sess;
+      const struct proxy_session *proxy_sess;
       const char *host_name;
       int remote_port;
 
@@ -1976,7 +1976,7 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
   }
 
   if (nstrm->strm_mode == PR_NETIO_IO_WR) {
-    struct proxy_session *proxy_sess;
+    const struct proxy_session *proxy_sess;
     uint64_t *adaptive_ms = NULL, start_ms;
     off_t *adaptive_bytes = NULL;
     conn_t *conn = NULL;
@@ -2052,7 +2052,7 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
 static int netio_read_cb(pr_netio_stream_t *nstrm, char *buf, size_t buflen) {
   SSL *ssl = NULL;
 
-  ssl = pr_table_get(nstrm->notes, PROXY_TLS_NETIO_NOTE, NULL);
+  ssl = (SSL *) pr_table_get(nstrm->notes, PROXY_TLS_NETIO_NOTE, NULL);
   if (ssl != NULL) {
     BIO *rbio, *wbio;
     int bread = 0, bwritten = 0;
@@ -2122,7 +2122,7 @@ static int netio_shutdown_cb(pr_netio_stream_t *nstrm, int how) {
          nstrm->strm_type == PR_NETIO_STRM_DATA)) {
       SSL *ssl;
 
-      ssl = pr_table_get(nstrm->notes, PROXY_TLS_NETIO_NOTE, NULL);
+      ssl = (SSL *) pr_table_get(nstrm->notes, PROXY_TLS_NETIO_NOTE, NULL);
       if (ssl != NULL) {
         BIO *rbio, *wbio;
         int bread = 0, bwritten = 0;
@@ -2166,7 +2166,7 @@ static int netio_shutdown_cb(pr_netio_stream_t *nstrm, int how) {
 static int netio_write_cb(pr_netio_stream_t *nstrm, char *buf, size_t buflen) {
   SSL *ssl;
 
-  ssl = pr_table_get(nstrm->notes, PROXY_TLS_NETIO_NOTE, NULL);
+  ssl = (SSL *) pr_table_get(nstrm->notes, PROXY_TLS_NETIO_NOTE, NULL);
   if (ssl != NULL) {
     BIO *rbio, *wbio;
     int bread = 0, bwritten = 0;

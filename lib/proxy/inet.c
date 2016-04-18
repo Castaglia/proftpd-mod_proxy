@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy Inet implementation
- * Copyright (c) 2015 TJ Saunders
+ * Copyright (c) 2015-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -109,7 +109,8 @@ void proxy_inet_close(pool *p, conn_t *conn) {
   }
 }
 
-int proxy_inet_connect(pool *p, conn_t *conn, pr_netaddr_t *addr, int port) {
+int proxy_inet_connect(pool *p, conn_t *conn, const pr_netaddr_t *addr,
+    int port) {
   int instrm_type = -1, outstrm_type = -1, res, xerrno;
   pr_netio_t *in_netio = NULL, *out_netio = NULL;
 
@@ -175,7 +176,7 @@ int proxy_inet_listen(pool *p, conn_t *conn, int backlog, int flags) {
   return res;
 }
 
-conn_t *proxy_inet_openrw(pool *p, conn_t *conn, pr_netaddr_t *addr,
+conn_t *proxy_inet_openrw(pool *p, conn_t *conn, const pr_netaddr_t *addr,
     int strm_type, int fd, int rfd, int wfd, int resolve) {
   int xerrno;
   conn_t *new_conn;

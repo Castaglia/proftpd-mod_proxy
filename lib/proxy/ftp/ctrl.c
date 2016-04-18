@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP control conn routines
- * Copyright (c) 2012-2015 TJ Saunders
+ * Copyright (c) 2012-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -356,7 +356,7 @@ int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *ctrl_conn, cmd_rec *cmd) {
   int res;
 
   if (cmd->argc > 1) {
-    char *display_str;
+    const char *display_str;
     size_t display_len = 0;
 
     display_str = pr_cmd_get_displayable_str(cmd, &display_len);

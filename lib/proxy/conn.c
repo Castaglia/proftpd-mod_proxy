@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy conn implementation
- * Copyright (c) 2012-2015 TJ Saunders
+ * Copyright (c) 2012-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -48,7 +48,7 @@ struct proxy_conn {
   char *pconn_username;
   char *pconn_password;
 
-  pr_netaddr_t *pconn_addr;
+  const pr_netaddr_t *pconn_addr;
   array_header *pconn_addrs;
 };
 
@@ -76,8 +76,8 @@ static int supported_protocol(const char *proto) {
 }
 
 int proxy_conn_connect_timeout_cb(CALLBACK_FRAME) {
-  struct proxy_session *proxy_sess;
-  pr_netaddr_t *server_addr;
+  const struct proxy_session *proxy_sess;
+  const pr_netaddr_t *server_addr;
 
   proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
   server_addr = pr_table_get(session.notes, "mod_proxy.proxy-connect-address",
@@ -108,6 +108,7 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
   unsigned int remote_port;
   struct proxy_conn *pconn;
   pool *pconn_pool;
+  pr_netaddr_t *pconn_addr;
 
   if (p == NULL ||
       uri == NULL) {
@@ -162,7 +163,7 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
     pconn->pconn_password = pstrdup(pconn_pool, password);
   }
 
-  pconn->pconn_addr = pr_netaddr_get_addr(pconn_pool, remote_host,
+  pconn_addr = (pr_netaddr_t *) pr_netaddr_get_addr(pconn_pool, remote_host,
     &(pconn->pconn_addrs));
   if (pconn->pconn_addr == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -172,7 +173,7 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
     return NULL;
   }
 
-  if (pr_netaddr_set_port2(pconn->pconn_addr, remote_port) < 0) {
+  if (pr_netaddr_set_port2(pconn_addr, remote_port) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "unable to set port %d from URI '%s': %s", remote_port, uri,
       strerror(errno));
@@ -180,11 +181,12 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
     errno = EINVAL;
     return NULL;
   }
- 
+
+  pconn->pconn_addr = pconn_addr;
   return pconn;
 }
 
-pr_netaddr_t *proxy_conn_get_addr(struct proxy_conn *pconn,
+const pr_netaddr_t *proxy_conn_get_addr(const struct proxy_conn *pconn,
     array_header **addrs) {
   if (pconn == NULL) {
     errno = EINVAL;
@@ -198,7 +200,7 @@ pr_netaddr_t *proxy_conn_get_addr(struct proxy_conn *pconn,
   return pconn->pconn_addr;
 }
 
-const char *proxy_conn_get_host(struct proxy_conn *pconn) {
+const char *proxy_conn_get_host(const struct proxy_conn *pconn) {
   if (pconn == NULL) {
     errno = EINVAL;
     return NULL;
@@ -207,7 +209,7 @@ const char *proxy_conn_get_host(struct proxy_conn *pconn) {
   return pconn->pconn_host;
 }
 
-const char *proxy_conn_get_hostport(struct proxy_conn *pconn) {
+const char *proxy_conn_get_hostport(const struct proxy_conn *pconn) {
   if (pconn == NULL) {
     errno = EINVAL;
     return NULL;
@@ -216,7 +218,7 @@ const char *proxy_conn_get_hostport(struct proxy_conn *pconn) {
   return pconn->pconn_hostport;
 }
 
-int proxy_conn_get_port(struct proxy_conn *pconn) {
+int proxy_conn_get_port(const struct proxy_conn *pconn) {
   if (pconn == NULL) {
     errno = EINVAL;
     return -1;
@@ -241,7 +243,7 @@ void proxy_conn_clear_username(struct proxy_conn *pconn) {
   pconn->pconn_username = NULL;
 }
 
-const char *proxy_conn_get_username(struct proxy_conn *pconn) {
+const char *proxy_conn_get_username(const struct proxy_conn *pconn) {
   if (pconn == NULL) {
     errno = EINVAL;
     return NULL;
@@ -266,7 +268,7 @@ void proxy_conn_clear_password(struct proxy_conn *pconn) {
   pconn->pconn_password = NULL;
 }
 
-const char *proxy_conn_get_password(struct proxy_conn *pconn) {
+const char *proxy_conn_get_password(const struct proxy_conn *pconn) {
   if (pconn == NULL) {
     errno = EINVAL;
     return NULL;
@@ -275,7 +277,7 @@ const char *proxy_conn_get_password(struct proxy_conn *pconn) {
   return pconn->pconn_password;
 }
 
-int proxy_conn_get_tls(struct proxy_conn *pconn) {
+int proxy_conn_get_tls(const struct proxy_conn *pconn) {
   if (pconn == NULL) {
     errno = EINVAL;
     return -1;
@@ -285,8 +287,8 @@ int proxy_conn_get_tls(struct proxy_conn *pconn) {
 }
 
 conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
-    pr_netaddr_t *remote_addr) {
-  pr_netaddr_t *bind_addr = NULL, *local_addr = NULL;
+    const pr_netaddr_t *remote_addr) {
+  const pr_netaddr_t *bind_addr = NULL, *local_addr = NULL;
   const char *remote_ipstr = NULL;
   unsigned int remote_port;
   conn_t *server_conn, *ctrl_conn;
@@ -361,7 +363,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
   if (pr_netaddr_is_loopback(bind_addr) == TRUE &&
       pr_netaddr_is_loopback(remote_addr) != TRUE) {
     const char *local_name;
-    pr_netaddr_t *new_local_addr;
+    const pr_netaddr_t *new_local_addr;
 
     local_name = pr_netaddr_get_localaddr_str(p);
     new_local_addr = pr_netaddr_get_addr(p, local_name, NULL);
@@ -531,7 +533,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
   return ctrl_conn;
 }
 
-const char *proxy_conn_get_uri(struct proxy_conn *pconn) {
+const char *proxy_conn_get_uri(const struct proxy_conn *pconn) {
   if (pconn == NULL) {
     errno = EINVAL;
     return NULL;

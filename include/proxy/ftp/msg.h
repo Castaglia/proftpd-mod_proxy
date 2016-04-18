@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP message API
- * Copyright (c) 2013 TJ Saunders
+ * Copyright (c) 2013-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,23 +30,24 @@
 /* Format a string containg the address for use in a PORT command or a
  * PASV response.
  */
-const char *proxy_ftp_msg_fmt_addr(pool *, pr_netaddr_t *, unsigned short, int);
+const char *proxy_ftp_msg_fmt_addr(pool *, const pr_netaddr_t *,
+  unsigned short, int);
 
 /* Format a string containg the address for use in an EPRT command or an
  * EPSV response.
  */
-const char *proxy_ftp_msg_fmt_ext_addr(pool *, pr_netaddr_t *, unsigned short,
-  int, int);
+const char *proxy_ftp_msg_fmt_ext_addr(pool *, const pr_netaddr_t *,
+  unsigned short, int, int);
 
 /* Parse the address/port out of a string, e.g. from a PORT command or from
  * a PASV response.
  */
-pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *, const char *, int);
+const pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *, const char *, int);
 
 /* Parse the address/port out of a string, e.g. from an EPRT command or from
  * an EPSV response.
  */
-pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *, const char *, pr_netaddr_t *,
-  int, const char *);
+const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *, const char *,
+  const pr_netaddr_t *, int, const char *);
 
 #endif /* MOD_PROXY_FTP_MSG_H */

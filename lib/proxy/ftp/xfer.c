@@ -39,7 +39,7 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
     const char *error_code, struct proxy_session *proxy_sess) {
   int backend_family, bind_family, res, xerrno = 0;
   cmd_rec *actv_cmd;
-  pr_netaddr_t *bind_addr = NULL;
+  const pr_netaddr_t *bind_addr = NULL;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
   conn_t *data_conn = NULL;
@@ -101,7 +101,7 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
   if (pr_netaddr_is_loopback(bind_addr) == TRUE &&
       pr_netaddr_is_loopback(proxy_sess->backend_ctrl_conn->remote_addr) != TRUE) {
     const char *local_name;
-    pr_netaddr_t *local_addr;
+    const pr_netaddr_t *local_addr;
 
     local_name = pr_netaddr_get_localaddr_str(cmd->pool);
     local_addr = pr_netaddr_get_addr(cmd->pool, local_name, NULL);
@@ -271,7 +271,7 @@ pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
     const char *error_code, struct proxy_session *proxy_sess) {
   int res, xerrno = 0;
   cmd_rec *pasv_cmd;
-  pr_netaddr_t *remote_addr = NULL;
+  const pr_netaddr_t *remote_addr = NULL;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
   unsigned short remote_port;

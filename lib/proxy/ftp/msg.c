@@ -27,7 +27,7 @@
 
 static const char *trace_channel = "proxy.ftp.msg";
 
-const char *proxy_ftp_msg_fmt_addr(pool *p, pr_netaddr_t *addr,
+const char *proxy_ftp_msg_fmt_addr(pool *p, const pr_netaddr_t *addr,
     unsigned short port, int use_masqaddr) {
   char *addr_str, *msg, *ptr;
   size_t msglen;
@@ -69,7 +69,7 @@ const char *proxy_ftp_msg_fmt_addr(pool *p, pr_netaddr_t *addr,
   return msg;
 }
 
-const char *proxy_ftp_msg_fmt_ext_addr(pool *p, pr_netaddr_t *addr,
+const char *proxy_ftp_msg_fmt_ext_addr(pool *p, const pr_netaddr_t *addr,
     unsigned short port, int cmd_id, int use_masqaddr) {
   const char *addr_str;
   char delim = '|', *msg;
@@ -128,7 +128,7 @@ const char *proxy_ftp_msg_fmt_ext_addr(pool *p, pr_netaddr_t *addr,
   return msg;
 }
 
-pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *p, const char *msg,
+const pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *p, const char *msg,
     int addr_family) {
   int valid_fmt = FALSE;
   const char *ptr;
@@ -201,7 +201,7 @@ pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *p, const char *msg,
    * so they will just clutter up the session pool.  Perhaps we could have
    * a pool of addrs in this API, for reusing.
    */
-  addr = pr_netaddr_get_addr(session.pool, addr_buf, NULL);
+  addr = (pr_netaddr_t *) pr_netaddr_get_addr(session.pool, addr_buf, NULL);
   if (addr == NULL) {
     int xerrno = errno;
 
@@ -219,8 +219,8 @@ pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *p, const char *msg,
   return addr;
 }
 
-pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
-    pr_netaddr_t *addr, int cmd_id, const char *net_proto) {
+const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
+    const pr_netaddr_t *addr, int cmd_id, const char *net_proto) {
   pr_netaddr_t *res = NULL, na;
   int family = 0;
   unsigned short port = 0;

@@ -958,7 +958,7 @@ MODRET set_proxyrole(cmd_rec *cmd) {
 /* usage: ProxySourceAddress address */
 MODRET set_proxysourceaddress(cmd_rec *cmd) {
   config_rec *c = NULL;
-  pr_netaddr_t *src_addr = NULL;
+  const pr_netaddr_t *src_addr = NULL;
   unsigned int addr_flags = PR_NETADDR_GET_ADDR_FL_INCL_DEVICE;
 
   CHECK_ARGS(cmd, 1);
@@ -972,7 +972,7 @@ MODRET set_proxysourceaddress(cmd_rec *cmd) {
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
-  c->argv[0] = src_addr;
+  c->argv[0] = (void *) src_addr;
 
   return PR_HANDLED(cmd);
 }
@@ -1784,7 +1784,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
 
   /* XXX Should handle EPSV_ALL here, too. */
   if (proxy_sess->backend_sess_flags & SF_PASSIVE) {
-    pr_netaddr_t *bind_addr = NULL;
+    const pr_netaddr_t *bind_addr = NULL;
 
     /* Connect to the backend server now. We won't receive the initial
      * response until we connect to the backend data address/port.
@@ -1801,7 +1801,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
     if (pr_netaddr_is_loopback(bind_addr) == TRUE &&
         pr_netaddr_is_loopback(proxy_sess->backend_ctrl_conn->remote_addr) != TRUE) {
       const char *local_name;
-      pr_netaddr_t *local_addr;
+      const pr_netaddr_t *local_addr;
 
       local_name = pr_netaddr_get_localaddr_str(cmd->pool);
       local_addr = pr_netaddr_get_addr(cmd->pool, local_name, NULL);
@@ -2015,7 +2015,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
       frontend_conn->remote_port);
 
   } else if (proxy_sess->frontend_sess_flags & SF_PORT) {
-    pr_netaddr_t *bind_addr;
+    const pr_netaddr_t *bind_addr;
 
     /* Connect to the frontend server now. */
   
@@ -2561,7 +2561,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
 
 MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res, xerrno;
-  pr_netaddr_t *remote_addr = NULL;
+  const pr_netaddr_t *remote_addr = NULL;
   unsigned short remote_port;
   unsigned char *allow_foreign_addr = NULL;
 
@@ -2747,7 +2747,7 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   conn_t *data_conn;
   const char *epsv_msg;
   char resp_msg[PR_RESPONSE_BUFFER_SIZE];
-  pr_netaddr_t *bind_addr, *remote_addr;
+  const pr_netaddr_t *bind_addr, *remote_addr;
   pr_response_t *resp;
   unsigned int resp_nlines = 1;
 
@@ -2870,7 +2870,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   conn_t *data_conn;
   const char *pasv_msg;
   char resp_msg[PR_RESPONSE_BUFFER_SIZE];
-  pr_netaddr_t *bind_addr, *remote_addr;
+  const pr_netaddr_t *bind_addr, *remote_addr;
   pr_response_t *resp;
   unsigned int resp_nlines = 1;
 
@@ -3008,7 +3008,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
 MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res, xerrno;
-  pr_netaddr_t *remote_addr = NULL;
+  const pr_netaddr_t *remote_addr = NULL;
   unsigned short remote_port;
   unsigned char *allow_foreign_addr = NULL;
 
@@ -3418,7 +3418,7 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
   }
 
   if (successful) {
-    char *user;
+    const char *user;
     int proxy_auth = FALSE;
 
     user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
@@ -3593,7 +3593,7 @@ static int proxy_get_cmd_group(cmd_rec *cmd) {
   return 0;
 }
 
-static int proxy_have_limit(cmd_rec *cmd, char **resp_code) {
+static int proxy_have_limit(cmd_rec *cmd, const char **resp_code) {
   int res;
 
   /* Some commands get a free pass. */
@@ -3657,7 +3657,7 @@ MODRET proxy_any(cmd_rec *cmd) {
   int block_responses = TRUE;
   struct proxy_session *proxy_sess;
   modret_t *mr = NULL;
-  char *resp_code = R_550;
+  const char *resp_code = R_550;
 
   if (proxy_engine == FALSE) {
     return PR_DECLINED(cmd);
@@ -3676,7 +3676,8 @@ MODRET proxy_any(cmd_rec *cmd) {
     return PR_ERROR(cmd);
   }
 
-  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+  proxy_sess = (struct proxy_session *) pr_table_get(session.notes,
+    "mod_proxy.proxy-session", NULL);
 
   /* Backend servers can send "asynchronous" messages to us; we need to check
    * for them.
@@ -3996,7 +3997,8 @@ static void proxy_ctrl_read_ev(const void *event_data, void *user_data) {
 static void proxy_exit_ev(const void *event_data, void *user_data) {
   struct proxy_session *proxy_sess;
 
-  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+  proxy_sess = (struct proxy_session *) pr_table_get(session.notes,
+    "mod_proxy.proxy-session", NULL);
   if (proxy_sess != NULL) {
     if (proxy_sess->frontend_ctrl_conn != NULL) {
       pr_inet_close(proxy_sess->pool, proxy_sess->frontend_ctrl_conn);
@@ -4164,7 +4166,8 @@ static void proxy_sess_reinit_ev(const void *event_data, void *user_data) {
    * and affects the entire daemon process.
    */
 
-  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+  proxy_sess = (struct proxy_session *) pr_table_get(session.notes,
+    "mod_proxy.proxy-session", NULL);
   if (proxy_sess != NULL) {
     proxy_tls_sess_free(proxy_pool);
     proxy_reverse_sess_free(proxy_pool, proxy_sess);

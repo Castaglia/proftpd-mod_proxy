@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy sessions
- * Copyright (c) 2012-2015 TJ Saunders
+ * Copyright (c) 2012-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -40,21 +40,21 @@ struct proxy_session {
   conn_t *frontend_ctrl_conn;
   conn_t *frontend_data_conn;
   volatile int frontend_sess_flags;
-  pr_netaddr_t *frontend_data_addr;
+  const pr_netaddr_t *frontend_data_addr;
 
   /* Backend connection */
   conn_t *backend_ctrl_conn;
   conn_t *backend_data_conn;
   volatile int backend_sess_flags;
-  pr_netaddr_t *backend_data_addr;
+  const pr_netaddr_t *backend_data_addr;
 
   /* Address for connections to/from destination server.  May be null. */
-  pr_netaddr_t *src_addr;
+  const pr_netaddr_t *src_addr;
 
-  struct proxy_conn *dst_pconn;
+  const struct proxy_conn *dst_pconn;
 
   /* Address of the destination server.  May be null. */
-  pr_netaddr_t *dst_addr;
+  const pr_netaddr_t *dst_addr;
   array_header *other_addrs;
 
   /* Features supported by backend server */

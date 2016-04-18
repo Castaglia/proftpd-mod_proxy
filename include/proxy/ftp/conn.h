@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP connection API
- * Copyright (c) 2013-2015 TJ Saunders
+ * Copyright (c) 2013-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,9 +29,9 @@
 
 conn_t *proxy_ftp_conn_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn,
   int frontend_data);
-conn_t *proxy_ftp_conn_connect(pool *p, pr_netaddr_t *local_addr,
-  pr_netaddr_t *remote_addr, int frontend_data);
-conn_t *proxy_ftp_conn_listen(pool *p, pr_netaddr_t *bind_addr,
+conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *local_addr,
+  const pr_netaddr_t *remote_addr, int frontend_data);
+conn_t *proxy_ftp_conn_listen(pool *p, const pr_netaddr_t *bind_addr,
   int frontend_data);
 
 #endif /* MOD_PROXY_FTP_CONN_H */

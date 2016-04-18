@@ -111,7 +111,7 @@ int proxy_db_prepare_stmt(pool *p, const char *stmt) {
     return -1;
   }
 
-  pstmt = pr_table_get(prepared_stmts, stmt, NULL);
+  pstmt = (sqlite3_stmt *) pr_table_get(prepared_stmts, stmt, NULL);
   if (pstmt != NULL) {
     res = sqlite3_reset(pstmt);
     if (res != SQLITE_OK) {
@@ -171,7 +171,7 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
     return -1;
   }
 
-  pstmt = pr_table_get(prepared_stmts, stmt, NULL);
+  pstmt = (sqlite3_stmt *) pr_table_get(prepared_stmts, stmt, NULL);
   if (pstmt == NULL) {
     pr_trace_msg(trace_channel, 19,
       "unable to find prepared statement for '%s'", stmt);
@@ -268,7 +268,7 @@ int proxy_db_finish_stmt(pool *p, const char *stmt) {
     return -1;
   }
 
-  pstmt = pr_table_get(prepared_stmts, stmt, NULL);
+  pstmt = (sqlite3_stmt *) pr_table_get(prepared_stmts, stmt, NULL);
   if (pstmt == NULL) {
     pr_trace_msg(trace_channel, 19,
       "unable to find prepared statement for '%s'", stmt);
@@ -306,7 +306,7 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, const char *stmt,
     return NULL;
   }
 
-  pstmt = pr_table_get(prepared_stmts, stmt, NULL);
+  pstmt = (sqlite3_stmt *) pr_table_get(prepared_stmts, stmt, NULL);
   if (pstmt == NULL) {
     pr_trace_msg(trace_channel, 19,
       "unable to find prepared statement for '%s'", stmt);

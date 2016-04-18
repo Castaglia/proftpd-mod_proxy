@@ -160,7 +160,7 @@ int proxy_ftp_sess_get_feat(pool *p, struct proxy_session *proxy_sess) {
 
   proxy_sess->backend_features = pr_table_nalloc(p, 0, 4);
 
-  feats = resp->msg;
+  feats = (char *) resp->msg;
   token = pr_str_get_token2(&feats, (char *) feat_crlf, &token_len);
   while (token != NULL) {
     pr_signals_handle();
@@ -270,7 +270,7 @@ int proxy_ftp_sess_send_host(pool *p, struct proxy_session *proxy_sess) {
 
 int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
   int uri_tls, use_tls, xerrno;
-  char *auth_feat;
+  const char *auth_feat;
   array_header *auth_feats = NULL;
   pool *tmp_pool;
   cmd_rec *cmd;
