@@ -165,7 +165,9 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
 
   pconn_addr = (pr_netaddr_t *) pr_netaddr_get_addr(pconn_pool, remote_host,
     &(pconn->pconn_addrs));
-  if (pconn->pconn_addr == NULL) {
+  if (pconn_addr == NULL) {
+    pr_trace_msg(trace_channel, 2, "unable to resolve '%s' from URI '%s': %s",
+      remote_host, uri, strerror(errno));
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "unable to resolve '%s' from URI '%s'", remote_host, uri);
     destroy_pool(pconn_pool);
@@ -174,9 +176,14 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
   }
 
   if (pr_netaddr_set_port2(pconn_addr, remote_port) < 0) {
+    int xerrno = errno;
+
+    pr_trace_msg(trace_channel, 3,
+      "unable to set port %d from URI '%s': %s", remote_port, uri,
+      strerror(xerrno));
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "unable to set port %d from URI '%s': %s", remote_port, uri,
-      strerror(errno));
+      strerror(xerrno));
     destroy_pool(pconn_pool);
     errno = EINVAL;
     return NULL;
