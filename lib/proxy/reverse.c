@@ -38,8 +38,9 @@
 
 extern xaset_t *server_list;
 
-static array_header *reverse_backends = NULL;
+static array_header *default_backends = NULL, *reverse_backends = NULL;
 static int reverse_backend_id = -1;
+static int reverse_backend_updated = FALSE;
 static int reverse_connect_policy = PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN;
 static unsigned long reverse_flags = 0UL;
 static int reverse_retry_count = PROXY_DEFAULT_RETRY_COUNT;
@@ -1454,11 +1455,10 @@ static struct proxy_conn *reverse_db_peruser_init(pool *p,
 
   user_backends = reverse_db_pername_backends(p, user, TRUE);
   if (user_backends != NULL) {
-    backend_count = user_backends->nelts;
-    conns = user_backends->elts;
+    reverse_backends = user_backends;
 
   } else {
-    if (reverse_backends == NULL) {
+    if (default_backends == NULL) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "no PerUser servers found for user '%s', and no global "
         "ProxyReverseServers configured", user);
@@ -1468,9 +1468,11 @@ static struct proxy_conn *reverse_db_peruser_init(pool *p,
 
     pr_trace_msg(trace_channel, 11,
       "using global ProxyReverseServers list for user '%s'", user);
-    backend_count = reverse_backends->nelts;
-    conns = reverse_backends->elts;
+    reverse_backends = default_backends;
   }
+
+  backend_count = reverse_backends->nelts;
+  conns = reverse_backends->elts;
 
   if (backend_count == 1) {
     pconn = conns[0];
@@ -1664,11 +1666,10 @@ static struct proxy_conn *reverse_db_pergroup_init(pool *p,
 
   group_backends = reverse_db_pername_backends(p, group, FALSE);
   if (group_backends != NULL) {
-    backend_count = group_backends->nelts;
-    conns = group_backends->elts;
+    reverse_backends = group_backends;
 
   } else {
-    if (reverse_backends == NULL) {
+    if (default_backends == NULL) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "no PerGroup servers found for group '%s', and no global "
         "ProxyReverseServers configured", group);
@@ -1678,9 +1679,11 @@ static struct proxy_conn *reverse_db_pergroup_init(pool *p,
 
     pr_trace_msg(trace_channel, 11,
       "using global ProxyReverseServers list for group '%s'", group);
-    backend_count = reverse_backends->nelts;
-    conns = reverse_backends->elts;
+    reverse_backends = default_backends;
   }
+
+  backend_count = reverse_backends->nelts;
+  conns = reverse_backends->elts;
 
   if (backend_count == 1) {
     pconn = conns[0];
@@ -2160,6 +2163,8 @@ static int reverse_connect_index_used(pool *p, unsigned int vhost_id,
     errno = xerrno;
     return -1;
   }
+
+  reverse_backend_updated = TRUE;
 
   switch (reverse_connect_policy) {
     case PROXY_REVERSE_CONNECT_POLICY_RANDOM:
@@ -2697,14 +2702,16 @@ int proxy_reverse_free(pool *p) {
 int proxy_reverse_sess_exit(pool *p) {
   if (reverse_backends != NULL &&
       reverse_backend_id >= 0) {
-    int res;
+    if (reverse_backend_updated == TRUE) {
+      int res;
 
-    res = reverse_db_update_backend(p, main_server->sid, reverse_backend_id,
-      -1, -1);
-    if (res < 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error updating backend ID %d: %s", reverse_backend_id,
-        strerror(errno));
+      res = reverse_db_update_backend(p, main_server->sid, reverse_backend_id,
+        -1, -1);
+      if (res < 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error updating backend ID %d: %s", reverse_backend_id,
+          strerror(errno));
+      }
     }
   }
 
@@ -2781,11 +2788,11 @@ int proxy_reverse_sess_init(pool *p, const char *tables_dir,
 
     uri = c->argv[1];
     if (uri == NULL) {
-      if (reverse_backends == NULL) {
-        reverse_backends = c->argv[0];
+      if (default_backends == NULL) {
+        default_backends = c->argv[0];
 
       } else {
-        array_cat(reverse_backends, c->argv[0]);
+        array_cat(default_backends, c->argv[0]);
       }
 
       break;
