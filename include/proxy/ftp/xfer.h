@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP data transfer API
- * Copyright (c) 2013 TJ Saunders
+ * Copyright (c) 2013-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,7 +30,7 @@
 
 int proxy_ftp_xfer_prepare_active(int, cmd_rec *, const char *,
   struct proxy_session *);
-pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int, cmd_rec *, const char *,
+const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int, cmd_rec *, const char *,
   struct proxy_session *);
 
 #endif /* MOD_PROXY_FTP_XFER_H */

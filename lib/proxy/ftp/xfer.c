@@ -267,7 +267,7 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
   return 0;
 }
 
-pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
+const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
     const char *error_code, struct proxy_session *proxy_sess) {
   int res, xerrno = 0;
   cmd_rec *pasv_cmd;

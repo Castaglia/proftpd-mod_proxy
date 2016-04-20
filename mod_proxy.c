@@ -2668,7 +2668,7 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   switch (proxy_sess->dataxfer_policy) {
     case PR_CMD_PASV_ID:
     case PR_CMD_EPSV_ID: {
-      pr_netaddr_t *addr;
+      const pr_netaddr_t *addr;
       pr_response_t *resp;
       unsigned int resp_nlines = 0;
 
@@ -3118,7 +3118,7 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   switch (proxy_sess->dataxfer_policy) {
     case PR_CMD_PASV_ID:
     case PR_CMD_EPSV_ID: {
-      pr_netaddr_t *addr;
+      const pr_netaddr_t *addr;
       pr_response_t *resp;
       unsigned int resp_nlines = 0;
 
