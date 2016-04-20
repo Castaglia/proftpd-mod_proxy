@@ -467,13 +467,29 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
           return NULL;
         }
 
+        case 0:
+          /* If we are still waiting, then loop.  Otherwise, fall through
+           * to the next case, assuming a timeout.
+           */
+          if (errno == EINPROGRESS) {
+            continue;
+          }
+          errno = ETIMEDOUT;
+
         case -1: {
           /* Error */
-          int xerrno = errno;
+          int xerrno = nstrm->strm_errno;
+
+          if (xerrno == 0) {
+            xerrno = errno;
+          }
 
           if (xerrno == EINTR) {
             /* Treat this as a timeout. */
             xerrno = ETIMEDOUT;
+
+          } else if (xerrno == EOF) {
+            xerrno = ECONNREFUSED;
           }
 
           (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
