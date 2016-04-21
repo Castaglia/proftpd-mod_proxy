@@ -467,15 +467,6 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
           return NULL;
         }
 
-        case 0:
-          /* If we are still waiting, then loop.  Otherwise, fall through
-           * to the next case, assuming a timeout.
-           */
-          if (errno == EINPROGRESS) {
-            continue;
-          }
-          errno = ETIMEDOUT;
-
         case -1: {
           /* Error */
           int xerrno = nstrm->strm_errno;
