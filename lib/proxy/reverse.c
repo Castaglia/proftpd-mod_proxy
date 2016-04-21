@@ -2055,6 +2055,15 @@ static struct proxy_conn *reverse_connect_next_backend(pool *p,
       reverse_backend_id = 0;
       return conns[0];
     }
+
+  } else {
+    if (conns == NULL &&
+        default_backends != NULL &&
+        reverse_backends == NULL) {
+      reverse_backends = default_backends;
+      conns = reverse_backends->elts;
+      nelts = reverse_backends->nelts;
+    }
   }
 
   switch (reverse_connect_policy) {
