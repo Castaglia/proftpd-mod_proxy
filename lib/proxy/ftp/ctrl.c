@@ -148,7 +148,7 @@ cmd_rec *proxy_ftp_ctrl_recv_cmd(pool *p, conn_t *ctrl_conn) {
 
 pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
     unsigned int *nlines) {
-  char buf[PR_TUNABLE_BUFFER_SIZE*8];
+  char buf[PR_TUNABLE_BUFFER_SIZE];
   pr_response_t *resp = NULL;
   int multiline = FALSE;
   unsigned int count = 0;
@@ -173,6 +173,10 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
     }
 
     buflen = strlen(buf);
+
+    /* TODO: What if the given buffer does not end in a CR/LF?  What if the
+     * backend server is spewing response lines longer than our buffer?
+     */
 
     /* Remove any trailing CRs, LFs. */
     while (buflen > 0 &&
@@ -238,6 +242,17 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
 
     } else {
       if (buflen >= 1) {
+
+        /* TODO: We should have a limit for how large of a buffered response
+         * we will tolerate.  Consider a malicious/buggy backend server whose
+         * multiline response is in the GB?
+         *
+         * One way to avoid the buffering would be to relay each individual
+         * response line, as we read them, to the frontend client.  But if
+         * we do so, then we will not be properly acting as an FTP protocol
+         * sanitizer, either.  Hrm.
+         */
+
         if (buf[0] == ' ') {
           /* Continuation line; append it the existing response. */
           if (buflen > 1) {
