@@ -148,7 +148,7 @@ cmd_rec *proxy_ftp_ctrl_recv_cmd(pool *p, conn_t *ctrl_conn) {
 
 pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
     unsigned int *nlines) {
-  char buf[PR_TUNABLE_BUFFER_SIZE];
+  char buf[PR_TUNABLE_BUFFER_SIZE*8];
   pr_response_t *resp = NULL;
   int multiline = FALSE;
   unsigned int count = 0;
@@ -163,6 +163,12 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
     memset(buf, '\0', sizeof(buf));
     if (ftp_telnet_gets(buf, sizeof(buf)-1, ctrl_conn->instrm,
         ctrl_conn) == NULL) {
+      int xerrno = errno;
+
+      pr_trace_msg(trace_channel, 9,
+        "error reading telnet data: %s", strerror(xerrno));
+
+      errno = xerrno;
       return NULL;
     }
 
@@ -265,8 +271,14 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
           }
 
           if (buf[3] != ' ') {
-            errno = EINVAL;
-            return NULL;
+            /* NOTE: We could/should be strict here, and require conformant
+             * responses only.  For now, though, we'll proxy through the
+             * backend's response to the frontend client, to let it decide
+             * how it wants to handle this response data.
+             */
+            resp->msg = pstrcat(p, resp->msg, "\r\n", buf, NULL);
+            count++;
+            continue;
           }
 
           count++;
