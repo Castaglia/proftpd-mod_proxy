@@ -544,8 +544,8 @@ And using them all in the configuration would look like:
 </pre>
 
 <p>
-In addition, the list of backend servers can be contained in a list in a JSON
-file, <i>e.g.</i>:
+The backend servers can <i>also</i> be contained in a list in a JSON file,
+<i>e.g.</i>:
 <pre>
 [
   "ftp://ftp1.example.com:2121",
@@ -556,6 +556,38 @@ You then only need to configure the path to that JSON file:
 <pre>
   ProxyReverseServers file:/path/to/backends.json
 </pre>
+
+<p>
+The backend servers can <i>also</i> be provided from an external SQL database,
+queried by <code>mod_proxy</code> via <a href="http://www.proftpd.org/docs/contrib/mod_sql.html#SQLNamedQuery"><code>SQLNamedQuery</code></a>.  For example,
+<i>assuming</i> a schema such as this:
+<pre>
+  CREATE TABLE proxy_user_servers (
+    user_name TEXT,
+    url TEXT
+  );
+
+  CREATE INDEX proxy_user_servers_name_idx ON proxy_user_servers (user_name);
+</pre>
+where <em>url</em> contains URLs, <i>e.g.</i> "ftp://1.2.3.4:21".  Then you
+would configure <code>mod_proxy</code> to query for those per-user backend URLs
+using <code>ProxyReverseServers</code> like this:
+<pre>
+  &lt;IfModule mod_sql.c&gt;
+    ...
+    SQLNamedQuery get-user-servers SELECT "url FROM proxy_user_servers WHERE user_name = %{0}"
+  &lt;/IfModule&gt;
+
+  ProxyRole reverse
+  ProxyReverseConnectPolicy PerUser
+  ProxyReverseServers sql://get-user-servers
+</pre>
+
+<p>
+Given that <code>mod_proxy</code> uses SQLite, does that mean that the table
+used for storing these per-user URLs <b>must</b> be SQLite?  <b>No</b>.  The
+use of <code>SQLNamedQuery</code> means that <b>any database</b>, supported
+by <code>mod_sql</code>, can be used.
 
 <p>
 <hr>
