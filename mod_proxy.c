@@ -1947,7 +1947,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
 
   if (proxy_sess->frontend_sess_flags & SF_PASSIVE) {
     pr_trace_msg(trace_channel, 17,
-      "accepting connection from frontend server for passive data "
+      "accepting connection from frontend client for passive data "
       "transfer for %s", (char *) cmd->argv[0]);
     frontend_conn = proxy_ftp_conn_accept(cmd->pool,
       proxy_sess->frontend_data_conn, proxy_sess->frontend_ctrl_conn, TRUE);
