@@ -2588,6 +2588,9 @@ EOC
       my $ssl_opts = {
         SSL_hostname => $host,
         SSL_ca_file => $ca_file,
+
+        # Yes, this is a deliberate choice.  Sigh.
+        SSL_verifycn_scheme => 'none',
       };
 
       my $client_opts = {
@@ -2888,6 +2891,9 @@ EOC
       my $ssl_opts = {
         SSL_hostname => $host,
         SSL_ca_file => $ca_file,
+
+        # Yes, this is a deliberate choice.  Sigh.
+        SSL_verifycn_scheme => 'none',
       };
 
       my $client_opts = {
@@ -4276,9 +4282,9 @@ EOC
       sleep(2);
 
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 0);
-      eval { $client->login($user, $passwd) };
+      eval { $client->user($user) };
       unless ($@) {
-        die("Login succeeded unexpectedly");
+        die("USER succeeded unexpectedly");
       }
 
       my $resp_code = $client->response_code();
@@ -5511,23 +5517,22 @@ EOC
       sleep(2);
 
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
-      eval { $client->login("$user\@127.0.0.1:$vhost_port", $passwd) };
+      eval { $client->user("$user\@127.0.0.1:$vhost_port") };
       unless ($@) {
         die("Login succeeded unexpectedly");
       }
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
+      $client->quit();
 
       my $expected = 530;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "Unable to connect to 127.0.0.1:$vhost_port: Operation not permitted";
+      $expected = "Unable to connect to 127.0.0.1: Operation not permitted";
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
-
-      $client->quit();
     };
 
     if ($@) {
@@ -5767,7 +5772,7 @@ sub proxy_forward_frontend_backend_tls_login_after_host {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
 
-  my $host = 'localhost';
+  my $host = 'www.castaglia.org';
 
   my $config = {
     PidFile => $pid_file,
@@ -5889,6 +5894,9 @@ EOC
       my $ssl_opts = {
         SSL_hostname => $host,
         SSL_ca_file => $ca_file,
+
+        # Yes, this is a deliberate choice.  Sigh.
+        SSL_verifycn_scheme => 'none',
       };
 
       my $client_opts = {
