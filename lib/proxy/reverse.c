@@ -3269,6 +3269,14 @@ static int send_pass(struct proxy_session *proxy_sess, cmd_rec *cmd,
   const char *uri_user, *uri_pass;
   char *orig_pass;
 
+  if (proxy_sess == NULL ||
+      proxy_sess->backend_ctrl_conn == NULL) {
+    pr_trace_msg(trace_channel, 4,
+      "unable to send PASS to backend server: No backend control connection");
+    errno = EPERM;
+    return -1;
+  }
+
   orig_pass = cmd->arg;
   uri_user = proxy_conn_get_username(proxy_sess->dst_pconn);
   uri_pass = proxy_conn_get_password(proxy_sess->dst_pconn);
@@ -3328,10 +3336,11 @@ static int send_pass(struct proxy_session *proxy_sess, cmd_rec *cmd,
     const char *orig_user;
 
     orig_user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
-
-    /* TODO: handle the case where there are multiple response lines. */
-    if (strstr(resp->msg, uri_user) != NULL) {
-      resp->msg = sreplace(cmd->pool, resp->msg, uri_user, orig_user, NULL);
+    if (orig_user != NULL) {
+      /* TODO: handle the case where there are multiple response lines. */
+      if (strstr(resp->msg, uri_user) != NULL) {
+        resp->msg = sreplace(cmd->pool, resp->msg, uri_user, orig_user, NULL);
+      }
     }
   }
 

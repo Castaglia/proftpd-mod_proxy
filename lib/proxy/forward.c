@@ -521,7 +521,8 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
         return -1;
       }
 
-      return -1;
+      errno = EINVAL;
+      return 1;
     }
   }
 

@@ -3275,7 +3275,7 @@ static void proxy_login_failed(void) {
 
 MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *block_responses) {
-  int successful = FALSE, res = 0;
+  int successful = FALSE, res = 0, xerrno;
 
   /* Remove any exit handlers installed by mod_xfer.  We do this here,
    * rather than in sess_init, since our sess_init is called BEFORE the
@@ -3302,9 +3302,9 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
       break;
   }
 
-  if (res < 0) {
-    int xerrno = errno;
+  xerrno = errno;
 
+  if (res < 0) {
     if (xerrno != EINVAL) {
       pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
         strerror(xerrno));
@@ -3347,6 +3347,16 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     } else {
       /* ASCII by default. */
       session.sf_flags |= SF_ASCII;
+    }
+
+  } else {
+    if (res == 1) {
+      /* If we haven't been marked as successful, BUT the return value is 1,
+       * then use this as an indicator that an error response was sent already
+       * to the client.
+       */
+      errno = xerrno;
+      return PR_ERROR(cmd);
     }
   }
 
