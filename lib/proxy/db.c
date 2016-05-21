@@ -45,6 +45,21 @@ static void db_trace(void *user_data, const char *trace_msg) {
     "(sqlite3): %s", trace_msg);
 }
 
+static int stmt_cb(void *v, int ncols, char **cols, char **col_names) {
+  register int i;
+  const char *stmt;
+
+  stmt = v;
+  pr_trace_msg(trace_channel, 9, "results for '%s':", stmt);
+
+  for (i = 0; i < ncols; i++) {
+    pr_trace_msg(trace_channel, 9, "col #%d [%s]: %s", i+1,
+      col_names[i], cols[i]);
+  }
+
+  return 0;
+}
+
 int proxy_db_exec_stmt(pool *p, const char *stmt, const char **errstr) {
   int res;
   char *ptr = NULL;
@@ -56,7 +71,7 @@ int proxy_db_exec_stmt(pool *p, const char *stmt, const char **errstr) {
     return -1;
   }
 
-  res = sqlite3_exec(proxy_dbh, stmt, NULL, NULL, &ptr);
+  res = sqlite3_exec(proxy_dbh, stmt, stmt_cb, (void *) stmt, &ptr);
   while (res != SQLITE_OK) {
     if (res == SQLITE_BUSY) {
       struct timeval tv;
@@ -573,6 +588,36 @@ static int set_schema_version(pool *p, const char *schema_name,
   return 0;
 }
 
+static void check_db_integrity(pool *p, const char *schema_name) {
+  int res;
+  const char *stmt, *errstr = NULL;
+
+  if (proxy_dbh == NULL) {
+    return;
+  }
+
+  stmt = pstrcat(p, "PRAGMA ", schema_name, ".integrity_check;", NULL);
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
+      ": error executing statement '%s': %s", stmt, errstr);
+  }
+
+  stmt = "VACUUM;";
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
+      ": error executing statement '%s': %s", stmt, errstr);
+  }
+
+  stmt = pstrcat(p, "REINDEX ", schema_name, ";", NULL);
+  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  if (res < 0) {
+    (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
+      ": error executing statement '%s': %s", stmt, errstr);
+  }
+}
+
 int proxy_db_open_with_version(pool *p, const char *table_path,
     const char *schema_name, unsigned int schema_version, int flags) {
   pool *tmp_pool;
@@ -598,6 +643,10 @@ int proxy_db_open_with_version(pool *p, const char *table_path,
     pr_trace_msg(trace_channel, 11,
       "schema version %u >= desired version %u for schema '%s'",
       current_version, schema_version, schema_name);
+
+    check_db_integrity(tmp_pool, schema_name);
+    destroy_pool(tmp_pool);
+
     return 0;
   }
 
