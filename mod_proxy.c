@@ -4142,17 +4142,13 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
 }
 
 static void proxy_restart_ev(const void *event_data, void *user_data) {
-  int res;
-
   proxy_forward_free(proxy_pool);
   proxy_reverse_free(proxy_pool);
   proxy_tls_free(proxy_pool);
 
-  res = proxy_db_close(proxy_pool, NULL);
-  if (res < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error closing database: %s", strerror(errno));
-  }
+  /* Do NOT close the database connection/handle here; we may have session
+   * processes that have their own handles to that same file.
+   */
 }
 
 static void proxy_sess_reinit_ev(const void *event_data, void *user_data) {
@@ -4205,8 +4201,18 @@ static void proxy_sess_reinit_ev(const void *event_data, void *user_data) {
 }
 
 static void proxy_shutdown_ev(const void *event_data, void *user_data) {
+  int res;
+
   proxy_forward_free(proxy_pool);
   proxy_reverse_free(proxy_pool);
+  proxy_tls_free(proxy_pool);
+
+  res = proxy_db_close(proxy_pool, NULL);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error closing database: %s", strerror(errno));
+  }
+
   proxy_db_free();
 
   destroy_pool(proxy_pool);

@@ -2704,7 +2704,16 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
 }
 
 int proxy_reverse_free(pool *p) {
+  int res;
+
   /* TODO: Implement any necessary cleanup */
+  res = proxy_db_close(p, PROXY_REVERSE_DB_SCHEMA_NAME);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error detaching database with schema '%s': %s",
+      PROXY_REVERSE_DB_SCHEMA_NAME, strerror(errno));
+  }
+
   return 0;
 }
 
@@ -2763,7 +2772,7 @@ int proxy_reverse_sess_free(pool *p, struct proxy_session *proxy_sess) {
   reverse_flags = 0UL;
   reverse_retry_count = PROXY_DEFAULT_RETRY_COUNT;
 
-  proxy_db_close(p, PROXY_REVERSE_DB_SCHEMA_NAME);
+  (void) proxy_db_close(p, PROXY_REVERSE_DB_SCHEMA_NAME);
   return 0;
 }
 
