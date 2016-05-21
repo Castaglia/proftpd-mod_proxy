@@ -2734,6 +2734,15 @@ int proxy_tls_init(pool *p, const char *tables_dir) {
 }
 
 int proxy_tls_free(pool *p) {
+  int res;
+
+  res = proxy_db_close(p, PROXY_TLS_DB_SCHEMA_NAME);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error detaching database with schema '%s': %s",
+      PROXY_TLS_DB_SCHEMA_NAME, strerror(errno));
+  }
+
   return 0;
 }
 
