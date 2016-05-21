@@ -878,8 +878,6 @@ static int cert_match_cn(pool *p, X509 *cert, const char *name,
   /* Convert the CN field to a string, by way of an ASN1 object. */
   cn_asn1 = X509_NAME_ENTRY_get_data(cn_entry);
   if (cn_asn1 == NULL) {
-    X509_NAME_ENTRY_free(cn_entry);
-
     pr_trace_msg(trace_channel, 12,
       "unable to check certificate CommonName against '%s': "
       "error converting CommoName atribute to ASN.1: %s", name,
@@ -898,8 +896,6 @@ static int cert_match_cn(pool *p, X509 *cert, const char *name,
   cn_len = strlen(cn_str);
 
   if (ASN1_STRING_length(cn_asn1) != cn_len) {
-    X509_NAME_ENTRY_free(cn_entry);
-
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "cert CommonName contains embedded NULs, rejecting as possible spoof "
       "attempt");
@@ -915,16 +911,21 @@ static int cert_match_cn(pool *p, X509 *cert, const char *name,
    * e.g. IPv6 addresses.
    */
   if (strncasecmp(name, cn_str, cn_len + 1) == 0) {
+    pr_trace_msg(trace_channel, 12, "cert CommonName '%s' matches '%s'", cn_str,
+      name);
     matched = 1;
+
+  } else {
+    if (allow_wildcards) {
+      /* XXX Implement wildcard checking. */
+    }
   }
 
-  if (matched == 0 &&
-      allow_wildcards) {
-
-    /* XXX Implement wildcard checking. */
+  if (matched == FALSE) {
+    pr_trace_msg(trace_channel, 12, "cert CommonName '%s' does NOT match '%s'",
+      cn_str, name);
   }
 
-  X509_NAME_ENTRY_free(cn_entry);
   return matched;
 }
 
@@ -1611,7 +1612,7 @@ static int tls_connect(conn_t *conn, const char *host_name,
 #if !defined(OPENSSL_NO_TLSEXT)
   SSL_set_tlsext_debug_callback(ssl, tls_tlsext_cb);
 
-  pr_trace_msg(trace_channel, 9, "sending SNI '%s'", conn->remote_name);
+  pr_trace_msg(trace_channel, 9, "sending SNI '%s'", host_name);
   SSL_set_tlsext_host_name(ssl, conn->remote_name);
 
 # if defined(TLSEXT_STATUSTYPE_ocsp)
