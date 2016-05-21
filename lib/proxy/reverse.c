@@ -419,7 +419,7 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
 
 static int reverse_truncate_db_tables(pool *p) {
   int res;
-  const char *stmt, *errstr = NULL;
+  const char *index_name, *stmt, *errstr = NULL;
 
   stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts;";
   res = proxy_db_exec_stmt(p, stmt, &errstr);
@@ -484,40 +484,40 @@ static int reverse_truncate_db_tables(pool *p) {
     return -1;
   }
 
-  /* Note: don't forget to drop the indices, too! */
+  /* Note: don't forget to rebuild the indices, too! */
 
-  stmt = "DROP INDEX IF EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends_vhost_id_idx;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  index_name = PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends_vhost_id_idx";
+  res = proxy_db_reindex(p, index_name, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr);
+      "error reindexing '%s': %s", index_name, errstr);
     errno = EPERM;
     return -1;
   }
 
-  stmt = "DROP INDEX IF EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts_reverse_per_user_name_idx;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  index_name = PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts_reverse_per_user_name_idx";
+  res = proxy_db_reindex(p, index_name, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr);
+      "error reindexing '%s': %s", index_name, errstr);
     errno = EPERM;
     return -1;
   }
 
-  stmt = "DROP INDEX IF EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts_reverse_per_group_name_idx;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  index_name = PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts_reverse_per_group_name_idx";
+  res = proxy_db_reindex(p, index_name, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr);
+      "error reindexing '%s': %s", index_name, errstr);
     errno = EPERM;
     return -1;
   }
 
-  stmt = "DROP INDEX IF EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts_reverse_per_host_ipaddr_idx;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  index_name = PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts_reverse_per_host_ipaddr_idx";
+  res = proxy_db_reindex(p, index_name, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr);
+      "error reindexing '%s': %s", index_name, errstr);
     errno = EPERM;
     return -1;
   }

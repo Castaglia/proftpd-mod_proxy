@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy database API
- * Copyright (c) 2015 TJ Saunders
+ * Copyright (c) 2015-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -62,5 +62,8 @@ int proxy_db_exec_stmt(pool *p, const char *stmt, const char **errstr);
 /* Executes the given statement as a previously prepared statement. */
 array_header *proxy_db_exec_prepared_stmt(pool *p, const char *stmt,
   const char **errstr);
+
+/* Rebuild the named index. */
+int proxy_db_reindex(pool *p, const char *index_name, const char **errstr);
 
 #endif /* MOD_PROXY_DB_H */

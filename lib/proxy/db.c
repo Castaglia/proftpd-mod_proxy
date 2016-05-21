@@ -609,13 +609,6 @@ static void check_db_integrity(pool *p, const char *schema_name) {
     (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
       ": error executing statement '%s': %s", stmt, errstr);
   }
-
-  stmt = pstrcat(p, "REINDEX ", schema_name, ";", NULL);
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
-  if (res < 0) {
-    (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
-      ": error executing statement '%s': %s", stmt, errstr);
-  }
 }
 
 int proxy_db_open_with_version(pool *p, const char *table_path,
@@ -774,6 +767,15 @@ int proxy_db_close(pool *p, const char *schema_name) {
   prepared_stmts = NULL;
 
   return 0;
+}
+
+int proxy_db_reindex(pool *p, const char *index_name, const char **errstr) {
+  int res;
+  const char *stmt;
+
+  stmt = pstrcat(p, "REINDEX ", index_name, ";", NULL);
+  res = proxy_db_exec_stmt(p, stmt, errstr);
+  return res;
 }
 
 int proxy_db_init(pool *p) {
