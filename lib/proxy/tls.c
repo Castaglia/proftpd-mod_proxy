@@ -674,8 +674,85 @@ static const char *get_printable_san(pool *p, const char *data,
   return res;
 }
 
-static int cert_match_dns_san(pool *p, X509 *cert, const char *dns_name) {
-  int matched = 0;
+static int cert_match_wildcard(pool *p, const char *host_name,
+    const char *cert_name, size_t cert_namelen) {
+  register unsigned int i;
+  char *ptr, *ptr2;
+  unsigned int host_label_count = 1, cert_label_count = 1;
+  int res;
+  size_t host_namelen;
+
+  /* To be a valid wildcard pattern, we need a '*', a '.', and a top-level
+   * domain.  Thus if the length is less than 4 characters, it CANNOT be
+   * a wildcard match.
+   */
+  if (cert_namelen < 4) {
+    return FALSE;
+  }
+
+  /* If no '.', FALSE. */
+  ptr = strchr(cert_name, '.');
+  if (ptr == NULL) {
+    return FALSE;
+  }
+
+  /* If no '*', FALSE. */
+  ptr2 = strchr(cert_name, '*');
+  if (ptr2 == NULL) {
+    return FALSE;
+  }
+
+  /* If more than one '*', FALSE. */
+  if (strchr(ptr2 + 1, '*') != NULL) {
+    pr_trace_msg(trace_channel, 17,
+      "multiple '*' characters found in '%s', unable to use for wildcard "
+      "matching", cert_name);
+    return FALSE;
+  }
+
+  /* If not in leftmost label, FALSE. */
+  if (ptr2 > ptr) {
+    pr_trace_msg(trace_channel, 17,
+      "wildcard character in '%s' is NOT in the leftmost label", cert_name);
+    return FALSE;
+  }
+
+  /* If not the same number of labels, FALSE */
+  host_namelen = strlen(host_name);
+  for (i = 0; i < host_namelen; i++) {
+    if (host_name[i] == '.') {
+      host_label_count++;
+    }
+  }
+
+  for (i = 0; i < cert_namelen; i++) {
+    if (cert_name[i] == '.') {
+      cert_label_count++;
+    }
+  }
+
+  if (host_label_count != cert_label_count) {
+    pr_trace_msg(trace_channel, 17,
+      "cert name '%s' label count (%d) does not match host name '%s' "
+      "label count (%d)", cert_name,
+      cert_label_count, host_name, host_label_count);
+    return FALSE;
+  }
+
+  res = pr_fnmatch(cert_name, host_name, PR_FNM_NOESCAPE);
+  if (res == 0) {
+    return TRUE;
+  }
+
+  pr_trace_msg(trace_channel, 17,
+    "certificate name with wildcard '%s' did not match host name '%s'",
+    cert_name, host_name);
+  return FALSE;
+}
+
+static int cert_match_dns_san(pool *p, X509 *cert, const char *dns_name,
+    int allow_wildcards) {
+  int matched = FALSE;
 #if OPENSSL_VERSION_NUMBER > 0x000907000L
   STACK_OF(GENERAL_NAME) *sans;
 
@@ -717,17 +794,23 @@ static int cert_match_dns_san(pool *p, X509 *cert, const char *dns_name) {
         if (strncasecmp(dns_name, dns_san, dns_sanlen + 1) == 0) {
           pr_trace_msg(trace_channel, 8,
             "found cert dNSName SAN matching '%s'", dns_name);
-          matched = 1;
+          matched = TRUE;
 
         } else {
-          pr_trace_msg(trace_channel, 9,
-            "cert dNSName SAN '%s' did not match '%s'", dns_san, dns_name);
+          if (allow_wildcards) {
+            matched = cert_match_wildcard(p, dns_name, dns_san, dns_sanlen);
+          }
         }
+      }
+
+      if (matched == FALSE) {
+        pr_trace_msg(trace_channel, 9,
+          "cert dNSName SAN '%s' did not match '%s'", dns_san, dns_name);
       }
 
       GENERAL_NAME_free(alt_name);
 
-      if (matched == 1) {
+      if (matched == TRUE) {
         break;
       }
     }
@@ -740,7 +823,7 @@ static int cert_match_dns_san(pool *p, X509 *cert, const char *dns_name) {
 }
 
 static int cert_match_ip_san(pool *p, X509 *cert, const char *ipstr) {
-  int matched = 0;
+  int matched = FALSE;
   STACK_OF(GENERAL_NAME) *sans;
 
   sans = X509_get_ext_d2i(cert, NID_subject_alt_name, NULL, NULL);
@@ -800,7 +883,7 @@ static int cert_match_ip_san(pool *p, X509 *cert, const char *ipstr) {
           if (strncmp(ipstr, san_ipstr, san_ipstrlen + 1) == 0) {
             pr_trace_msg(trace_channel, 8,
               "found cert iPAddress SAN matching '%s'", ipstr);
-            matched = 1;
+            matched = TRUE;
 
           } else {
             if (san_datalen == 16) {
@@ -814,7 +897,7 @@ static int cert_match_ip_san(pool *p, X509 *cert, const char *ipstr) {
                   pr_trace_msg(trace_channel, 8,
                     "found cert iPAddress SAN '%s' matching '%s'",
                     san_ipstr, ipstr);
-                    matched = 1;
+                    matched = TRUE;
                 }
               }
 
@@ -828,7 +911,7 @@ static int cert_match_ip_san(pool *p, X509 *cert, const char *ipstr) {
 
       GENERAL_NAME_free(alt_name);
 
-      if (matched == 1) {
+      if (matched == TRUE) {
         break;
       }
     }
@@ -841,7 +924,7 @@ static int cert_match_ip_san(pool *p, X509 *cert, const char *ipstr) {
 
 static int cert_match_cn(pool *p, X509 *cert, const char *name,
     int allow_wildcards) {
-  int matched = 0, idx = -1;
+  int matched = FALSE, idx = -1;
   X509_NAME *subj_name = NULL;
   X509_NAME_ENTRY *cn_entry = NULL;
   ASN1_STRING *cn_asn1 = NULL;
@@ -913,11 +996,11 @@ static int cert_match_cn(pool *p, X509 *cert, const char *name,
   if (strncasecmp(name, cn_str, cn_len + 1) == 0) {
     pr_trace_msg(trace_channel, 12, "cert CommonName '%s' matches '%s'", cn_str,
       name);
-    matched = 1;
+    matched = TRUE;
 
   } else {
     if (allow_wildcards) {
-      /* XXX Implement wildcard checking. */
+       matched = cert_match_wildcard(p, name, cn_str, cn_len);
     }
   }
 
@@ -978,7 +1061,7 @@ static int check_server_cert(SSL *ssl, conn_t *conn, const char *host_name) {
   }
 
   if (ok == 0) {
-    ok = cert_match_dns_san(conn->pool, cert, host_name);
+    ok = cert_match_dns_san(conn->pool, cert, host_name, TRUE);
     if (ok == 0) {
       ok = cert_match_cn(conn->pool, cert, host_name, TRUE);
     }
