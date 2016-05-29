@@ -801,11 +801,11 @@ static int cert_match_dns_san(pool *p, X509 *cert, const char *dns_name,
             matched = cert_match_wildcard(p, dns_name, dns_san, dns_sanlen);
           }
         }
-      }
 
-      if (matched == FALSE) {
-        pr_trace_msg(trace_channel, 9,
-          "cert dNSName SAN '%s' did not match '%s'", dns_san, dns_name);
+        if (matched == FALSE) {
+          pr_trace_msg(trace_channel, 9,
+            "cert dNSName SAN '%s' did not match '%s'", dns_san, dns_name);
+        }
       }
 
       GENERAL_NAME_free(alt_name);
