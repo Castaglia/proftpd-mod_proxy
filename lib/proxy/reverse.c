@@ -960,7 +960,7 @@ static int reverse_db_roundrobin_next(pool *p, unsigned int vhost_id) {
   backend_id = atoi(((char **) results->elts)[0]);
 
   /* If the current backend ID is the last one, wrap around to index 0. */
-  if (backend_id == reverse_backends->nelts-1) {
+  if (backend_id == ((int) reverse_backends->nelts-1)) {
     backend_id = 0;
 
   } else {
@@ -1110,7 +1110,8 @@ static array_header *reverse_db_parse_uris(pool *p, array_header *uris) {
 
 /* SQL support routines. */
 
-static cmd_rec *reverse_db_sql_cmd_create(pool *parent_pool, int argc, ...) {
+static cmd_rec *reverse_db_sql_cmd_create(pool *parent_pool,
+    unsigned int argc, ...) {
   pool *cmd_pool = NULL;
   cmd_rec *cmd = NULL;
   register unsigned int i = 0;
@@ -2475,7 +2476,7 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
 }
 
 static int reverse_connect(pool *p, struct proxy_session *proxy_sess) {
-  register unsigned int i;
+  register int i;
   int res;
 
   for (i = 0; i < reverse_retry_count; i++) {
@@ -3224,7 +3225,7 @@ int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
   }
 
   if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_USER) {
-    register unsigned int i;
+    register int i;
     int connected = FALSE, xerrno = 0;
 
     for (i = 0; i < reverse_retry_count; i++) {
@@ -3407,7 +3408,7 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     }
 
     if (!(proxy_sess_state & PROXY_SESS_STATE_CONNECTED)) {
-      register unsigned int i;
+      register int i;
       int connected = FALSE;
       const char *user = NULL, *connect_name = NULL;
       cmd_rec *user_cmd;
