@@ -14,6 +14,13 @@ install:
   - sudo apt-get install -y libsqlite3-dev sqlite3
   # for static code analysis
   - sudo apt-get install -y cppcheck rats
+  # for test code coverage
+  - sudo apt-get install -y lcov
+  - gem install coveralls-lcov
+
+before_script:
+  - cd ${TRAVIS_BUILD_DIR}
+  - lcov --directory . --zerocounters
 
 script:
   # - find . -type f -name "*.c" -print | grep -v t\/ | xargs cppcheck 2>&1
@@ -28,10 +35,20 @@ script:
   - cp config* proftpd/contrib/mod_proxy/
   - cp install-sh proftpd/contrib/mod_proxy/
   - cd proftpd
-  - ./configure --enable-devel --enable-tests --with-modules=mod_tls:mod_proxy
+  - ./configure --enable-devel=coverage --enable-tests --with-modules=mod_tls:mod_proxy
   - make
-  - cd contrib/mod_proxy && make check && cd ../../
+  - cd contrib/mod_proxy && make TEST_VERBOSE=1 check && cd ../../
   - make clean
   - ./configure --enable-devel --enable-dso --enable-tests --with-shared=mod_tls:mod_proxy
   - make
 
+after_success:
+  - cd ${TRAVIS_BUILD_DIR}
+  # capture the test coverage info
+  - lcov --ignore-errors gcov,source --directory contrib/mod_proxy --capture --output-file coverage.info
+  # filter out system and test code
+  - lcov --remove coverage.info 'lib/glibc-glob.*' 'lib/pr_fnmatch_loop.*' 'tests/*' '/usr/*' --output-file coverage.info
+  # debug before upload
+  - lcov --list coverage.info
+  # upload coverage info to coveralls
+  - coveralls-lcov --repo-token AQqbgCW8kiFf9Wavusk36Xwf22BKdlZzK coverage.info

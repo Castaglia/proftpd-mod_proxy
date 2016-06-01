@@ -83,5 +83,5 @@ check:
 	test -z "$(ENABLE_TESTS)" || (cd t/ && $(MAKE) api-tests)
 
 dist: clean
-	$(RM) Makefile $(MODULE_NAME).h config.status config.cache config.log
+	$(RM) Makefile $(MODULE_NAME).h config.status config.cache config.log *.gcda *.gcno
 	-$(RM) -r .libs/ .git/ CVS/ RCS/
