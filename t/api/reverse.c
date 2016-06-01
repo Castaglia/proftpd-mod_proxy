@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2013-2015 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2013-2016 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -69,14 +69,21 @@ static void set_up(void) {
   }
 
   init_fs();
+
+  if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.reverse", 1, 20);
+  }
 }
 
 static void tear_down(void) {
   if (p) {
     destroy_pool(p);
-    p = NULL;
-    permanent_pool = NULL;
+    p = permanent_pool = NULL;
   } 
+
+  if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.reverse", 0, 0);
+  }
 
   test_cleanup();
 }
@@ -238,7 +245,8 @@ END_TEST
 START_TEST (reverse_json_parse_uris_usable_test) {
   array_header *uris;
   FILE *fh = NULL;
-  int res, expected;
+  int res;
+  unsigned int expected;
 
   test_cleanup();
   fh = test_prep();
@@ -270,7 +278,6 @@ Suite *tests_get_reverse_suite(void) {
   TCase *testcase;
 
   suite = suite_create("reverse");
-
   testcase = tcase_create("base");
 
   tcase_add_checked_fixture(testcase, set_up, tear_down);
