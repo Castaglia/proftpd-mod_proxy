@@ -30,6 +30,7 @@ script:
   - cd proftpd
   - ./configure --enable-devel --enable-tests --with-modules=mod_tls:mod_proxy
   - make
+  - make check
   - make clean
   - ./configure --enable-devel --enable-dso --enable-tests --with-shared=mod_tls:mod_proxy
   - make

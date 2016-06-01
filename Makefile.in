@@ -78,6 +78,10 @@ install-misc:
 clean:
 	$(LIBTOOL) --mode=clean $(RM) $(MODULE_NAME).a $(MODULE_NAME).la *.o *.gcno *.lo .libs/*.o lib/proxy/*.o lib/proxy/*.lo lib/proxy/ftp/*.o lib/proxy/ftp/*.lo
 
+# Run the API tests
+check:
+	test -z "$(ENABLE_TESTS)" || (cd t/ && $(MAKE) api-tests)
+
 dist: clean
 	$(RM) Makefile $(MODULE_NAME).h config.status config.cache config.log
 	-$(RM) -r .libs/ .git/ CVS/ RCS/
