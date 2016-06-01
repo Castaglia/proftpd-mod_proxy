@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy API testsuite
- * Copyright (c) 2012-2015 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2012-2016 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -88,123 +88,14 @@ int pr_log_writefile(int fd, const char *name, const char *fmt, ...) {
   return 0;
 }
 
-conn_t *pr_inet_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn, int rfd,
-    int wfd, unsigned char resolve) {
-  errno = ENOSYS;
-  return NULL;
-}
-
-void pr_inet_close(pool *p, conn_t *conn) {
-}
-
-int pr_inet_connect(pool *p, conn_t *conn, pr_netaddr_t *addr, int port) {
-  errno = ENOSYS;
-  return -1;
-}
-
-int pr_inet_connect_nowait(pool *p, conn_t *conn, pr_netaddr_t *addr,
-    int port) {
-  errno = ENOSYS;
-  return -1;
-}
-
-conn_t *pr_inet_create_conn(pool *p, int fd, pr_netaddr_t *bind_addr,
-    int port, int retry_bind) {
-  errno = ENOSYS;
-  return NULL;
-}
-
-int pr_inet_get_conn_info(conn_t *conn, int fd) {
-  errno = ENOSYS;
-  return -1;
-}
-
-int pr_inet_getservport(pool *p, const char *serv, const char *proto) {
-  errno = ENOSYS;
-  return -1;
-}
-
-int pr_inet_listen(pool *p, conn_t *conn, int backlog, int flags) {
-  return 0;
-}
-
-conn_t *pr_inet_openrw(pool *p, conn_t *conn, pr_netaddr_t *addr, int strm_type,
-    int fd, int rfd, int wfd, int resolve) {
-  errno = ENOSYS;
-  return NULL;
-}
-
-pr_netio_t *pr_get_netio(int strm_type) {
-  errno = ENOSYS;
-  return NULL;
-}
-
-int pr_register_netio(pr_netio_t *netio, int strm_types) {
-  return 0;
-}
-
-int pr_unregister_netio(int strm_types) {
-  return 0;
-}
-
-int pr_netio_close(pr_netio_stream_t *strm) {
-  return 0;
-}
-
-int pr_netio_lingering_abort(pr_netio_stream_t *strm, long linger) {
-  return 0;
-}
-
-int pr_netio_lingering_close(pr_netio_stream_t *strm, long linger) {
-  return 0;
-}
-
-pr_netio_stream_t *pr_netio_open(pool *p, int strm_type, int fd, int mode) {
-  errno = ENOSYS;
-  return NULL;
-}
-
-int pr_netio_poll(pr_netio_stream_t *nstrm) {
-  return 0;
-}
-
-int pr_netio_postopen(pr_netio_stream_t *nstrm) {
-  return 0;
-}
-
-int pr_netio_printf(pr_netio_stream_t *nstrm, const char *fmt, ...) {
-  return 0;
-}
-
-int pr_netio_printf_async(pr_netio_stream_t *nstrm, char *fmt, ...) {
-  return 0;
-}
-
-int pr_netio_read(pr_netio_stream_t *nstrm, char *buf, size_t bufsz,
-    int bufmin) {
-  return 0;
-}
-
-void pr_netio_set_poll_interval(pr_netio_stream_t *nstrm, unsigned int secs) {
-}
-
-int pr_netio_shutdown(pr_netio_stream_t *nstrm, int how) {
-  return 0;
-}
-
-int pr_netio_vprintf(pr_netio_stream_t *nstrm, const char *fmt, va_list msg) {
-  return 0;
-}
-
-int pr_netio_write(pr_netio_stream_t *nstrm, char *buf, size_t bufsz) {
-  return bufsz;
-}
-
 int pr_response_block(int block) {
   return 0;
 }
 
 void pr_response_send(const char *resp_code, const char *fmt, ...) {
+}
+
+void pr_response_send_async(const char *resp_code, const char *fmt, ...) {
 }
 
 int pr_scoreboard_entry_update(pid_t pid, ...) {
@@ -235,6 +126,11 @@ int pr_trace_msg(const char *channel, int level, const char *fmt, ...) {
   }
 
   return 0;
+}
+
+int pr_trace_set_levels(const char *channel, int min_level, int max_level) {
+  errno = ENOSYS;
+  return -1;
 }
 
 /* Module-specific stubs */

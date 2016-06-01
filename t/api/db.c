@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2015 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2015-2016 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,12 +33,20 @@ static void set_up(void) {
     p = make_sub_pool(NULL);
   }
 
+  if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.db", 1, 20);
+  }
+
   mark_point();
   proxy_db_init(p);
 }
 
 static void tear_down(void) {
   proxy_db_free();
+
+  if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.db", 0, 0);
+  }
 
   if (p) {
     destroy_pool(p);
@@ -50,7 +58,7 @@ START_TEST (db_open_test) {
   int res;
   char *table_path;
 
-  res = proxy_db_open(NULL, NULL);
+  res = proxy_db_open(NULL, NULL, NULL);
   fail_unless(res == -1, "Failed to handle null arguments");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL, got %s (%d)",
     strerror(errno), errno);
@@ -60,7 +68,7 @@ END_TEST
 START_TEST (db_close_test) {
   int res;
 
-  res = proxy_db_close(NULL);
+  res = proxy_db_close(NULL, NULL);
   fail_unless(res == -1, "Failed to handle null arguments");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL, got %s (%d)",
     strerror(errno), errno);
@@ -97,7 +105,7 @@ END_TEST
 START_TEST (db_bind_stmt_test) {
   int res;
   const char *stmt;
-  int idx, type;
+  int idx;
 
   res = proxy_db_bind_stmt(NULL, NULL, -1, -1, NULL);
   fail_unless(res == -1, "Failed to handle null arguments");
@@ -144,7 +152,6 @@ Suite *tests_get_db_suite(void) {
   TCase *testcase;
 
   suite = suite_create("db");
-
   testcase = tcase_create("base");
 
   tcase_add_checked_fixture(testcase, set_up, tear_down);
