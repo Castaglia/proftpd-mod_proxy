@@ -188,10 +188,10 @@ static char *tls_x509_name_oneline(X509_NAME *x509_name) {
   if (ok) {
     datalen = BIO_get_mem_data(mem, &data);
 
-    if (data) {
+    if (data != NULL) {
       memset(&buf, '\0', sizeof(buf));
 
-      if (datalen >= sizeof(buf)) {
+      if ((size_t) datalen >= sizeof(buf)) {
         datalen = sizeof(buf)-1;
       }
 
@@ -758,7 +758,7 @@ static int cert_match_dns_san(pool *p, X509 *cert, const char *dns_name,
 
   sans = X509_get_ext_d2i(cert, NID_subject_alt_name, NULL, NULL);
   if (sans != NULL) {
-    register unsigned int i;
+    register int i;
     int nsans = sk_GENERAL_NAME_num(sans);
 
     for (i = 0; i < nsans; i++) {
@@ -777,7 +777,7 @@ static int cert_match_dns_san(pool *p, X509 *cert, const char *dns_name,
          * only checks "www.goodguy.com".
          */
 
-        if (ASN1_STRING_length(alt_name->d.ia5) != dns_sanlen) {
+        if ((size_t) ASN1_STRING_length(alt_name->d.ia5) != dns_sanlen) {
           (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
             "cert dNSName SAN contains embedded NULs, "
             "rejecting as possible spoof attempt");
@@ -828,7 +828,7 @@ static int cert_match_ip_san(pool *p, X509 *cert, const char *ipstr) {
 
   sans = X509_get_ext_d2i(cert, NID_subject_alt_name, NULL, NULL);
   if (sans != NULL) {
-    register unsigned int i;
+    register int i;
     int nsans = sk_GENERAL_NAME_num(sans);
 
     for (i = 0; i < nsans; i++) {
@@ -978,7 +978,7 @@ static int cert_match_cn(pool *p, X509 *cert, const char *name,
 
   cn_len = strlen(cn_str);
 
-  if (ASN1_STRING_length(cn_asn1) != cn_len) {
+  if ((size_t) ASN1_STRING_length(cn_asn1) != cn_len) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "cert CommonName contains embedded NULs, rejecting as possible spoof "
       "attempt");
@@ -1265,7 +1265,7 @@ static int tls_verify_cb(int ok, X509_STORE_CTX *ctx) {
         break;
 
       case X509_V_ERR_INVALID_PURPOSE: {
-        register unsigned int i;
+        register int i;
         int count = X509_PURPOSE_get_count();
 
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -2371,7 +2371,8 @@ static unsigned int tls_psk_cb(SSL *ssl, const char *psk_hint, char *identity,
   }
 
   res = snprintf(identity, max_identity_len, "%s", tls_psk_name);
-  if (res < 0 || res > max_identity_len) {
+  if (res < 0 ||
+      res > (int) max_identity_len) {
     pr_trace_msg(trace_channel, 6,
       "error setting PSK identity to '%s'", tls_psk_name);
     return 0;
@@ -2904,7 +2905,7 @@ static const char *get_enabled_protocols_str(pool *p, unsigned int protos,
 
 # if defined(PSK_MAX_PSK_LEN)
 static int tls_load_psk(const char *identity, const char *path) {
-  register unsigned int i;
+  register int i;
   char key_buf[PR_TUNABLE_BUFFER_SIZE];
   int fd, key_len, valid_hex = TRUE, res, xerrno;
   struct stat st;

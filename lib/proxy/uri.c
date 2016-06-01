@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy URI implementation
- * Copyright (c) 2012-2015 TJ Saunders
+ * Copyright (c) 2012-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -223,7 +223,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
   *scheme = pstrndup(p, uri, len);
 
   res = strspn(*scheme, "abcdefghijklmnopqrstuvwxyz+.-");
-  if (res < len &&
+  if (res < (int) len &&
       *scheme[res] != '\0') {
     /* Invalid character in the scheme string, according to RFC 1738 rules. */
     pr_trace_msg(trace_channel, 4,

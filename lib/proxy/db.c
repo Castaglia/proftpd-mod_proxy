@@ -358,7 +358,7 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, const char *stmt,
 
   res = sqlite3_step(pstmt);
   while (res == SQLITE_ROW) {
-    register unsigned int i;
+    register int i;
     int ncols;
 
     ncols = sqlite3_column_count(pstmt);
