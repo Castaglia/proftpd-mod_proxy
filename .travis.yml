@@ -1,0 +1,32 @@
+env: TRAVIS_CI=true
+language: c
+
+compiler:
+  - gcc
+  - clang
+
+install:
+  # for unit tests
+  - sudo apt-get install -y check
+  # for OpenSSL support
+  - sudo apt-get install -y libssl-dev
+  # for mod_sql_sqlite
+  - sudo apt-get install -y libsqlite3-dev sqlite3
+  # for static code analysis
+  - sudo apt-get install -y cppcheck rats
+
+script:
+  # - find . -type f -name "*.c" -print | grep -v t\/ | xargs cppcheck 2>&1
+  # - find . -type f -name "*.c" -print | grep -v t\/ | xargs rats --language=c
+  - tar zcvf mod_proxy.tar.gz .
+  - git clone https://github.com/proftpd/proftpd.git
+  - mkdir -p proftpd/contrib/mod_proxy/
+  - mv mod_proxy.tar.gz proftpd/contrib/mod_proxy
+  - cd proftpd/contrib/mod_proxy && tar zxvf mod_proxy.tar.gz && rm mod_proxy.tar.gz
+  - cd proftpd
+  - ./configure --enable-devel --enable-tests --with-modules=mod_tls:mod_proxy
+  - make
+  - make clean
+  - ./configure --enable-devel --enable-dso --enable-tests --with-shared=mod_tls:mod_proxy
+  - make
+
