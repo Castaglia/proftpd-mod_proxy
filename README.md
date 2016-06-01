@@ -1,6 +1,15 @@
 proftpd-mod_proxy
 =================
 
+Status
+------
+[![Build Status](https://travis-ci.org/Castaglia/proftpd-mod_proxy.svg?branch=master)](https://travis-ci.org/Castaglia/proftpd-mod_proxy)
+[![License](https://img.shields.io/badge/license-GPL-brightgreen.svg)](https://img.shields.io/badge/license-GPL-brightgreen.svg)
+
+
+Synopsis
+--------
+
 The `mod_proxy` module for ProFTPD proxies FTP/FTPS connections, supporting
 both forward and reverse proxy configurations.
 
