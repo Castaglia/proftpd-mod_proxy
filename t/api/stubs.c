@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy API testsuite
- * Copyright (c) 2012-2015 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2012-2016 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -97,18 +97,18 @@ conn_t *pr_inet_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn, int rfd,
 void pr_inet_close(pool *p, conn_t *conn) {
 }
 
-int pr_inet_connect(pool *p, conn_t *conn, pr_netaddr_t *addr, int port) {
+int pr_inet_connect(pool *p, conn_t *conn, const pr_netaddr_t *addr, int port) {
   errno = ENOSYS;
   return -1;
 }
 
-int pr_inet_connect_nowait(pool *p, conn_t *conn, pr_netaddr_t *addr,
+int pr_inet_connect_nowait(pool *p, conn_t *conn, const pr_netaddr_t *addr,
     int port) {
   errno = ENOSYS;
   return -1;
 }
 
-conn_t *pr_inet_create_conn(pool *p, int fd, pr_netaddr_t *bind_addr,
+conn_t *pr_inet_create_conn(pool *p, int fd, const pr_netaddr_t *bind_addr,
     int port, int retry_bind) {
   errno = ENOSYS;
   return NULL;
@@ -128,8 +128,8 @@ int pr_inet_listen(pool *p, conn_t *conn, int backlog, int flags) {
   return 0;
 }
 
-conn_t *pr_inet_openrw(pool *p, conn_t *conn, pr_netaddr_t *addr, int strm_type,
-    int fd, int rfd, int wfd, int resolve) {
+conn_t *pr_inet_openrw(pool *p, conn_t *conn, const pr_netaddr_t *addr,
+    int strm_type, int fd, int rfd, int wfd, int resolve) {
   errno = ENOSYS;
   return NULL;
 }
