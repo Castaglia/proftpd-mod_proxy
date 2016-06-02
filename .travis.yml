@@ -43,9 +43,9 @@ script:
   - make
 
 after_success:
-  - cd ${TRAVIS_BUILD_DIR}
+  #- cd ${TRAVIS_BUILD_DIR}
   # capture the test coverage info
-  - lcov --ignore-errors gcov,source --directory proftpd/contrib/mod_proxy --capture --output-file coverage.info
+  - lcov --ignore-errors gcov,source --directory contrib/mod_proxy --capture --output-file coverage.info
   # filter out system and test code
   - lcov --remove coverage.info 'lib/glibc-glob.*' 'lib/pr_fnmatch_loop.*' 'tests/*' '/usr/*' --output-file coverage.info
   # debug before upload
