@@ -108,31 +108,6 @@ void pr_session_disconnect(module *m, int reason_code, const char *details) {
 void pr_signals_handle(void) {
 }
 
-int pr_trace_get_level(const char *channel) {
-  return 0;
-}
-
-int pr_trace_msg(const char *channel, int level, const char *fmt, ...) {
-  va_list msg;
-
-  if (getenv("TEST_VERBOSE") != NULL) {
-    fprintf(stderr, "<%s:%d>: ", channel, level);
-
-    va_start(msg, fmt);
-    vfprintf(stderr, fmt, msg);
-    va_end(msg);
-
-    fprintf(stderr, "\n");
-  }
-
-  return 0;
-}
-
-int pr_trace_set_levels(const char *channel, int min_level, int max_level) {
-  errno = ENOSYS;
-  return -1;
-}
-
 /* Module-specific stubs */
 
 cmd_rec *proxy_ftp_ctrl_recv_cmd(pool *p, conn_t *conn) {

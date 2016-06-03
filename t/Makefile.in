@@ -35,6 +35,7 @@ TEST_API_DEPS=\
   $(top_srcdir)/src/netaddr.o \
   $(top_srcdir)/src/auth.o \
   $(top_srcdir)/src/env.o \
+  $(top_srcdir)/src/trace.o \
   $(top_srcdir)/src/support.o \
   $(module_srcdir)/lib/proxy/random.o \
   $(module_srcdir)/lib/proxy/db.o \
