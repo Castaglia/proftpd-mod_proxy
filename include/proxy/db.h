@@ -41,6 +41,8 @@ int proxy_db_open(pool *p, const char *table_path, const char *schema_name);
 int proxy_db_open_with_version(pool *p, const char *table_path,
   const char *schema_name, unsigned int schema_version, int flags);
 #define PROXY_DB_OPEN_FL_ERROR_ON_SCHEMA_VERSION_SKEW		0x001
+#define PROXY_DB_OPEN_FL_SKIP_INTEGRITY_CHECK			0x002
+#define PROXY_DB_OPEN_FL_SKIP_VACUUM				0x004
 
 /* Close the database. */
 int proxy_db_close(pool *p, const char *schema_name);

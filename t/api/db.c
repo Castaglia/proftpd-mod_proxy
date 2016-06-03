@@ -132,7 +132,7 @@ START_TEST (db_open_test) {
 END_TEST
 
 START_TEST (db_open_with_version_test) {
-  int res, flags;
+  int res, flags = 0;
   const char *table_path, *schema_name;
   unsigned int schema_version;
 
@@ -145,7 +145,11 @@ START_TEST (db_open_with_version_test) {
   table_path = db_test_table;
   schema_name = "proxy_test";
   schema_version = 0;
-  flags = 0;
+
+  if (getenv("TRAVIS_CI") != NULL) {
+    /* Disable the integrity checks, vacuuming for these tests. */
+    flags |= PROXY_DB_OPEN_FL_SKIP_INTEGRITY_CHECK;
+  }
 
   mark_point();
   res = proxy_db_open_with_version(p, table_path, schema_name, schema_version,
@@ -159,7 +163,7 @@ START_TEST (db_open_with_version_test) {
 
   mark_point();
   schema_version = 76;
-  flags = PROXY_DB_OPEN_FL_ERROR_ON_SCHEMA_VERSION_SKEW;
+  flags |= PROXY_DB_OPEN_FL_ERROR_ON_SCHEMA_VERSION_SKEW;
   res = proxy_db_open_with_version(p, table_path, schema_name, schema_version,
     flags);
   fail_unless(res < 0, "Opened table with version skew unexpectedly");
@@ -170,7 +174,7 @@ START_TEST (db_open_with_version_test) {
   fail_unless(res == 0, "Failed to close database: %s", strerror(errno));
 
   mark_point();
-  flags = 0;
+  flags &= ~PROXY_DB_OPEN_FL_ERROR_ON_SCHEMA_VERSION_SKEW;
   res = proxy_db_open_with_version(p, table_path, schema_name, schema_version,
     flags);
   fail_unless(res == 0,

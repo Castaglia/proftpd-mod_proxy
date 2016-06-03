@@ -625,7 +625,7 @@ static int set_schema_version(pool *p, const char *schema_name,
   return 0;
 }
 
-static void check_db_integrity(pool *p, const char *schema_name) {
+static void check_db_integrity(pool *p, const char *schema_name, int flags) {
   int res;
   const char *stmt, *errstr = NULL;
 
@@ -636,18 +636,22 @@ static void check_db_integrity(pool *p, const char *schema_name) {
     return;
   }
 
-  stmt = pstrcat(p, "PRAGMA ", schema_name, ".integrity_check;", NULL);
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
-  if (res < 0) {
-    (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
-      ": error executing statement '%s': %s", stmt, errstr);
+  if (!(flags & PROXY_DB_OPEN_FL_SKIP_INTEGRITY_CHECK)) {
+    stmt = pstrcat(p, "PRAGMA ", schema_name, ".integrity_check;", NULL);
+    res = proxy_db_exec_stmt(p, stmt, &errstr);
+    if (res < 0) {
+      (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
+        ": error executing statement '%s': %s", stmt, errstr);
+    }
   }
 
-  stmt = "VACUUM;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
-  if (res < 0) {
-    (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
-      ": error executing statement '%s': %s", stmt, errstr);
+  if (!(flags & PROXY_DB_OPEN_FL_SKIP_VACUUM)) {
+    stmt = "VACUUM;";
+    res = proxy_db_exec_stmt(p, stmt, &errstr);
+    if (res < 0) {
+      (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
+        ": error executing statement '%s': %s", stmt, errstr);
+    }
   }
 }
 
@@ -681,7 +685,7 @@ int proxy_db_open_with_version(pool *p, const char *table_path,
       "schema version %u >= desired version %u for schema '%s'",
       current_version, schema_version, schema_name);
 
-    check_db_integrity(tmp_pool, schema_name);
+    check_db_integrity(tmp_pool, schema_name, flags);
     destroy_pool(tmp_pool);
 
     return 0;
