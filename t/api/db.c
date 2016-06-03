@@ -147,6 +147,7 @@ START_TEST (db_open_with_version_test) {
   schema_version = 0;
   flags = 0;
 
+  mark_point();
   res = proxy_db_open_with_version(p, table_path, schema_name, schema_version,
     flags);
   fail_unless(res == 0,
@@ -156,6 +157,7 @@ START_TEST (db_open_with_version_test) {
   res = proxy_db_close(p, NULL);
   fail_unless(res == 0, "Failed to close database: %s", strerror(errno));
 
+  mark_point();
   schema_version = 76;
   flags = PROXY_DB_OPEN_FL_ERROR_ON_SCHEMA_VERSION_SKEW;
   res = proxy_db_open_with_version(p, table_path, schema_name, schema_version,
@@ -167,6 +169,7 @@ START_TEST (db_open_with_version_test) {
   res = proxy_db_close(p, NULL);
   fail_unless(res == 0, "Failed to close database: %s", strerror(errno));
 
+  mark_point();
   flags = 0;
   res = proxy_db_open_with_version(p, table_path, schema_name, schema_version,
     flags);
@@ -177,6 +180,7 @@ START_TEST (db_open_with_version_test) {
   res = proxy_db_close(p, NULL);
   fail_unless(res == 0, "Failed to close database: %s", strerror(errno));
 
+  mark_point();
   schema_version = 76;
   res = proxy_db_open_with_version(p, table_path, schema_name, schema_version,
     flags);
@@ -188,6 +192,7 @@ START_TEST (db_open_with_version_test) {
   fail_unless(res == 0, "Failed to detach schema '%s': %s", schema_name,
     strerror(errno));
 
+  mark_point();
   schema_version = 99;
   res = proxy_db_open_with_version(p, table_path, schema_name, schema_version,
     flags);
