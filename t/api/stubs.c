@@ -81,7 +81,55 @@ void pr_log_debug(int level, const char *fmt, ...) {
   }
 }
 
+int pr_log_event_generate(unsigned int log_type, int log_fd, int log_level,
+    const char *log_msg, size_t log_msglen) {
+  errno = ENOSYS;
+  return -1;
+}
+
+int pr_log_event_listening(unsigned int log_type) {
+  return FALSE;
+}
+
+int pr_log_openfile(const char *log_file, int *log_fd, mode_t log_mode) {
+  int res;
+  struct stat st;
+
+  if (log_file == NULL ||
+      log_fd == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  res = stat(log_file, &st);
+  if (res < 0) {
+    if (errno != ENOENT) {
+      return -1;
+    }
+
+  } else {
+    if (S_ISDIR(st.st_mode)) {
+      errno = EISDIR;
+      return -1;
+    }
+  }
+
+  *log_fd = STDERR_FILENO;
+  return 0;
+}
+
 void pr_log_pri(int prio, const char *fmt, ...) {
+  if (getenv("TEST_VERBOSE") != NULL) {
+    va_list msg;
+
+    fprintf(stderr, "PRI%d: ", prio);
+
+    va_start(msg, fmt);
+    vfprintf(stderr, fmt, msg);
+    va_end(msg);
+
+    fprintf(stderr, "\n");
+  }
 }
 
 int pr_log_writefile(int fd, const char *name, const char *fmt, ...) {
@@ -106,31 +154,6 @@ void pr_session_disconnect(module *m, int reason_code, const char *details) {
 }
 
 void pr_signals_handle(void) {
-}
-
-int pr_trace_get_level(const char *channel) {
-  return 0;
-}
-
-int pr_trace_msg(const char *channel, int level, const char *fmt, ...) {
-  va_list msg;
-
-  if (getenv("TEST_VERBOSE") != NULL) {
-    fprintf(stderr, "<%s:%d>: ", channel, level);
-
-    va_start(msg, fmt);
-    vfprintf(stderr, fmt, msg);
-    va_end(msg);
-
-    fprintf(stderr, "\n");
-  }
-
-  return 0;
-}
-
-int pr_trace_set_levels(const char *channel, int min_level, int max_level) {
-  errno = ENOSYS;
-  return -1;
 }
 
 /* Module-specific stubs */

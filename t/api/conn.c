@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2013-2015 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2013-2016 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -92,7 +92,7 @@ END_TEST
 START_TEST (conn_get_addr_test) {
   struct proxy_conn *pconn;
   const char *ipstr, *url;
-  pr_netaddr_t *pconn_addr;
+  const pr_netaddr_t *pconn_addr;
   array_header *other_addrs = NULL;
  
   pconn_addr = proxy_conn_get_addr(NULL, NULL);

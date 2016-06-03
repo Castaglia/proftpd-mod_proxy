@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy API testsuite
- * Copyright (c) 2012-2015 TJ Saunders
+ * Copyright (c) 2012-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -96,9 +96,17 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  /* Configure the Trace API to write to stderr. */
+  pr_trace_use_stderr(TRUE);
+
   requested = getenv("PROXY_TEST_NOFORK");
   if (requested) {
     srunner_set_fork_status(runner, CK_NOFORK);
+  } else {
+    requested = getenv("CK_DEFAULT_TIMEOUT");
+    if (requested == NULL) {
+      setenv("CK_DEFAULT_TIMEOUT", "60", 1);
+    }
   }
 
   srunner_run_all(runner, CK_NORMAL);

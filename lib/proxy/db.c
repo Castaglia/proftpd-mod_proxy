@@ -71,6 +71,13 @@ int proxy_db_exec_stmt(pool *p, const char *stmt, const char **errstr) {
     return -1;
   }
 
+  if (proxy_dbh == NULL) {
+    pr_trace_msg(trace_channel, 3,
+      "unable to execute statement '%s': no open database handle", stmt);
+    errno = EPERM;
+    return -1;
+  }
+
   res = sqlite3_exec(proxy_dbh, stmt, stmt_cb, (void *) stmt, &ptr);
   while (res != SQLITE_OK) {
     if (res == SQLITE_BUSY) {
@@ -104,6 +111,7 @@ int proxy_db_exec_stmt(pool *p, const char *stmt, const char **errstr) {
     }
 
     sqlite3_free(ptr);
+    errno = EINVAL;
     return -1;
   }
 
@@ -121,8 +129,16 @@ int proxy_db_prepare_stmt(pool *p, const char *stmt) {
   sqlite3_stmt *pstmt = NULL;
   int res;
 
-  if (stmt == NULL) {
+  if (p == NULL ||
+      stmt == NULL) {
     errno = EINVAL;
+    return -1;
+  }
+
+  if (proxy_dbh == NULL) {
+    pr_trace_msg(trace_channel, 3,
+      "unable to prepare statement '%s': no open database handle", stmt);
+    errno = EPERM;
     return -1;
   }
 
@@ -209,6 +225,8 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
         pr_trace_msg(trace_channel, 4,
           "error binding parameter %d of '%s' to INT %d: %s", idx, stmt, i,
           sqlite3_errmsg(proxy_dbh));
+        errno = EPERM;
+        return -1;
       }
       break;
     }
@@ -227,6 +245,8 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
         pr_trace_msg(trace_channel, 4,
           "error binding parameter %d of '%s' to LONG %ld: %s", idx, stmt, l,
           sqlite3_errmsg(proxy_dbh));
+        errno = EPERM;
+        return -1;
       }
       break;
     }
@@ -245,6 +265,8 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
         pr_trace_msg(trace_channel, 4,
           "error binding parameter %d of '%s' to TEXT '%s': %s", idx, stmt,
           text, sqlite3_errmsg(proxy_dbh));
+        errno = EPERM;
+        return -1;
       }
       break;
     }
@@ -255,6 +277,8 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
         pr_trace_msg(trace_channel, 4,
           "error binding parameter %d of '%s' to NULL: %s", idx, stmt,
           sqlite3_errmsg(proxy_dbh));
+        errno = EPERM;
+        return -1;
       }
       break;
 
@@ -313,6 +337,14 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, const char *stmt,
   if (p == NULL ||
       stmt == NULL) {
     errno = EINVAL;
+    return NULL;
+  }
+
+  if (proxy_dbh == NULL) {
+    pr_trace_msg(trace_channel, 3,
+      "unable to execute prepared statement '%s': no open database handle",
+      stmt);
+    errno = EPERM;
     return NULL;
   }
 
@@ -411,10 +443,15 @@ int proxy_db_open(pool *p, const char *table_path, const char *schema_name) {
   const char *stmt;
 
   if (p == NULL ||
-      table_path == NULL) {
+      table_path == NULL ||
+      schema_name == NULL) {
     errno = EINVAL;
     return -1;
   }
+
+  pr_trace_msg(trace_channel, 19,
+    "attempting to open table at path '%s', with schema '%s'", table_path,
+    schema_name);
 
   /* If we already have a database handle open, then attach the given
    * path to our handle.  Otherwise, open/create the database file first.
@@ -588,26 +625,33 @@ static int set_schema_version(pool *p, const char *schema_name,
   return 0;
 }
 
-static void check_db_integrity(pool *p, const char *schema_name) {
+static void check_db_integrity(pool *p, const char *schema_name, int flags) {
   int res;
   const char *stmt, *errstr = NULL;
 
   if (proxy_dbh == NULL) {
+    pr_trace_msg(trace_channel, 9,
+      "unable to check integrity of schema '%s': no open database handle",
+      schema_name);
     return;
   }
 
-  stmt = pstrcat(p, "PRAGMA ", schema_name, ".integrity_check;", NULL);
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
-  if (res < 0) {
-    (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
-      ": error executing statement '%s': %s", stmt, errstr);
+  if (!(flags & PROXY_DB_OPEN_FL_SKIP_INTEGRITY_CHECK)) {
+    stmt = pstrcat(p, "PRAGMA ", schema_name, ".integrity_check;", NULL);
+    res = proxy_db_exec_stmt(p, stmt, &errstr);
+    if (res < 0) {
+      (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
+        ": error executing statement '%s': %s", stmt, errstr);
+    }
   }
 
-  stmt = "VACUUM;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
-  if (res < 0) {
-    (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
-      ": error executing statement '%s': %s", stmt, errstr);
+  if (!(flags & PROXY_DB_OPEN_FL_SKIP_VACUUM)) {
+    stmt = "VACUUM;";
+    res = proxy_db_exec_stmt(p, stmt, &errstr);
+    if (res < 0) {
+      (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
+        ": error executing statement '%s': %s", stmt, errstr);
+    }
   }
 }
 
@@ -621,6 +665,10 @@ int proxy_db_open_with_version(pool *p, const char *table_path,
   if (res < 0) {
     return -1;
   }
+
+  pr_trace_msg(trace_channel, 19,
+    "ensuring that table at path '%s', schema '%s', has at least schema "
+    "version %u", table_path, schema_name, schema_version);
 
   tmp_pool = make_sub_pool(p);
   res = get_schema_version(tmp_pool, schema_name, &current_version);
@@ -637,7 +685,7 @@ int proxy_db_open_with_version(pool *p, const char *table_path,
       "schema version %u >= desired version %u for schema '%s'",
       current_version, schema_version, schema_name);
 
-    check_db_integrity(tmp_pool, schema_name);
+    check_db_integrity(tmp_pool, schema_name, flags);
     destroy_pool(tmp_pool);
 
     return 0;
@@ -651,6 +699,24 @@ int proxy_db_open_with_version(pool *p, const char *table_path,
     errno = EPERM;
     return -1;
   }
+
+  /* TODO: Use:
+   *
+   *  PRAGMA database_list;
+   *
+   * to list any other attached databases with this handle.  Note that if
+   * there ARE other attached databases, then simply unlinking the database
+   * file associated with this schema will cause a problem (i.e. corrupting
+   * the SQLite database).  We could avoid this by closing the database handle
+   * itself IFF there are no other attached databases.  Otherwise, we need
+   * to close the database handle, and then re-attach those other databases.
+   *
+   * The output from the `database_list` pragma looks like e.g.:
+   *
+   *  sqlite> pragma database_list;
+   *  0|main|/Users/tj/test.db
+   *  2|test2|/Users/tj/test2.db
+   */
 
   proxy_db_close(p, schema_name);
   if (unlink(table_path) < 0) {
@@ -772,6 +838,12 @@ int proxy_db_close(pool *p, const char *schema_name) {
 int proxy_db_reindex(pool *p, const char *index_name, const char **errstr) {
   int res;
   const char *stmt;
+
+  if (p == NULL ||
+      index_name == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
 
   stmt = pstrcat(p, "REINDEX ", index_name, ";", NULL);
   res = proxy_db_exec_stmt(p, stmt, errstr);
