@@ -45,7 +45,7 @@ script:
 after_success:
   - cd ${TRAVIS_BUILD_DIR}
   # capture the test coverage info
-  - lcov --ignore-errors gcov,source --directory proftpd/contrib/mod_proxy --capture --output-file coverage.info
+  - lcov --ignore-errors gcov,source --base-directory ${TRAVIS_BUILD_DIR}/proftpd/contrib/mod_proxy --directory proftpd/contrib/mod_proxy --capture --output-file coverage.info
   # filter out system and test code
   - lcov --remove coverage.info 't/*' '/usr/*' --output-file coverage.info
   # debug before upload
