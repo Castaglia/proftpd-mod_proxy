@@ -449,6 +449,10 @@ int proxy_db_open(pool *p, const char *table_path, const char *schema_name) {
     return -1;
   }
 
+  pr_trace_msg(trace_channel, 19,
+    "attempting to open table at path '%s', with schema '%s'", table_path,
+    schema_name);
+
   /* If we already have a database handle open, then attach the given
    * path to our handle.  Otherwise, open/create the database file first.
    */
@@ -657,6 +661,10 @@ int proxy_db_open_with_version(pool *p, const char *table_path,
   if (res < 0) {
     return -1;
   }
+
+  pr_trace_msg(trace_channel, 19,
+    "ensuring that table at path '%s', schema '%s', has at least schema "
+    "version %u", table_path, schema_name, schema_version);
 
   tmp_pool = make_sub_pool(p);
   res = get_schema_version(tmp_pool, schema_name, &current_version);
