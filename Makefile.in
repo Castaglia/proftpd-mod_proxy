@@ -76,7 +76,7 @@ install-misc:
 	$(INSTALL) -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0644 cacerts.pem $(DESTDIR)$(sysconfdir)/cacerts.pem
 
 clean:
-	$(LIBTOOL) --mode=clean $(RM) $(MODULE_NAME).a $(MODULE_NAME).la *.o *.gcno *.lo .libs/*.o lib/proxy/*.o lib/proxy/*.lo lib/proxy/ftp/*.o lib/proxy/ftp/*.lo
+	$(LIBTOOL) --mode=clean $(RM) $(MODULE_NAME).a $(MODULE_NAME).la *.o *.lo .libs/*.o lib/proxy/*.o lib/proxy/*.lo lib/proxy/ftp/*.o lib/proxy/ftp/*.lo
 
 # Run the API tests
 check:
