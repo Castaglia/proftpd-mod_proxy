@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2013-2015 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2013-2016 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -61,7 +61,7 @@ START_TEST (random_next_range_10_test) {
 END_TEST
 
 START_TEST (random_next_range_1000_test) {
-  register unsigned int i;
+  register int i;
   long min, max;
   int count = 10, seen[10];
 

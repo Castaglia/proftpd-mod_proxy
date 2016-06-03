@@ -148,7 +148,7 @@ START_TEST (db_open_with_version_test) {
 
   if (getenv("TRAVIS_CI") != NULL) {
     /* Disable the integrity checks, vacuuming for these tests. */
-    flags |= PROXY_DB_OPEN_FL_SKIP_INTEGRITY_CHECK;
+    flags |= PROXY_DB_OPEN_FL_SKIP_VACUUM;
   }
 
   mark_point();
