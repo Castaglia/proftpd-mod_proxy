@@ -45,7 +45,7 @@ static void tear_down(void) {
 
   if (p) {
     destroy_pool(p);
-    p = permanent_pool NULL;
+    p = permanent_pool = NULL;
   }
 }
 
@@ -58,14 +58,12 @@ START_TEST (conn_create_test) {
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
 
   mark_point();
-
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(NULL, url);
   fail_unless(pconn == NULL, "Failed to handle null pool argument");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
 
   mark_point();
-
   pconn = proxy_conn_create(p, NULL);
   fail_unless(pconn == NULL, "Failed to handle null URL argument");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
@@ -75,25 +73,24 @@ START_TEST (conn_create_test) {
    */
 
   mark_point();
-
   url = "http://127.0.0.1:80";
   pconn = proxy_conn_create(p, url);
   fail_unless(pconn == NULL, "Failed to handle unsupported protocol/scheme");
   fail_unless(errno == EPERM, "Failed to set errno to EPERM");
 
   mark_point();
-
   url = "ftp://foo.bar.baz";
   pconn = proxy_conn_create(p, url);
   fail_unless(pconn == NULL, "Failed to handle unresolvable host");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
 
   mark_point();
-
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url);
   fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
     url);
+
+  proxy_conn_free(pconn);
 }
 END_TEST
 
@@ -117,6 +114,55 @@ START_TEST (conn_get_addr_test) {
   ipstr = pr_netaddr_get_ipstr(pconn_addr);
   fail_unless(strcmp(ipstr, "127.0.0.1") == 0,
     "Expected IP address '127.0.0.1', got '%s'", ipstr);
+
+  proxy_conn_free(pconn);
+}
+END_TEST
+
+START_TEST (conn_get_host_test) {
+  const char *host, *url, *expected;
+  const struct proxy_conn *pconn;
+
+  host = proxy_conn_get_host(NULL);
+  fail_unless(host == NULL, "Got host from null pconn unexpectedly");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  url = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  host = proxy_conn_get_host(pconn);
+  fail_unless(host != NULL, "Failed to get host from conn: %s",
+    strerror(errno));
+  expected = "127.0.0.1";
+  fail_unless(strcmp(host, expected) == 0, "Expected host '%s', got '%s'",
+    expected, host);
+
+  proxy_conn_free(pconn);
+}
+END_TEST
+
+START_TEST (conn_get_port_test) {
+  int port;
+  const char *url;
+  const struct proxy_conn *pconn;
+
+  port = proxy_conn_get_port(NULL);
+  fail_unless(port < 0, "Got port from null pconn unexpectedly");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  url = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  port = proxy_conn_get_port(pconn);
+  fail_unless(port == 21, "Expected port 21, got %d", port);
+
+  proxy_conn_free(pconn);
 }
 END_TEST
 
@@ -126,7 +172,8 @@ START_TEST (conn_get_hostport_test) {
 
   hostport = proxy_conn_get_hostport(NULL);
   fail_unless(hostport == NULL, "Failed to handle null argument");
-  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
  
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url);
@@ -139,6 +186,8 @@ START_TEST (conn_get_hostport_test) {
     "Expected host/port '127.0.0.1:21', got '%s'", hostport);
 
   /* Implicit/assumed ports */
+  proxy_conn_free(pconn);
+
   url = "ftp://127.0.0.1";
   pconn = proxy_conn_create(p, url);
   fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
@@ -148,6 +197,8 @@ START_TEST (conn_get_hostport_test) {
   fail_if(hostport == NULL, "Failed to get host/port for pconn");
   fail_unless(strcmp(hostport, "127.0.0.1:21") == 0,
     "Expected host/port '127.0.0.1:21', got '%s'", hostport);
+
+  proxy_conn_free(pconn);
 }
 END_TEST
 
@@ -168,6 +219,212 @@ START_TEST (conn_get_uri_test) {
   fail_if(pconn_url == NULL, "Failed to get URL for pconn");
   fail_unless(strcmp(pconn_url, url) == 0,
     "Expected URL '%s', got '%s'", url, pconn_url);
+
+  proxy_conn_free(pconn);
+}
+END_TEST
+
+START_TEST (conn_get_username_test) {
+  const char *username, *url, *expected;
+  const struct proxy_conn *pconn;
+
+  username = proxy_conn_get_username(NULL);
+  fail_unless(username == NULL, "Got username from null pconn unexpectedly");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  url = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  username = proxy_conn_get_username(pconn);
+  fail_unless(username == NULL, "Got username unexpectedly");
+  proxy_conn_free(pconn);
+
+  url = "ftp://user:passwd@127.0.0.1:2121";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  username = proxy_conn_get_username(pconn);
+  fail_unless(username != NULL, "Expected username from conn");
+  expected = "user";
+  fail_unless(strcmp(username, expected) == 0,
+    "Expected username '%s', got '%s'", expected, username);
+
+  proxy_conn_free(pconn);
+}
+END_TEST
+
+START_TEST (conn_get_password_test) {
+  const char *passwd, *url, *expected;
+  const struct proxy_conn *pconn;
+
+  passwd = proxy_conn_get_password(NULL);
+  fail_unless(passwd == NULL, "Got password from null pconn unexpectedly");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  url = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  passwd = proxy_conn_get_password(pconn);
+  fail_unless(passwd == NULL, "Got password unexpectedly");
+  proxy_conn_free(pconn);
+
+  url = "ftp://user:passwd@127.0.0.1:2121";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  passwd = proxy_conn_get_password(pconn);
+  fail_unless(passwd != NULL, "Expected password from conn");
+  expected = "passwd";
+  fail_unless(strcmp(passwd, expected) == 0,
+    "Expected password '%s', got '%s'", expected, passwd);
+  proxy_conn_free(pconn);
+
+  url = "ftp://user:@127.0.0.1:2121";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  passwd = proxy_conn_get_password(pconn);
+  fail_unless(passwd != NULL, "Expected password from conn");
+  expected = "";
+  fail_unless(strcmp(passwd, expected) == 0,
+    "Expected password '%s', got '%s'", expected, passwd);
+
+  proxy_conn_free(pconn);
+}
+END_TEST
+
+START_TEST (conn_get_tls_test) {
+  int tls;
+  const char *url;
+  const struct proxy_conn *pconn;
+
+  tls = proxy_conn_get_tls(NULL);
+  fail_unless(tls < 0, "Got TLS from null pconn unexpectedly");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  url = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  tls = proxy_conn_get_tls(pconn);
+  fail_unless(tls == PROXY_TLS_ENGINE_AUTO, "Expected TLS auto, got %d", tls);
+  proxy_conn_free(pconn);
+
+  url = "ftps://127.0.0.1:21";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  tls = proxy_conn_get_tls(pconn);
+  fail_unless(tls == PROXY_TLS_ENGINE_ON, "Expected TLS on, got %d", tls);
+
+  proxy_conn_free(pconn);
+}
+END_TEST
+
+START_TEST (conn_get_server_conn_test) {
+  /* XXX TODO */
+}
+END_TEST
+
+START_TEST (conn_clear_username_test) {
+  const char *username, *url, *expected;
+  const struct proxy_conn *pconn;
+
+  mark_point();
+  proxy_conn_clear_username(NULL);
+
+  url = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  username = proxy_conn_get_username(pconn);
+  fail_unless(username == NULL, "Got username unexpectedly");
+
+  mark_point();
+  proxy_conn_clear_username(pconn);
+  proxy_conn_free(pconn);
+
+  url = "ftp://user:passwd@127.0.0.1:2121";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  username = proxy_conn_get_username(pconn);
+  fail_unless(username != NULL, "Expected username from conn");
+  expected = "user";
+  fail_unless(strcmp(username, expected) == 0,
+    "Expected username '%s', got '%s'", expected, username);
+
+  mark_point();
+  proxy_conn_clear_username(pconn);
+
+  username = proxy_conn_get_username(pconn);
+  fail_unless(username == NULL, "Expected null username, got '%s'", username);
+
+  proxy_conn_free(pconn);
+}
+END_TEST
+
+START_TEST (conn_clear_password_test) {
+  const char *passwd, *url, *expected;
+  const struct proxy_conn *pconn;
+
+  mark_point();
+  proxy_conn_clear_password(NULL);
+
+  url = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  passwd = proxy_conn_get_password(pconn);
+  fail_unless(passwd == NULL, "Got password unexpectedly");
+
+  mark_point();
+  proxy_conn_clear_password(pconn);
+  proxy_conn_free(pconn);
+
+  url = "ftp://user:passwd@127.0.0.1:2121";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  passwd = proxy_conn_get_password(pconn);
+  fail_unless(passwd != NULL, "Expected password from conn");
+  expected = "passwd";
+  fail_unless(strcmp(passwd, expected) == 0,
+    "Expected password '%s', got '%s'", expected, passwd);
+
+  mark_point();
+  proxy_conn_clear_password(pconn);
+
+  passwd = proxy_conn_get_password(pconn);
+  fail_unless(passwd == NULL, "Expected null password, got '%s'", passwd);
+
+  proxy_conn_free(pconn);
+}
+END_TEST
+
+START_TEST (conn_timeout_cb_test) {
+  /* XXX TODO */
+}
+END_TEST
+
+START_TEST (conn_send_proxy_test) {
+  /* XXX TODO */
 }
 END_TEST
 
@@ -176,15 +433,24 @@ Suite *tests_get_conn_suite(void) {
   TCase *testcase;
 
   suite = suite_create("conn");
-
   testcase = tcase_create("base");
 
   tcase_add_checked_fixture(testcase, set_up, tear_down);
 
   tcase_add_test(testcase, conn_create_test);
   tcase_add_test(testcase, conn_get_addr_test);
+  tcase_add_test(testcase, conn_get_host_test);
+  tcase_add_test(testcase, conn_get_port_test);
   tcase_add_test(testcase, conn_get_hostport_test);
   tcase_add_test(testcase, conn_get_uri_test);
+  tcase_add_test(testcase, conn_get_username_test);
+  tcase_add_test(testcase, conn_get_password_test);
+  tcase_add_test(testcase, conn_get_tls_test);
+  tcase_add_test(testcase, conn_get_server_conn_test);
+  tcase_add_test(testcase, conn_clear_username_test);
+  tcase_add_test(testcase, conn_clear_password_test);
+  tcase_add_test(testcase, conn_timeout_cb_test);
+  tcase_add_test(testcase, conn_send_proxy_test);
 
   suite_add_tcase(suite, testcase);
   return suite;
