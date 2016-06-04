@@ -54,7 +54,6 @@ static void tear_down(void) {
 }
 
 START_TEST (netio_set_test) {
-#if 0
   pr_netio_t *netio = NULL;
   int res, strm_type = PR_NETIO_STRM_OTHR;
 
@@ -73,12 +72,10 @@ START_TEST (netio_set_test) {
   mark_point();
   res = proxy_netio_set(strm_type, netio);
   fail_unless(res == 0, "Failed to set null othr netio: %s", strerror(errno));
-#endif
 }
 END_TEST
 
 START_TEST (netio_use_test) {
-#if 0
   pr_netio_t *netio = NULL;
   int res, strm_type = PR_NETIO_STRM_OTHR;
 
@@ -121,7 +118,6 @@ START_TEST (netio_use_test) {
   res = proxy_netio_use(PR_NETIO_STRM_DATA, NULL);
   fail_unless(res == 0, "Failed to handle data stream type: %s",
     strerror(errno));
-#endif
 }
 END_TEST
 
