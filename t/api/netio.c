@@ -63,13 +63,13 @@ START_TEST (netio_set_test) {
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
+#if 0
   mark_point();
   netio = proxy_netio_unset(strm_type, "foo");
   fail_unless(netio == NULL, "Expected null othr NetIO, got %p", netio);
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
-#if 0
   mark_point();
   res = proxy_netio_set(strm_type, netio);
   fail_unless(res == 0, "Failed to set null othr netio: %s", strerror(errno));
@@ -87,6 +87,7 @@ START_TEST (netio_use_test) {
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
+#if 0
   mark_point();
   res = proxy_netio_using(strm_type, &netio);
   fail_unless(res < 0, "Failed to handle othr stream type");
@@ -105,7 +106,6 @@ START_TEST (netio_use_test) {
     strerror(errno));
   fail_unless(netio == NULL, "Expected null data netio, got %p", netio);
 
-#if 0
   mark_point();
   res = proxy_netio_use(strm_type, NULL);
   fail_unless(res < 0, "Failed to handle othr stream type");
