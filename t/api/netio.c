@@ -35,12 +35,10 @@ static void set_up(void) {
 
   init_netio();
 
-#if 0
   if (getenv("TEST_VERBOSE") != NULL) {
     pr_trace_set_levels("netio", 1, 20);
     pr_trace_set_levels("proxy.netio", 1, 20);
   }
-#endif
 }
 
 static void tear_down(void) {
@@ -49,12 +47,10 @@ static void tear_down(void) {
     p = permanent_pool = NULL;
   }
 
-#if 0
   if (getenv("TEST_VERBOSE") != NULL) {
     pr_trace_set_levels("netio", 0, 0);
     pr_trace_set_levels("proxy.netio", 0, 0);
   }
-#endif
 }
 
 START_TEST (netio_set_test) {
