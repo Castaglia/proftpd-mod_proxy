@@ -31,8 +31,8 @@
 
 struct proxy_conn;
 
-void proxy_conn_clear_username(struct proxy_conn *pconn);
-void proxy_conn_clear_password(struct proxy_conn *pconn);
+void proxy_conn_clear_username(const struct proxy_conn *pconn);
+void proxy_conn_clear_password(const struct proxy_conn *pconn);
 int proxy_conn_connect_timeout_cb(CALLBACK_FRAME);
 const struct proxy_conn *proxy_conn_create(pool *p, const char *uri);
 const pr_netaddr_t *proxy_conn_get_addr(const struct proxy_conn *,

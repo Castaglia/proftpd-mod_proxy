@@ -242,8 +242,9 @@ int proxy_conn_get_port(const struct proxy_conn *pconn) {
   return pconn->pconn_port;
 }
 
-void proxy_conn_clear_username(struct proxy_conn *pconn) {
+void proxy_conn_clear_username(const struct proxy_conn *pconn) {
   size_t len;
+  struct proxy_conn *conn;
 
   if (pconn == NULL) {
     return;
@@ -254,8 +255,10 @@ void proxy_conn_clear_username(struct proxy_conn *pconn) {
   }
 
   len = strlen(pconn->pconn_username);
-  pr_memscrub(pconn->pconn_username, len);
-  pconn->pconn_username = NULL;
+
+  conn = (struct proxy_conn *) pconn;
+  pr_memscrub(conn->pconn_username, len);
+  conn->pconn_username = NULL;
 }
 
 const char *proxy_conn_get_username(const struct proxy_conn *pconn) {
@@ -267,8 +270,9 @@ const char *proxy_conn_get_username(const struct proxy_conn *pconn) {
   return pconn->pconn_username;
 }
 
-void proxy_conn_clear_password(struct proxy_conn *pconn) {
+void proxy_conn_clear_password(const struct proxy_conn *pconn) {
   size_t len;
+  struct proxy_conn *conn;
 
   if (pconn == NULL) {
     return;
@@ -279,8 +283,10 @@ void proxy_conn_clear_password(struct proxy_conn *pconn) {
   }
 
   len = strlen(pconn->pconn_password);
-  pr_memscrub(pconn->pconn_password, len);
-  pconn->pconn_password = NULL;
+
+  conn = (struct proxy_conn *) pconn;
+  pr_memscrub(conn->pconn_password, len);
+  conn->pconn_password = NULL;
 }
 
 const char *proxy_conn_get_password(const struct proxy_conn *pconn) {
