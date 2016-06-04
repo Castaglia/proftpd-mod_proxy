@@ -45,7 +45,14 @@ TEST_API_DEPS=\
   $(module_srcdir)/lib/proxy/inet.o \
   $(module_srcdir)/lib/proxy/tls.o \
   $(module_srcdir)/lib/proxy/session.o \
-  $(module_srcdir)/lib/proxy/reverse.o
+  $(module_srcdir)/lib/proxy/reverse.o \
+  $(module_srcdir)/lib/proxy/forward.o \
+  $(module_srcdir)/lib/proxy/ftp/conn.o \
+  $(module_srcdir)/lib/proxy/ftp/ctrl.o \
+  $(module_srcdir)/lib/proxy/ftp/data.o \
+  $(module_srcdir)/lib/proxy/ftp/msg.o \
+  $(module_srcdir)/lib/proxy/ftp/sess.o \
+  $(module_srcdir)/lib/proxy/ftp/xfer.o
 
 TEST_API_LIBS=-lcheck
 
@@ -58,6 +65,7 @@ TEST_API_OBJS=\
   api/inet.o \
   api/tls.o \
   api/reverse.o \
+  api/forward.o \
   api/session.o \
   api/stubs.o \
   api/tests.o

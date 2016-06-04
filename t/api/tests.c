@@ -36,6 +36,7 @@ static struct testsuite_info suites[] = {
   { "inet",		tests_get_inet_suite },
   { "random", 		tests_get_random_suite },
   { "reverse", 		tests_get_reverse_suite },
+  { "forward", 		tests_get_forward_suite },
   { "tls", 		tests_get_tls_suite },
   { "uri", 		tests_get_uri_suite },
   { "session", 		tests_get_session_suite },

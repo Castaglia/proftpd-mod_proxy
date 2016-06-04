@@ -38,6 +38,7 @@
 #include "proxy/tls.h"
 #include "proxy/session.h"
 #include "proxy/reverse.h"
+#include "proxy/forward.h"
 #include "proxy/ftp/ctrl.h"
 #include "proxy/ftp/sess.h"
 
@@ -53,6 +54,7 @@ Suite *tests_get_inet_suite(void);
 Suite *tests_get_netio_suite(void);
 Suite *tests_get_random_suite(void);
 Suite *tests_get_reverse_suite(void);
+Suite *tests_get_forward_suite(void);
 Suite *tests_get_tls_suite(void);
 Suite *tests_get_uri_suite(void);
 Suite *tests_get_session_suite(void);
