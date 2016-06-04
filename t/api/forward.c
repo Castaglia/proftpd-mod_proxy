@@ -30,34 +30,7 @@ static pool *p = NULL;
 static const char *test_dir = "/tmp/mod_proxy-test-forward";
 
 static void test_cleanup(void) {
-  (void) unlink(test_file);
   (void) rmdir(test_dir);
-}
-
-static FILE *test_prep(void) {
-  int res;
-  mode_t perms;
-  FILE *fh;
-
-  perms = 0770;
-  res = mkdir(test_dir, perms);
-  fail_unless(res == 0, "Failed to create tmp directory '%s': %s", test_dir,
-    strerror(errno));
-
-  res = chmod(test_dir, perms);
-  fail_unless(res == 0, "Failed to set perms %04o on directory '%s': %s",
-    perms, test_dir, strerror(errno));
-
-  fh = fopen(test_file, "w+");
-  fail_if(fh == NULL, "Failed to create tmp file '%s': %s", test_file,
-    strerror(errno));
-
-  perms = 0660;
-  res = chmod(test_file, perms);
-  fail_unless(res == 0, "Failed to set perms %04o on file '%s': %s",
-    perms, test_file, strerror(errno));
-
-  return fh;
 }
 
 static void set_up(void) {
