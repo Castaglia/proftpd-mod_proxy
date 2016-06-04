@@ -106,6 +106,11 @@ int proxy_netio_using(int strm_type, pr_netio_t **netio) {
 pr_netio_t *proxy_netio_unset(int strm_type, const char *fn) {
   pr_netio_t *netio = NULL;
 
+  if (fn == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
   netio = pr_get_netio(strm_type);
   if (netio != NULL) {
     const char *owner_name = "core", *typestr;
@@ -163,7 +168,7 @@ pr_netio_t *proxy_netio_unset(int strm_type, const char *fn) {
 }
 
 int proxy_netio_set(int strm_type, pr_netio_t *netio) {
-  /* Note: we DO want to unregister the register stream type, assuming we
+  /* Note: we DO want to unregister the registered stream type, assuming we
    * have a NetIO of our own to use for that type.
    */
   switch (strm_type) {
