@@ -30,14 +30,22 @@ static pool *p = NULL;
 
 static void set_up(void) {
   if (p == NULL) {
-    p = make_sub_pool(NULL);
+    p = permanent_pool = make_sub_pool(NULL);
+  }
+
+  if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.uri", 1, 20);
   }
 }
 
 static void tear_down(void) {
+  if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.uri", 0, 0);
+  }
+
   if (p) {
     destroy_pool(p);
-    p = NULL;
+    p = permanent_pool = NULL;
   } 
 }
 
