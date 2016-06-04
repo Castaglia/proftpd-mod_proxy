@@ -32,13 +32,21 @@ static void set_up(void) {
   if (p == NULL) {
     p = make_sub_pool(NULL);
   }
+
+  if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.conn", 1, 20);
+  }
 }
 
 static void tear_down(void) {
   if (p) {
     destroy_pool(p);
     p = NULL;
-  } 
+  }
+
+  if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.conn", 0, 0);
+  }
 }
 
 START_TEST (conn_create_test) {
