@@ -40,6 +40,7 @@
 #include "proxy/reverse.h"
 #include "proxy/forward.h"
 #include "proxy/ftp/msg.h"
+#include "proxy/ftp/conn.h"
 #include "proxy/ftp/ctrl.h"
 #include "proxy/ftp/sess.h"
 
@@ -63,10 +64,12 @@ Suite *tests_get_uri_suite(void);
 Suite *tests_get_session_suite(void);
 
 Suite *tests_get_ftp_msg_suite(void);
+Suite *tests_get_ftp_conn_suite(void);
 Suite *tests_get_ftp_ctrl_suite(void);
 Suite *tests_get_ftp_sess_suite(void);
 
 unsigned int recvd_signal_flags;
 extern pid_t mpid;
+extern server_rec *main_server;
 
 #endif /* MOD_PROXY_TESTS_H */

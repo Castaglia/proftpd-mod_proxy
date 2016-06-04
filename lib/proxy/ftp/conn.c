@@ -35,6 +35,13 @@ conn_t *proxy_ftp_conn_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn,
   conn_t *conn;
   int reverse_dns;
 
+  if (p == NULL ||
+      data_conn == NULL ||
+      ctrl_conn == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
   reverse_dns = pr_netaddr_set_reverse_dns(ServerUseReverseDNS);
 
   if (session.xfer.direction == PR_NETIO_IO_RD) {
@@ -88,6 +95,12 @@ conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
     const pr_netaddr_t *remote_addr, int frontend_data) {
   conn_t *conn, *opened = NULL;
   int res, reverse_dns;
+
+  if (p == NULL ||
+      remote_addr == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
 
   conn = pr_inet_create_conn(session.pool, -1, bind_addr, INPORT_ANY, TRUE);
 
@@ -178,6 +191,12 @@ conn_t *proxy_ftp_conn_listen(pool *p, const pr_netaddr_t *bind_addr,
   int res;
   conn_t *conn = NULL;
   config_rec *c;
+
+  if (p == NULL ||
+      bind_addr == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
 
   c = find_config(main_server->conf, CONF_PARAM, "PassivePorts", FALSE);
   if (c != NULL) {

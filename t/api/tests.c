@@ -41,6 +41,7 @@ static struct testsuite_info suites[] = {
   { "uri", 		tests_get_uri_suite },
   { "session", 		tests_get_session_suite },
   { "ftp.msg", 		tests_get_ftp_msg_suite },
+  { "ftp.conn",		tests_get_ftp_conn_suite },
   { "ftp.ctrl",		tests_get_ftp_ctrl_suite },
   { "ftp.sess",		tests_get_ftp_sess_suite },
 
