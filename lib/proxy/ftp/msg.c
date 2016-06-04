@@ -32,6 +32,12 @@ const char *proxy_ftp_msg_fmt_addr(pool *p, const pr_netaddr_t *addr,
   char *addr_str, *msg, *ptr;
   size_t msglen;
 
+  if (p == NULL ||
+      addr == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
   if (use_masqaddr) {
     config_rec *c;
 
@@ -75,6 +81,12 @@ const char *proxy_ftp_msg_fmt_ext_addr(pool *p, const pr_netaddr_t *addr,
   char delim = '|', *msg;
   int family = 0;
   size_t addr_strlen, msglen;
+
+  if (p == NULL ||
+      addr == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
 
   if (use_masqaddr) {
     config_rec *c;
@@ -123,6 +135,12 @@ const char *proxy_ftp_msg_fmt_ext_addr(pool *p, const pr_netaddr_t *addr,
     case PR_CMD_EPSV_ID:
       snprintf(msg, msglen-1, "%c%c%c%u%c", delim, delim, delim, port, delim);
       break;
+
+    default:
+      pr_trace_msg(trace_channel, 3, "invalid/unsupported command ID: %d",
+        cmd_id);
+      errno = EINVAL;
+      return NULL;
   }
 
   return msg;
@@ -137,6 +155,12 @@ const pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *p, const char *msg,
   unsigned short port;
   size_t addrlen;
   pr_netaddr_t *addr;
+
+  if (p == NULL ||
+      msg == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
 
   /* Have to scan the message for the encoded address/port.  Note that we may
    * see some strange formats for PASV responses from FTP servers here.
@@ -227,6 +251,13 @@ const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
   char delim, *msg_str, *ptr;
   size_t msglen;
 
+  if (p == NULL ||
+      msg == NULL ||
+      addr == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
   if (cmd_id == PR_CMD_EPSV_ID) {
     /* First, find the opening '(' character. */
     ptr = strchr(msg, '(');
@@ -276,11 +307,13 @@ const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
           family = 1;
           break;
 
+#ifdef PR_USE_IPV6
         case AF_INET6:
           if (pr_netaddr_use_ipv6()) {
             family = 2;
             break;
           }
+#endif /* PR_USE_IPV6 */
       }
 
     } else {

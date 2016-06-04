@@ -39,6 +39,7 @@
 #include "proxy/session.h"
 #include "proxy/reverse.h"
 #include "proxy/forward.h"
+#include "proxy/ftp/msg.h"
 #include "proxy/ftp/ctrl.h"
 #include "proxy/ftp/sess.h"
 
@@ -60,6 +61,8 @@ Suite *tests_get_forward_suite(void);
 Suite *tests_get_tls_suite(void);
 Suite *tests_get_uri_suite(void);
 Suite *tests_get_session_suite(void);
+
+Suite *tests_get_ftp_msg_suite(void);
 
 unsigned int recvd_signal_flags;
 extern pid_t mpid;

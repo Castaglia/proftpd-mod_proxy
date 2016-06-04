@@ -40,6 +40,7 @@ static struct testsuite_info suites[] = {
   { "tls", 		tests_get_tls_suite },
   { "uri", 		tests_get_uri_suite },
   { "session", 		tests_get_session_suite },
+  { "ftp.msg", 		tests_get_ftp_msg_suite },
 
   { NULL, NULL }
 };

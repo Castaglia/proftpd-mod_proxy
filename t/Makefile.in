@@ -69,6 +69,7 @@ TEST_API_OBJS=\
   api/reverse.o \
   api/forward.o \
   api/session.o \
+  api/ftp/msg.o \
   api/stubs.o \
   api/tests.o
 
