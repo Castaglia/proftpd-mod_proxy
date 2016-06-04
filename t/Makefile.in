@@ -29,10 +29,12 @@ TEST_API_DEPS=\
   $(top_srcdir)/src/cmd.o \
   $(top_srcdir)/src/configdb.o \
   $(top_srcdir)/src/parser.o \
+  $(top_srcdir)/src/regexp.o \
   $(top_srcdir)/src/fsio.o \
   $(top_srcdir)/src/netio.o \
   $(top_srcdir)/src/inet.o \
   $(top_srcdir)/src/netaddr.o \
+  $(top_srcdir)/src/response.o \
   $(top_srcdir)/src/auth.o \
   $(top_srcdir)/src/env.o \
   $(top_srcdir)/src/trace.o \
@@ -45,7 +47,14 @@ TEST_API_DEPS=\
   $(module_srcdir)/lib/proxy/inet.o \
   $(module_srcdir)/lib/proxy/tls.o \
   $(module_srcdir)/lib/proxy/session.o \
-  $(module_srcdir)/lib/proxy/reverse.o
+  $(module_srcdir)/lib/proxy/reverse.o \
+  $(module_srcdir)/lib/proxy/forward.o \
+  $(module_srcdir)/lib/proxy/ftp/conn.o \
+  $(module_srcdir)/lib/proxy/ftp/ctrl.o \
+  $(module_srcdir)/lib/proxy/ftp/data.o \
+  $(module_srcdir)/lib/proxy/ftp/msg.o \
+  $(module_srcdir)/lib/proxy/ftp/sess.o \
+  $(module_srcdir)/lib/proxy/ftp/xfer.o
 
 TEST_API_LIBS=-lcheck
 
@@ -58,6 +67,7 @@ TEST_API_OBJS=\
   api/inet.o \
   api/tls.o \
   api/reverse.o \
+  api/forward.o \
   api/session.o \
   api/stubs.o \
   api/tests.o

@@ -1086,7 +1086,7 @@ static array_header *reverse_db_parse_uris(pool *p, array_header *uris) {
 
   for (i = 0; i < uris->nelts; i++) {
     char *uri;
-    struct proxy_conn *pconn;
+    const struct proxy_conn *pconn;
 
     pr_signals_handle();
     uri = ((char **) uris->elts)[i];
@@ -1102,7 +1102,7 @@ static array_header *reverse_db_parse_uris(pool *p, array_header *uris) {
       continue;
     }
 
-    *((struct proxy_conn **) push_array(pconns)) = pconn;
+    *((const struct proxy_conn **) push_array(pconns)) = pconn;
   }
 
   return pconns;
@@ -1447,9 +1447,10 @@ static array_header *reverse_db_peruser_get(pool *p, unsigned int vhost_id,
   return results;
 }
 
-static struct proxy_conn *reverse_db_peruser_init(pool *p,
+static const struct proxy_conn *reverse_db_peruser_init(pool *p,
     unsigned int vhost_id, const char *user) {
-  struct proxy_conn **conns = NULL, *pconn = NULL;
+  const struct proxy_conn *pconn = NULL;
+  struct proxy_conn **conns = NULL;
   int backend_count = 0, res;
   const char *stmt, *uri, *errstr = NULL;
   array_header *user_backends = NULL, *results;
@@ -1530,10 +1531,10 @@ static struct proxy_conn *reverse_db_peruser_init(pool *p,
   return pconn;
 }
 
-static struct proxy_conn *reverse_db_peruser_next(pool *p,
+static const struct proxy_conn *reverse_db_peruser_next(pool *p,
     unsigned int vhost_id, const char *user) {
   array_header *results;
-  struct proxy_conn *pconn = NULL;
+  const struct proxy_conn *pconn = NULL;
 
   results = reverse_db_peruser_get(p, vhost_id, user);
   if (results == NULL) {
@@ -1658,9 +1659,10 @@ static array_header *reverse_db_pergroup_get(pool *p, unsigned int vhost_id,
   return results;
 }
 
-static struct proxy_conn *reverse_db_pergroup_init(pool *p,
+static const struct proxy_conn *reverse_db_pergroup_init(pool *p,
     unsigned int vhost_id, const char *group) {
-  struct proxy_conn **conns = NULL, *pconn = NULL;
+  const struct proxy_conn *pconn = NULL;
+  struct proxy_conn **conns = NULL;
   int backend_count = 0, res;
   const char *stmt, *uri, *errstr = NULL;
   array_header *group_backends = NULL, *results;
@@ -1741,10 +1743,10 @@ static struct proxy_conn *reverse_db_pergroup_init(pool *p,
   return pconn;
 }
 
-static struct proxy_conn *reverse_db_pergroup_next(pool *p,
+static const struct proxy_conn *reverse_db_pergroup_next(pool *p,
     unsigned int vhost_id, const char *group) {
   array_header *results;
-  struct proxy_conn *pconn = NULL;
+  const struct proxy_conn *pconn = NULL;
 
   results = reverse_db_pergroup_get(p, vhost_id, group);
   if (results == NULL) {
@@ -1870,9 +1872,10 @@ static array_header *reverse_db_perhost_get(pool *p, unsigned int vhost_id,
   return results;
 }
 
-static struct proxy_conn *reverse_db_perhost_init(pool *p,
+static const struct proxy_conn *reverse_db_perhost_init(pool *p,
     unsigned int vhost_id, const pr_netaddr_t *addr) {
-  struct proxy_conn **conns, *pconn = NULL;
+  const struct proxy_conn *pconn = NULL;
+  struct proxy_conn **conns;
   int res;
   const char *ip, *stmt, *uri, *errstr = NULL;
   array_header *results;
@@ -1929,10 +1932,10 @@ static struct proxy_conn *reverse_db_perhost_init(pool *p,
   return pconn;
 }
 
-static struct proxy_conn *reverse_db_perhost_next(pool *p,
+static const struct proxy_conn *reverse_db_perhost_next(pool *p,
     unsigned int vhost_id, const pr_netaddr_t *addr) {
   array_header *results;
-  struct proxy_conn *pconn = NULL;
+  const struct proxy_conn *pconn = NULL;
 
   results = reverse_db_perhost_get(p, vhost_id, addr);
   if (results == NULL) {
@@ -3050,7 +3053,7 @@ array_header *proxy_reverse_json_parse_uris(pool *p, const char *path) {
   for (i = 0; i < PROXY_REVERSE_JSON_MAX_ITEMS; i++) {
     JsonNode *item;
     char *uri;
-    struct proxy_conn *pconn;
+    const struct proxy_conn *pconn;
 
     pr_signals_handle();
 
@@ -3078,7 +3081,7 @@ array_header *proxy_reverse_json_parse_uris(pool *p, const char *path) {
       continue;
     }
 
-    *((struct proxy_conn **) push_array(uris)) = pconn;  
+    *((const struct proxy_conn **) push_array(uris)) = pconn;  
   }
 
   json_delete(json);
