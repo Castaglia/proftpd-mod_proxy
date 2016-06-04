@@ -27,6 +27,7 @@
 /* Stubs */
 
 session_t session;
+int ServerUseReverseDNS = FALSE;
 server_rec *main_server = NULL;
 pid_t mpid = 1;
 unsigned char is_master = TRUE;
@@ -41,11 +42,30 @@ pool *proxy_pool = NULL;
 unsigned long proxy_opts = 0UL;
 unsigned int proxy_sess_state = 0;
 
+static cmd_rec *next_cmd = NULL;
+
+int tests_stubs_set_next_cmd(cmd_rec *cmd) {
+  next_cmd = cmd;
+  return 0;
+}
+
 int login_check_limits(xaset_t *set, int recurse, int and, int *found) {
   return TRUE;
 }
 
 int xferlog_open(const char *path) {
+  return 0;
+}
+
+int pr_cmd_read(cmd_rec **cmd) {
+  if (next_cmd != NULL) {
+    *cmd = next_cmd;
+    next_cmd = NULL;
+
+  } else {
+    *cmd = NULL;
+  }
+
   return 0;
 }
 
@@ -136,16 +156,6 @@ int pr_log_writefile(int fd, const char *name, const char *fmt, ...) {
   return 0;
 }
 
-int pr_response_block(int block) {
-  return 0;
-}
-
-void pr_response_send(const char *resp_code, const char *fmt, ...) {
-}
-
-void pr_response_send_async(const char *resp_code, const char *fmt, ...) {
-}
-
 int pr_scoreboard_entry_update(pid_t pid, ...) {
   return 0;
 }
@@ -157,39 +167,3 @@ void pr_signals_handle(void) {
 }
 
 /* Module-specific stubs */
-
-cmd_rec *proxy_ftp_ctrl_recv_cmd(pool *p, conn_t *conn) {
-  errno = ENOSYS;
-  return NULL;
-}
-
-pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *conn,
-    unsigned int *resp_nlines) {
-  errno = ENOSYS;
-  return NULL;
-}
-
-int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *conn, cmd_rec *cmd) {
-  return 0;
-}
-
-int proxy_ftp_ctrl_send_resp(pool *p, conn_t *conn, pr_response_t *resp,
-    unsigned int resp_nlines) {
-  return 0;
-}
-
-int proxy_ftp_sess_get_feat(pool *p, struct proxy_session *proxy_sess) {
-  return 0;
-}
-
-int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
-  return 0;
-}
-
-int proxy_ftp_sess_send_host(pool *p, struct proxy_session *proxy_sess) {
-  return 0;
-}
-
-int proxy_ftp_sess_send_pbsz_prot(pool *p, struct proxy_session *proxy_sess) {
-  return 0;
-}

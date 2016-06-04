@@ -29,10 +29,12 @@ TEST_API_DEPS=\
   $(top_srcdir)/src/cmd.o \
   $(top_srcdir)/src/configdb.o \
   $(top_srcdir)/src/parser.o \
+  $(top_srcdir)/src/regexp.o \
   $(top_srcdir)/src/fsio.o \
   $(top_srcdir)/src/netio.o \
   $(top_srcdir)/src/inet.o \
   $(top_srcdir)/src/netaddr.o \
+  $(top_srcdir)/src/response.o \
   $(top_srcdir)/src/auth.o \
   $(top_srcdir)/src/env.o \
   $(top_srcdir)/src/trace.o \
