@@ -62,7 +62,8 @@ int proxy_session_free(pool *p, const struct proxy_session *proxy_sess) {
   conn_t *conn;
   struct proxy_session *sess;
 
-  if (proxy_sess == NULL) {
+  if (p == NULL ||
+      proxy_sess == NULL) {
     errno = EINVAL;
     return -1;
   }

@@ -52,8 +52,13 @@ static void tear_down(void) {
 START_TEST (session_free_test) {
   int res;
 
-  res = proxy_session_free(NULL);
+  res = proxy_session_free(NULL, NULL);
   fail_unless(res < 0, "Failed to handle null arguments");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  res = proxy_session_free(p, NULL);
+  fail_unless(res < 0, "Failed to handle null session");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 }
@@ -71,7 +76,7 @@ START_TEST (session_alloc_test) {
   fail_unless(proxy_sess != NULL, "Failed to allocate proxy session: %s",
     strerror(errno));
 
-  proxy_session_free(proxy_sess);
+  proxy_session_free(p, proxy_sess);
 }
 END_TEST
 
