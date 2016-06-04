@@ -2041,9 +2041,10 @@ static int reverse_policy_is_sticky(int policy_id) {
   return FALSE;
 }
 
-static struct proxy_conn *reverse_connect_next_backend(pool *p,
+static const struct proxy_conn *reverse_connect_next_backend(pool *p,
     unsigned int vhost_id, const void *policy_data) {
-  struct proxy_conn **conns = NULL, *pconn = NULL;
+  const struct proxy_conn *pconn = NULL;
+  struct proxy_conn **conns = NULL;
   int idx = -1, nelts = 0;
 
   if (reverse_backends != NULL) {
@@ -2227,10 +2228,10 @@ static int reverse_connect_index_used(pool *p, unsigned int vhost_id,
   return 0;
 }
 
-static struct proxy_conn *get_reverse_server_conn(pool *p,
+static const struct proxy_conn *get_reverse_server_conn(pool *p,
     struct proxy_session *proxy_sess, int *backend_id,
     const void *policy_data) {
-  struct proxy_conn *pconn;
+  const struct proxy_conn *pconn;
 
   pconn = reverse_connect_next_backend(p, main_server->sid, policy_data);
   if (pconn == NULL) {
@@ -2255,7 +2256,7 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
   conn_t *server_conn = NULL;
   pr_response_t *resp = NULL;
   unsigned int resp_nlines = 0;
-  struct proxy_conn *pconn;
+  const struct proxy_conn *pconn;
   const pr_netaddr_t *dst_addr;
   array_header *other_addrs = NULL;
   uint64_t connecting_ms, connected_ms;
@@ -2340,7 +2341,7 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
 
   use_tls = proxy_tls_using_tls();
 
-  resp = proxy_ftp_ctrl_recv_resp(p, server_conn, &resp_nlines);
+  resp = proxy_ftp_ctrl_recv_resp(p, server_conn, &resp_nlines, 0);
   if (resp == NULL) {
     xerrno = errno;
 
@@ -3166,7 +3167,7 @@ static int send_user(struct proxy_session *proxy_sess, cmd_rec *cmd,
   }
 
   resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
+    &resp_nlines, 0);
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -3322,7 +3323,7 @@ static int send_pass(struct proxy_session *proxy_sess, cmd_rec *cmd,
   }
 
   resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
+    &resp_nlines, 0);
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,

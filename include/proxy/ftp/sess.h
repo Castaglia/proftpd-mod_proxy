@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP session API
- * Copyright (c) 2015 TJ Saunders
+ * Copyright (c) 2015-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,9 +28,11 @@
 #ifndef MOD_PROXY_FTP_SESS_H
 #define MOD_PROXY_FTP_SESS_H
 
-int proxy_ftp_sess_get_feat(pool *, struct proxy_session *);
-int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *);
-int proxy_ftp_sess_send_host(pool *, struct proxy_session *);
-int proxy_ftp_sess_send_pbsz_prot(pool *p, struct proxy_session *);
+int proxy_ftp_sess_get_feat(pool *, const struct proxy_session *proxy_sess);
+int proxy_ftp_sess_send_auth_tls(pool *p,
+  const struct proxy_session *proxy_sess);
+int proxy_ftp_sess_send_host(pool *, const struct proxy_session *proxy_sess);
+int proxy_ftp_sess_send_pbsz_prot(pool *p,
+  const struct proxy_session *proxy_sess);
 
 #endif /* MOD_PROXY_FTP_SESS_H */

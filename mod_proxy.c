@@ -101,7 +101,7 @@ MODRET proxy_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess,
   }
 
   resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
+    &resp_nlines, 0);
   if (resp == NULL) {
     xerrno = errno;
 
@@ -177,7 +177,7 @@ MODRET proxy_data_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   /* Now we wait for our closing response. */
   resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
+    &resp_nlines, 0);
   if (resp == NULL) {
     xerrno = errno;
 
@@ -892,7 +892,7 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
 
     } else {
       /* Treat it as a server-spec (i.e. a URI) */
-      struct proxy_conn *pconn;
+      const struct proxy_conn *pconn;
 
       pconn = proxy_conn_create(c->pool, cmd->argv[1]);
       if (pconn == NULL) {
@@ -900,7 +900,7 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
           (char *) cmd->argv[1], "': ", strerror(errno), NULL));
       }
 
-      *((struct proxy_conn **) push_array(backend_servers)) = pconn;
+      *((const struct proxy_conn **) push_array(backend_servers)) = pconn;
     }
 
   } else {
@@ -909,7 +909,7 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
     /* More than one parameter, which means they are all URIs. */
 
     for (i = 1; i < cmd->argc; i++) {
-      struct proxy_conn *pconn;
+      const struct proxy_conn *pconn;
 
       pconn = proxy_conn_create(c->pool, cmd->argv[i]);
       if (pconn == NULL) {
@@ -917,7 +917,7 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
           (char *) cmd->argv[i], "': ", strerror(errno), NULL));
       }
 
-      *((struct proxy_conn **) push_array(backend_servers)) = pconn;
+      *((const struct proxy_conn **) push_array(backend_servers)) = pconn;
     }
   }
 
@@ -1691,7 +1691,7 @@ static int proxy_data_handle_resp(pool *p, struct proxy_session *proxy_sess,
   unsigned int resp_nlines = 0;
 
   resp = proxy_ftp_ctrl_recv_resp(p, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
+    &resp_nlines, 0);
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -2447,7 +2447,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
       pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
 
       resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool,
-        proxy_sess->backend_ctrl_conn, &resp_nlines);
+        proxy_sess->backend_ctrl_conn, &resp_nlines, 0);
       if (resp == NULL) {
         xerrno = errno;
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -2673,7 +2673,7 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       unsigned int resp_nlines = 0;
 
       addr = proxy_ftp_xfer_prepare_passive(proxy_sess->dataxfer_policy, cmd,
-        R_500, proxy_sess);
+        R_500, proxy_sess, 0);
       if (addr == NULL) {
         return PR_ERROR(cmd);
       }
@@ -2708,7 +2708,7 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       unsigned int resp_nlines = 0;
 
       res = proxy_ftp_xfer_prepare_active(proxy_sess->dataxfer_policy, cmd,
-        R_425, proxy_sess);
+        R_425, proxy_sess, 0);
       if (res < 0) {
         return PR_ERROR(cmd);
       }
@@ -2757,7 +2757,7 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     case PR_CMD_PORT_ID:
     case PR_CMD_EPRT_ID:
       res = proxy_ftp_xfer_prepare_active(proxy_sess->dataxfer_policy, cmd,
-        R_425, proxy_sess);
+        R_425, proxy_sess, 0);
       if (res < 0) {
         return PR_ERROR(cmd);
       }
@@ -2769,7 +2769,7 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     case PR_CMD_EPSV_ID:
     default:
       remote_addr = proxy_ftp_xfer_prepare_passive(proxy_sess->dataxfer_policy,
-        cmd, R_500, proxy_sess);
+        cmd, R_500, proxy_sess, 0);
       if (remote_addr == NULL) {
         return PR_ERROR(cmd);
       }
@@ -2878,7 +2878,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     case PR_CMD_PORT_ID:
     case PR_CMD_EPRT_ID:
       res = proxy_ftp_xfer_prepare_active(proxy_sess->dataxfer_policy, cmd,
-        R_425, proxy_sess);
+        R_425, proxy_sess, 0);
       if (res < 0) {
         return PR_ERROR(cmd);
       }
@@ -2890,7 +2890,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     case PR_CMD_EPSV_ID:
     default:
       remote_addr = proxy_ftp_xfer_prepare_passive(proxy_sess->dataxfer_policy,
-        cmd, R_500, proxy_sess);
+        cmd, R_500, proxy_sess, 0);
       if (remote_addr == NULL) {
         return PR_ERROR(cmd);
       }
@@ -3123,7 +3123,7 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       unsigned int resp_nlines = 0;
 
       addr = proxy_ftp_xfer_prepare_passive(proxy_sess->dataxfer_policy, cmd,
-        R_500, proxy_sess);
+        R_500, proxy_sess, 0);
       if (addr == NULL) {
         return PR_ERROR(cmd);
       }
@@ -3158,7 +3158,7 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       unsigned int resp_nlines = 0;
 
       res = proxy_ftp_xfer_prepare_active(proxy_sess->dataxfer_policy, cmd,
-        R_425, proxy_sess);
+        R_425, proxy_sess, 0);
       if (res < 0) {
         return PR_ERROR(cmd);
       }
@@ -3514,7 +3514,7 @@ MODRET proxy_type(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
+    &resp_nlines, 0);
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -3693,7 +3693,7 @@ MODRET proxy_any(cmd_rec *cmd) {
    * for them.
    */
   if (proxy_ftp_ctrl_handle_async(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-      proxy_sess->frontend_ctrl_conn) < 0) {
+      proxy_sess->frontend_ctrl_conn, 0) < 0) {
     int xerrno = errno;
 
     pr_trace_msg(trace_channel, 7,
@@ -4399,7 +4399,7 @@ static int proxy_sess_init(void) {
    * fields.  Use the session.notes table for stashing/retrieving it as
    * needed.
    */
-  proxy_sess = proxy_session_alloc(proxy_pool);
+  proxy_sess = (struct proxy_session *) proxy_session_alloc(proxy_pool);
   if (pr_table_add(session.notes, "mod_proxy.proxy-session", proxy_sess,
       sizeof(struct proxy_session)) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,

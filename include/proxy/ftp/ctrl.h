@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP control conn API
- * Copyright (c) 2012-2015 TJ Saunders
+ * Copyright (c) 2012-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,11 +27,16 @@
 #ifndef MOD_PROXY_FTP_CTRL_H
 #define MOD_PROXY_FTP_CTRL_H
 
+/* Note: this flag is only used for testing. */
+#define PROXY_FTP_CTRL_FL_IGNORE_EOF	0x0001
+
 int proxy_ftp_ctrl_handle_async(pool *p, conn_t *backend_conn,
-  conn_t *frontend_conn);
-cmd_rec *proxy_ftp_ctrl_recv_cmd(pool *, conn_t *);
-pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *, unsigned int *);
-int proxy_ftp_ctrl_send_cmd(pool *, conn_t *, cmd_rec *);
-int proxy_ftp_ctrl_send_resp(pool *, conn_t *, pr_response_t *, unsigned int);
+  conn_t *frontend_conn, int flags);
+cmd_rec *proxy_ftp_ctrl_recv_cmd(pool *p, conn_t *ctrl_conn, int flags);
+pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
+  unsigned int *resp_nlines, int flags);
+int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *ctrl_conn, cmd_rec *cmd);
+int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp,
+  unsigned int resp_nlines);
 
 #endif /* MOD_PROXY_FTP_CTRL_H */

@@ -97,7 +97,7 @@ static int parse_feat(pool *p, const char *feat, array_header **res) {
   return vals->nelts;
 }
 
-int proxy_ftp_sess_get_feat(pool *p, struct proxy_session *proxy_sess) {
+int proxy_ftp_sess_get_feat(pool *p, const struct proxy_session *proxy_sess) {
   pool *tmp_pool;
   int res, xerrno = 0;
   cmd_rec *cmd;
@@ -105,6 +105,12 @@ int proxy_ftp_sess_get_feat(pool *p, struct proxy_session *proxy_sess) {
   unsigned int resp_nlines = 0;
   char *feats, *token;
   size_t token_len = 0;
+
+  if (p == NULL ||
+      proxy_sess == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
 
   tmp_pool = make_sub_pool(p);
 
@@ -123,7 +129,7 @@ int proxy_ftp_sess_get_feat(pool *p, struct proxy_session *proxy_sess) {
   }
 
   resp = proxy_ftp_ctrl_recv_resp(tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
+    &resp_nlines, 0);
   if (resp == NULL) {
     xerrno = errno;
 
@@ -158,7 +164,7 @@ int proxy_ftp_sess_get_feat(pool *p, struct proxy_session *proxy_sess) {
     return -1;
   }
 
-  proxy_sess->backend_features = pr_table_nalloc(p, 0, 4);
+  ((struct proxy_session *) proxy_sess)->backend_features = pr_table_nalloc(p, 0, 4);
 
   feats = (char *) resp->msg;
   token = pr_str_get_token2(&feats, (char *) feat_crlf, &token_len);
@@ -212,7 +218,7 @@ static pr_response_t *send_recv(pool *p, conn_t *conn, cmd_rec *cmd,
     return NULL;
   }
 
-  resp = proxy_ftp_ctrl_recv_resp(p, conn, resp_nlines);
+  resp = proxy_ftp_ctrl_recv_resp(p, conn, resp_nlines, 0);
   if (resp == NULL) {
     xerrno = errno;
 
@@ -227,13 +233,19 @@ static pr_response_t *send_recv(pool *p, conn_t *conn, cmd_rec *cmd,
   return resp;
 }
 
-int proxy_ftp_sess_send_host(pool *p, struct proxy_session *proxy_sess) {
+int proxy_ftp_sess_send_host(pool *p, const struct proxy_session *proxy_sess) {
   pool *tmp_pool;
   int xerrno = 0;
   cmd_rec *cmd;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
   const char *host;
+
+  if (p == NULL ||
+      proxy_sess == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
 
   if (pr_table_get(proxy_sess->backend_features, C_HOST, NULL) == NULL) {
     pr_trace_msg(trace_channel, 9,
@@ -268,7 +280,8 @@ int proxy_ftp_sess_send_host(pool *p, struct proxy_session *proxy_sess) {
   return 0;
 }
 
-int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
+int proxy_ftp_sess_send_auth_tls(pool *p,
+    const struct proxy_session *proxy_sess) {
   int uri_tls, use_tls, xerrno;
   const char *auth_feat;
   array_header *auth_feats = NULL;
@@ -276,6 +289,12 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
   cmd_rec *cmd;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
+
+  if (p == NULL ||
+      proxy_sess == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
 
   use_tls = proxy_tls_using_tls();
   if (use_tls == PROXY_TLS_ENGINE_OFF) {
@@ -402,8 +421,15 @@ int proxy_ftp_sess_send_auth_tls(pool *p, struct proxy_session *proxy_sess) {
   return 0;
 }
 
-int proxy_ftp_sess_send_pbsz_prot(pool *p, struct proxy_session *proxy_sess) {
+int proxy_ftp_sess_send_pbsz_prot(pool *p,
+    const struct proxy_session *proxy_sess) {
   int use_tls;
+
+  if (p == NULL ||
+      proxy_sess == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
 
   use_tls = proxy_tls_using_tls();
   if (use_tls == PROXY_TLS_ENGINE_OFF) {

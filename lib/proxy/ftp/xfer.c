@@ -36,7 +36,7 @@ extern pr_response_t *resp_list, *resp_err_list;
 static const char *trace_channel = "proxy.ftp.xfer";
 
 int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
-    const char *error_code, struct proxy_session *proxy_sess) {
+    const char *error_code, struct proxy_session *proxy_sess, int flags) {
   int backend_family, bind_family, res, xerrno = 0;
   cmd_rec *actv_cmd;
   const pr_netaddr_t *bind_addr = NULL;
@@ -216,7 +216,7 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
   }
 
   resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
+    &resp_nlines, flags);
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -254,7 +254,7 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
       }
 
       return proxy_ftp_xfer_prepare_active(PR_CMD_PORT_ID, cmd,
-        error_code, proxy_sess);
+        error_code, proxy_sess, flags);
     }
 
     pr_response_add_err(error_code, "%s", resp->msg);
@@ -268,7 +268,7 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
 }
 
 const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
-    const char *error_code, struct proxy_session *proxy_sess) {
+    const char *error_code, struct proxy_session *proxy_sess, int flags) {
   int res, xerrno = 0;
   cmd_rec *pasv_cmd;
   const pr_netaddr_t *remote_addr = NULL;
@@ -356,7 +356,7 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
   }
 
   resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
+    &resp_nlines, flags);
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -391,7 +391,7 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
       }
 
       return proxy_ftp_xfer_prepare_passive(PR_CMD_PASV_ID, cmd,
-        error_code, proxy_sess);
+        error_code, proxy_sess, flags);
     }
 
     res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,

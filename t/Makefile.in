@@ -70,6 +70,8 @@ TEST_API_OBJS=\
   api/forward.o \
   api/session.o \
   api/ftp/msg.o \
+  api/ftp/ctrl.o \
+  api/ftp/sess.o \
   api/stubs.o \
   api/tests.o
 

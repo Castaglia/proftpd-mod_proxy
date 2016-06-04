@@ -36,7 +36,9 @@ static char *ftp_telnet_gets(char *buf, size_t buflen,
   int nread, saw_newline = FALSE;
   pr_buffer_t *pbuf = NULL;
 
-  if (buflen == 0) {
+  if (buflen == 0 ||
+      nstrm == NULL ||
+      conn == NULL) {
     errno = EINVAL;
     return NULL;
   }
@@ -124,8 +126,14 @@ static char *ftp_telnet_gets(char *buf, size_t buflen,
   return buf;
 }
 
-cmd_rec *proxy_ftp_ctrl_recv_cmd(pool *p, conn_t *ctrl_conn) {
+cmd_rec *proxy_ftp_ctrl_recv_cmd(pool *p, conn_t *ctrl_conn, int flags) {
   cmd_rec *cmd = NULL;
+
+  if (p == NULL ||
+      ctrl_conn == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
 
   while (TRUE) {
     int res;
@@ -139,19 +147,32 @@ cmd_rec *proxy_ftp_ctrl_recv_cmd(pool *p, conn_t *ctrl_conn) {
       }
     }
 
-    /* EOF */
-    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_CLIENT_EOF, NULL);
+    if (!(flags & PROXY_FTP_CTRL_FL_IGNORE_EOF)) {
+      /* EOF */
+      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_CLIENT_EOF, NULL);
+
+    } else {
+      errno = ENOENT;
+      return NULL;
+    }
   }
 
   return cmd;
 }
 
 pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
-    unsigned int *nlines) {
+    unsigned int *nlines, int flags) {
   char buf[PR_TUNABLE_BUFFER_SIZE];
   pr_response_t *resp = NULL;
   int multiline = FALSE;
   unsigned int count = 0;
+
+  if (p == NULL ||
+      ctrl_conn == NULL ||
+      nlines == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
 
   while (TRUE) {
     char c, *ptr;
@@ -382,6 +403,13 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
 int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *ctrl_conn, cmd_rec *cmd) {
   int res;
 
+  if (p == NULL ||
+      ctrl_conn == NULL ||
+      cmd == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
   if (cmd->argc > 1) {
     const char *display_str;
     size_t display_len = 0;
@@ -409,6 +437,12 @@ int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp,
 
   (void) ctrl_conn;
 
+  if (p == NULL ||
+      resp == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
   pr_trace_msg(trace_channel, 9,
     "backend->frontend response: %s%s%s", resp->num,
     resp_nlines == 1 ? " " : "", resp->msg);
@@ -430,7 +464,15 @@ int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp,
 }
 
 int proxy_ftp_ctrl_handle_async(pool *p, conn_t *backend_conn,
-    conn_t *frontend_conn) {
+    conn_t *frontend_conn, int flags) {
+
+  if (p == NULL ||
+      backend_conn == NULL ||
+      frontend_conn == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
   if (!(proxy_sess_state & PROXY_SESS_STATE_CONNECTED)) {
     /* Nothing to do if we're not yet connected to the backend server. */
     return 0;
@@ -485,7 +527,7 @@ int proxy_ftp_ctrl_handle_async(pool *p, conn_t *backend_conn,
       pr_trace_msg(trace_channel, 9, "reading async response from backend %s",
         backend_conn->remote_name);
 
-      resp = proxy_ftp_ctrl_recv_resp(p, backend_conn, &resp_nlines);
+      resp = proxy_ftp_ctrl_recv_resp(p, backend_conn, &resp_nlines, flags);
       if (resp == NULL) {
         xerrno = errno;
 

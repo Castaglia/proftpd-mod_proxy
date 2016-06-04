@@ -209,7 +209,7 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
 
   /* Read the response from the backend server. */
   *resp = proxy_ftp_ctrl_recv_resp(p, proxy_sess->backend_ctrl_conn,
-    resp_nlines);
+    resp_nlines, 0);
   if (*resp == NULL) {
     xerrno = errno;
 
@@ -351,7 +351,7 @@ static int forward_dst_filter(pool *p, const char *hostport) {
 }
 
 static int forward_cmd_parse_dst(pool *p, const char *arg, char **name,
-    struct proxy_conn **pconn) {
+    const struct proxy_conn **pconn) {
   const char *default_proto = NULL, *default_port = NULL, *proto = NULL,
     *port, *uri = NULL;
   char *host = NULL, *hostport = NULL, *host_ptr = NULL, *port_ptr = NULL;
@@ -444,7 +444,7 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
   unsigned int resp_nlines = 0;
 
   if (flags & PROXY_FORWARD_USER_PASSTHRU_FL_PARSE_DSTADDR) {
-    struct proxy_conn *pconn = NULL;
+    const struct proxy_conn *pconn = NULL;
     const pr_netaddr_t *remote_addr = NULL;
     array_header *other_addrs = NULL;
 
@@ -539,7 +539,7 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
   }
 
   resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
+    &resp_nlines, 0);
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -591,7 +591,7 @@ static int forward_handle_user_proxyuserwithproxyauth(cmd_rec *cmd,
 
   if (!(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED)) {
     char *user = NULL;
-    struct proxy_conn *pconn = NULL;
+    const struct proxy_conn *pconn = NULL;
     const pr_netaddr_t *remote_addr = NULL;
     array_header *other_addrs = NULL;
 
@@ -688,7 +688,7 @@ static int forward_handle_pass_passthru(cmd_rec *cmd,
   }
 
   resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines);
+    &resp_nlines, 0);
   if (resp == NULL) {
     xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
