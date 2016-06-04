@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy session routines
- * Copyright (c) 2012-2015 TJ Saunders
+ * Copyright (c) 2012-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,9 +27,14 @@
 
 static const char *trace_channel = "proxy.session";
 
-struct proxy_session *proxy_session_alloc(pool *p) {
+const struct proxy_session *proxy_session_alloc(pool *p) {
   pool *sess_pool;
   struct proxy_session *proxy_sess;
+
+  if (p == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
 
   sess_pool = make_sub_pool(p);
   pr_pool_tag(sess_pool, "Proxy Session pool");
@@ -53,32 +58,35 @@ struct proxy_session *proxy_session_alloc(pool *p) {
   return proxy_sess;
 }
 
-int proxy_session_free(pool *p, struct proxy_session *proxy_sess) {
+int proxy_session_free(pool *p, const struct proxy_session *proxy_sess) {
   conn_t *conn;
+  struct proxy_session *sess;
 
-  if (proxy_sess == NULL) {
+  if (p == NULL ||
+      proxy_sess == NULL) {
     errno = EINVAL;
     return -1;
   }
 
   /* Close any open connections. */
 
+  sess = (struct proxy_session *) proxy_sess;
   conn = proxy_sess->frontend_data_conn;
   if (conn != NULL) {
     pr_inet_close(p, conn);
-    proxy_sess->frontend_data_conn = session.d = NULL;
+    sess->frontend_data_conn = session.d = NULL;
   }
 
   conn = proxy_sess->backend_ctrl_conn;
   if (conn != NULL) {
     pr_inet_close(p, conn);
-    proxy_sess->backend_ctrl_conn = NULL;
+    sess->backend_ctrl_conn = NULL;
   }
 
   conn = proxy_sess->backend_data_conn;
   if (conn != NULL) {
     pr_inet_close(p, conn);
-    proxy_sess->backend_data_conn = NULL;
+    sess->backend_data_conn = NULL;
   }
 
   destroy_pool(proxy_sess->pool);

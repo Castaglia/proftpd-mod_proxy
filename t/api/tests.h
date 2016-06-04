@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy API testsuite
- * Copyright (c) 2012-2015 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2012-2016 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -55,6 +55,7 @@ Suite *tests_get_random_suite(void);
 Suite *tests_get_reverse_suite(void);
 Suite *tests_get_tls_suite(void);
 Suite *tests_get_uri_suite(void);
+Suite *tests_get_session_suite(void);
 
 unsigned int recvd_signal_flags;
 extern pid_t mpid;

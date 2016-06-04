@@ -38,6 +38,7 @@ static struct testsuite_info suites[] = {
   { "reverse", 		tests_get_reverse_suite },
   { "tls", 		tests_get_tls_suite },
   { "uri", 		tests_get_uri_suite },
+  { "session", 		tests_get_session_suite },
 
   { NULL, NULL }
 };
