@@ -35,10 +35,12 @@ static void set_up(void) {
 
   init_netio();
 
+#if 0
   if (getenv("TEST_VERBOSE") != NULL) {
     pr_trace_set_levels("netio", 1, 20);
     pr_trace_set_levels("proxy.netio", 1, 20);
   }
+#endif
 }
 
 static void tear_down(void) {
@@ -47,13 +49,16 @@ static void tear_down(void) {
     p = permanent_pool = NULL;
   }
 
+#if 0
   if (getenv("TEST_VERBOSE") != NULL) {
     pr_trace_set_levels("netio", 0, 0);
     pr_trace_set_levels("proxy.netio", 0, 0);
   }
+#endif
 }
 
 START_TEST (netio_set_test) {
+#if 0
   pr_netio_t *netio = NULL;
   int res, strm_type = PR_NETIO_STRM_OTHR;
 
@@ -63,7 +68,6 @@ START_TEST (netio_set_test) {
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
-#if 0
   mark_point();
   netio = proxy_netio_unset(strm_type, "foo");
   fail_unless(netio == NULL, "Expected null othr NetIO, got %p", netio);
@@ -78,6 +82,7 @@ START_TEST (netio_set_test) {
 END_TEST
 
 START_TEST (netio_use_test) {
+#if 0
   pr_netio_t *netio = NULL;
   int res, strm_type = PR_NETIO_STRM_OTHR;
 
@@ -87,7 +92,6 @@ START_TEST (netio_use_test) {
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
-#if 0
   mark_point();
   res = proxy_netio_using(strm_type, &netio);
   fail_unless(res < 0, "Failed to handle othr stream type");
