@@ -102,7 +102,7 @@ int proxy_conn_connect_timeout_cb(CALLBACK_FRAME) {
   return 0;
 }
 
-struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
+const struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
   int res, use_tls = PROXY_TLS_ENGINE_AUTO;
   char hostport[512], *proto, *remote_host, *username = NULL, *password = NULL;
   unsigned int remote_port;
@@ -191,6 +191,14 @@ struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
 
   pconn->pconn_addr = pconn_addr;
   return pconn;
+}
+
+void proxy_conn_free(const struct proxy_conn *pconn) {
+  if (pconn == NULL) {
+    return;
+  }
+
+  destroy_pool(pconn->pconn_pool);
 }
 
 const pr_netaddr_t *proxy_conn_get_addr(const struct proxy_conn *pconn,

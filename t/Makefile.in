@@ -58,6 +58,7 @@ TEST_API_OBJS=\
   api/inet.o \
   api/tls.o \
   api/reverse.o \
+  api/session.o \
   api/stubs.o \
   api/tests.o
 
