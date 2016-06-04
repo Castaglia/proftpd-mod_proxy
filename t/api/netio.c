@@ -57,16 +57,19 @@ START_TEST (netio_set_test) {
   pr_netio_t *netio = NULL;
   int res, strm_type = PR_NETIO_STRM_OTHR;
 
+  mark_point();
   netio = proxy_netio_unset(strm_type, NULL);
   fail_unless(netio == NULL, "Failed to handle null function string");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
+  mark_point();
   netio = proxy_netio_unset(strm_type, "foo");
   fail_unless(netio == NULL, "Expected null othr NetIO, got %p", netio);
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
+  mark_point();
   res = proxy_netio_set(strm_type, netio);
   fail_unless(res == 0, "Failed to set null othr netio: %s", strerror(errno));
 }
@@ -76,35 +79,42 @@ START_TEST (netio_use_test) {
   pr_netio_t *netio = NULL;
   int res, strm_type = PR_NETIO_STRM_OTHR;
 
+  mark_point();
   res = proxy_netio_using(strm_type, NULL);
   fail_unless(res < 0, "Failed to handle null argument");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
+  mark_point();
   res = proxy_netio_using(strm_type, &netio);
   fail_unless(res < 0, "Failed to handle othr stream type");
   fail_unless(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
     strerror(errno), errno);
 
+  mark_point();
   res = proxy_netio_using(PR_NETIO_STRM_CTRL, &netio);
   fail_unless(res == 0, "Failed to handle ctrl stream type: %s",
     strerror(errno));
   fail_unless(netio == NULL, "Expected null ctrl netio, got %p", netio);
 
+  mark_point();
   res = proxy_netio_using(PR_NETIO_STRM_DATA, &netio);
   fail_unless(res == 0, "Failed to handle data stream type: %s",
     strerror(errno));
   fail_unless(netio == NULL, "Expected null data netio, got %p", netio);
 
+  mark_point();
   res = proxy_netio_use(strm_type, NULL);
   fail_unless(res < 0, "Failed to handle othr stream type");
   fail_unless(errno == ENOSYS, "Expected ENOSYS (%d), got '%s' (%d)", ENOSYS,
     strerror(errno), errno);
 
+  mark_point();
   res = proxy_netio_use(PR_NETIO_STRM_CTRL, NULL);
   fail_unless(res == 0, "Failed to handle ctrl stream type: %s",
     strerror(errno));
 
+  mark_point();
   res = proxy_netio_use(PR_NETIO_STRM_DATA, NULL);
   fail_unless(res == 0, "Failed to handle data stream type: %s",
     strerror(errno));
