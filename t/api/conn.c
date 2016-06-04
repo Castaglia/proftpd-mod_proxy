@@ -42,7 +42,7 @@ static void tear_down(void) {
 }
 
 START_TEST (conn_create_test) {
-  struct proxy_conn *pconn;
+  const struct proxy_conn *pconn;
   const char *url;
 
   pconn = proxy_conn_create(NULL, NULL);
@@ -90,7 +90,7 @@ START_TEST (conn_create_test) {
 END_TEST
 
 START_TEST (conn_get_addr_test) {
-  struct proxy_conn *pconn;
+  const struct proxy_conn *pconn;
   const char *ipstr, *url;
   const pr_netaddr_t *pconn_addr;
   array_header *other_addrs = NULL;
@@ -113,7 +113,7 @@ START_TEST (conn_get_addr_test) {
 END_TEST
 
 START_TEST (conn_get_hostport_test) {
-  struct proxy_conn *pconn;
+  const struct proxy_conn *pconn;
   const char *hostport, *url;
 
   hostport = proxy_conn_get_hostport(NULL);
@@ -144,7 +144,7 @@ START_TEST (conn_get_hostport_test) {
 END_TEST
 
 START_TEST (conn_get_uri_test) {
-  struct proxy_conn *pconn;
+  const struct proxy_conn *pconn;
   const char *pconn_url, *url;
 
   pconn_url = proxy_conn_get_uri(NULL);

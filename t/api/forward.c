@@ -64,7 +64,7 @@ START_TEST (forward_use_proxy_auth_test) {
   int res;
 
   res = proxy_forward_use_proxy_auth();
-  fail_unless(res == FALSE, "Expected false, got %d", res);
+  fail_unless(res == TRUE, "Expected true, got %d", res);
 }
 END_TEST
 
