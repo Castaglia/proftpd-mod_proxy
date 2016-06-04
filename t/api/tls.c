@@ -64,15 +64,15 @@ START_TEST (tls_using_tls_test) {
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
-  res = proxy_tls_set_tls(PROXY_TLS_ENGINE_ON;
+  res = proxy_tls_set_tls(PROXY_TLS_ENGINE_ON);
   tls = proxy_tls_using_tls();
   fail_unless(tls == PROXY_TLS_ENGINE_ON, "Expected TLS on, got %d", tls);
 
-  res = proxy_tls_set_tls(PROXY_TLS_ENGINE_OFF;
+  res = proxy_tls_set_tls(PROXY_TLS_ENGINE_OFF);
   tls = proxy_tls_using_tls();
   fail_unless(tls == PROXY_TLS_ENGINE_OFF, "Expected TLS off, got %d", tls);
 
-  res = proxy_tls_set_tls(PROXY_TLS_ENGINE_AUTO;
+  res = proxy_tls_set_tls(PROXY_TLS_ENGINE_AUTO);
   tls = proxy_tls_using_tls();
   fail_unless(tls == PROXY_TLS_ENGINE_AUTO, "Expected TLS auto, got %d", tls);
 }
