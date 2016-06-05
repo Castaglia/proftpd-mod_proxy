@@ -46,6 +46,14 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
   char *active_cmd;
   const char *resp_msg = NULL;
 
+  if (cmd == NULL ||
+      error_code == NULL ||
+      proxy_sess == NULL ||
+      proxy_sess->backend_ctrl_conn == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
   switch (policy_id) {
     case PR_CMD_PORT_ID:
       active_cmd = C_PORT;
@@ -70,8 +78,16 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
 
     default:
       /* In this case, the cmd we were given is the one we should send to
-       * the backend server.
+       * the backend server -- but only if it is either EPRT or PORT.
        */
+      if (pr_cmd_cmp(cmd, PR_CMD_EPRT_ID) != 0 &&
+          pr_cmd_cmp(cmd, PR_CMD_PORT_ID) != 0) {
+        pr_trace_msg(trace_channel, 9,
+          "illegal FTP active transfer command '%s'", (char *) cmd->argv[0]);
+        errno = EINVAL;
+        return -1;
+      }
+
       active_cmd = cmd->argv[0];
 
       if (pr_cmd_cmp(cmd, PR_CMD_EPRT_ID) == 0) {
@@ -119,6 +135,7 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
    */
   backend_family = pr_netaddr_get_family(proxy_sess->backend_ctrl_conn->remote_addr);
   bind_family = pr_netaddr_get_family(bind_addr);
+
   if (bind_family == backend_family) {
 #ifdef PR_USE_IPV6
     if (pr_netaddr_use_ipv6()) {
@@ -277,6 +294,14 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
   unsigned short remote_port;
   char *passive_cmd, *passive_respcode = NULL;
 
+  if (cmd == NULL ||
+      error_code == NULL ||
+      proxy_sess == NULL ||
+      proxy_sess->backend_ctrl_conn == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
   /* Whether we send a PASV (and expect 227) or an EPSV (and expect 229)
    * need to depend on the policy_id.
    */
@@ -304,8 +329,16 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
 
     default:
       /* In this case, the cmd we were given is the one we should send to
-       * the backend server.
+       * the backend server -- but only if it is either EPSV or PASV.
        */
+      if (pr_cmd_cmp(cmd, PR_CMD_EPSV_ID) != 0 &&
+          pr_cmd_cmp(cmd, PR_CMD_PASV_ID) != 0) {
+        pr_trace_msg(trace_channel, 9,
+          "illegal FTP passive transfer command '%s'", (char *) cmd->argv[0]);
+        errno = EINVAL;
+        return NULL;
+      }
+
       passive_cmd = cmd->argv[0];
 
       if (pr_cmd_cmp(cmd, PR_CMD_EPSV_ID) == 0) {

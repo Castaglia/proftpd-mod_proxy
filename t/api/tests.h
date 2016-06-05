@@ -42,7 +42,9 @@
 #include "proxy/ftp/msg.h"
 #include "proxy/ftp/conn.h"
 #include "proxy/ftp/ctrl.h"
+#include "proxy/ftp/data.h"
 #include "proxy/ftp/sess.h"
+#include "proxy/ftp/xfer.h"
 
 #ifdef HAVE_CHECK_H
 # include <check.h>
@@ -66,7 +68,9 @@ Suite *tests_get_session_suite(void);
 Suite *tests_get_ftp_msg_suite(void);
 Suite *tests_get_ftp_conn_suite(void);
 Suite *tests_get_ftp_ctrl_suite(void);
+Suite *tests_get_ftp_data_suite(void);
 Suite *tests_get_ftp_sess_suite(void);
+Suite *tests_get_ftp_xfer_suite(void);
 
 unsigned int recvd_signal_flags;
 extern pid_t mpid;

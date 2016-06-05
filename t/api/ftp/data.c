@@ -1,0 +1,142 @@
+/*
+ * ProFTPD - mod_proxy testsuite
+ * Copyright (c) 2016 TJ Saunders <tj@castaglia.org>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335, USA.
+ *
+ * As a special exemption, TJ Saunders and other respective copyright holders
+ * give permission to link this program with OpenSSL, and distribute the
+ * resulting executable, without including the source code for OpenSSL in the
+ * source distribution.
+ */
+
+/* FTP Data API tests. */
+
+#include "../tests.h"
+
+static pool *p = NULL;
+
+static void set_up(void) {
+  if (p == NULL) {
+    p = permanent_pool = session.pool = make_sub_pool(NULL);
+  }
+
+  init_netaddr();
+  init_netio();
+  init_inet();
+
+  if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.ftp.data", 1, 20);
+  }
+}
+
+static void tear_down(void) {
+  if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.ftp.data", 0, 0);
+  }
+
+  pr_inet_clear();
+
+  if (p) {
+    destroy_pool(p);
+    p = permanent_pool = session.pool = NULL;
+  } 
+}
+
+START_TEST (recv_test) {
+  pr_buffer_t *pbuf;
+  conn_t *conn;
+
+  mark_point();
+  pbuf = proxy_ftp_data_recv(NULL, NULL, 0);
+  fail_unless(pbuf == NULL, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  pbuf = proxy_ftp_data_recv(p, NULL, 0);
+  fail_unless(pbuf == NULL, "Failed to handle null conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  conn = pr_inet_create_conn(p, -2, NULL, INPORT_ANY, FALSE);
+  fail_unless(conn != NULL, "Failed to create conn: %s", strerror(errno));
+
+  mark_point();
+  pbuf = proxy_ftp_data_recv(p, conn, 0);
+  fail_unless(pbuf == NULL, "Failed to handle missing instream");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  pr_inet_close(p, conn);
+}
+END_TEST
+
+START_TEST (send_test) {
+  int res;
+  pr_buffer_t *pbuf;
+  conn_t *conn;
+
+  mark_point();
+  res = proxy_ftp_data_send(NULL, NULL, NULL, 0);
+  fail_unless(res < 0, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_ftp_data_send(p, NULL, NULL, 0);
+  fail_unless(res < 0, "Failed to handle null conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  conn = pr_inet_create_conn(p, -2, NULL, INPORT_ANY, FALSE);
+  fail_unless(conn != NULL, "Failed to create conn: %s", strerror(errno));
+
+  mark_point();
+  res = proxy_ftp_data_send(p, conn, NULL, 0);
+  fail_unless(res < 0, "Failed to handle null buffer");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  pbuf = pcalloc(p, sizeof(pr_buffer_t));
+  pbuf->buflen = 1024;
+  pbuf->remaining = pbuf->buflen;
+  pbuf->current = pbuf->buf = palloc(p, pbuf->buflen);
+
+  mark_point();
+  res = proxy_ftp_data_send(p, conn, pbuf, 0);
+  fail_unless(res < 0, "Sent data unexpectedly");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  pr_inet_close(p, conn);
+}
+END_TEST
+
+Suite *tests_get_ftp_data_suite(void) {
+  Suite *suite;
+  TCase *testcase;
+
+  suite = suite_create("ftp.data");
+  testcase = tcase_create("base");
+
+  tcase_add_checked_fixture(testcase, set_up, tear_down);
+
+  tcase_add_test(testcase, recv_test);
+  tcase_add_test(testcase, send_test);
+
+  suite_add_tcase(suite, testcase);
+  return suite;
+}

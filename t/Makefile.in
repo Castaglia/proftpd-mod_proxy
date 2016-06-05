@@ -72,7 +72,9 @@ TEST_API_OBJS=\
   api/ftp/msg.o \
   api/ftp/conn.o \
   api/ftp/ctrl.o \
+  api/ftp/data.o \
   api/ftp/sess.o \
+  api/ftp/xfer.o \
   api/stubs.o \
   api/tests.o
 

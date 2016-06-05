@@ -34,6 +34,13 @@ pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn,
   int nread;
   pr_buffer_t *pbuf = NULL;
 
+  if (p == NULL ||
+      data_conn == NULL ||
+      data_conn->instrm == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
   if (data_conn->instrm->strm_buf != NULL) {
     pbuf = data_conn->instrm->strm_buf;
 
@@ -74,7 +81,8 @@ int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf,
     int frontend_data) {
   int nwrote;
 
-  if (data_conn == NULL ||
+  if (p == NULL ||
+      data_conn == NULL ||
       data_conn->outstrm == NULL ||
       pbuf == NULL) {
     errno = EINVAL;
