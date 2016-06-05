@@ -314,13 +314,35 @@ START_TEST (netio_set_test) {
   fail_unless(res == 0, "Failed to set null ctrl netio again: %s",
     strerror(errno));
 
+  netio = pr_alloc_netio2(p, NULL, "testsuite");
+  res = proxy_netio_set(strm_type, netio);
+  fail_unless(res == 0, "Failed to set ctrl netio: %s", strerror(errno));
+
+  res = proxy_netio_set(strm_type, netio);
+  fail_unless(res == 0, "Failed to set ctrl netio again: %s", strerror(errno));
+
+  netio = proxy_netio_unset(strm_type, "testcase");
+  fail_unless(netio != NULL, "Failed to unset ctrl netio: %s", strerror(errno));
+
   strm_type = PR_NETIO_STRM_DATA;
+  netio = NULL;
+
   res = proxy_netio_set(strm_type, netio);
   fail_unless(res == 0, "Failed to set null data netio: %s", strerror(errno));
 
   res = proxy_netio_set(strm_type, netio);
   fail_unless(res == 0, "Failed to set null data netio again: %s",
     strerror(errno));
+
+  netio = pr_alloc_netio2(p, NULL, "testsuite");
+  res = proxy_netio_set(strm_type, netio);
+  fail_unless(res == 0, "Failed to set data netio: %s", strerror(errno));
+
+  res = proxy_netio_set(strm_type, netio);
+  fail_unless(res == 0, "Failed to set data netio again: %s", strerror(errno));
+
+  netio = proxy_netio_unset(strm_type, "testcase");
+  fail_unless(netio != NULL, "Failed to unset data netio: %s", strerror(errno));
 }
 END_TEST
 
