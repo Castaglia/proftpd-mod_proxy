@@ -226,7 +226,7 @@ START_TEST (netio_set_poll_interval_test) {
     strerror(errno));
 
   mark_point();
-  proxy_netio_set_poll_interval(NULL, 1);
+  proxy_netio_set_poll_interval(nstrm, 1);
 
   res = proxy_netio_close(nstrm);
   fail_unless(res < 0, "Successfully closed stream unexpectedly");
@@ -305,6 +305,22 @@ START_TEST (netio_set_test) {
 
   res = proxy_netio_set(strm_type, netio);
   fail_unless(res == 0, "Failed to set null othr netio: %s", strerror(errno));
+
+  strm_type = PR_NETIO_STRM_CTRL;
+  res = proxy_netio_set(strm_type, netio);
+  fail_unless(res == 0, "Failed to set null ctrl netio: %s", strerror(errno));
+
+  res = proxy_netio_set(strm_type, netio);
+  fail_unless(res == 0, "Failed to set null ctrl netio again: %s",
+    strerror(errno));
+
+  strm_type = PR_NETIO_STRM_DATA;
+  res = proxy_netio_set(strm_type, netio);
+  fail_unless(res == 0, "Failed to set null data netio: %s", strerror(errno));
+
+  res = proxy_netio_set(strm_type, netio);
+  fail_unless(res == 0, "Failed to set null data netio again: %s",
+    strerror(errno));
 }
 END_TEST
 
@@ -341,9 +357,20 @@ START_TEST (netio_use_test) {
   fail_unless(res == 0, "Failed to handle ctrl stream type: %s",
     strerror(errno));
 
+  netio = proxy_netio_unset(PR_NETIO_STRM_CTRL, "testcase");
+  fail_unless(netio == NULL, "Unset ctrl stream unexpectedly");
+  fail_unless(errno == ENOSYS, "Expected ENOSYS (%d), got '%s' (%d)", ENOSYS,
+    strerror(errno), errno);
+
   res = proxy_netio_use(PR_NETIO_STRM_DATA, NULL);
   fail_unless(res == 0, "Failed to handle data stream type: %s",
     strerror(errno));
+
+  netio = proxy_netio_unset(PR_NETIO_STRM_DATA, "testcase");
+  fail_unless(netio == NULL, "Unset data stream unexpectedly");
+  fail_unless(errno == ENOSYS, "Expected ENOSYS (%d), got '%s' (%d)", ENOSYS,
+    strerror(errno), errno);
+
 }
 END_TEST
 

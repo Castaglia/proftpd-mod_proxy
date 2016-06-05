@@ -89,12 +89,12 @@ static void tear_down(void) {
 START_TEST (accept_test) {
   conn_t *res, *ctrl_conn = NULL, *data_conn = NULL;
 
-  res = proxy_ftp_conn_accept(NULL, NULL, NULL, 0);
+  res = proxy_ftp_conn_accept(NULL, NULL, NULL, FALSE);
   fail_unless(res == NULL, "Failed to handle null pool");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
-  res = proxy_ftp_conn_accept(p, NULL, NULL, 0);
+  res = proxy_ftp_conn_accept(p, NULL, NULL, FALSE);
   fail_unless(res == NULL, "Failed to handle null data conn");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
@@ -104,7 +104,7 @@ START_TEST (accept_test) {
     strerror(errno));
 
   mark_point();
-  res = proxy_ftp_conn_accept(p, data_conn, NULL, 0);
+  res = proxy_ftp_conn_accept(p, data_conn, NULL, FALSE);
   fail_unless(res == NULL, "Failed to handle null ctrl conn");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
@@ -113,8 +113,30 @@ START_TEST (accept_test) {
   fail_unless(ctrl_conn != NULL, "Failed to create conn: %s",
     strerror(errno));
 
+  session.xfer.direction = PR_NETIO_IO_RD;
+
   mark_point();
-  res = proxy_ftp_conn_accept(p, data_conn, ctrl_conn, 0);
+  res = proxy_ftp_conn_accept(p, data_conn, ctrl_conn, FALSE);
+  fail_unless(res == NULL, "Failed to handle null ctrl conn");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_ftp_conn_accept(p, data_conn, ctrl_conn, TRUE);
+  fail_unless(res == NULL, "Failed to handle null ctrl conn");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+
+  session.xfer.direction = PR_NETIO_IO_WR;
+
+  mark_point();
+  res = proxy_ftp_conn_accept(p, data_conn, ctrl_conn, FALSE);
+  fail_unless(res == NULL, "Failed to handle null ctrl conn");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_ftp_conn_accept(p, data_conn, ctrl_conn, TRUE);
   fail_unless(res == NULL, "Failed to handle null ctrl conn");
   fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
@@ -128,12 +150,12 @@ START_TEST (connect_test) {
   conn_t *res;
   const pr_netaddr_t *remote_addr = NULL;
 
-  res = proxy_ftp_conn_connect(NULL, NULL, NULL, 0);
+  res = proxy_ftp_conn_connect(NULL, NULL, NULL, FALSE);
   fail_unless(res == NULL, "Failed to handle null pool");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
-  res = proxy_ftp_conn_connect(p, NULL, NULL, 0);
+  res = proxy_ftp_conn_connect(p, NULL, NULL, FALSE);
   fail_unless(res == NULL, "Failed to handle null remote addr");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
@@ -143,11 +165,37 @@ START_TEST (connect_test) {
     strerror(errno));
   pr_netaddr_set_port((pr_netaddr_t *) remote_addr, htons(6555));
 
-  res = proxy_ftp_conn_connect(p, NULL, remote_addr, 0);
+  session.xfer.direction = PR_NETIO_IO_RD;
+
+  mark_point();
+  res = proxy_ftp_conn_connect(p, NULL, remote_addr, FALSE);
   fail_unless(res == NULL, "Failed to handle bad address family");
-  fail_unless(errno == EAFNOSUPPORT || errno == EINVAL,
-    "Expected EAFNOSUPPORT (%d) or EINVAL (%d), got '%s' (%d)",
-    EAFNOSUPPORT, EINVAL, strerror(errno), errno);
+  fail_unless(errno == EAFNOSUPPORT,
+    "Expected EAFNOSUPPORT (%d), got '%s' (%d)", EAFNOSUPPORT,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_ftp_conn_connect(p, NULL, remote_addr, TRUE);
+  fail_unless(res == NULL, "Failed to handle bad address family");
+  fail_unless(errno == EAFNOSUPPORT,
+    "Expected EAFNOSUPPORT (%d), got '%s' (%d)", EAFNOSUPPORT,
+    strerror(errno), errno);
+
+  session.xfer.direction = PR_NETIO_IO_WR;
+
+  mark_point();
+  res = proxy_ftp_conn_connect(p, NULL, remote_addr, FALSE);
+  fail_unless(res == NULL, "Failed to handle bad address family");
+  fail_unless(errno == EAFNOSUPPORT,
+    "Expected EAFNOSUPPORT (%d), got '%s' (%d)", EAFNOSUPPORT,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_ftp_conn_connect(p, NULL, remote_addr, TRUE);
+  fail_unless(res == NULL, "Failed to handle bad address family");
+  fail_unless(errno == EAFNOSUPPORT,
+    "Expected EAFNOSUPPORT (%d), got '%s' (%d)", EAFNOSUPPORT,
+    strerror(errno), errno);
 }
 END_TEST
 
@@ -155,12 +203,12 @@ START_TEST (listen_test) {
   conn_t *res;
   const pr_netaddr_t *bind_addr = NULL;
 
-  res = proxy_ftp_conn_listen(NULL, NULL, 0);
+  res = proxy_ftp_conn_listen(NULL, NULL, FALSE);
   fail_unless(res == NULL, "Failed to handle null pool");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
-  res = proxy_ftp_conn_listen(p, NULL, 0);
+  res = proxy_ftp_conn_listen(p, NULL, FALSE);
   fail_unless(res == NULL, "Failed to handle null bind address");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
@@ -170,9 +218,14 @@ START_TEST (listen_test) {
     strerror(errno));
   pr_netaddr_set_port((pr_netaddr_t *) bind_addr, htons(0));
 
-  res = proxy_ftp_conn_listen(p, bind_addr, 0);
+  mark_point();
+  res = proxy_ftp_conn_listen(p, bind_addr, FALSE);
   fail_unless(res != NULL, "Failed to listen: %s", strerror(errno));
+  pr_inet_close(p, res);
 
+  mark_point();
+  res = proxy_ftp_conn_listen(p, bind_addr, TRUE);
+  fail_unless(res != NULL, "Failed to listen: %s", strerror(errno));
   pr_inet_close(p, res);
 }
 END_TEST
