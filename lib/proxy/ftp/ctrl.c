@@ -445,7 +445,7 @@ int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp,
 
   pr_trace_msg(trace_channel, 9,
     "backend->frontend response: %s%s%s", resp->num,
-    resp_nlines == 1 ? " " : "", resp->msg);
+    resp_nlines <= 1 ? " " : "", resp->msg);
 
   curr_pool = pr_response_get_pool();
   if (curr_pool == NULL) {

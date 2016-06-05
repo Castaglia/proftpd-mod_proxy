@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy NetIO implementation
- * Copyright (c) 2015 TJ Saunders
+ * Copyright (c) 2015-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -237,6 +237,11 @@ int proxy_netio_poll(pr_netio_stream_t *nstrm) {
   int res, xerrno;
   pr_netio_t *curr_netio;
 
+  if (nstrm == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
   curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_poll");
   res = pr_netio_poll(nstrm);
   xerrno = errno;
@@ -249,6 +254,11 @@ int proxy_netio_poll(pr_netio_stream_t *nstrm) {
 int proxy_netio_postopen(pr_netio_stream_t *nstrm) {
   int res = 0, xerrno;
   pr_netio_t *curr_netio = NULL;
+
+  if (nstrm == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
 
   curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_postpopen");
   res = pr_netio_postopen(nstrm);
@@ -285,6 +295,11 @@ int proxy_netio_read(pr_netio_stream_t *nstrm, char *buf, size_t bufsz,
   int res, xerrno;
   pr_netio_t *curr_netio = NULL;
 
+  if (nstrm == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
   curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_read");
   res = pr_netio_read(nstrm, buf, bufsz, bufmin);
   xerrno = errno;
@@ -297,6 +312,10 @@ int proxy_netio_read(pr_netio_stream_t *nstrm, char *buf, size_t bufsz,
 void proxy_netio_reset_poll_interval(pr_netio_stream_t *nstrm) {
   pr_netio_t *curr_netio = NULL;
 
+  if (nstrm == NULL) {
+    return;
+  }
+
   curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_reset_poll_interval");
   pr_netio_reset_poll_interval(nstrm);
   proxy_netio_set(nstrm->strm_type, curr_netio);
@@ -306,6 +325,10 @@ void proxy_netio_set_poll_interval(pr_netio_stream_t *nstrm,
     unsigned int secs) {
   pr_netio_t *curr_netio = NULL;
 
+  if (nstrm == NULL) {
+    return;
+  }
+
   curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_set_poll_interval");
   pr_netio_set_poll_interval(nstrm, secs);
   proxy_netio_set(nstrm->strm_type, curr_netio);
@@ -314,6 +337,11 @@ void proxy_netio_set_poll_interval(pr_netio_stream_t *nstrm,
 int proxy_netio_shutdown(pr_netio_stream_t *nstrm, int how) {
   int res, xerrno;
   pr_netio_t *curr_netio = NULL;
+
+  if (nstrm == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
 
   curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_shutdown");
   res = pr_netio_shutdown(nstrm, how);
@@ -327,6 +355,11 @@ int proxy_netio_shutdown(pr_netio_stream_t *nstrm, int how) {
 int proxy_netio_write(pr_netio_stream_t *nstrm, char *buf, size_t bufsz) {
   int res, xerrno;
   pr_netio_t *curr_netio = NULL;
+
+  if (nstrm == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
 
   curr_netio = proxy_netio_unset(nstrm->strm_type, "netio_write");
   res = pr_netio_write(nstrm, buf, bufsz);

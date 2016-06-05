@@ -53,6 +53,242 @@ static void tear_down(void) {
   }
 }
 
+START_TEST (netio_close_test) {
+  int res;
+
+  res = proxy_netio_close(NULL);
+  fail_unless(res < 0, "Failed to handle null stream");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+}
+END_TEST
+
+START_TEST (netio_open_test) {
+  int res;
+  pr_netio_stream_t *nstrm;
+
+  nstrm = proxy_netio_open(NULL, 0, -1, PR_NETIO_IO_RD);
+  fail_unless(nstrm == NULL, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  nstrm = proxy_netio_open(p, 77, -1, PR_NETIO_IO_RD);
+  fail_unless(nstrm == NULL, "Failed to handle unsupported stream type");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
+    strerror(errno), errno);
+
+  nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
+  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+    strerror(errno));
+
+  res = proxy_netio_close(nstrm);
+  fail_unless(res < 0, "Successfully closed stream unexpectedly");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+}
+END_TEST
+
+START_TEST (netio_poll_test) {
+  int res;
+  pr_netio_stream_t *nstrm;
+
+  res = proxy_netio_poll(NULL);
+  fail_unless(res < 0, "Failed to handle null stream");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
+  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+    strerror(errno));
+
+  res = proxy_netio_poll(nstrm);
+  fail_unless(res < 0, "Polled stream unexpectedly");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+
+  res = proxy_netio_close(nstrm);
+  fail_unless(res < 0, "Successfully closed stream unexpectedly");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+}
+END_TEST
+
+START_TEST (netio_postopen_test) {
+  int res;
+  pr_netio_stream_t *nstrm;
+
+  res = proxy_netio_postopen(NULL);
+  fail_unless(res < 0, "Failed to handle null stream");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
+  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+    strerror(errno));
+
+  res = proxy_netio_postopen(nstrm);
+  fail_unless(res == 0, "Failed to postopen stream: %s", strerror(errno));
+
+  res = proxy_netio_close(nstrm);
+  fail_unless(res < 0, "Successfully closed stream unexpectedly");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+}
+END_TEST
+
+START_TEST (netio_printf_test) {
+  int res;
+  pr_netio_stream_t *nstrm;
+
+  res = proxy_netio_printf(NULL, "%s", "foo");
+  fail_unless(res < 0, "Failed to handle null stream");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
+  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+    strerror(errno));
+
+  res = proxy_netio_printf(nstrm, "%d", 7);
+  fail_unless(res < 0, "Failed to handle null stream");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+
+  res = proxy_netio_close(nstrm);
+  fail_unless(res < 0, "Successfully closed stream unexpectedly");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+}
+END_TEST
+
+START_TEST (netio_read_test) {
+  int res;
+  pr_netio_stream_t *nstrm;
+  char *buf;
+  size_t bufsz;
+
+  bufsz = 1024;
+  buf = palloc(p, bufsz);
+
+  mark_point();
+  res = proxy_netio_read(NULL, buf, bufsz, 1);
+  fail_unless(res < 0, "Failed to handle null stream");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
+  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_netio_read(nstrm, buf, bufsz, 1);
+  fail_unless(res < 0, "Successfully read from stream unexpectedly");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+
+  res = proxy_netio_close(nstrm);
+  fail_unless(res < 0, "Successfully closed stream unexpectedly");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+}
+END_TEST
+
+START_TEST (netio_reset_poll_interval_test) {
+  int res;
+  pr_netio_stream_t *nstrm;
+
+  mark_point();
+  proxy_netio_reset_poll_interval(NULL);
+
+  nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
+  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+    strerror(errno));
+
+  mark_point();
+  proxy_netio_reset_poll_interval(nstrm);
+
+  res = proxy_netio_close(nstrm);
+  fail_unless(res < 0, "Successfully closed stream unexpectedly");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+}
+END_TEST
+
+START_TEST (netio_set_poll_interval_test) {
+  int res;
+  pr_netio_stream_t *nstrm;
+
+  mark_point();
+  proxy_netio_set_poll_interval(NULL, 1);
+
+  nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
+  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+    strerror(errno));
+
+  mark_point();
+  proxy_netio_set_poll_interval(NULL, 1);
+
+  res = proxy_netio_close(nstrm);
+  fail_unless(res < 0, "Successfully closed stream unexpectedly");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+}
+END_TEST
+
+START_TEST (netio_shutdown_test) {
+  int res;
+  pr_netio_stream_t *nstrm;
+
+  mark_point();
+  res = proxy_netio_shutdown(NULL, 0);
+  fail_unless(res < 0, "Failed to handle null stream");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
+  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_netio_shutdown(nstrm, 0);
+  fail_unless(res < 0, "Successfully shutdown stream unexpectedly");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+
+  res = proxy_netio_close(nstrm);
+  fail_unless(res < 0, "Successfully closed stream unexpectedly");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+}
+END_TEST
+
+START_TEST (netio_write_test) {
+  int res;
+  pr_netio_stream_t *nstrm;
+
+  mark_point();
+  res = proxy_netio_write(NULL, "foo", 3);
+  fail_unless(res < 0, "Failed to handle null stream");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
+  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_netio_write(nstrm, "foo", 1);
+  fail_unless(res < 0, "Wrote to stream unexpectedly");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+
+  res = proxy_netio_close(nstrm);
+  fail_unless(res < 0, "Successfully closed stream unexpectedly");
+  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+    strerror(errno), errno);
+}
+END_TEST
+
 START_TEST (netio_set_test) {
   pr_netio_t *netio = NULL;
   int res, strm_type = PR_NETIO_STRM_OTHR;
@@ -119,6 +355,17 @@ Suite *tests_get_netio_suite(void) {
   testcase = tcase_create("base");
 
   tcase_add_checked_fixture(testcase, set_up, tear_down);
+
+  tcase_add_test(testcase, netio_close_test);
+  tcase_add_test(testcase, netio_open_test);
+  tcase_add_test(testcase, netio_poll_test);
+  tcase_add_test(testcase, netio_postopen_test);
+  tcase_add_test(testcase, netio_printf_test);
+  tcase_add_test(testcase, netio_read_test);
+  tcase_add_test(testcase, netio_reset_poll_interval_test);
+  tcase_add_test(testcase, netio_set_poll_interval_test);
+  tcase_add_test(testcase, netio_shutdown_test);
+  tcase_add_test(testcase, netio_write_test);
 
   tcase_add_test(testcase, netio_set_test);
   tcase_add_test(testcase, netio_use_test);

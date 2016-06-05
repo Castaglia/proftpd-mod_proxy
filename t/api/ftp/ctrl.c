@@ -42,6 +42,7 @@ static void set_up(void) {
   }
 
   pr_inet_set_default_family(p, AF_INET);
+  pr_response_set_pool(NULL);
 }
 
 static void tear_down(void) {
@@ -51,6 +52,7 @@ static void tear_down(void) {
 
   pr_inet_set_default_family(p, 0);
   pr_inet_clear();
+  pr_response_set_pool(NULL);
 
   if (p) {
     destroy_pool(p);
@@ -167,10 +169,60 @@ START_TEST (recv_resp_test) {
 END_TEST
 
 START_TEST (send_cmd_test) {
+  int res;
+  conn_t *ctrl_conn;
+  cmd_rec *cmd;
+
+  res = proxy_ftp_ctrl_send_cmd(NULL, NULL, NULL);
+  fail_unless(res < 0, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  res = proxy_ftp_ctrl_send_cmd(p, NULL, NULL);
+  fail_unless(res < 0, "Failed to handle null conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  ctrl_conn = pr_inet_create_conn(p, -2, NULL, INPORT_ANY, FALSE);
+  fail_unless(ctrl_conn != NULL, "Failed to create conn: %s",
+    strerror(errno));
+
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, NULL);
+  fail_unless(res < 0, "Failed to handle null command");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  cmd = pr_cmd_alloc(p, 2, "FOO", "bar");
+
+  res = proxy_ftp_ctrl_send_cmd(p, ctrl_conn, cmd);
+  fail_unless(res < 0, "Failed to handle null command");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  pr_inet_close(p, ctrl_conn);
 }
 END_TEST
 
 START_TEST (send_resp_test) {
+  int res;
+  pr_response_t *resp;
+
+  res = proxy_ftp_ctrl_send_resp(NULL, NULL, NULL, 0);
+  fail_unless(res < 0, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  res = proxy_ftp_ctrl_send_resp(p, NULL, NULL, 0);
+  fail_unless(res < 0, "Failed to handle null response");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  resp = pcalloc(p, sizeof(pr_response_t));
+  resp->num = "123";
+  resp->msg = pstrdup(p, "foo bar?");
+
+  res = proxy_ftp_ctrl_send_resp(p, NULL, resp, 0);
+  fail_unless(res == 0, "Failed to handle response: %s", strerror(errno));
 }
 END_TEST
 
