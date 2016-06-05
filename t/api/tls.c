@@ -27,11 +27,32 @@
 #include "tests.h"
 
 static pool *p = NULL;
+static const char *test_dir = "/tmp/mod_proxy-test-tls";
+
+static int create_test_dir(void) {
+  int res;
+  mode_t perms;
+
+  perms = 0770;
+  res = mkdir(test_dir, perms);
+  fail_unless(res == 0, "Failed to create tmp directory '%s': %s", test_dir,
+    strerror(errno));
+
+  res = chmod(test_dir, perms);
+  fail_unless(res == 0, "Failed to set perms %04o on directory '%s': %s",
+    perms, test_dir, strerror(errno));
+
+  return 0;
+}
 
 static void set_up(void) {
   if (p == NULL) {
-    p = permanent_pool = make_sub_pool(NULL);
+    p = permanent_pool = proxy_pool = make_sub_pool(NULL);
   }
+
+  (void) tests_rmpath(p, test_dir);
+  (void) create_test_dir();
+  proxy_db_init(p);
 
   if (getenv("TEST_VERBOSE") != NULL) {
     pr_trace_set_levels("proxy.tls", 1, 20);
@@ -43,11 +64,57 @@ static void tear_down(void) {
     pr_trace_set_levels("proxy.tls", 0, 0);
   }
 
+  proxy_db_free();
+  (void) tests_rmpath(p, test_dir);
+
   if (p) {
     destroy_pool(p);
-    p = permanent_pool = NULL;
+    p = permanent_pool = proxy_pool = NULL;
   }
 }
+
+START_TEST (tls_free_test) {
+  int res;
+
+  res = proxy_tls_free(NULL);
+  fail_unless(res < 0, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  res = proxy_tls_free(p);
+  fail_unless(res == 0, "Failed to free TLS API resources: %s",
+    strerror(errno));
+}
+END_TEST
+
+START_TEST (tls_init_test) {
+  int res;
+
+  res = proxy_tls_init(NULL, NULL);
+#ifdef PR_USE_OPENSSL
+  fail_unless(res < 0, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  res = proxy_tls_init(p, NULL);
+  fail_unless(res < 0, "Failed to handle null tables directory");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_tls_init(p, test_dir);
+  fail_unless(res == 0, "Failed to init TLS API resources: %s",
+    strerror(errno));
+
+  res = proxy_tls_free(p);
+  fail_unless(res == 0, "Failed to free TLS API resources: %s",
+    strerror(errno));
+#else
+  fail_unless(res == 0, "Failed to init TLS API resources: %s",
+    strerror(errno));
+#endif /* PR_USE_OPENSSL */
+}
+END_TEST
 
 START_TEST (tls_using_tls_test) {
   int res, tls;
@@ -87,6 +154,8 @@ Suite *tests_get_tls_suite(void) {
 
   tcase_add_checked_fixture(testcase, set_up, tear_down);
 
+  tcase_add_test(testcase, tls_free_test);
+  tcase_add_test(testcase, tls_init_test);
   tcase_add_test(testcase, tls_using_tls_test);
 
   suite_add_tcase(suite, testcase);

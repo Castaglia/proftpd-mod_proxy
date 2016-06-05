@@ -242,3 +242,32 @@ void pr_signals_handle(void) {
 }
 
 /* Module-specific stubs */
+
+module proxy_module = {
+  /* Always NULL */
+  NULL, NULL,
+
+  /* Module API version */
+  0x20,
+
+  /* Module name */
+  "proxy",
+
+  /* Module configuration handler table */
+  NULL,
+
+  /* Module command handler table */
+  NULL,
+
+  /* Module authentication handler table */
+  NULL,
+
+  /* Module initialization */
+  NULL,
+
+  /* Session initialization */
+  NULL,
+
+  /* Module version */
+  MOD_PROXY_VERSION
+};

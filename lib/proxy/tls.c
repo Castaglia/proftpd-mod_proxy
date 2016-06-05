@@ -2747,6 +2747,11 @@ static int tls_db_init(pool *p, const char *tables_dir) {
     return -1;
   }
 
+  /* This will not happen during normal operation, but does for tests. */
+  if (server_list == NULL) {
+    return 0;
+  }
+
   for (s = (server_rec *) server_list->xas_list; s; s = s->next) {
     res = tls_db_add_vhost(p, s);
     if (res < 0) {
@@ -2819,6 +2824,18 @@ int proxy_tls_init(pool *p, const char *tables_dir) {
 
 int proxy_tls_free(pool *p) {
   int res;
+
+  if (p == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+#ifdef PR_USE_OPENSSL
+  if (ssl_ctx != NULL) {
+    SSL_CTX_free(ssl_ctx);
+    ssl_ctx = NULL;
+  }
+#endif /* PR_USE_OPENSSL */
 
   res = proxy_db_close(p, PROXY_TLS_DB_SCHEMA_NAME);
   if (res < 0) {
