@@ -26,8 +26,38 @@
 
 #include "tests.h"
 
+extern xaset_t *server_list;
+
 static pool *p = NULL;
 static const char *test_dir = "/tmp/mod_proxy-test-tls";
+
+static void create_main_server(void) {
+  pool *main_pool;
+
+  main_pool = make_sub_pool(permanent_pool);
+  pr_pool_tag(main_pool, "testsuite#main_server pool");
+
+  server_list = xaset_create(main_pool, NULL);
+
+  main_server = (server_rec *) pcalloc(main_pool, sizeof(server_rec));
+  xaset_insert(server_list, (xasetmember_t *) main_server);
+
+  main_server->pool = main_pool;
+  main_server->set = server_list;
+  main_server->sid = 1;
+  main_server->notes = pr_table_nalloc(main_pool, 0, 8);
+
+  /* TCP KeepAlive is enabled by default, with the system defaults. */
+  main_server->tcp_keepalive = palloc(main_server->pool,
+    sizeof(struct tcp_keepalive));
+  main_server->tcp_keepalive->keepalive_enabled = TRUE;
+  main_server->tcp_keepalive->keepalive_idle = -1;
+  main_server->tcp_keepalive->keepalive_count = -1;
+  main_server->tcp_keepalive->keepalive_intvl = -1;
+
+  main_server->ServerName = "Test Server";
+  main_server->ServerPort = 21;
+}
 
 static int create_test_dir(void) {
   int res;
@@ -48,9 +78,12 @@ static int create_test_dir(void) {
 static void set_up(void) {
   if (p == NULL) {
     p = permanent_pool = proxy_pool = make_sub_pool(NULL);
+    server_list = NULL;
+    main_server = NULL;
   }
 
   (void) tests_rmpath(p, test_dir);
+  create_main_server();
   (void) create_test_dir();
   proxy_db_init(p);
 
@@ -70,6 +103,8 @@ static void tear_down(void) {
   if (p) {
     destroy_pool(p);
     p = permanent_pool = proxy_pool = NULL;
+    server_list = NULL;
+    main_server = NULL;
   }
 }
 

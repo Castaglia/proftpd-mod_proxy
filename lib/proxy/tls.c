@@ -2747,11 +2747,6 @@ static int tls_db_init(pool *p, const char *tables_dir) {
     return -1;
   }
 
-  /* This will not happen during normal operation, but does for tests. */
-  if (server_list == NULL) {
-    return 0;
-  }
-
   for (s = (server_rec *) server_list->xas_list; s; s = s->next) {
     res = tls_db_add_vhost(p, s);
     if (res < 0) {
