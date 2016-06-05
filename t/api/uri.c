@@ -89,6 +89,8 @@ START_TEST (uri_parse_test) {
 
   mark_point();
 
+  scheme = host = username = password = NULL;
+  port = 0;
   uri = "foo:";
   res = proxy_uri_parse(p, uri, &scheme, &host, &port, NULL, NULL);
   fail_unless(res < 0, "Failed to handle unknown/unsupported scheme");
@@ -97,14 +99,18 @@ START_TEST (uri_parse_test) {
 
   mark_point();
 
+  scheme = host = username = password = NULL;
+  port = 0;
   uri = "foo@:";
   res = proxy_uri_parse(p, uri, &scheme, &host, &port, NULL, NULL);
-  fail_unless(res < 0, "Failed to handle unknown/unsupported scheme");
+  fail_unless(res < 0, "Failed to handle illegal scheme character");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
 
+  scheme = host = username = password = NULL;
+  port = 0;
   uri = "ftp:";
   res = proxy_uri_parse(p, uri, &scheme, &host, &port, NULL, NULL);
   fail_unless(res < 0, "Failed to handle URI lacking double slashes");
@@ -113,6 +119,8 @@ START_TEST (uri_parse_test) {
 
   mark_point();
 
+  scheme = host = username = password = NULL;
+  port = 0;
   uri = "ftp:/";
   res = proxy_uri_parse(p, uri, &scheme, &host, &port, NULL, NULL);
   fail_unless(res < 0, "Failed to handle URI lacking double slashes");
@@ -121,6 +129,8 @@ START_TEST (uri_parse_test) {
 
   mark_point();
 
+  scheme = host = username = password = NULL;
+  port = 0;
   uri = "ftp:/a";
   res = proxy_uri_parse(p, uri, &scheme, &host, &port, NULL, NULL);
   fail_unless(res < 0, "Failed to handle URI lacking double slashes");

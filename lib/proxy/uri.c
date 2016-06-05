@@ -200,8 +200,7 @@ static char *uri_parse_userinfo(pool *p, const char *orig_uri,
 int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
     unsigned int *port, char **username, char **password) {
   char *ptr, *ptr2;
-  int res;
-  size_t len;
+  size_t idx, len;
 
   if (uri == NULL ||
       scheme == NULL ||
@@ -222,13 +221,13 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
   len = (ptr - uri);
   *scheme = pstrndup(p, uri, len);
 
-  res = strspn(*scheme, "abcdefghijklmnopqrstuvwxyz+.-");
-  if (res < (int) len &&
-      *scheme[res] != '\0') {
+  idx = strspn(*scheme, "abcdefghijklmnopqrstuvwxyz+.-");
+  if (idx < len &&
+      (*scheme)[idx] != '\0') {
     /* Invalid character in the scheme string, according to RFC 1738 rules. */
     pr_trace_msg(trace_channel, 4,
-      "invalid character (%c) at index %d in scheme '%.100s'", *scheme[res],
-      res, *scheme);
+      "invalid character (%c) at index %lu in scheme '%.100s'", (*scheme)[idx],
+      (unsigned long) idx, *scheme);
     errno = EINVAL;
     return -1;
   }
