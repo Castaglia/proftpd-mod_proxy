@@ -49,6 +49,12 @@ static void tear_down(void) {
   }
 }
 
+START_TEST (conn_free_test) {
+  mark_point();
+  proxy_conn_free(NULL);
+}
+END_TEST
+
 START_TEST (conn_create_test) {
   const struct proxy_conn *pconn;
   const char *url;
@@ -437,6 +443,7 @@ Suite *tests_get_conn_suite(void) {
 
   tcase_add_checked_fixture(testcase, set_up, tear_down);
 
+  tcase_add_test(testcase, conn_free_test);
   tcase_add_test(testcase, conn_create_test);
   tcase_add_test(testcase, conn_get_addr_test);
   tcase_add_test(testcase, conn_get_host_test);
