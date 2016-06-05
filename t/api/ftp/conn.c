@@ -170,32 +170,32 @@ START_TEST (connect_test) {
   mark_point();
   res = proxy_ftp_conn_connect(p, NULL, remote_addr, FALSE);
   fail_unless(res == NULL, "Failed to handle bad address family");
-  fail_unless(errno == EAFNOSUPPORT,
-    "Expected EAFNOSUPPORT (%d), got '%s' (%d)", EAFNOSUPPORT,
-    strerror(errno), errno);
+  fail_unless(errno == EAFNOSUPPORT || errno == EINVAL,
+    "Expected EAFNOSUPPORT (%d) or EINVAL (%d), got '%s' (%d)",
+    EAFNOSUPPORT, EINVAL, strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_conn_connect(p, NULL, remote_addr, TRUE);
   fail_unless(res == NULL, "Failed to handle bad address family");
-  fail_unless(errno == EAFNOSUPPORT,
-    "Expected EAFNOSUPPORT (%d), got '%s' (%d)", EAFNOSUPPORT,
-    strerror(errno), errno);
+  fail_unless(errno == EAFNOSUPPORT || errno == EINVAL,
+    "Expected EAFNOSUPPORT (%d) or EINVAL (%d), got '%s' (%d)",
+    EAFNOSUPPORT, EINVAL, strerror(errno), errno);
 
   session.xfer.direction = PR_NETIO_IO_WR;
 
   mark_point();
   res = proxy_ftp_conn_connect(p, NULL, remote_addr, FALSE);
   fail_unless(res == NULL, "Failed to handle bad address family");
-  fail_unless(errno == EAFNOSUPPORT,
-    "Expected EAFNOSUPPORT (%d), got '%s' (%d)", EAFNOSUPPORT,
-    strerror(errno), errno);
+  fail_unless(errno == EAFNOSUPPORT || errno == EINVAL,
+    "Expected EAFNOSUPPORT (%d) or EINVAL (%d), got '%s' (%d)",
+    EAFNOSUPPORT, EINVAL, strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_conn_connect(p, NULL, remote_addr, TRUE);
   fail_unless(res == NULL, "Failed to handle bad address family");
-  fail_unless(errno == EAFNOSUPPORT,
-    "Expected EAFNOSUPPORT (%d), got '%s' (%d)", EAFNOSUPPORT,
-    strerror(errno), errno);
+  fail_unless(errno == EAFNOSUPPORT || errno == EINVAL,
+    "Expected EAFNOSUPPORT (%d) or EINVAL (%d), got '%s' (%d)",
+    EAFNOSUPPORT, EINVAL, strerror(errno), errno);
 }
 END_TEST
 
