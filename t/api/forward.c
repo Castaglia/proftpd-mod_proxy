@@ -52,13 +52,45 @@ static void tear_down(void) {
     pr_trace_set_levels("proxy.forward", 0, 0);
   }
 
+  test_cleanup();
+
   if (p) {
     destroy_pool(p);
     p = permanent_pool = NULL;
   } 
-
-  test_cleanup();
 }
+
+START_TEST (forward_get_method_test) {
+  int res;
+  const char *method;
+
+  res = proxy_forward_get_method(NULL);
+  fail_unless(res < 0, "Failed to handle null argument");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  method = "foo";
+  res = proxy_forward_get_method(method);
+  fail_unless(res < 0, "Failed to handle unsupported method '%s'", method);
+  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
+    strerror(errno), errno);
+
+  method = "proxyuser,user@host";
+  res = proxy_forward_get_method(method);
+  fail_unless(res == PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH,
+    "Failed to handle method '%s'", method);
+
+  method = "user@host";
+  res = proxy_forward_get_method(method);
+  fail_unless(res == PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH,
+    "Failed to handle method '%s'", method);
+
+  method = "proxyuser@host,user";
+  res = proxy_forward_get_method(method);
+  fail_unless(res == PROXY_FORWARD_METHOD_PROXY_USER_WITH_PROXY_AUTH,
+    "Failed to handle method '%s'", method);
+}
+END_TEST
 
 START_TEST (forward_use_proxy_auth_test) {
   int res;
@@ -77,6 +109,7 @@ Suite *tests_get_forward_suite(void) {
 
   tcase_add_checked_fixture(testcase, set_up, tear_down);
 
+  tcase_add_test(testcase, forward_get_method_test);
   tcase_add_test(testcase, forward_use_proxy_auth_test);
 
   suite_add_tcase(suite, testcase);
