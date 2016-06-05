@@ -33,31 +33,12 @@ static const char *test_dir = "/tmp/mod_proxy-test-reverse";
 static const char *test_file = "/tmp/mod_proxy-test-reverse/servers.json";
 
 static void create_main_server(void) {
-  pool *main_pool;
+  server_rec *s;
 
-  main_pool = make_sub_pool(permanent_pool);
-  pr_pool_tag(main_pool, "testsuite#main_server pool");
+  s = pr_parser_server_ctxt_open("127.0.0.1");
+  s->ServerName = "Test Server";
 
-  server_list = xaset_create(main_pool, NULL);
-
-  main_server = (server_rec *) pcalloc(main_pool, sizeof(server_rec));
-  xaset_insert(server_list, (xasetmember_t *) main_server);
-
-  main_server->pool = main_pool;
-  main_server->set = server_list;
-  main_server->sid = 1;
-  main_server->notes = pr_table_nalloc(main_pool, 0, 8);
-
-  /* TCP KeepAlive is enabled by default, with the system defaults. */
-  main_server->tcp_keepalive = palloc(main_server->pool,
-    sizeof(struct tcp_keepalive));
-  main_server->tcp_keepalive->keepalive_enabled = TRUE;
-  main_server->tcp_keepalive->keepalive_idle = -1;
-  main_server->tcp_keepalive->keepalive_count = -1;
-  main_server->tcp_keepalive->keepalive_intvl = -1;
-
-  main_server->ServerName = "Test Server";
-  main_server->ServerPort = 21;
+  main_server = s;
 }
 
 static void test_cleanup(pool *cleanup_pool) {
@@ -94,12 +75,15 @@ static FILE *test_prep(void) {
 static void set_up(void) {
   if (p == NULL) {
     p = permanent_pool = make_sub_pool(NULL);
-    server_list = NULL;
   }
 
   test_cleanup(p);
-  create_main_server();
+  init_config();
   init_fs();
+
+  server_list = xaset_create(p, NULL);
+  pr_parser_prepare(p, &server_list);
+  create_main_server();
   proxy_db_init(p);
 
   if (getenv("TEST_VERBOSE") != NULL) {
@@ -112,6 +96,7 @@ static void tear_down(void) {
     pr_trace_set_levels("proxy.reverse", 0, 0);
   }
 
+  pr_parser_cleanup();
   proxy_db_free();
   test_cleanup(p);
 
@@ -139,6 +124,7 @@ END_TEST
 
 START_TEST (reverse_init_test) {
   int res;
+  FILE *fh;
 
   res = proxy_reverse_init(NULL, NULL);
   fail_unless(res < 0, "Failed to handle null pool");
@@ -150,13 +136,170 @@ START_TEST (reverse_init_test) {
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
-  test_prep();
+  fh = test_prep();
+  fclose(fh);
 
   mark_point();
   res = proxy_reverse_init(p, test_dir);
   fail_unless(res == 0, "Failed to init Reverse API resources: %s",
     strerror(errno));
 
+  res = proxy_reverse_free(p);
+  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+    strerror(errno));
+
+  test_cleanup(p);
+}
+END_TEST
+
+static int test_connect_policy(int policy_id) {
+  FILE *fh;
+  const char *uri;
+  config_rec *c;
+  array_header *backends;
+  const struct proxy_conn *pconn;
+
+  fh = test_prep();
+  fclose(fh);
+
+  mark_point();
+  c = add_config_param("ProxyReverseConnectPolicy", 1, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = PROXY_REVERSE_CONNECT_POLICY_SHUFFLE;
+
+  mark_point();
+  c = add_config_param("ProxyReverseServers", 2, NULL, NULL);
+  backends = make_array(c->pool, 1, sizeof(struct proxy_conn *));
+  uri = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(c->pool, uri);
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+  c->argv[0] = backends;
+
+  mark_point();
+  return proxy_reverse_init(p, test_dir);
+}
+
+START_TEST (reverse_connect_policy_random_test) {
+  int res;
+
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_RANDOM);
+  fail_unless(res == 0, "Failed to test ReverseConnectPolicy Random: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_reverse_free(p);
+  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+    strerror(errno));
+
+  test_cleanup(p);
+}
+END_TEST
+
+START_TEST (reverse_connect_policy_roundrobin_test) {
+  int res;
+
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN);
+  fail_unless(res == 0, "Failed to test ReverseConnectPolicy RoundRobin: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_reverse_free(p);
+  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+    strerror(errno));
+
+  test_cleanup(p);
+}
+END_TEST
+
+START_TEST (reverse_connect_policy_leastconns_test) {
+  int res;
+
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS);
+  fail_unless(res == 0, "Failed to test ReverseConnectPolicy LeastConns: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_reverse_free(p);
+  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+    strerror(errno));
+
+  test_cleanup(p);
+}
+END_TEST
+
+START_TEST (reverse_connect_policy_leastresponsetime_test) {
+  int res;
+
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME);
+  fail_unless(res == 0,
+    "Failed to test ReverseConnectPolicy LeastResponseTime: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_reverse_free(p);
+  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+    strerror(errno));
+
+  test_cleanup(p);
+}
+END_TEST
+
+START_TEST (reverse_connect_policy_shuffle_test) {
+  int res;
+
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_SHUFFLE);
+  fail_unless(res == 0, "Failed to test ReverseConnectPolicy Shuffle: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_reverse_free(p);
+  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+    strerror(errno));
+
+  test_cleanup(p);
+}
+END_TEST
+
+START_TEST (reverse_connect_policy_peruser_test) {
+  int res;
+
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_PER_USER);
+  fail_unless(res == 0, "Failed to test ReverseConnectPolicy PerUser: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_reverse_free(p);
+  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+    strerror(errno));
+
+  test_cleanup(p);
+}
+END_TEST
+
+START_TEST (reverse_connect_policy_pergroup_test) {
+  int res;
+
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_PER_GROUP);
+  fail_unless(res == 0, "Failed to test ReverseConnectPolicy PerGroup: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_reverse_free(p);
+  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+    strerror(errno));
+
+  test_cleanup(p);
+}
+END_TEST
+
+START_TEST (reverse_connect_policy_perhost_test) {
+  int res;
+
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_PER_HOST);
+  fail_unless(res == 0, "Failed to test ReverseConnectPolicy PerHost: %s",
+    strerror(errno));
+
+  mark_point();
   res = proxy_reverse_free(p);
   fail_unless(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
@@ -432,6 +575,16 @@ Suite *tests_get_reverse_suite(void) {
 
   tcase_add_test(testcase, reverse_free_test);
   tcase_add_test(testcase, reverse_init_test);
+
+  tcase_add_test(testcase, reverse_connect_policy_random_test);
+  tcase_add_test(testcase, reverse_connect_policy_roundrobin_test);
+  tcase_add_test(testcase, reverse_connect_policy_leastconns_test);
+  tcase_add_test(testcase, reverse_connect_policy_leastresponsetime_test);
+  tcase_add_test(testcase, reverse_connect_policy_shuffle_test);
+  tcase_add_test(testcase, reverse_connect_policy_peruser_test);
+  tcase_add_test(testcase, reverse_connect_policy_pergroup_test);
+  tcase_add_test(testcase, reverse_connect_policy_perhost_test);
+
   tcase_add_test(testcase, reverse_json_parse_uris_args_test);
   tcase_add_test(testcase, reverse_json_parse_uris_isreg_test);
   tcase_add_test(testcase, reverse_json_parse_uris_perms_test);
