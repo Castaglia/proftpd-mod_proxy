@@ -29,17 +29,16 @@
 static pool *p = NULL;
 static const char *test_dir = "/tmp/mod_proxy-test-forward";
 
-static void test_cleanup(void) {
-  (void) rmdir(test_dir);
+static void test_cleanup(pool *cleanup_pool) {
+  (void) tests_rmpath(cleanup_pool, test_dir);
 }
 
 static void set_up(void) {
-  test_cleanup();
-
   if (p == NULL) {
     p = permanent_pool = make_sub_pool(NULL);
   }
 
+  test_cleanup(p);
   init_fs();
 
   if (getenv("TEST_VERBOSE") != NULL) {
@@ -52,13 +51,31 @@ static void tear_down(void) {
     pr_trace_set_levels("proxy.forward", 0, 0);
   }
 
-  test_cleanup();
+  test_cleanup(p);
 
   if (p) {
     destroy_pool(p);
     p = permanent_pool = NULL;
   } 
 }
+
+START_TEST (forward_free_test) {
+  int res;
+
+  res = proxy_forward_free(NULL);
+  fail_unless(res == 0, "Failed to free Forward API resources: %s",
+    strerror(errno));
+}
+END_TEST
+
+START_TEST (forward_init_test) {
+  int res;
+
+  res = proxy_forward_init(NULL, NULL);
+  fail_unless(res == 0, "Failed to init Forward API resources: %s",
+    strerror(errno));
+}
+END_TEST
 
 START_TEST (forward_get_method_test) {
   int res;
@@ -109,6 +126,8 @@ Suite *tests_get_forward_suite(void) {
 
   tcase_add_checked_fixture(testcase, set_up, tear_down);
 
+  tcase_add_test(testcase, forward_free_test);
+  tcase_add_test(testcase, forward_init_test);
   tcase_add_test(testcase, forward_get_method_test);
   tcase_add_test(testcase, forward_use_proxy_auth_test);
 

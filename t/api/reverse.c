@@ -26,13 +26,43 @@
 
 #include "tests.h"
 
+extern xaset_t *server_list;
+
 static pool *p = NULL;
 static const char *test_dir = "/tmp/mod_proxy-test-reverse";
 static const char *test_file = "/tmp/mod_proxy-test-reverse/servers.json";
 
-static void test_cleanup(void) {
+static void create_main_server(void) {
+  pool *main_pool;
+
+  main_pool = make_sub_pool(permanent_pool);
+  pr_pool_tag(main_pool, "testsuite#main_server pool");
+
+  server_list = xaset_create(main_pool, NULL);
+
+  main_server = (server_rec *) pcalloc(main_pool, sizeof(server_rec));
+  xaset_insert(server_list, (xasetmember_t *) main_server);
+
+  main_server->pool = main_pool;
+  main_server->set = server_list;
+  main_server->sid = 1;
+  main_server->notes = pr_table_nalloc(main_pool, 0, 8);
+
+  /* TCP KeepAlive is enabled by default, with the system defaults. */
+  main_server->tcp_keepalive = palloc(main_server->pool,
+    sizeof(struct tcp_keepalive));
+  main_server->tcp_keepalive->keepalive_enabled = TRUE;
+  main_server->tcp_keepalive->keepalive_idle = -1;
+  main_server->tcp_keepalive->keepalive_count = -1;
+  main_server->tcp_keepalive->keepalive_intvl = -1;
+
+  main_server->ServerName = "Test Server";
+  main_server->ServerPort = 21;
+}
+
+static void test_cleanup(pool *cleanup_pool) {
   (void) unlink(test_file);
-  (void) rmdir(test_dir);
+  (void) tests_rmpath(cleanup_pool, test_dir);
 }
 
 static FILE *test_prep(void) {
@@ -62,13 +92,15 @@ static FILE *test_prep(void) {
 }
 
 static void set_up(void) {
-  test_cleanup();
-
   if (p == NULL) {
     p = permanent_pool = make_sub_pool(NULL);
+    server_list = NULL;
   }
 
+  test_cleanup(p);
+  create_main_server();
   init_fs();
+  proxy_db_init(p);
 
   if (getenv("TEST_VERBOSE") != NULL) {
     pr_trace_set_levels("proxy.reverse", 1, 20);
@@ -80,13 +112,58 @@ static void tear_down(void) {
     pr_trace_set_levels("proxy.reverse", 0, 0);
   }
 
-  test_cleanup();
+  proxy_db_free();
+  test_cleanup(p);
 
   if (p) {
     destroy_pool(p);
     p = permanent_pool = NULL;
+    main_server = NULL;
+    server_list = NULL;
   } 
 }
+
+START_TEST (reverse_free_test) {
+  int res;
+
+  res = proxy_reverse_free(NULL);
+  fail_unless(res < 0, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  res = proxy_reverse_free(p);
+  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+    strerror(errno));
+}
+END_TEST
+
+START_TEST (reverse_init_test) {
+  int res;
+
+  res = proxy_reverse_init(NULL, NULL);
+  fail_unless(res < 0, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  res = proxy_reverse_init(p, NULL);
+  fail_unless(res < 0, "Failed to handle null tables dir");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  test_prep();
+
+  mark_point();
+  res = proxy_reverse_init(p, test_dir);
+  fail_unless(res == 0, "Failed to init Reverse API resources: %s",
+    strerror(errno));
+
+  res = proxy_reverse_free(p);
+  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+    strerror(errno));
+
+  test_cleanup(p);
+}
+END_TEST
 
 START_TEST (reverse_json_parse_uris_args_test) {
   array_header *uris;
@@ -112,7 +189,7 @@ START_TEST (reverse_json_parse_uris_isreg_test) {
   const char *path;
   int res;
 
-  test_cleanup();
+  test_cleanup(p);
 
   path = "servers.json";
   uris = proxy_reverse_json_parse_uris(p, path);
@@ -131,7 +208,7 @@ START_TEST (reverse_json_parse_uris_isreg_test) {
   fail_unless(uris == NULL, "Failed to handle directory path '%s'", test_dir);
   fail_unless(errno == EISDIR, "Failed to set errno to EISDIR");
 
-  test_cleanup();
+  test_cleanup(p);
 }
 END_TEST
 
@@ -187,7 +264,7 @@ START_TEST (reverse_json_parse_uris_perms_test) {
     errno, strerror(errno));
 
   (void) close(fd);
-  test_cleanup();
+  test_cleanup(p);
 }
 END_TEST
 
@@ -196,7 +273,7 @@ START_TEST (reverse_json_parse_uris_empty_test) {
   FILE *fh = NULL;
   int res;
 
-  test_cleanup();
+  test_cleanup(p);
   fh = test_prep();
 
   /* Write a file with no lines. */
@@ -211,7 +288,7 @@ START_TEST (reverse_json_parse_uris_empty_test) {
   fail_unless(uris->nelts == 0, "Expected zero elements, found %d",
     uris->nelts);
 
-  test_cleanup();
+  test_cleanup(p);
 }
 END_TEST
 
@@ -220,7 +297,7 @@ START_TEST (reverse_json_parse_uris_malformed_test) {
   FILE *fh = NULL;
   int res;
 
-  test_cleanup();
+  test_cleanup(p);
   fh = test_prep();
 
   fprintf(fh, "[ \"http://127.0.0.1:80\",\n");
@@ -238,7 +315,7 @@ START_TEST (reverse_json_parse_uris_malformed_test) {
   fail_unless(uris->nelts == 0, "Expected zero elements, found %d",
     uris->nelts);
 
-  test_cleanup();
+  test_cleanup(p);
 }
 END_TEST
 
@@ -248,7 +325,7 @@ START_TEST (reverse_json_parse_uris_usable_test) {
   int res;
   unsigned int expected;
 
-  test_cleanup();
+  test_cleanup(p);
   fh = test_prep();
 
   /* Write a file with usable URLs. */
@@ -269,7 +346,7 @@ START_TEST (reverse_json_parse_uris_usable_test) {
   fail_unless(uris->nelts == expected, "Expected %d elements, found %d",
     expected, uris->nelts);
 
-  test_cleanup();
+  test_cleanup(p);
 }
 END_TEST
 
@@ -353,6 +430,8 @@ Suite *tests_get_reverse_suite(void) {
 
   tcase_add_checked_fixture(testcase, set_up, tear_down);
 
+  tcase_add_test(testcase, reverse_free_test);
+  tcase_add_test(testcase, reverse_init_test);
   tcase_add_test(testcase, reverse_json_parse_uris_args_test);
   tcase_add_test(testcase, reverse_json_parse_uris_isreg_test);
   tcase_add_test(testcase, reverse_json_parse_uris_perms_test);

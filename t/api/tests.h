@@ -52,7 +52,8 @@
 # error "Missing Check installation; necessary for ProFTPD testsuite"
 #endif
 
-int tests_stubs_set_next_cmd(cmd_rec *);
+int tests_rmpath(pool *p, const char *path);
+int tests_stubs_set_next_cmd(cmd_rec *cmd);
 
 Suite *tests_get_conn_suite(void);
 Suite *tests_get_db_suite(void);
