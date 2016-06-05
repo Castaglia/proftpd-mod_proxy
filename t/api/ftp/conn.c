@@ -145,9 +145,9 @@ START_TEST (connect_test) {
 
   res = proxy_ftp_conn_connect(p, NULL, remote_addr, 0);
   fail_unless(res == NULL, "Failed to handle bad address family");
-  fail_unless(errno == EAFNOSUPPORT,
-    "Expected EAFNOSUPPORT (%d), got '%s' (%d)", EAFNOSUPPORT,
-    strerror(errno), errno);
+  fail_unless(errno == EAFNOSUPPORT || errno == EINVAL,
+    "Expected EAFNOSUPPORT (%d) or EINVAL (%d), got '%s' (%d)",
+    EAFNOSUPPORT, EINVAL, strerror(errno), errno);
 }
 END_TEST
 
