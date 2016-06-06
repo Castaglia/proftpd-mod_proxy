@@ -2507,7 +2507,7 @@ int proxy_reverse_use_proxy_auth(void) {
   return FALSE;
 }
 
-int proxy_reverse_init(pool *p, const char *tables_dir) {
+int proxy_reverse_init(pool *p, const char *tables_dir, int flags) {
   int res, xerrno = 0;
   server_rec *s;
 
@@ -2521,7 +2521,7 @@ int proxy_reverse_init(pool *p, const char *tables_dir) {
 
   PRIVS_ROOT
   res = proxy_db_open_with_version(p, reverse_db_path,
-    PROXY_REVERSE_DB_SCHEMA_NAME, PROXY_REVERSE_DB_SCHEMA_VERSION, 0);
+    PROXY_REVERSE_DB_SCHEMA_NAME, PROXY_REVERSE_DB_SCHEMA_VERSION, flags);
   xerrno = errno;
   PRIVS_RELINQUISH
 
@@ -2787,7 +2787,7 @@ int proxy_reverse_sess_free(pool *p, struct proxy_session *proxy_sess) {
 }
 
 int proxy_reverse_sess_init(pool *p, const char *tables_dir,
-    struct proxy_session *proxy_sess) {
+    struct proxy_session *proxy_sess, int flags) {
   int res, xerrno = 0;
   config_rec *c;
 
@@ -2840,7 +2840,7 @@ int proxy_reverse_sess_init(pool *p, const char *tables_dir,
    */
   PRIVS_ROOT
   res = proxy_db_open_with_version(proxy_pool, reverse_db_path,
-    PROXY_REVERSE_DB_SCHEMA_NAME, PROXY_REVERSE_DB_SCHEMA_VERSION, 0);
+    PROXY_REVERSE_DB_SCHEMA_NAME, PROXY_REVERSE_DB_SCHEMA_VERSION, flags);
   xerrno = errno;
   PRIVS_RELINQUISH
 

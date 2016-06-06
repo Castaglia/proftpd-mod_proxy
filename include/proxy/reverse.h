@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse-proxy API
- * Copyright (c) 2012-2015 TJ Saunders
+ * Copyright (c) 2012-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,12 +29,12 @@
 #ifndef MOD_PROXY_REVERSE_H
 #define MOD_PROXY_REVERSE_H
 
-int proxy_reverse_init(pool *p, const char *tables_dir);
+int proxy_reverse_init(pool *p, const char *tables_dir, int flags);
 int proxy_reverse_free(pool *p);
 
 int proxy_reverse_have_authenticated(cmd_rec *cmd);
 int proxy_reverse_sess_init(pool *p, const char *tables_dir,
-  struct proxy_session *proxy_sess);
+  struct proxy_session *proxy_sess, int flags);
 int proxy_reverse_sess_free(pool *p, struct proxy_session *proxy_sess);
 int proxy_reverse_sess_exit(pool *p);
 

@@ -87,12 +87,14 @@ static void set_up(void) {
   proxy_db_init(p);
 
   if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.db", 1, 20);
     pr_trace_set_levels("proxy.reverse", 1, 20);
   }
 }
 
 static void tear_down(void) {
   if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.db", 0, 0);
     pr_trace_set_levels("proxy.reverse", 0, 0);
   }
 
@@ -123,15 +125,15 @@ START_TEST (reverse_free_test) {
 END_TEST
 
 START_TEST (reverse_init_test) {
-  int res;
+  int res, flags = PROXY_DB_OPEN_FL_SKIP_VACUUM;
   FILE *fh;
 
-  res = proxy_reverse_init(NULL, NULL);
+  res = proxy_reverse_init(NULL, NULL, flags);
   fail_unless(res < 0, "Failed to handle null pool");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
-  res = proxy_reverse_init(p, NULL);
+  res = proxy_reverse_init(p, NULL, flags);
   fail_unless(res < 0, "Failed to handle null tables dir");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
@@ -140,7 +142,7 @@ START_TEST (reverse_init_test) {
   fclose(fh);
 
   mark_point();
-  res = proxy_reverse_init(p, test_dir);
+  res = proxy_reverse_init(p, test_dir, flags);
   fail_unless(res == 0, "Failed to init Reverse API resources: %s",
     strerror(errno));
 
@@ -152,7 +154,58 @@ START_TEST (reverse_init_test) {
 }
 END_TEST
 
+START_TEST (reverse_sess_free_test) {
+  int res;
+
+  mark_point();
+  res = proxy_reverse_sess_free(p, NULL);
+  fail_unless(res == 0, "Failed to free Reverse API session resources: %s",
+    strerror(errno));
+}
+END_TEST
+
+START_TEST (reverse_sess_init_test) {
+  int res, flags = PROXY_DB_OPEN_FL_SKIP_VACUUM;
+  config_rec *c;
+  array_header *backends;
+  const char *uri;
+  const struct proxy_conn *pconn;
+
+  mark_point();
+  res = proxy_reverse_sess_init(NULL, NULL, NULL, flags);
+  fail_unless(res < 0, "Unexpectedly init'd Reverse API session resources");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
+    strerror(errno), errno);
+
+  c = add_config_param("ProxyReverseServers", 2, NULL, NULL);
+  backends = make_array(c->pool, 1, sizeof(struct proxy_conn *));
+  uri = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(c->pool, uri);
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+  c->argv[0] = backends;
+
+  c = add_config_param("ProxyReverseServers", 2, NULL, NULL);
+  backends = make_array(c->pool, 1, sizeof(struct proxy_conn *));
+  uri = "ftp://127.0.0.1:2121";
+  pconn = proxy_conn_create(c->pool, uri);
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+  c->argv[0] = backends;
+
+  mark_point();
+  res = proxy_reverse_sess_init(NULL, NULL, NULL, flags);
+  fail_unless(res < 0, "Unexpectedly init'd Reverse API session resources");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_reverse_sess_free(p, NULL);
+  fail_unless(res == 0, "Failed to free Reverse API session resources: %s",
+    strerror(errno));
+}
+END_TEST
+
 static int test_connect_policy(int policy_id) {
+  int flags = PROXY_DB_OPEN_FL_SKIP_VACUUM;
   FILE *fh;
   const char *uri;
   config_rec *c;
@@ -176,7 +229,7 @@ static int test_connect_policy(int policy_id) {
   c->argv[0] = backends;
 
   mark_point();
-  return proxy_reverse_init(p, test_dir);
+  return proxy_reverse_init(p, test_dir, flags);
 }
 
 START_TEST (reverse_connect_policy_random_test) {
@@ -596,6 +649,21 @@ START_TEST (reverse_use_proxy_auth_test) {
 }
 END_TEST
 
+START_TEST (reverse_have_authenticated_test) {
+  int res;
+  cmd_rec *cmd = NULL;
+
+  res = proxy_reverse_have_authenticated(cmd);
+  fail_unless(res == FALSE, "Expected false, got %d", res);
+
+  proxy_sess_state |= PROXY_SESS_STATE_BACKEND_AUTHENTICATED;
+  res = proxy_reverse_have_authenticated(cmd);
+  fail_unless(res == TRUE, "Expected true, got %d", res);
+
+  proxy_sess_state &= ~PROXY_SESS_STATE_BACKEND_AUTHENTICATED;
+}
+END_TEST
+
 Suite *tests_get_reverse_suite(void) {
   Suite *suite;
   TCase *testcase;
@@ -607,6 +675,8 @@ Suite *tests_get_reverse_suite(void) {
 
   tcase_add_test(testcase, reverse_free_test);
   tcase_add_test(testcase, reverse_init_test);
+  tcase_add_test(testcase, reverse_sess_free_test);
+  tcase_add_test(testcase, reverse_sess_init_test);
 
   tcase_add_test(testcase, reverse_connect_policy_random_test);
   tcase_add_test(testcase, reverse_connect_policy_roundrobin_test);
@@ -625,6 +695,7 @@ Suite *tests_get_reverse_suite(void) {
   tcase_add_test(testcase, reverse_json_parse_uris_usable_test);
   tcase_add_test(testcase, reverse_connect_get_policy_test);
   tcase_add_test(testcase, reverse_use_proxy_auth_test);
+  tcase_add_test(testcase, reverse_have_authenticated_test);
 
   suite_add_tcase(suite, testcase);
   return suite;

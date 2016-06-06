@@ -4122,7 +4122,7 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
       "Failed forward proxy initialization");
   }
 
-  if (proxy_reverse_init(proxy_pool, proxy_tables_dir) < 0) {
+  if (proxy_reverse_init(proxy_pool, proxy_tables_dir, 0) < 0) {
     pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
       ": unable to initialize reverse proxy, failing to start up: %s",
       strerror(errno));
@@ -4457,7 +4457,7 @@ static int proxy_sess_init(void) {
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:
       if (proxy_reverse_sess_init(proxy_pool, proxy_tables_dir,
-          proxy_sess) < 0) {
+          proxy_sess, 0) < 0) {
         pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
           "Unable to initialize reverse proxy API");
       }
