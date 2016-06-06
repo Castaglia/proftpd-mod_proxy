@@ -40,6 +40,7 @@ static void set_up(void) {
   init_inet();
 
   if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("netio", 1, 20);
     pr_trace_set_levels("inet", 1, 20);
     pr_trace_set_levels("proxy.inet", 1, 20);
   }
@@ -49,6 +50,7 @@ static void set_up(void) {
 
 static void tear_down(void) {
   if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("netio", 0, 0);
     pr_trace_set_levels("inet", 0, 0);
     pr_trace_set_levels("proxy.inet", 0, 0);
   }
@@ -121,11 +123,27 @@ START_TEST (inet_connect_ipv4_test) {
 
   /* Try connecting to Google's DNS server. */
 
+  addr = pr_netaddr_get_addr(p, "8.8.8.8", NULL);
+  fail_unless(addr != NULL, "Failed to resolve '8.8.8.8': %s",
+    strerror(errno));
+
   conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
   fail_unless(conn != NULL, "Failed to create conn: %s", strerror(errno));
 
-  addr = pr_netaddr_get_addr(p, "8.8.8.8", NULL);
-  fail_unless(addr != NULL, "Failed to resolve '8.8.8.8': %s",
+  mark_point();
+  res = proxy_inet_connect(p, conn, addr, 53);
+  fail_if(res < 0, "Failed to connect to 8.8.8.8#53: %s", strerror(errno));
+
+  mark_point();
+  proxy_inet_close(p, conn);
+
+  /* Now start supplying in/out streams. */
+
+  conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+  fail_unless(conn != NULL, "Failed to create conn: %s", strerror(errno));
+
+  conn->instrm = pr_netio_open(p, PR_NETIO_STRM_CTRL, -1, PR_NETIO_IO_RD);
+  fail_unless(conn->instrm != NULL, "Failed to open ctrl reading stream: %s",
     strerror(errno));
 
   mark_point();
@@ -134,6 +152,25 @@ START_TEST (inet_connect_ipv4_test) {
 
   mark_point();
   proxy_inet_close(p, conn);
+
+  conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+  fail_unless(conn != NULL, "Failed to create conn: %s", strerror(errno));
+
+  conn->instrm = pr_netio_open(p, PR_NETIO_STRM_CTRL, -1, PR_NETIO_IO_RD);
+  fail_unless(conn->instrm != NULL, "Failed to open ctrl reading stream: %s",
+    strerror(errno));
+
+  conn->outstrm = pr_netio_open(p, PR_NETIO_STRM_CTRL, -1, PR_NETIO_IO_WR);
+  fail_unless(conn->outstrm != NULL, "Failed to open ctrl reading stream: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_inet_connect(p, conn, addr, 53);
+  fail_if(res < 0, "Failed to connect to 8.8.8.8#53: %s", strerror(errno));
+
+  mark_point();
+  proxy_inet_close(p, conn);
+
 }
 END_TEST
 
@@ -217,11 +254,46 @@ START_TEST (inet_listen_test) {
 
   mark_point();
   proxy_inet_close(p, conn);
+
+  /* Now start providing in/out streams. */
+
+  conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+  fail_unless(conn != NULL, "Failed to create conn: %s", strerror(errno));
+
+  conn->instrm = pr_netio_open(p, PR_NETIO_STRM_CTRL, -1, PR_NETIO_IO_RD);
+  fail_unless(conn->instrm != NULL, "Failed to open ctrl reading stream: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_inet_listen(p, conn, 5, 0);
+  fail_unless(res == 0, "Failed to listen on conn: %s", strerror(errno));
+
+  mark_point();
+  proxy_inet_close(p, conn);
+
+  conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+  fail_unless(conn != NULL, "Failed to create conn: %s", strerror(errno));
+
+  conn->instrm = pr_netio_open(p, PR_NETIO_STRM_CTRL, -1, PR_NETIO_IO_RD);
+  fail_unless(conn->instrm != NULL, "Failed to open ctrl reading stream: %s",
+    strerror(errno));
+
+  conn->outstrm = pr_netio_open(p, PR_NETIO_STRM_CTRL, -1, PR_NETIO_IO_WR);
+  fail_unless(conn->outstrm != NULL, "Failed to open ctrl reading stream: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_inet_listen(p, conn, 5, 0);
+  fail_unless(res == 0, "Failed to listen on conn: %s", strerror(errno));
+
+  mark_point();
+  proxy_inet_close(p, conn);
 }
 END_TEST
 
 START_TEST (inet_openrw_test) {
   conn_t *res, *conn;
+  const pr_netaddr_t *addr;
 
   res = proxy_inet_openrw(NULL, NULL, NULL, PR_NETIO_STRM_CTRL, -1, -1, -1,
     FALSE);
@@ -243,8 +315,16 @@ START_TEST (inet_openrw_test) {
   fail_unless(res == NULL, "Failed to handle null addr");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
+  proxy_inet_close(p, conn);
 
-  pr_inet_close(p, conn);
+  addr = pr_netaddr_get_addr(p, "127.0.0.1", NULL);
+  fail_unless(addr != NULL, "Failed to resolve '127.0.0.1': %s",
+    strerror(errno));
+
+  res = proxy_inet_openrw(p, conn, addr, PR_NETIO_STRM_OTHR, -1, -1, -1,
+    FALSE);
+  fail_unless(res != NULL, "Failed to open rw conn: %s", strerror(errno));
+  proxy_inet_close(p, conn);
 }
 END_TEST
 
