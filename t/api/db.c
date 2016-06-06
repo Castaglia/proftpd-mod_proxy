@@ -96,6 +96,11 @@ START_TEST (db_open_test) {
     strerror(errno), errno);
 
   schema_name = "proxy_test";
+  res = proxy_db_open(p, "/foo/bar/baz/quxx/quzz.db", schema_name);
+  fail_unless(res < 0, "Failed to handle null schema name");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
+    strerror(errno), errno);
+
   res = proxy_db_open(p, table_path, schema_name);
   fail_unless(res == 0, "Failed to open table '%s', schema '%s': %s",
     table_path, schema_name, strerror(errno));

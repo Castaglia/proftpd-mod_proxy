@@ -463,6 +463,7 @@ int proxy_db_open(pool *p, const char *table_path, const char *schema_name) {
       pr_log_debug(DEBUG0, MOD_PROXY_VERSION
         ": error opening SQLite database '%s': %s", table_path,
         sqlite3_errmsg(proxy_dbh));
+      proxy_dbh = NULL;
       errno = EPERM;
       return -1;
     }
