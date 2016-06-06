@@ -43,6 +43,7 @@ static void create_main_server(void) {
   xaset_insert(server_list, (xasetmember_t *) main_server);
 
   main_server->pool = main_pool;
+  main_server->conf = xaset_create(main_pool, NULL);
   main_server->set = server_list;
   main_server->sid = 1;
   main_server->notes = pr_table_nalloc(main_pool, 0, 8);
@@ -85,6 +86,7 @@ static void set_up(void) {
   (void) tests_rmpath(p, test_dir);
   create_main_server();
   (void) create_test_dir();
+  init_netio();
   proxy_db_init(p);
 
   if (getenv("TEST_VERBOSE") != NULL) {
@@ -151,6 +153,60 @@ START_TEST (tls_init_test) {
 }
 END_TEST
 
+START_TEST (tls_sess_free_test) {
+  int res;
+
+  res = proxy_tls_sess_free(NULL);
+  fail_unless(res < 0, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_tls_sess_free(p);
+  fail_unless(res == 0, "Failed to release TLS API session resources: %s",
+    strerror(errno));
+}
+END_TEST
+
+START_TEST (tls_sess_init_test) {
+#ifdef PR_USE_OPENSSL
+  int res;
+
+  res = proxy_tls_sess_init(NULL);
+  fail_unless(res < 0, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_tls_sess_init(p);
+  fail_unless(res < 0, "Failed to handle invalid SSL_CTX");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_tls_init(p, test_dir);
+  fail_unless(res == 0, "Failed to init TLS API resources: %s",
+    strerror(errno));
+  (void) proxy_db_close(p, NULL);
+
+  mark_point();
+  res = proxy_tls_sess_init(p);
+  fail_unless(res == 0, "Failed to init TLS API session resources: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_tls_sess_free(p);
+  fail_unless(res == 0, "Failed to release TLS API session resources: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_tls_free(p);
+  fail_unless(res == 0, "Failed to release TLS API resources: %s",
+    strerror(errno));
+#endif /* PR_USE_OPENSSL */
+}
+END_TEST
+
 START_TEST (tls_using_tls_test) {
   int res, tls;
 
@@ -191,6 +247,8 @@ Suite *tests_get_tls_suite(void) {
 
   tcase_add_test(testcase, tls_free_test);
   tcase_add_test(testcase, tls_init_test);
+  tcase_add_test(testcase, tls_sess_free_test);
+  tcase_add_test(testcase, tls_sess_init_test);
   tcase_add_test(testcase, tls_using_tls_test);
 
   suite_add_tcase(suite, testcase);

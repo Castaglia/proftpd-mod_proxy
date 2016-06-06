@@ -3418,6 +3418,19 @@ int proxy_tls_sess_init(pool *p) {
     return 0;
   }
 
+  if (p == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (ssl_ctx == NULL) {
+    /* We haven't been initialized properly! */
+    pr_trace_msg(trace_channel, 2, "%s",
+      "missing required SSL_CTX initialization!");
+    errno = EPERM;
+    return -1;
+  }
+
   /* Make sure we have our own per-session database handle, per SQLite3
    * recommendation.
    */
@@ -3710,6 +3723,11 @@ int proxy_tls_sess_init(pool *p) {
 }
 
 int proxy_tls_sess_free(pool *p) {
+  if (p == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
 #ifdef PR_USE_OPENSSL
   /* Reset any state, but only if we have not already negotiated an SSL
    * session.
@@ -3732,8 +3750,6 @@ int proxy_tls_sess_free(pool *p) {
     proxy_db_close(p, PROXY_TLS_DB_SCHEMA_NAME);
 
     if (ssl_ctx != NULL) {
-      SSL_CTX_free(ssl_ctx);
-
       if (init_ssl_ctx() < 0) {
         return -1;
       }
