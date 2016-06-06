@@ -90,12 +90,14 @@ static void set_up(void) {
   proxy_db_init(p);
 
   if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.db", 1, 20);
     pr_trace_set_levels("proxy.tls", 1, 20);
   }
 }
 
 static void tear_down(void) {
   if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.db", 0, 0);
     pr_trace_set_levels("proxy.tls", 0, 0);
   }
 
