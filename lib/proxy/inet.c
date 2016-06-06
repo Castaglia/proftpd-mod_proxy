@@ -27,8 +27,6 @@
 #include "proxy/netio.h"
 #include "proxy/inet.h"
 
-static const char *trace_channel = "proxy.inet";
-
 conn_t *proxy_inet_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn,
     int rfd, int wfd, int resolve) {
   int xerrno;
@@ -114,17 +112,19 @@ int proxy_inet_connect(pool *p, conn_t *conn, const pr_netaddr_t *addr,
   int instrm_type = -1, outstrm_type = -1, res, xerrno;
   pr_netio_t *in_netio = NULL, *out_netio = NULL;
 
-  if (conn->instrm != NULL) {
-    instrm_type = conn->instrm->strm_type;
+  if (conn != NULL) {
+    if (conn->instrm != NULL) {
+      instrm_type = conn->instrm->strm_type;
 
-    in_netio = proxy_netio_unset(instrm_type, "inet_connect");
-  }
+      in_netio = proxy_netio_unset(instrm_type, "inet_connect");
+    }
 
-  if (conn->outstrm != NULL) {
-    outstrm_type = conn->outstrm->strm_type;
+    if (conn->outstrm != NULL) {
+      outstrm_type = conn->outstrm->strm_type;
 
-    if (outstrm_type != instrm_type) {
-      out_netio = proxy_netio_unset(outstrm_type, "inet_connect");
+      if (outstrm_type != instrm_type) {
+        out_netio = proxy_netio_unset(outstrm_type, "inet_connect");
+      }
     }
   }
 
@@ -147,17 +147,19 @@ int proxy_inet_listen(pool *p, conn_t *conn, int backlog, int flags) {
   int instrm_type = -1, outstrm_type = -1, res, xerrno;
   pr_netio_t *in_netio = NULL, *out_netio = NULL;
 
-  if (conn->instrm != NULL) {
-    instrm_type = conn->instrm->strm_type;
+  if (conn != NULL) {
+    if (conn->instrm != NULL) {
+      instrm_type = conn->instrm->strm_type;
 
-    in_netio = proxy_netio_unset(instrm_type, "inet_listen");
-  }
+      in_netio = proxy_netio_unset(instrm_type, "inet_listen");
+    }
 
-  if (conn->outstrm != NULL) {
-    outstrm_type = conn->outstrm->strm_type;
+    if (conn->outstrm != NULL) {
+      outstrm_type = conn->outstrm->strm_type;
 
-    if (outstrm_type != instrm_type) {
-      out_netio = proxy_netio_unset(outstrm_type, "inet_listen");
+      if (outstrm_type != instrm_type) {
+        out_netio = proxy_netio_unset(outstrm_type, "inet_listen");
+      }
     }
   }
 

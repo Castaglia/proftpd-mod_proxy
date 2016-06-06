@@ -28,6 +28,8 @@
 
 static pool *p = NULL;
 
+/* Fixtures */
+
 static void set_up(void) {
   if (p == NULL) {
     p = permanent_pool = make_sub_pool(NULL);
@@ -41,6 +43,8 @@ static void set_up(void) {
     pr_trace_set_levels("inet", 1, 20);
     pr_trace_set_levels("proxy.inet", 1, 20);
   }
+
+  pr_inet_set_default_family(p, AF_INET);
 }
 
 static void tear_down(void) {
@@ -49,6 +53,7 @@ static void tear_down(void) {
     pr_trace_set_levels("proxy.inet", 0, 0);
   }
 
+  pr_inet_set_default_family(p, 0);
   pr_inet_clear();
 
   if (p) {
@@ -57,23 +62,161 @@ static void tear_down(void) {
   }
 }
 
+/* Tests */
+
 START_TEST (inet_accept_test) {
-  /* XXX TODO */
+  conn_t *conn;
+
+  mark_point();
+  conn = proxy_inet_accept(NULL, NULL, NULL, -1, -1, FALSE);
+  fail_unless(conn == NULL, "Failed to handle null arguments");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
 }
 END_TEST
 
 START_TEST (inet_close_test) {
-  /* XXX TODO */
+  mark_point();
+  proxy_inet_close(NULL, NULL);
 }
 END_TEST
 
-START_TEST (inet_connect_test) {
-  /* XXX TODO */
+START_TEST (inet_connect_ipv4_test) {
+  int res;
+  conn_t *conn;
+  const pr_netaddr_t *addr;
+
+  mark_point();
+  res = proxy_inet_connect(NULL, NULL, NULL, 0);
+  fail_unless(res < 0, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_inet_connect(p, NULL, NULL, 0);
+  fail_unless(res < 0, "Failed to handle null conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+  fail_unless(conn != NULL, "Failed to create conn: %s", strerror(errno));
+
+  mark_point();
+  res = proxy_inet_connect(p, conn, NULL, 0);
+  fail_unless(res < 0, "Failed to handle null addr");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  addr = pr_netaddr_get_addr(p, "127.0.0.1", NULL);
+  fail_unless(addr != NULL, "Failed to resolve '127.0.0.1': %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_inet_connect(p, conn, addr, 80);
+  fail_unless(res < 0, "Connected to 127.0.0.1#80 unexpectedly");
+  fail_unless(errno == ECONNREFUSED,
+    "Expected ECONNREFUSED (%d), got '%s' (%d)", ECONNREFUSED,
+    strerror(errno), errno);
+  proxy_inet_close(p, conn);
+
+  /* Try connecting to Google's DNS server. */
+
+  conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+  fail_unless(conn != NULL, "Failed to create conn: %s", strerror(errno));
+
+  addr = pr_netaddr_get_addr(p, "8.8.8.8", NULL);
+  fail_unless(addr != NULL, "Failed to resolve '8.8.8.8': %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_inet_connect(p, conn, addr, 53);
+  fail_if(res < 0, "Failed to connect to 8.8.8.8#53: %s", strerror(errno));
+
+  mark_point();
+  proxy_inet_close(p, conn);
+}
+END_TEST
+
+START_TEST (inet_connect_ipv6_test) {
+#ifdef PR_USE_IPV6
+  int res;
+  conn_t *conn;
+  const pr_netaddr_t *addr;
+  unsigned char use_ipv6;
+
+  use_ipv6 = pr_netaddr_use_ipv6();
+  pr_netaddr_enable_ipv6();
+  pr_inet_set_default_family(p, AF_INET6);
+
+  conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+  fail_unless(conn != NULL, "Failed to create conn: %s", strerror(errno));
+
+  addr = pr_netaddr_get_addr(p, "::1", NULL);
+  fail_unless(addr != NULL, "Failed to resolve '::1': %s", strerror(errno));
+
+  mark_point();
+  res = proxy_inet_connect(p, conn, addr, 80);
+  fail_unless(res < 0, "Connected to 127.0.0.1#80 unexpectedly");
+  fail_unless(errno == ECONNREFUSED || errno == ENETUNREACH,
+    "Expected ECONNREFUSED (%d) or ENETUNREACH (%d), got %s (%d)",
+    ECONNREFUSED, ENETUNREACH, strerror(errno), errno);
+  proxy_inet_close(p, conn);
+
+  /* Try connecting to Google's DNS server. */
+
+  conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+  fail_unless(conn != NULL, "Failed to create conn: %s", strerror(errno));
+
+  addr = pr_netaddr_get_addr(p, "2001:4860:4860::8888", NULL);
+  fail_unless(addr != NULL, "Failed to resolve '2001:4860:4860::8888': %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_inet_connect(p, conn, addr, 53);
+  if (res < 0) {
+    /* This could be expected, e.g. if there's no route. */
+    fail_unless(errno == EHOSTUNREACH || errno == ENETUNREACH,
+      "Expected EHOSTUNREACH (%d) or ENETUNREACH (%d), got %s (%d)",
+      EHOSTUNREACH, ENETUNREACH, strerror(errno), errno);
+  }
+
+  mark_point();
+  proxy_inet_close(p, conn);
+
+  pr_inet_set_default_family(p, AF_INET);
+
+  if (use_ipv6 == FALSE) {
+    pr_netaddr_disable_ipv6();
+  }
+#endif /* PR_USE_IPV6 */
 }
 END_TEST
 
 START_TEST (inet_listen_test) {
-  /* XXX TODO */
+  int res;
+  conn_t *conn;
+
+  mark_point();
+  res = proxy_inet_listen(NULL, NULL, 0, 0);
+  fail_unless(res < 0, "Failed to handle null arguments");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_inet_listen(p, NULL, 0, 0);
+  fail_unless(res < 0, "Failed to handle null conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+  fail_unless(conn != NULL, "Failed to create conn: %s", strerror(errno));
+
+  mark_point();
+  res = proxy_inet_listen(p, conn, 5, 0);
+  fail_unless(res == 0, "Failed to listen on conn: %s", strerror(errno));
+
+  mark_point();
+  proxy_inet_close(p, conn);
 }
 END_TEST
 
@@ -116,7 +259,8 @@ Suite *tests_get_inet_suite(void) {
 
   tcase_add_test(testcase, inet_accept_test);
   tcase_add_test(testcase, inet_close_test);
-  tcase_add_test(testcase, inet_connect_test);
+  tcase_add_test(testcase, inet_connect_ipv4_test);
+  tcase_add_test(testcase, inet_connect_ipv6_test);
   tcase_add_test(testcase, inet_listen_test);
   tcase_add_test(testcase, inet_openrw_test);
 
