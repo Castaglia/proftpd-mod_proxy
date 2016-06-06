@@ -72,10 +72,10 @@
 /* This is used for e.g. "ProxyTLSProtocol ALL -SSLv3 ...". */
 #define PROXY_TLS_PROTO_ALL		(PROXY_TLS_PROTO_SSL_V3|PROXY_TLS_PROTO_TLS_V1|PROXY_TLS_PROTO_TLS_V1_1|PROXY_TLS_PROTO_TLS_V1_2)
 
-int proxy_tls_init(pool *p, const char *tables_dir);
+int proxy_tls_init(pool *p, const char *tables_dir, int flags);
 int proxy_tls_free(pool *p);
 
-int proxy_tls_sess_init(pool *p);
+int proxy_tls_sess_init(pool *p, int flags);
 int proxy_tls_sess_free(pool *p);
 
 /* Programmatically set the ProxyTLSEngine value. */

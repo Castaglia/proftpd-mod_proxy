@@ -2698,7 +2698,7 @@ static int tls_db_add_vhost(pool *p, server_rec *s) {
   return 0;
 }
 
-static int tls_db_init(pool *p, const char *tables_dir) {
+static int tls_db_init(pool *p, const char *tables_dir, int flags) {
   int res, xerrno = 0;
   server_rec *s;
 
@@ -2712,7 +2712,7 @@ static int tls_db_init(pool *p, const char *tables_dir) {
 
   PRIVS_ROOT
   res = proxy_db_open_with_version(p, tls_db_path, PROXY_TLS_DB_SCHEMA_NAME,
-    PROXY_TLS_DB_SCHEMA_VERSION, 0);
+    PROXY_TLS_DB_SCHEMA_VERSION, flags);
   xerrno = errno;
   PRIVS_RELINQUISH
 
@@ -2788,11 +2788,11 @@ int proxy_tls_using_tls(void) {
 #endif /* PR_USE_OPENSSL */
 }
 
-int proxy_tls_init(pool *p, const char *tables_dir) {
+int proxy_tls_init(pool *p, const char *tables_dir, int flags) {
 #ifdef PR_USE_OPENSSL
   int res;
 
-  res = tls_db_init(p, tables_dir);
+  res = tls_db_init(p, tables_dir, flags);
   if (res < 0) {
     return -1;
   }
@@ -3400,7 +3400,7 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
 # endif /* OpenSSL-0.9.7 or later */
 #endif /* PR_USE_OPENSSL */
 
-int proxy_tls_sess_init(pool *p) {
+int proxy_tls_sess_init(pool *p, int flags) {
 #ifdef PR_USE_OPENSSL
   config_rec *c;
   unsigned int enabled_proto_count = 0, tls_protocol = PROXY_TLS_PROTO_DEFAULT;
@@ -3436,7 +3436,7 @@ int proxy_tls_sess_init(pool *p) {
    */
   PRIVS_ROOT
   res = proxy_db_open_with_version(proxy_pool, tls_db_path,
-    PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION, 0);
+    PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION, flags);
   xerrno = errno;
   PRIVS_RELINQUISH
 

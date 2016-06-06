@@ -127,21 +127,21 @@ START_TEST (tls_free_test) {
 END_TEST
 
 START_TEST (tls_init_test) {
-  int res;
+  int res, flags = PROXY_DB_OPEN_FL_SKIP_VACUUM;
 
-  res = proxy_tls_init(NULL, NULL);
+  res = proxy_tls_init(NULL, NULL, flags);
 #ifdef PR_USE_OPENSSL
   fail_unless(res < 0, "Failed to handle null pool");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
-  res = proxy_tls_init(p, NULL);
+  res = proxy_tls_init(p, NULL, flags);
   fail_unless(res < 0, "Failed to handle null tables directory");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
-  res = proxy_tls_init(p, test_dir);
+  res = proxy_tls_init(p, test_dir, flags);
   fail_unless(res == 0, "Failed to init TLS API resources: %s",
     strerror(errno));
 
@@ -172,27 +172,27 @@ END_TEST
 
 START_TEST (tls_sess_init_test) {
 #ifdef PR_USE_OPENSSL
-  int res;
+  int res, flags = PROXY_DB_OPEN_FL_SKIP_VACUUM;
 
-  res = proxy_tls_sess_init(NULL);
+  res = proxy_tls_sess_init(NULL, flags);
   fail_unless(res < 0, "Failed to handle null pool");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
-  res = proxy_tls_sess_init(p);
+  res = proxy_tls_sess_init(p, flags);
   fail_unless(res < 0, "Failed to handle invalid SSL_CTX");
   fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
     strerror(errno), errno);
 
   mark_point();
-  res = proxy_tls_init(p, test_dir);
+  res = proxy_tls_init(p, test_dir, flags);
   fail_unless(res == 0, "Failed to init TLS API resources: %s",
     strerror(errno));
   (void) proxy_db_close(p, NULL);
 
   mark_point();
-  res = proxy_tls_sess_init(p);
+  res = proxy_tls_sess_init(p, flags);
   fail_unless(res == 0, "Failed to init TLS API session resources: %s",
     strerror(errno));
 

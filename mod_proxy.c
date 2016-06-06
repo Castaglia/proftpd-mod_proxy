@@ -4131,7 +4131,7 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
       "Failed reverse proxy initialization");
   }
 
-  if (proxy_tls_init(proxy_pool, proxy_tables_dir) < 0) {
+  if (proxy_tls_init(proxy_pool, proxy_tables_dir, 0) < 0) {
     pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
       ": unable to initialize TLS support, failing to start up: %s",
       strerror(errno));
@@ -4449,7 +4449,7 @@ static int proxy_sess_init(void) {
    */
   (void) proxy_db_close(proxy_pool, NULL);
 
-  if (proxy_tls_sess_init(proxy_pool) < 0) {
+  if (proxy_tls_sess_init(proxy_pool, 0) < 0) {
     pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
       "Unable to initialize TLS API");
   }
