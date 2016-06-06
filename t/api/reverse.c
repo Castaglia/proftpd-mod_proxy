@@ -187,6 +187,10 @@ START_TEST (reverse_connect_policy_random_test) {
     strerror(errno));
 
   mark_point();
+  res = proxy_reverse_sess_exit(p);
+  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
+
+  mark_point();
   res = proxy_reverse_free(p);
   fail_unless(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
@@ -203,6 +207,10 @@ START_TEST (reverse_connect_policy_roundrobin_test) {
     strerror(errno));
 
   mark_point();
+  res = proxy_reverse_sess_exit(p);
+  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
+
+  mark_point();
   res = proxy_reverse_free(p);
   fail_unless(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
@@ -217,6 +225,10 @@ START_TEST (reverse_connect_policy_leastconns_test) {
   res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS);
   fail_unless(res == 0, "Failed to test ReverseConnectPolicy LeastConns: %s",
     strerror(errno));
+
+  mark_point();
+  res = proxy_reverse_sess_exit(p);
+  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
 
   mark_point();
   res = proxy_reverse_free(p);
@@ -236,6 +248,10 @@ START_TEST (reverse_connect_policy_leastresponsetime_test) {
     strerror(errno));
 
   mark_point();
+  res = proxy_reverse_sess_exit(p);
+  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
+
+  mark_point();
   res = proxy_reverse_free(p);
   fail_unless(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
@@ -250,6 +266,10 @@ START_TEST (reverse_connect_policy_shuffle_test) {
   res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_SHUFFLE);
   fail_unless(res == 0, "Failed to test ReverseConnectPolicy Shuffle: %s",
     strerror(errno));
+
+  mark_point();
+  res = proxy_reverse_sess_exit(p);
+  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
 
   mark_point();
   res = proxy_reverse_free(p);
@@ -268,6 +288,10 @@ START_TEST (reverse_connect_policy_peruser_test) {
     strerror(errno));
 
   mark_point();
+  res = proxy_reverse_sess_exit(p);
+  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
+
+  mark_point();
   res = proxy_reverse_free(p);
   fail_unless(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
@@ -284,6 +308,10 @@ START_TEST (reverse_connect_policy_pergroup_test) {
     strerror(errno));
 
   mark_point();
+  res = proxy_reverse_sess_exit(p);
+  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
+
+  mark_point();
   res = proxy_reverse_free(p);
   fail_unless(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
@@ -298,6 +326,10 @@ START_TEST (reverse_connect_policy_perhost_test) {
   res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_PER_HOST);
   fail_unless(res == 0, "Failed to test ReverseConnectPolicy PerHost: %s",
     strerror(errno));
+
+  mark_point();
+  res = proxy_reverse_sess_exit(p);
+  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
 
   mark_point();
   res = proxy_reverse_free(p);
