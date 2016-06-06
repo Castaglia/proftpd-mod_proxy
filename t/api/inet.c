@@ -78,8 +78,17 @@ START_TEST (inet_accept_test) {
 END_TEST
 
 START_TEST (inet_close_test) {
+  conn_t *conn;
+
   mark_point();
   proxy_inet_close(NULL, NULL);
+
+  conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+  fail_unless(conn != NULL, "Failed to create conn: %s", strerror(errno));
+
+  mark_point();
+  conn->rfd = conn->wfd = 999;
+  proxy_inet_close(NULL, conn);
 }
 END_TEST
 
@@ -160,8 +169,8 @@ START_TEST (inet_connect_ipv4_test) {
   fail_unless(conn->instrm != NULL, "Failed to open ctrl reading stream: %s",
     strerror(errno));
 
-  conn->outstrm = pr_netio_open(p, PR_NETIO_STRM_CTRL, -1, PR_NETIO_IO_WR);
-  fail_unless(conn->outstrm != NULL, "Failed to open ctrl reading stream: %s",
+  conn->outstrm = pr_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_WR);
+  fail_unless(conn->outstrm != NULL, "Failed to open othr writing stream: %s",
     strerror(errno));
 
   mark_point();
@@ -278,8 +287,8 @@ START_TEST (inet_listen_test) {
   fail_unless(conn->instrm != NULL, "Failed to open ctrl reading stream: %s",
     strerror(errno));
 
-  conn->outstrm = pr_netio_open(p, PR_NETIO_STRM_CTRL, -1, PR_NETIO_IO_WR);
-  fail_unless(conn->outstrm != NULL, "Failed to open ctrl reading stream: %s",
+  conn->outstrm = pr_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_WR);
+  fail_unless(conn->outstrm != NULL, "Failed to open othr writing stream: %s",
     strerror(errno));
 
   mark_point();
