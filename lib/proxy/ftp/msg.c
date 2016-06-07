@@ -354,6 +354,8 @@ const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
     msg_str++;
 
   } else {
+    pr_trace_msg(trace_channel, 17, "rejecting badly formatted message '%s'",
+      msg_str);
     errno = EPERM;
     return NULL;
   }
@@ -438,6 +440,8 @@ const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
    * parameter.
    */
   if (*msg_str != delim) {
+    pr_trace_msg(trace_channel, 17, "rejecting badly formatted message '%s'",
+      msg_str);
     errno = EPERM;
     return NULL;
   }

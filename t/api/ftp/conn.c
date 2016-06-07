@@ -44,6 +44,7 @@ static void create_main_server(void) {
   main_server->set = servers;
   main_server->sid = 1;
   main_server->notes = pr_table_nalloc(main_pool, 0, 8);
+  main_server->conf = xaset_create(main_pool, NULL);
 
   /* TCP KeepAlive is enabled by default, with the system defaults. */
   main_server->tcp_keepalive = palloc(main_server->pool,
@@ -53,6 +54,7 @@ static void create_main_server(void) {
   main_server->tcp_keepalive->keepalive_count = -1;
   main_server->tcp_keepalive->keepalive_intvl = -1;
 
+  main_server->ServerName = "Test Server";
   main_server->ServerPort = 21;
 }
 
@@ -68,15 +70,22 @@ static void set_up(void) {
   create_main_server();
 
   if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("netio", 1, 20);
+    pr_trace_set_levels("inet", 1, 20);
     pr_trace_set_levels("proxy.ftp.conn", 1, 20);
   }
+
+  pr_inet_set_default_family(p, AF_INET);
 }
 
 static void tear_down(void) {
   if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("netio", 0, 0);
+    pr_trace_set_levels("inet", 0, 0);
     pr_trace_set_levels("proxy.ftp.conn", 0, 0);
   }
 
+  pr_inet_set_default_family(p, 0);
   pr_inet_clear();
 
   if (p) {
@@ -170,32 +179,45 @@ START_TEST (connect_test) {
   mark_point();
   res = proxy_ftp_conn_connect(p, NULL, remote_addr, FALSE);
   fail_unless(res == NULL, "Failed to handle bad address family");
-  fail_unless(errno == EAFNOSUPPORT || errno == EINVAL,
-    "Expected EAFNOSUPPORT (%d) or EINVAL (%d), got '%s' (%d)",
-    EAFNOSUPPORT, EINVAL, strerror(errno), errno);
+  fail_unless(errno == ECONNREFUSED, "Expected ECONNREFUSED (%d), got %s (%d)",
+    ECONNREFUSED, strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_conn_connect(p, NULL, remote_addr, TRUE);
   fail_unless(res == NULL, "Failed to handle bad address family");
-  fail_unless(errno == EAFNOSUPPORT || errno == EINVAL,
-    "Expected EAFNOSUPPORT (%d) or EINVAL (%d), got '%s' (%d)",
-    EAFNOSUPPORT, EINVAL, strerror(errno), errno);
+  fail_unless(errno == ECONNREFUSED, "Expected ECONNREFUSED (%d), got %s (%d)",
+    ECONNREFUSED, strerror(errno), errno);
 
   session.xfer.direction = PR_NETIO_IO_WR;
 
   mark_point();
   res = proxy_ftp_conn_connect(p, NULL, remote_addr, FALSE);
   fail_unless(res == NULL, "Failed to handle bad address family");
-  fail_unless(errno == EAFNOSUPPORT || errno == EINVAL,
-    "Expected EAFNOSUPPORT (%d) or EINVAL (%d), got '%s' (%d)",
-    EAFNOSUPPORT, EINVAL, strerror(errno), errno);
+  fail_unless(errno == ECONNREFUSED, "Expected ECONNREFUSED (%d), got %s (%d)",
+    ECONNREFUSED, strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_conn_connect(p, NULL, remote_addr, TRUE);
   fail_unless(res == NULL, "Failed to handle bad address family");
-  fail_unless(errno == EAFNOSUPPORT || errno == EINVAL,
-    "Expected EAFNOSUPPORT (%d) or EINVAL (%d), got '%s' (%d)",
-    EAFNOSUPPORT, EINVAL, strerror(errno), errno);
+  fail_unless(errno == ECONNREFUSED, "Expected ECONNREFUSED (%d), got %s (%d)",
+    ECONNREFUSED, strerror(errno), errno);
+
+  /* Try connecting to Google's DNS server. */
+
+  remote_addr = pr_netaddr_get_addr(p, "8.8.8.8", NULL);
+  fail_unless(remote_addr != NULL, "Failed to resolve '8.8.8.8': %s",
+    strerror(errno));
+  pr_netaddr_set_port((pr_netaddr_t *) remote_addr, htons(53));
+
+  mark_point();
+  res = proxy_ftp_conn_connect(p, NULL, remote_addr, FALSE);
+  fail_unless(res != NULL, "Failed to connect: %s", strerror(errno));
+  pr_inet_close(p, res);
+
+  mark_point();
+  res = proxy_ftp_conn_connect(p, NULL, remote_addr, TRUE);
+  fail_unless(res != NULL, "Failed to connect: %s", strerror(errno));
+  pr_inet_close(p, res);
 }
 END_TEST
 

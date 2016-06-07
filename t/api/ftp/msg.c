@@ -27,6 +27,7 @@
 #include "../tests.h"
 
 static pool *p = NULL;
+static unsigned char use_ipv6 = FALSE;
 
 static void set_up(void) {
   if (p == NULL) {
@@ -34,6 +35,7 @@ static void set_up(void) {
   }
 
   init_netaddr();
+  use_ipv6 = pr_netaddr_use_ipv6();
 
   if (getenv("TEST_VERBOSE") != NULL) {
     pr_trace_set_levels("proxy.ftp.msg", 1, 20);
@@ -43,6 +45,10 @@ static void set_up(void) {
 static void tear_down(void) {
   if (getenv("TEST_VERBOSE") != NULL) {
     pr_trace_set_levels("proxy.ftp.msg", 0, 0);
+  }
+
+  if (use_ipv6 == FALSE) {
+    pr_netaddr_disable_ipv6();
   }
 
   if (p) {
@@ -176,6 +182,12 @@ START_TEST (parse_addr_test) {
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
+  msg = "(1,2,3,4,5000,6000)";
+  res = proxy_ftp_msg_parse_addr(p, msg, 0);
+  fail_unless(res == NULL, "Failed to handle invalid format");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
   msg = "(0,0,0,0,1,2)";
   res = proxy_ftp_msg_parse_addr(p, msg, 0);
   fail_unless(res == NULL, "Failed to handle invalid format");
@@ -217,6 +229,18 @@ START_TEST (parse_addr_test) {
   expected = "::ffff:127.0.0.1";
   fail_unless(strcmp(ip_str, expected) == 0, "Expected '%s', got '%s'",
     expected, ip_str);
+
+  pr_netaddr_disable_ipv6();
+
+  res = proxy_ftp_msg_parse_addr(p, msg, AF_INET6);
+  fail_unless(res != NULL, "Failed to parse message '%s': %s", msg,
+    strerror(errno));
+  ip_str = pr_netaddr_get_ipstr(res);
+  expected = "127.0.0.1";
+  fail_unless(strcmp(ip_str, expected) == 0, "Expected '%s', got '%s'",
+    expected, ip_str);
+
+  pr_netaddr_enable_ipv6();
 #endif /* PR_USE_IPV6 */
 }
 END_TEST
@@ -238,7 +262,7 @@ START_TEST (parse_ext_addr_test) {
   msg = "foo";
   res = proxy_ftp_msg_parse_ext_addr(p, msg, NULL, 0, NULL);
   fail_unless(res == NULL, "Failed to handle null addr");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   addr = pr_netaddr_get_addr(p, "127.0.0.1", NULL);
@@ -246,11 +270,119 @@ START_TEST (parse_ext_addr_test) {
     strerror(errno));
 
   res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, 0, NULL);
-  fail_unless(res == NULL, "Failed to handle null addr");
+  fail_unless(res == NULL, "Failed to handle bad network protocol");
   fail_unless(errno == EPROTOTYPE, "Expected EPROTOTYPE (%d), got '%s' (%d)",
     EPROTOTYPE, strerror(errno), errno);
 
-/* XXX TODO MORE CASES */
+  /* EPSV response formats */
+
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle bad EPSV response");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  msg = "(foo";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle bad EPSV response");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  msg = "(foo)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle bad network protocol");
+  fail_unless(errno == EPROTOTYPE, "Expected EPROTOTYPE (%d), got '%s' (%d)",
+    EPROTOTYPE, strerror(errno), errno);
+
+  msg = "(1)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle bad network protocol");
+  fail_unless(errno == EPROTOTYPE, "Expected EPROTOTYPE (%d), got '%s' (%d)",
+    EPROTOTYPE, strerror(errno), errno);
+
+  msg = "(|4)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle bad network protocol");
+  fail_unless(errno == EPROTOTYPE, "Expected EPROTOTYPE (%d), got '%s' (%d)",
+    EPROTOTYPE, strerror(errno), errno);
+
+  msg = "(|0)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle bad network protocol");
+  fail_unless(errno == EPROTOTYPE, "Expected EPROTOTYPE (%d), got '%s' (%d)",
+    EPROTOTYPE, strerror(errno), errno);
+
+  msg = "(|1)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle bad network protocol");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+    strerror(errno), errno);
+
+  msg = "(|2)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle bad network protocol");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+    strerror(errno), errno);
+
+  /* Where the network protocol matches that of the address... */
+  msg = "(|1|)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle badly formatted message");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  msg = "(|1|1.2.3.4)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle badly formatted message");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  msg = "(|1|1.2.3.4|5)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle badly formatted message");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+    strerror(errno), errno);
+
+  msg = "(|1|1.2.3.4|5|)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
+    strerror(errno));
+
+  /* ...and where the network protocol does not match that of the address. */
+
+  msg = "(|2|1.2.3.4|5)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle network protocol mismatch");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+    strerror(errno), errno);
+
+#ifdef PR_USE_IPV6
+  addr = pr_netaddr_get_addr(p, "::1", NULL);
+  fail_unless(addr != NULL, "Failed to get address for ::1: %s",
+    strerror(errno));
+
+  msg = "(|2|1.2.3.4|5)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle network protocol mismatch");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+    strerror(errno), errno);
+
+  msg = "(|1|::1|5)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle network protocol mismatch");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+    strerror(errno), errno);
+
+  msg = "(|2|::1|5)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle network protocol mismatch");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+    strerror(errno), errno);
+
+  msg = "(|2|::1|5|)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
+    strerror(errno));
+#endif /* PR_USE_IPV6 */
 }
 END_TEST
 
