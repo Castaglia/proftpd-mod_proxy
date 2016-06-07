@@ -40,6 +40,22 @@ static void create_main_server(void) {
   main_server = s;
 }
 
+static int create_test_dir(void) {
+  int res;
+  mode_t perms;
+
+  perms = 0770;
+  res = mkdir(test_dir, perms);
+  fail_unless(res == 0, "Failed to create tmp directory '%s': %s", test_dir,
+    strerror(errno));
+
+  res = chmod(test_dir, perms);
+  fail_unless(res == 0, "Failed to set perms %04o on directory '%s': %s",
+    perms, test_dir, strerror(errno));
+
+  return 0;
+}
+
 static void test_cleanup(pool *cleanup_pool) {
   (void) tests_rmpath(cleanup_pool, test_dir);
 }
@@ -60,21 +76,33 @@ static void set_up(void) {
   server_list = xaset_create(p, NULL);
   pr_parser_prepare(p, &server_list);
   create_main_server();
+  (void) create_test_dir();
+
+  proxy_db_init(p);
 
   if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("netio", 1, 20);
+    pr_trace_set_levels("proxy.db", 1, 20);
     pr_trace_set_levels("proxy.forward", 1, 20);
+    pr_trace_set_levels("proxy.tls", 1, 20);
     pr_trace_set_levels("proxy.uri", 1, 20);
     pr_trace_set_levels("proxy.ftp.ctrl", 1, 20);
+    pr_trace_set_levels("proxy.ftp.sess", 1, 20);
   }
 }
 
 static void tear_down(void) {
   if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("netio", 0, 0);
+    pr_trace_set_levels("proxy.db", 0, 0);
     pr_trace_set_levels("proxy.forward", 0, 0);
+    pr_trace_set_levels("proxy.tls", 0, 0);
     pr_trace_set_levels("proxy.uri", 0, 0);
     pr_trace_set_levels("proxy.ftp.ctrl", 0, 0);
+    pr_trace_set_levels("proxy.ftp.sess", 0, 0);
   }
 
+  proxy_db_free();
   pr_parser_cleanup();
   pr_inet_clear();
   test_cleanup(p);
@@ -445,7 +473,7 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
 
   /* Valid external host (with port) in USER command. */
   cmd = pr_cmd_alloc(p, 2, "USER", "anonymous@ftp.microsoft.com:21");
-  cmd->arg = pstrdup(p, "anonymous@ftp.microsoft.com");
+  cmd->arg = pstrdup(p, "anonymous@ftp.microsoft.com:21");
 
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
@@ -464,6 +492,54 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
+#ifdef PR_USE_OPENSSL
+  /* This time, try an FTPS-capable site. */
+
+  proxy_tls_set_verify_server(FALSE);
+  proxy_tls_set_tls(PROXY_TLS_ENGINE_AUTO);
+
+  session.notes = pr_table_alloc(p, 0);
+  pr_table_add(session.notes, "mod_proxy.proxy-session", proxy_sess,
+    sizeof(struct proxy_session));
+
+  res = proxy_tls_init(p, test_dir, PROXY_DB_OPEN_FL_SKIP_VACUUM);
+  fail_unless(res == 0, "Failed to init TLS API resources: %s",
+    strerror(errno));
+
+  res = proxy_tls_sess_init(p, PROXY_DB_OPEN_FL_SKIP_VACUUM);
+  fail_unless(res == 0, "Failed to init TLS API session resources: %s",
+    strerror(errno));
+
+  /* Valid external host (with port) in USER command. */
+  cmd = pr_cmd_alloc(p, 2, "USER", "anonymous@ftp.cisco.com:990");
+  cmd->arg = pstrdup(p, "anonymous@ftp.cisco.com:990");
+
+  mark_point();
+  res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
+    &block_responses);
+
+  /* Once you've performed a TLS handshake with ftp.cisco.com, it does not
+   * accept anonymous logins.  Fine.
+   */
+  fail_if(res == 1, "Handled USER command unexpectedly");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_tls_sess_free(p);
+  fail_unless(res == 0, "Failed to free TLS API session resources: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_tls_free(p);
+  fail_unless(res == 0, "Failed to free TLS API resources: %s",
+    strerror(errno));
+
+  mark_point();
+  (void) proxy_db_close(p, NULL);
+#endif /* PR_USE_OPENSSL */
+
+  mark_point();
   res = proxy_forward_sess_free(p, NULL);
   fail_unless(res == 0, "Failed to free Forward API session resources: %s",
     strerror(errno));

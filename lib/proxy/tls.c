@@ -2765,6 +2765,11 @@ static int tls_db_init(pool *p, const char *tables_dir, int flags) {
 }
 #endif /* PR_USE_OPENSSL */
 
+int proxy_tls_set_verify_server(int verify_server) {
+  tls_verify_server = verify_server;
+  return 0;
+}
+
 int proxy_tls_set_tls(int engine) {
 #ifdef PR_USE_OPENSSL
   if (engine != PROXY_TLS_ENGINE_ON &&
@@ -3613,7 +3618,7 @@ int proxy_tls_sess_init(pool *p, int flags) {
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSVerifyServer", FALSE);
   if (c != NULL) {
-    tls_verify_server = *((int *) c->argv[0]);
+    proxy_tls_set_verify_server(*((int *) c->argv[0]));
   }
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSCertificateFile",
