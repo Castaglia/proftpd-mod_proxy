@@ -145,16 +145,19 @@ cmd_rec *proxy_ftp_ctrl_recv_cmd(pool *p, conn_t *ctrl_conn, int flags) {
       if (PR_NETIO_ERRNO(session.c->instrm) == EINTR) {
         continue;
       }
+
+      if (!(flags & PROXY_FTP_CTRL_FL_IGNORE_EOF)) {
+        /* EOF */
+        pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_CLIENT_EOF,
+          NULL);
+
+      } else {
+        errno = ENOENT;
+        return NULL;
+      }
     }
 
-    if (!(flags & PROXY_FTP_CTRL_FL_IGNORE_EOF)) {
-      /* EOF */
-      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_CLIENT_EOF, NULL);
-
-    } else {
-      errno = ENOENT;
-      return NULL;
-    }
+    break;
   }
 
   return cmd;
@@ -468,6 +471,7 @@ int proxy_ftp_ctrl_handle_async(pool *p, conn_t *backend_conn,
 
   if (p == NULL ||
       backend_conn == NULL ||
+      backend_conn->instrm == NULL ||
       frontend_conn == NULL) {
     errno = EINVAL;
     return -1;

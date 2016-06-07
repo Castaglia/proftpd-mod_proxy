@@ -352,6 +352,15 @@ START_TEST (parse_ext_addr_test) {
   fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
     strerror(errno));
 
+  msg = "(|||5|)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
+    strerror(errno));
+  fail_unless(
+    strcmp(pr_netaddr_get_ipstr(addr), pr_netaddr_get_ipstr(res)) == 0,
+    "Expected '%s', got '%s'", pr_netaddr_get_ipstr(addr),
+    pr_netaddr_get_ipstr(res));
+
   /* ...and where the network protocol does not match that of the address. */
 
   msg = "(||::1|5|)";
@@ -398,6 +407,15 @@ START_TEST (parse_ext_addr_test) {
   res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
   fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
     strerror(errno));
+
+  msg = "(|||5|)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
+    strerror(errno));
+  fail_unless(
+    strcmp(pr_netaddr_get_ipstr(addr), pr_netaddr_get_ipstr(res)) == 0,
+    "Expected '%s', got '%s'", pr_netaddr_get_ipstr(addr),
+    pr_netaddr_get_ipstr(res));
 
   msg = "(||1.2.3.4|5|)";
   res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
