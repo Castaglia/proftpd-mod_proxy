@@ -443,6 +443,27 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
 
 /* XXX TODO: Use a file fd for the "backend control conn" fd (/dev/null?) */
 
+  /* Valid external host (with port) in USER command. */
+  cmd = pr_cmd_alloc(p, 2, "USER", "anonymous@ftp.microsoft.com:21");
+  cmd->arg = pstrdup(p, "anonymous@ftp.microsoft.com");
+
+  mark_point();
+  res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res == 1, "Failed to handle USER command: %s", strerror(errno));
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  cmd = pr_cmd_alloc(p, 2, "PASS", "ftp@nospam.org");
+  cmd->arg = pstrdup(p, "ftp@nospam.org");
+
+  mark_point();
+  res = proxy_forward_handle_pass(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res == 1, "Failed to handle PASS command: %s", strerror(errno));
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
   res = proxy_forward_sess_free(p, NULL);
   fail_unless(res == 0, "Failed to free Forward API session resources: %s",
     strerror(errno));
