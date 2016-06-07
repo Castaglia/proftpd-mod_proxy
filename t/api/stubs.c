@@ -245,6 +245,18 @@ void pr_log_pri(int prio, const char *fmt, ...) {
 }
 
 int pr_log_writefile(int fd, const char *name, const char *fmt, ...) {
+  if (getenv("TEST_VERBOSE") != NULL) {
+    va_list msg;
+
+    fprintf(stderr, "%s: ", name);
+
+    va_start(msg, fmt);
+    vfprintf(stderr, fmt, msg);
+    va_end(msg);
+
+    fprintf(stderr, "\n");
+  }
+
   return 0;
 }
 

@@ -32,32 +32,12 @@ static pool *p = NULL;
 static const char *test_dir = "/tmp/mod_proxy-test-forward";
 
 static void create_main_server(void) {
-  pool *main_pool;
+  server_rec *s;
 
-  main_pool = make_sub_pool(permanent_pool);
-  pr_pool_tag(main_pool, "testsuite#main_server pool");
+  s = pr_parser_server_ctxt_open("127.0.0.1");
+  s->ServerName = "Test Server";
 
-  server_list = xaset_create(main_pool, NULL);
-
-  main_server = (server_rec *) pcalloc(main_pool, sizeof(server_rec));
-  xaset_insert(server_list, (xasetmember_t *) main_server);
-
-  main_server->pool = main_pool;
-  main_server->conf = xaset_create(main_pool, NULL);
-  main_server->set = server_list;
-  main_server->sid = 1;
-  main_server->notes = pr_table_nalloc(main_pool, 0, 8);
-
-  /* TCP KeepAlive is enabled by default, with the system defaults. */
-  main_server->tcp_keepalive = palloc(main_server->pool,
-    sizeof(struct tcp_keepalive));
-  main_server->tcp_keepalive->keepalive_enabled = TRUE;
-  main_server->tcp_keepalive->keepalive_idle = -1;
-  main_server->tcp_keepalive->keepalive_count = -1;
-  main_server->tcp_keepalive->keepalive_intvl = -1;
-
-  main_server->ServerName = "Test Server";
-  main_server->ServerPort = 21;
+  main_server = s;
 }
 
 static void test_cleanup(pool *cleanup_pool) {
@@ -66,33 +46,43 @@ static void test_cleanup(pool *cleanup_pool) {
 
 static void set_up(void) {
   if (p == NULL) {
-    p = permanent_pool = make_sub_pool(NULL);
+    p = permanent_pool = proxy_pool = session.pool = make_sub_pool(NULL);
     server_list = NULL;
   }
 
   test_cleanup(p);
-  create_main_server();
+  init_config();
   init_fs();
   init_netaddr();
   init_netio();
   init_inet();
 
+  server_list = xaset_create(p, NULL);
+  pr_parser_prepare(p, &server_list);
+  create_main_server();
+
   if (getenv("TEST_VERBOSE") != NULL) {
     pr_trace_set_levels("proxy.forward", 1, 20);
+    pr_trace_set_levels("proxy.uri", 1, 20);
+    pr_trace_set_levels("proxy.ftp.ctrl", 1, 20);
   }
 }
 
 static void tear_down(void) {
   if (getenv("TEST_VERBOSE") != NULL) {
     pr_trace_set_levels("proxy.forward", 0, 0);
+    pr_trace_set_levels("proxy.uri", 0, 0);
+    pr_trace_set_levels("proxy.ftp.ctrl", 0, 0);
   }
 
-  test_cleanup(p);
+  pr_parser_cleanup();
   pr_inet_clear();
+  test_cleanup(p);
 
   if (p) {
     destroy_pool(p);
-    p = permanent_pool = NULL;
+    p = permanent_pool = proxy_pool = session.pool = NULL;
+    main_server = NULL;
     server_list = NULL;
   }
 }
@@ -209,6 +199,300 @@ START_TEST (forward_have_authenticated_test) {
 }
 END_TEST
 
+static int forward_sess_init(int method_id) {
+  session.c = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+  if (session.c == NULL) {
+    return -1;
+  }
+
+  /* Make the connections look like they're from an RFC1918 address. */
+  session.c->local_addr = session.c->remote_addr = pr_netaddr_get_addr(p,
+    "192.168.0.1", NULL);
+  if (session.c->remote_addr == NULL) {
+    return -1;
+  }
+
+  if (method_id > 0) {
+    config_rec *c;
+
+    c = add_config_param("ProxyForwardMethod", 1, NULL);
+    c->argv[0] = palloc(c->pool, sizeof(int));
+    *((int *) c->argv[0]) = method_id;
+  }
+
+  return proxy_forward_sess_init(p, test_dir, NULL);
+}
+
+static struct proxy_session *forward_get_proxy_sess(void) {
+  struct proxy_session *proxy_sess;
+
+  proxy_sess = (struct proxy_session *) proxy_session_alloc(p);
+  proxy_sess->src_addr = pr_netaddr_get_addr(p, "127.0.0.1", NULL);
+
+  return proxy_sess;
+}
+
+START_TEST (forward_handle_user_noproxyauth_test) {
+  int res, successful = FALSE, block_responses = FALSE;
+  cmd_rec *cmd;
+  struct proxy_session *proxy_sess;
+
+  res = forward_sess_init(PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH);
+  fail_unless(res == 0, "Failed to init Forward API session resources: %s",
+    strerror(errno));
+
+  proxy_sess = forward_get_proxy_sess();
+
+  /* No destination host in USER command. */
+  cmd = pr_cmd_alloc(p, 2, "USER", "test");
+  cmd->arg = pstrdup(p, "test");
+
+  mark_point();
+  res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res < 0, "Handled USER command unexpectedly");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  /* Invalid host (no port) in USER command. */
+  cmd = pr_cmd_alloc(p, 2, "USER", "test@host");
+  cmd->arg = pstrdup(p, "test@host");
+
+  mark_point();
+  res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res < 0, "Handled USER command unexpectedly");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  /* Valid host (no port) in USER command. */
+  cmd = pr_cmd_alloc(p, 2, "USER", "test@127.0.0.1");
+  cmd->arg = pstrdup(p, "test@127.0.0.1");
+
+  mark_point();
+  res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res == 1, "Failed to handle USER command: %s", strerror(errno));
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  /* Destination host (WITH bad port syntax) in USER command. */
+  cmd = pr_cmd_alloc(p, 2, "USER", "test@host:foo");
+  cmd->arg = pstrdup(p, "test@host:foo");
+
+  mark_point();
+  res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res < 0, "Handled USER command unexpectedly");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  /* Destination host (WITH invalid port) in USER command. */
+  cmd = pr_cmd_alloc(p, 2, "USER", "test@host:70000");
+  cmd->arg = pstrdup(p, "test@host:70000");
+
+  mark_point();
+  res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res < 0, "Handled USER command unexpectedly");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  /* Destination host (WITH port) in USER command. */
+  cmd = pr_cmd_alloc(p, 2, "USER", "test@127.0.0.1:2121");
+  cmd->arg = pstrdup(p, "test@127.0.0.1:2121");
+
+  mark_point();
+  res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res == 1, "Failed to handle USER command: %s", strerror(errno));
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  res = proxy_forward_sess_free(p, NULL);
+  fail_unless(res == 0, "Failed to free Forward API session resources: %s",
+    strerror(errno));
+
+  proxy_session_free(p, proxy_sess);
+}
+END_TEST
+
+START_TEST (forward_handle_user_userwithproxyauth_test) {
+  int res, successful = FALSE, block_responses = FALSE;
+  cmd_rec *cmd;
+  struct proxy_session *proxy_sess;
+
+  res = forward_sess_init(PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH);
+  fail_unless(res == 0, "Failed to init Forward API session resources: %s",
+    strerror(errno));
+
+  proxy_sess = forward_get_proxy_sess();
+
+  cmd = pr_cmd_alloc(p, 2, "USER", "test@127.0.0.1");
+  cmd->arg = pstrdup(p, "test@127.0.0.1");
+
+  mark_point();
+  res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res == 0, "Failed to handle USER command: %s", strerror(errno));
+  fail_unless(block_responses == FALSE, "Expected false, got %d",
+    block_responses);
+
+  proxy_sess_state |= PROXY_SESS_STATE_PROXY_AUTHENTICATED;
+
+  mark_point();
+  res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res == 1, "Failed to handle USER command: %s", strerror(errno));
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  proxy_sess_state &= ~PROXY_SESS_STATE_PROXY_AUTHENTICATED;
+
+  res = proxy_forward_sess_free(p, NULL);
+  fail_unless(res == 0, "Failed to free Forward API session resources: %s",
+    strerror(errno));
+
+  proxy_session_free(p, proxy_sess);
+}
+END_TEST
+
+START_TEST (forward_handle_user_proxyuserwithproxyauth_test) {
+  int res, successful = FALSE, block_responses = FALSE;
+  cmd_rec *cmd;
+  struct proxy_session *proxy_sess;
+
+  res = forward_sess_init(PROXY_FORWARD_METHOD_PROXY_USER_WITH_PROXY_AUTH);
+  fail_unless(res == 0, "Failed to init Forward API session resources: %s",
+    strerror(errno));
+
+  proxy_sess = forward_get_proxy_sess();
+
+  cmd = pr_cmd_alloc(p, 2, "USER", "test@127.0.0.1");
+  cmd->arg = pstrdup(p, "test@127.0.0.1");
+
+  mark_point();
+  res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res == 0, "Failed to handle USER command: %s", strerror(errno));
+  fail_unless(block_responses == FALSE, "Expected false, got %d",
+    block_responses);
+
+  proxy_sess_state |= PROXY_SESS_STATE_PROXY_AUTHENTICATED;
+
+  mark_point();
+  res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res == 1, "Failed to handle USER command: %s", strerror(errno));
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  proxy_sess_state &= ~PROXY_SESS_STATE_PROXY_AUTHENTICATED;
+
+  res = proxy_forward_sess_free(p, NULL);
+  fail_unless(res == 0, "Failed to free Forward API session resources: %s",
+    strerror(errno));
+
+  proxy_session_free(p, proxy_sess);
+}
+END_TEST
+
+START_TEST (forward_handle_pass_noproxyauth_test) {
+  int res, successful = FALSE, block_responses = FALSE;
+  cmd_rec *cmd;
+  struct proxy_session *proxy_sess;
+
+  res = forward_sess_init(PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH);
+  fail_unless(res == 0, "Failed to init Forward API session resources: %s",
+    strerror(errno));
+
+  proxy_sess = forward_get_proxy_sess();
+
+  /* No destination host in PASS command. */
+  cmd = pr_cmd_alloc(p, 2, "PASS", "test");
+  cmd->arg = pstrdup(p, "test");
+
+  mark_point();
+  res = proxy_forward_handle_pass(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res < 0, "Handled PASS command unexpectedly");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+/* XXX TODO: Use a file fd for the "backend control conn" fd (/dev/null?) */
+
+  res = proxy_forward_sess_free(p, NULL);
+  fail_unless(res == 0, "Failed to free Forward API session resources: %s",
+    strerror(errno));
+
+  proxy_session_free(p, proxy_sess);
+}
+END_TEST
+
+START_TEST (forward_handle_pass_userwithproxyauth_test) {
+  int res, successful = FALSE, block_responses = FALSE;
+  cmd_rec *cmd;
+  struct proxy_session *proxy_sess;
+
+  res = forward_sess_init(PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH);
+  fail_unless(res == 0, "Failed to init Forward API session resources: %s",
+    strerror(errno));
+
+  proxy_sess = forward_get_proxy_sess();
+
+  /* No destination host in PASS command. */
+  cmd = pr_cmd_alloc(p, 2, "PASS", "test");
+  cmd->arg = pstrdup(p, "test");
+
+  mark_point();
+  res = proxy_forward_handle_pass(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res < 0, "Handled PASS command unexpectedly");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+/* XXX TODO: Use a file fd for the "backend control conn" fd (/dev/null?) */
+
+  res = proxy_forward_sess_free(p, NULL);
+  fail_unless(res == 0, "Failed to free Forward API session resources: %s",
+    strerror(errno));
+
+  proxy_session_free(p, proxy_sess);
+}
+END_TEST
+
+START_TEST (forward_handle_pass_proxyuserwithproxyauth_test) {
+  int res, successful = FALSE, block_responses = FALSE;
+  cmd_rec *cmd;
+  struct proxy_session *proxy_sess;
+
+  res = forward_sess_init(PROXY_FORWARD_METHOD_PROXY_USER_WITH_PROXY_AUTH);
+  fail_unless(res == 0, "Failed to init Forward API session resources: %s",
+    strerror(errno));
+
+  proxy_sess = forward_get_proxy_sess();
+
+  /* No destination host in PASS command. */
+  cmd = pr_cmd_alloc(p, 2, "PASS", "test");
+  cmd->arg = pstrdup(p, "test");
+
+  mark_point();
+  res = proxy_forward_handle_pass(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res < 0, "Handled PASS command unexpectedly");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+/* XXX TODO: Use a file fd for the "backend control conn" fd (/dev/null?) */
+
+  res = proxy_forward_sess_free(p, NULL);
+  fail_unless(res == 0, "Failed to free Forward API session resources: %s",
+    strerror(errno));
+
+  proxy_session_free(p, proxy_sess);
+}
+END_TEST
+
 Suite *tests_get_forward_suite(void) {
   Suite *suite;
   TCase *testcase;
@@ -225,6 +509,13 @@ Suite *tests_get_forward_suite(void) {
   tcase_add_test(testcase, forward_get_method_test);
   tcase_add_test(testcase, forward_use_proxy_auth_test);
   tcase_add_test(testcase, forward_have_authenticated_test);
+
+  tcase_add_test(testcase, forward_handle_user_noproxyauth_test);
+  tcase_add_test(testcase, forward_handle_user_userwithproxyauth_test);
+  tcase_add_test(testcase, forward_handle_user_proxyuserwithproxyauth_test);
+  tcase_add_test(testcase, forward_handle_pass_noproxyauth_test);
+  tcase_add_test(testcase, forward_handle_pass_userwithproxyauth_test);
+  tcase_add_test(testcase, forward_handle_pass_proxyuserwithproxyauth_test);
 
   suite_add_tcase(suite, testcase);
   return suite;
