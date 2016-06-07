@@ -352,6 +352,16 @@ START_TEST (parse_ext_addr_test) {
   fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
     strerror(errno));
 
+  msg = "(||1.2.3.4|5|)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, "all");
+  fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
+    strerror(errno));
+
+  msg = "(||1.2.3.4|5|)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, "1");
+  fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
+    strerror(errno));
+
   msg = "(|||5|)";
   res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
   fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
@@ -400,6 +410,16 @@ START_TEST (parse_ext_addr_test) {
 
   msg = "(|2|::1|5|)";
   res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
+    strerror(errno));
+
+  msg = "(|2|::1|5|)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, "ALL");
+  fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
+    strerror(errno));
+
+  msg = "(||::1|5|)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, "2");
   fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
     strerror(errno));
 

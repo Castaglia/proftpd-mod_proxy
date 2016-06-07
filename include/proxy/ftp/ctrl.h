@@ -32,7 +32,7 @@
 
 int proxy_ftp_ctrl_handle_async(pool *p, conn_t *backend_conn,
   conn_t *frontend_conn, int flags);
-cmd_rec *proxy_ftp_ctrl_recv_cmd(pool *p, conn_t *ctrl_conn, int flags);
+
 pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
   unsigned int *resp_nlines, int flags);
 int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *ctrl_conn, cmd_rec *cmd);

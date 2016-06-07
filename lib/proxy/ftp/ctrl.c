@@ -126,43 +126,6 @@ static char *ftp_telnet_gets(char *buf, size_t buflen,
   return buf;
 }
 
-cmd_rec *proxy_ftp_ctrl_recv_cmd(pool *p, conn_t *ctrl_conn, int flags) {
-  cmd_rec *cmd = NULL;
-
-  if (p == NULL ||
-      ctrl_conn == NULL) {
-    errno = EINVAL;
-    return NULL;
-  }
-
-  while (TRUE) {
-    int res;
-
-    pr_signals_handle();
-
-    res = pr_cmd_read(&cmd);
-    if (res < 0) {
-      if (PR_NETIO_ERRNO(session.c->instrm) == EINTR) {
-        continue;
-      }
-
-      if (!(flags & PROXY_FTP_CTRL_FL_IGNORE_EOF)) {
-        /* EOF */
-        pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_CLIENT_EOF,
-          NULL);
-
-      } else {
-        errno = ENOENT;
-        return NULL;
-      }
-    }
-
-    break;
-  }
-
-  return cmd;
-}
-
 pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
     unsigned int *nlines, int flags) {
   char buf[PR_TUNABLE_BUFFER_SIZE];
