@@ -347,7 +347,18 @@ START_TEST (parse_ext_addr_test) {
   fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
     strerror(errno));
 
+  msg = "(||1.2.3.4|5|)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
+    strerror(errno));
+
   /* ...and where the network protocol does not match that of the address. */
+
+  msg = "(||::1|5|)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle network protocol mismatch");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+    strerror(errno), errno);
 
   msg = "(|2|1.2.3.4|5)";
   res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
@@ -382,6 +393,17 @@ START_TEST (parse_ext_addr_test) {
   res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
   fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
     strerror(errno));
+
+  msg = "(||::1|5|)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res != NULL, "Failed to handle formatted message '%s': %s", msg,
+    strerror(errno));
+
+  msg = "(||1.2.3.4|5|)";
+  res = proxy_ftp_msg_parse_ext_addr(p, msg, addr, PR_CMD_EPSV_ID, NULL);
+  fail_unless(res == NULL, "Failed to handle network protocol mismatch");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+    strerror(errno), errno);
 #endif /* PR_USE_IPV6 */
 }
 END_TEST
