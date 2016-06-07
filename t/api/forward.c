@@ -211,6 +211,7 @@ static int forward_sess_init(int method_id) {
   if (session.c->remote_addr == NULL) {
     return -1;
   }
+  pr_netaddr_set_port((pr_netaddr_t *) session.c->local_addr, htons(7777));
 
   if (method_id > 0) {
     config_rec *c;
@@ -268,6 +269,16 @@ START_TEST (forward_handle_user_noproxyauth_test) {
   /* Valid host (no port) in USER command. */
   cmd = pr_cmd_alloc(p, 2, "USER", "test@127.0.0.1");
   cmd->arg = pstrdup(p, "test@127.0.0.1");
+
+  mark_point();
+  res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res == 1, "Failed to handle USER command: %s", strerror(errno));
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  cmd = pr_cmd_alloc(p, 2, "USER", "test@192.168.0.1");
+  cmd->arg = pstrdup(p, "test@192.168.0.1:7777");
 
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,

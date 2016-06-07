@@ -148,6 +148,12 @@ int proxy_session_setup_env(pool *p, const char *user, int flags) {
   int i, res = 0, xerrno = 0;
   const char *xferlog = NULL;
 
+  if (p == NULL ||
+      user == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
   session.hide_password = TRUE;
 
   /* Note: the given user name may not be known locally on the proxy; thus

@@ -26,26 +26,57 @@
 
 #include "tests.h"
 
+extern xaset_t *server_list;
+
 static pool *p = NULL;
+
+static void create_main_server(void) {
+  server_rec *s;
+
+  s = pr_parser_server_ctxt_open("127.0.0.1");
+  s->ServerName = "Test Server";
+
+  main_server = s;
+}
 
 static void set_up(void) {
   if (p == NULL) {
-    p = permanent_pool = make_sub_pool(NULL);
+    p = permanent_pool = session.pool = make_sub_pool(NULL);
+    main_server = NULL;
+    server_list = NULL;
   }
+
+  init_config();
+  init_netaddr();
+  init_netio();
+  init_inet();
+
+  server_list = xaset_create(p, NULL);
+  pr_parser_prepare(p, &server_list);
+  create_main_server();
 
   if (getenv("TEST_VERBOSE") != NULL) {
     pr_trace_set_levels("proxy.session", 1, 20);
   }
+
+  pr_inet_set_default_family(p, AF_INET);
 }
 
 static void tear_down(void) {
+  pr_inet_set_default_family(p, 0);
+
   if (getenv("TEST_VERBOSE") != NULL) {
     pr_trace_set_levels("proxy.session", 0, 0);
   }
 
+  pr_parser_cleanup();
+  pr_inet_clear();
+
   if (p) {
     destroy_pool(p);
-    p = permanent_pool = NULL;
+    p = permanent_pool = session.pool = NULL;
+    main_server = NULL;
+    server_list = NULL;
   } 
 }
 
@@ -80,6 +111,75 @@ START_TEST (session_alloc_test) {
 }
 END_TEST
 
+START_TEST (session_check_password_test) {
+  int res;
+  const char *user, *passwd;
+
+  mark_point();
+  res = proxy_session_check_password(NULL, NULL, NULL);
+  fail_unless(res < 0, "Failed to handle null arguments");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_session_check_password(p, NULL, NULL);
+  fail_unless(res < 0, "Failed to handle null user");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  user = "foo";
+
+  mark_point();
+  res = proxy_session_check_password(p, user, NULL);
+  fail_unless(res < 0, "Failed to handle null passwd");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  passwd = "bar";
+
+  mark_point();
+  res = proxy_session_check_password(p, user, passwd);
+  fail_unless(res < 0, "Failed to handle unknown user");
+  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
+    strerror(errno), errno);
+}
+END_TEST
+
+START_TEST (session_setup_env_test) {
+  int res, flags = 0;
+  const char *user;
+
+  mark_point();
+  res = proxy_session_setup_env(NULL, NULL, flags);
+  fail_unless(res < 0, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_session_setup_env(p, NULL, flags);
+  fail_unless(res < 0, "Failed to handle null user");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  session.c = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+  fail_unless(session.c != NULL,
+    "Failed to open session control conn: %s", strerror(errno));
+  session.c->remote_name = pstrdup(p, "127.0.0.1");
+
+  user = "foo";
+
+  mark_point();
+  res = proxy_session_setup_env(p, user, flags);
+  fail_unless(res == 0, "Failed to setup environment: %s", strerror(errno));
+  fail_unless(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED,
+    "Expected PROXY_AUTHENTICATED state set");
+
+  proxy_sess_state &= ~PROXY_SESS_STATE_PROXY_AUTHENTICATED;
+  pr_inet_close(p, session.c);
+  session.c = NULL;
+}
+END_TEST
+
 Suite *tests_get_session_suite(void) {
   Suite *suite;
   TCase *testcase;
@@ -91,6 +191,8 @@ Suite *tests_get_session_suite(void) {
 
   tcase_add_test(testcase, session_free_test);
   tcase_add_test(testcase, session_alloc_test);
+  tcase_add_test(testcase, session_check_password_test);
+  tcase_add_test(testcase, session_setup_env_test);
 
   suite_add_tcase(suite, testcase);
   return suite;
