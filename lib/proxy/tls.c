@@ -2830,7 +2830,6 @@ int proxy_tls_free(pool *p) {
     SSL_CTX_free(ssl_ctx);
     ssl_ctx = NULL;
   }
-#endif /* PR_USE_OPENSSL */
 
   res = proxy_db_close(p, PROXY_TLS_DB_SCHEMA_NAME);
   if (res < 0) {
@@ -2838,6 +2837,7 @@ int proxy_tls_free(pool *p) {
       "error detaching database with schema '%s': %s",
       PROXY_TLS_DB_SCHEMA_NAME, strerror(errno));
   }
+#endif /* PR_USE_OPENSSL */
 
   return 0;
 }
