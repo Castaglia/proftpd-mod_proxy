@@ -81,9 +81,6 @@ int proxy_tls_sess_free(pool *p);
 /* Programmatically set the ProxyTLSEngine value. */
 int proxy_tls_set_tls(int);
 
-/* Programmatically set the ProxyTLSVerifyServer value. */
-int proxy_tls_set_verify_server(int);
-
 /* Returns the ProxyTLSEngine value; see above. */
 int proxy_tls_using_tls(void);
 

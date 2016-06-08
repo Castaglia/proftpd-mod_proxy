@@ -450,6 +450,7 @@ END_TEST
 START_TEST (forward_handle_pass_noproxyauth_test) {
   int res, successful = FALSE, block_responses = FALSE;
   cmd_rec *cmd;
+  config_rec *c;
   struct proxy_session *proxy_sess;
 
   res = forward_sess_init(PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH);
@@ -495,9 +496,6 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
 #ifdef PR_USE_OPENSSL
   /* This time, try an FTPS-capable site. */
 
-  proxy_tls_set_verify_server(FALSE);
-  proxy_tls_set_tls(PROXY_TLS_ENGINE_AUTO);
-
   session.notes = pr_table_alloc(p, 0);
   pr_table_add(session.notes, "mod_proxy.proxy-session", proxy_sess,
     sizeof(struct proxy_session));
@@ -505,6 +503,22 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
   res = proxy_tls_init(p, test_dir, PROXY_DB_OPEN_FL_SKIP_VACUUM);
   fail_unless(res == 0, "Failed to init TLS API resources: %s",
     strerror(errno));
+
+  c = add_config_param("ProxyTLSEngine", 1, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = PROXY_TLS_ENGINE_AUTO;
+
+  c = add_config_param("ProxyTLSVerifyServer", 1, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = FALSE;
+
+  c = add_config_param("ProxyTLSOptions", 1, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(unsigned long));
+  *((unsigned long *) c->argv[0]) = PROXY_TLS_OPT_ENABLE_DIAGS;
+
+/* XXX if we want to successfully verify the Cisco cert, we'd need to include
+ * its CA certs as a test resource, and configure it here.
+ */
 
   res = proxy_tls_sess_init(p, PROXY_DB_OPEN_FL_SKIP_VACUUM);
   fail_unless(res == 0, "Failed to init TLS API session resources: %s",
