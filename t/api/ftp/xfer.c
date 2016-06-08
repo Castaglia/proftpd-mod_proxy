@@ -26,32 +26,62 @@
 
 #include "../tests.h"
 
+extern xaset_t *server_list;
+
 static pool *p = NULL;
+
+static void create_main_server(void) {
+  server_rec *s;
+
+  s = pr_parser_server_ctxt_open("127.0.0.1");
+  s->ServerName = "Test Server";
+
+  main_server = s;
+}
 
 static void set_up(void) {
   if (p == NULL) {
     p = permanent_pool = session.pool = make_sub_pool(NULL);
+    main_server = NULL;
+    server_list = NULL;
   }
 
+  init_config();
   init_netaddr();
   init_netio();
   init_inet();
 
+  server_list = xaset_create(p, NULL);
+  pr_parser_prepare(p, &server_list);
+  create_main_server();
+
+  pr_response_set_pool(p);
+
   if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.ftp.conn", 1, 20);
     pr_trace_set_levels("proxy.ftp.xfer", 1, 20);
   }
+
+  pr_inet_set_default_family(p, AF_INET);
 }
 
 static void tear_down(void) {
+  pr_inet_set_default_family(p, 0);
+
   if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("proxy.ftp.conn", 0, 0);
     pr_trace_set_levels("proxy.ftp.xfer", 0, 0);
   }
 
+  pr_response_set_pool(NULL);
+  pr_parser_cleanup();
   pr_inet_clear();
 
   if (p) {
     destroy_pool(p);
     p = permanent_pool = session.pool = NULL;
+    main_server = NULL;
+    server_list = NULL;
   } 
 }
 
@@ -102,6 +132,41 @@ START_TEST (prepare_active_test) {
   mark_point();
   res = proxy_ftp_xfer_prepare_active(0, cmd, "500", proxy_sess, 0);
   fail_unless(res < 0, "Failed to handle illegal FTP command");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  /* Prevent NULL pointer dereferences which would only happen during
+   * testing.
+   */
+  proxy_sess->backend_ctrl_conn->remote_addr = session.c->remote_addr;
+
+  mark_point();
+  res = proxy_ftp_xfer_prepare_active(PR_CMD_PORT_ID, cmd, "500", proxy_sess,
+    0);
+  fail_unless(res < 0, "Failed to handle bad PORT command");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_ftp_xfer_prepare_active(PR_CMD_EPRT_ID, cmd, "500", proxy_sess,
+    0);
+  fail_unless(res < 0, "Failed to handle bad EPRT command");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  cmd = pr_cmd_alloc(p, 1, "EPRT");
+
+  mark_point();
+  res = proxy_ftp_xfer_prepare_active(0, cmd, "500", proxy_sess, 0);
+  fail_unless(res < 0, "Failed to handle bad EPRT command");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  cmd = pr_cmd_alloc(p, 1, "PORT");
+
+  mark_point();
+  res = proxy_ftp_xfer_prepare_active(0, cmd, "500", proxy_sess, 0);
+  fail_unless(res < 0, "Failed to handle bad EPRT command");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
