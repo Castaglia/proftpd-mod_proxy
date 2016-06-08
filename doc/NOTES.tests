@@ -7,3 +7,13 @@ Then:
 
   $ cd contrib/mod_proxy/t/
   $ make api-tests
+
+Available external FTP sites for testing:
+
+  ftp.microsoft.com
+  ftp.cisco.com*
+  ftp.kernel.org
+  ftp.freebsd.org
+  ftp.seagate.com*
+
+(*) denotes FTPS

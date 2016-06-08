@@ -53,8 +53,11 @@ static FILE *test_prep(void) {
 
   perms = 0770;
   res = mkdir(test_dir, perms);
-  fail_unless(res == 0, "Failed to create tmp directory '%s': %s", test_dir,
-    strerror(errno));
+  if (res < 0 &&
+      errno != EEXIST) {
+    fail_unless(res == 0, "Failed to create tmp directory '%s': %s", test_dir,
+      strerror(errno));
+  }
 
   res = chmod(test_dir, perms);
   fail_unless(res == 0, "Failed to set perms %04o on directory '%s': %s",
@@ -74,12 +77,17 @@ static FILE *test_prep(void) {
 
 static void set_up(void) {
   if (p == NULL) {
-    p = permanent_pool = make_sub_pool(NULL);
+    p = permanent_pool = session.pool = make_sub_pool(NULL);
+    main_server = NULL;
+    server_list = NULL;
   }
 
   test_cleanup(p);
   init_config();
   init_fs();
+  init_netaddr();
+  init_netio();
+  init_inet();
 
   server_list = xaset_create(p, NULL);
   pr_parser_prepare(p, &server_list);
@@ -87,24 +95,41 @@ static void set_up(void) {
   proxy_db_init(p);
 
   if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("netio", 1, 20);
+    pr_trace_set_levels("proxy.conn", 1, 20);
     pr_trace_set_levels("proxy.db", 1, 20);
     pr_trace_set_levels("proxy.reverse", 1, 20);
+    pr_trace_set_levels("proxy.tls", 1, 20);
+    pr_trace_set_levels("proxy.uri", 1, 20);
+    pr_trace_set_levels("proxy.ftp.ctrl", 1, 20);
+    pr_trace_set_levels("proxy.ftp.sess", 1, 20);
   }
+
+  pr_inet_set_default_family(p, AF_INET);
 }
 
 static void tear_down(void) {
+  pr_inet_set_default_family(p, 0);
+
   if (getenv("TEST_VERBOSE") != NULL) {
+    pr_trace_set_levels("netio", 0, 0);
+    pr_trace_set_levels("proxy.conn", 0, 0);
     pr_trace_set_levels("proxy.db", 0, 0);
     pr_trace_set_levels("proxy.reverse", 0, 0);
+    pr_trace_set_levels("proxy.tls", 0, 0);
+    pr_trace_set_levels("proxy.uri", 0, 0);
+    pr_trace_set_levels("proxy.ftp.ctrl", 0, 0);
+    pr_trace_set_levels("proxy.ftp.sess", 0, 0);
   }
 
+  pr_inet_clear();
   pr_parser_cleanup();
   proxy_db_free();
   test_cleanup(p);
 
   if (p) {
     destroy_pool(p);
-    p = permanent_pool = NULL;
+    p = permanent_pool = session.pool = NULL;
     main_server = NULL;
     server_list = NULL;
   } 
@@ -204,13 +229,11 @@ START_TEST (reverse_sess_init_test) {
 }
 END_TEST
 
-static int test_connect_policy(int policy_id) {
+static int test_connect_policy(int policy_id, array_header *src_backends) {
   int flags = PROXY_DB_OPEN_FL_SKIP_VACUUM;
   FILE *fh;
-  const char *uri;
   config_rec *c;
   array_header *backends;
-  const struct proxy_conn *pconn;
 
   fh = test_prep();
   fclose(fh);
@@ -222,10 +245,21 @@ static int test_connect_policy(int policy_id) {
 
   mark_point();
   c = add_config_param("ProxyReverseServers", 2, NULL, NULL);
+
   backends = make_array(c->pool, 1, sizeof(struct proxy_conn *));
-  uri = "ftp://127.0.0.1:21";
-  pconn = proxy_conn_create(c->pool, uri);
-  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
+  if (src_backends == NULL) {
+    const char *uri;
+    const struct proxy_conn *pconn;
+
+    uri = "ftp://127.0.0.1:21";
+    pconn = proxy_conn_create(c->pool, uri);
+    *((const struct proxy_conn **) push_array(backends)) = pconn;
+
+  } else {
+    array_cat(backends, src_backends);
+  }
+
   c->argv[0] = backends;
 
   mark_point();
@@ -235,7 +269,7 @@ static int test_connect_policy(int policy_id) {
 START_TEST (reverse_connect_policy_random_test) {
   int res;
 
-  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_RANDOM);
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_RANDOM, NULL);
   fail_unless(res == 0, "Failed to test ReverseConnectPolicy Random: %s",
     strerror(errno));
 
@@ -255,7 +289,7 @@ END_TEST
 START_TEST (reverse_connect_policy_roundrobin_test) {
   int res;
 
-  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN);
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN, NULL);
   fail_unless(res == 0, "Failed to test ReverseConnectPolicy RoundRobin: %s",
     strerror(errno));
 
@@ -275,7 +309,7 @@ END_TEST
 START_TEST (reverse_connect_policy_leastconns_test) {
   int res;
 
-  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS);
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS, NULL);
   fail_unless(res == 0, "Failed to test ReverseConnectPolicy LeastConns: %s",
     strerror(errno));
 
@@ -295,7 +329,8 @@ END_TEST
 START_TEST (reverse_connect_policy_leastresponsetime_test) {
   int res;
 
-  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME);
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME,
+    NULL);
   fail_unless(res == 0,
     "Failed to test ReverseConnectPolicy LeastResponseTime: %s",
     strerror(errno));
@@ -316,7 +351,7 @@ END_TEST
 START_TEST (reverse_connect_policy_shuffle_test) {
   int res;
 
-  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_SHUFFLE);
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_SHUFFLE, NULL);
   fail_unless(res == 0, "Failed to test ReverseConnectPolicy Shuffle: %s",
     strerror(errno));
 
@@ -336,7 +371,7 @@ END_TEST
 START_TEST (reverse_connect_policy_peruser_test) {
   int res;
 
-  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_PER_USER);
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_PER_USER, NULL);
   fail_unless(res == 0, "Failed to test ReverseConnectPolicy PerUser: %s",
     strerror(errno));
 
@@ -356,7 +391,7 @@ END_TEST
 START_TEST (reverse_connect_policy_pergroup_test) {
   int res;
 
-  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_PER_GROUP);
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_PER_GROUP, NULL);
   fail_unless(res == 0, "Failed to test ReverseConnectPolicy PerGroup: %s",
     strerror(errno));
 
@@ -376,7 +411,7 @@ END_TEST
 START_TEST (reverse_connect_policy_perhost_test) {
   int res;
 
-  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_PER_HOST);
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_PER_HOST, NULL);
   fail_unless(res == 0, "Failed to test ReverseConnectPolicy PerHost: %s",
     strerror(errno));
 
@@ -390,6 +425,185 @@ START_TEST (reverse_connect_policy_perhost_test) {
     strerror(errno));
 
   test_cleanup(p);
+}
+END_TEST
+
+static void test_handle_user_pass(int policy_id, array_header *src_backends) {
+  int res, successful = FALSE, block_responses = FALSE;
+  int flags = PROXY_DB_OPEN_FL_SKIP_VACUUM;
+  struct proxy_session *proxy_sess;
+  cmd_rec *cmd;
+  FILE *fh;
+
+  fh = test_prep();
+  fclose(fh);
+
+  mark_point();
+  res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_RANDOM, src_backends);
+  fail_unless(res == 0, "Failed to test ReverseConnectPolicy Random: %s",
+    strerror(errno));
+
+  proxy_sess = (struct proxy_session *) proxy_session_alloc(p);
+
+  session.notes = pr_table_alloc(p, 0);
+  pr_table_add(session.notes, "mod_proxy.proxy-session", proxy_sess,
+    sizeof(struct proxy_session));
+
+  session.c = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+  fail_unless(session.c != NULL,
+    "Failed to open session control conn: %s", strerror(errno));
+
+  session.c->local_addr = session.c->remote_addr = pr_netaddr_get_addr(p,
+    "127.0.0.1", NULL);
+  fail_unless(session.c->remote_addr != NULL, "Failed to get address: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_reverse_sess_init(p, test_dir, proxy_sess, flags);
+  fail_unless(res == 0, "Failed to init Reverse API session resources: %s",
+    strerror(errno));
+
+  cmd = pr_cmd_alloc(p, 2, "USER", "anonymous");
+  cmd->arg = pstrdup(p, "anonymous");
+
+  mark_point();
+  res = proxy_reverse_handle_user(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_if(res != 1, "Failed to handle USER");
+
+  cmd = pr_cmd_alloc(p, 2, "PASS", "ftp@nospam.org");
+  cmd->arg = pstrdup(p, "ftp@nospam.org");
+
+  mark_point();
+  res = proxy_reverse_handle_pass(cmd, proxy_sess, &successful,
+    &block_responses);
+  fail_unless(res < 0, "Handled PASS unexpectedly");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_reverse_sess_exit(p);
+  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
+
+  mark_point();
+  res = proxy_reverse_free(p);
+  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+    strerror(errno));
+
+  proxy_session_free(p, proxy_sess);
+  test_cleanup(p);
+}
+
+START_TEST (reverse_handle_user_pass_random_test) {
+  const char *uri;
+  const struct proxy_conn *pconn;
+  array_header *backends;
+
+  uri = "ftp://ftp.microsoft.com:21";
+  pconn = proxy_conn_create(p, uri);
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_RANDOM, backends);
+}
+END_TEST
+
+START_TEST (reverse_handle_user_pass_roundrobin_test) {
+  const char *uri;
+  const struct proxy_conn *pconn;
+  array_header *backends;
+
+  uri = "ftp://ftp.microsoft.com:21";
+  pconn = proxy_conn_create(p, uri);
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN, backends);
+}
+END_TEST
+
+START_TEST (reverse_handle_user_pass_leastconns_test) {
+  const char *uri;
+  const struct proxy_conn *pconn;
+  array_header *backends;
+
+  uri = "ftp://ftp.microsoft.com:21";
+  pconn = proxy_conn_create(p, uri);
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS, backends);
+}
+END_TEST
+
+START_TEST (reverse_handle_user_pass_leastresponsetime_test) {
+  const char *uri;
+  const struct proxy_conn *pconn;
+  array_header *backends;
+
+  uri = "ftp://ftp.microsoft.com:21";
+  pconn = proxy_conn_create(p, uri);
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME,
+    backends);
+}
+END_TEST
+
+START_TEST (reverse_handle_user_pass_shuffle_test) {
+  const char *uri;
+  const struct proxy_conn *pconn;
+  array_header *backends;
+
+  uri = "ftp://ftp.microsoft.com:21";
+  pconn = proxy_conn_create(p, uri);
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_SHUFFLE, backends);
+}
+END_TEST
+
+START_TEST (reverse_handle_user_pass_peruser_test) {
+  const char *uri;
+  const struct proxy_conn *pconn;
+  array_header *backends;
+
+  uri = "ftp://ftp.microsoft.com:21";
+  pconn = proxy_conn_create(p, uri);
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_PER_USER, backends);
+}
+END_TEST
+
+START_TEST (reverse_handle_user_pass_pergroup_test) {
+  const char *uri;
+  const struct proxy_conn *pconn;
+  array_header *backends;
+
+  uri = "ftp://ftp.microsoft.com:21";
+  pconn = proxy_conn_create(p, uri);
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_PER_GROUP, backends);
+}
+END_TEST
+
+START_TEST (reverse_handle_user_pass_perhost_test) {
+  const char *uri;
+  const struct proxy_conn *pconn;
+  array_header *backends;
+
+  uri = "ftp://ftp.microsoft.com:21";
+  pconn = proxy_conn_create(p, uri);
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_PER_HOST, backends);
 }
 END_TEST
 
@@ -686,6 +900,15 @@ Suite *tests_get_reverse_suite(void) {
   tcase_add_test(testcase, reverse_connect_policy_peruser_test);
   tcase_add_test(testcase, reverse_connect_policy_pergroup_test);
   tcase_add_test(testcase, reverse_connect_policy_perhost_test);
+
+  tcase_add_test(testcase, reverse_handle_user_pass_random_test);
+  tcase_add_test(testcase, reverse_handle_user_pass_roundrobin_test);
+  tcase_add_test(testcase, reverse_handle_user_pass_leastconns_test);
+  tcase_add_test(testcase, reverse_handle_user_pass_leastresponsetime_test);
+  tcase_add_test(testcase, reverse_handle_user_pass_shuffle_test);
+  tcase_add_test(testcase, reverse_handle_user_pass_peruser_test);
+  tcase_add_test(testcase, reverse_handle_user_pass_pergroup_test);
+  tcase_add_test(testcase, reverse_handle_user_pass_perhost_test);
 
   tcase_add_test(testcase, reverse_json_parse_uris_args_test);
   tcase_add_test(testcase, reverse_json_parse_uris_isreg_test);
