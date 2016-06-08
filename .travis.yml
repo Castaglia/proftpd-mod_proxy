@@ -37,16 +37,18 @@ script:
   - cp config* proftpd/contrib/mod_proxy/
   - cp install-sh proftpd/contrib/mod_proxy/
   - cd proftpd
-  - ./configure --enable-devel=coverage --enable-tests --with-modules=mod_tls:mod_proxy
+  # First, a build without mod_tls
+  - ./configure --enable-devel=coverage --enable-tests --with-module=mod_proxy
   - make
-  - cd contrib/mod_proxy && make TEST_VERBOSE=1 check && cd ../../
+  # Next, a build WITH mod_tls (as a shared module)
   - make clean
   - ./configure --enable-devel=coverage --enable-dso --enable-tests --with-shared=mod_tls:mod_proxy
   - make
+  # Last, a build with mod_tls (as a static module), and run the tests
   - make clean
-  # And one more build, this time without mod_tls
-  - ./configure --enable-devel=coverage --enable-dso --enable-tests --with-shared=mod_proxy
+  - ./configure --enable-devel=coverage --enable-tests --with-modules=mod_tls:mod_proxy
   - make
+  - cd contrib/mod_proxy && make TEST_VERBOSE=1 check && cd ../../
 
 after_success:
   - cd ${TRAVIS_BUILD_DIR}
