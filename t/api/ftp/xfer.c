@@ -166,7 +166,7 @@ START_TEST (prepare_active_test) {
 
   mark_point();
   res = proxy_ftp_xfer_prepare_active(0, cmd, "500", proxy_sess, 0);
-  fail_unless(res < 0, "Failed to handle bad EPRT command");
+  fail_unless(res < 0, "Failed to handle bad PORT command");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
@@ -222,6 +222,41 @@ START_TEST (prepare_passive_test) {
   mark_point();
   addr = proxy_ftp_xfer_prepare_passive(0, cmd, "500", proxy_sess, 0);
   fail_unless(addr == NULL, "Failed to handle illegal FTP command");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  /* Prevent NULL pointer dereferences which would only happen during
+   * testing.
+   */
+  proxy_sess->backend_ctrl_conn->remote_addr = session.c->remote_addr;
+
+  mark_point();
+  addr = proxy_ftp_xfer_prepare_passive(PR_CMD_PASV_ID, cmd, "500", proxy_sess,
+    0);
+  fail_unless(addr == NULL, "Failed to handle bad PASV command");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  addr = proxy_ftp_xfer_prepare_passive(PR_CMD_EPSV_ID, cmd, "500", proxy_sess,
+    0);
+  fail_unless(addr == NULL, "Failed to handle bad EPSV command");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  cmd = pr_cmd_alloc(p, 1, "EPSV");
+
+  mark_point();
+  addr = proxy_ftp_xfer_prepare_passive(0, cmd, "500", proxy_sess, 0);
+  fail_unless(addr == NULL, "Failed to handle bad EPSV command");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  cmd = pr_cmd_alloc(p, 1, "PASV");
+
+  mark_point();
+  addr = proxy_ftp_xfer_prepare_passive(0, cmd, "500", proxy_sess, 0);
+  fail_unless(addr == NULL, "Failed to handle bad PASV command");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
