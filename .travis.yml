@@ -43,6 +43,10 @@ script:
   - make clean
   - ./configure --enable-devel=coverage --enable-dso --enable-tests --with-shared=mod_tls:mod_proxy
   - make
+  - make clean
+  # And one more build, this time without mod_tls
+  - ./configure --enable-devel=coverage --enable-dso --enable-tests --with-shared=mod_proxy
+  - make
 
 after_success:
   - cd ${TRAVIS_BUILD_DIR}
