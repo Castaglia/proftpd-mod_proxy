@@ -499,10 +499,14 @@ START_TEST (reverse_handle_user_pass_random_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+
+  uri = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, uri);
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
   uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
-  backends = make_array(p, 1, sizeof(struct proxy_conn *));
-  *((const struct proxy_conn **) push_array(backends)) = pconn;
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_RANDOM, backends);
@@ -514,10 +518,14 @@ START_TEST (reverse_handle_user_pass_roundrobin_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+
+  uri = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, uri);
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
   uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
-  backends = make_array(p, 1, sizeof(struct proxy_conn *));
-  *((const struct proxy_conn **) push_array(backends)) = pconn;
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN, backends);
@@ -529,10 +537,14 @@ START_TEST (reverse_handle_user_pass_leastconns_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+
+  uri = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, uri);
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
   uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
-  backends = make_array(p, 1, sizeof(struct proxy_conn *));
-  *((const struct proxy_conn **) push_array(backends)) = pconn;
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS, backends);
@@ -544,10 +556,14 @@ START_TEST (reverse_handle_user_pass_leastresponsetime_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+
+  uri = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, uri);
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
   uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
-  backends = make_array(p, 1, sizeof(struct proxy_conn *));
-  *((const struct proxy_conn **) push_array(backends)) = pconn;
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME,
@@ -560,10 +576,14 @@ START_TEST (reverse_handle_user_pass_shuffle_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+
+  uri = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, uri);
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
   uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
-  backends = make_array(p, 1, sizeof(struct proxy_conn *));
-  *((const struct proxy_conn **) push_array(backends)) = pconn;
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_SHUFFLE, backends);
@@ -575,10 +595,14 @@ START_TEST (reverse_handle_user_pass_peruser_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+
+  uri = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, uri);
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
   uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
-  backends = make_array(p, 1, sizeof(struct proxy_conn *));
-  *((const struct proxy_conn **) push_array(backends)) = pconn;
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_PER_USER, backends);
@@ -590,10 +614,14 @@ START_TEST (reverse_handle_user_pass_pergroup_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+
+  uri = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, uri);
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
   uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
-  backends = make_array(p, 1, sizeof(struct proxy_conn *));
-  *((const struct proxy_conn **) push_array(backends)) = pconn;
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_PER_GROUP, backends);
@@ -605,10 +633,14 @@ START_TEST (reverse_handle_user_pass_perhost_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
+  backends = make_array(p, 1, sizeof(struct proxy_conn *));
+
+  uri = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, uri);
+  *((const struct proxy_conn **) push_array(backends)) = pconn;
+
   uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
-  backends = make_array(p, 1, sizeof(struct proxy_conn *));
-  *((const struct proxy_conn **) push_array(backends)) = pconn;
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_PER_HOST, backends);
