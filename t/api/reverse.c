@@ -510,6 +510,7 @@ START_TEST (reverse_handle_user_pass_random_test) {
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_RANDOM, backends);
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_RANDOM, backends);
 }
 END_TEST
 
@@ -529,6 +530,7 @@ START_TEST (reverse_handle_user_pass_roundrobin_test) {
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN, backends);
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN, backends);
 }
 END_TEST
 
@@ -547,6 +549,7 @@ START_TEST (reverse_handle_user_pass_leastconns_test) {
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS, backends);
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS, backends);
 }
 END_TEST
@@ -568,6 +571,8 @@ START_TEST (reverse_handle_user_pass_leastresponsetime_test) {
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME,
     backends);
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME,
+    backends);
 }
 END_TEST
 
@@ -586,6 +591,7 @@ START_TEST (reverse_handle_user_pass_shuffle_test) {
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_SHUFFLE, backends);
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_SHUFFLE, backends);
 }
 END_TEST
@@ -606,6 +612,7 @@ START_TEST (reverse_handle_user_pass_peruser_test) {
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_PER_USER, backends);
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_PER_USER, backends);
 }
 END_TEST
 
@@ -625,6 +632,7 @@ START_TEST (reverse_handle_user_pass_pergroup_test) {
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_PER_GROUP, backends);
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_PER_GROUP, backends);
 }
 END_TEST
 
@@ -643,6 +651,7 @@ START_TEST (reverse_handle_user_pass_perhost_test) {
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
+  test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_PER_HOST, backends);
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_PER_HOST, backends);
 }
 END_TEST
