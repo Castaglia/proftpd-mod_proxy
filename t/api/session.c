@@ -44,6 +44,8 @@ static void set_up(void) {
     p = permanent_pool = session.pool = make_sub_pool(NULL);
     main_server = NULL;
     server_list = NULL;
+    session.c = NULL;
+    session.notes = NULL;
   }
 
   init_config();
@@ -78,6 +80,8 @@ static void tear_down(void) {
     p = permanent_pool = session.pool = NULL;
     main_server = NULL;
     server_list = NULL;
+    session.c = NULL;
+    session.notes = NULL;
   } 
 }
 

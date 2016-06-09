@@ -64,6 +64,8 @@ static void set_up(void) {
   if (p == NULL) {
     p = permanent_pool = proxy_pool = session.pool = make_sub_pool(NULL);
     server_list = NULL;
+    session.c = NULL;
+    session.notes = NULL;
   }
 
   test_cleanup(p);
@@ -112,6 +114,8 @@ static void tear_down(void) {
     p = permanent_pool = proxy_pool = session.pool = NULL;
     main_server = NULL;
     server_list = NULL;
+    session.c = NULL;
+    session.notes = NULL;
   }
 }
 

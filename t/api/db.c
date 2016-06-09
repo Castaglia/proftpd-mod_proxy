@@ -35,6 +35,8 @@ static void set_up(void) {
 
   if (p == NULL) {
     p = permanent_pool = make_sub_pool(NULL);
+    session.c = NULL;
+    session.notes = NULL;
   }
 
   if (getenv("TEST_VERBOSE") != NULL) {
@@ -55,6 +57,8 @@ static void tear_down(void) {
   if (p) {
     destroy_pool(p);
     p = permanent_pool = NULL;
+    session.c = NULL;
+    session.notes = NULL;
   }
 
   (void) unlink(db_test_table);

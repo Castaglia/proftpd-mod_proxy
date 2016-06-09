@@ -33,6 +33,8 @@ static pool *p = NULL;
 static void set_up(void) {
   if (p == NULL) {
     p = permanent_pool = make_sub_pool(NULL);
+    session.c = NULL;
+    session.notes = NULL;
   }
 
   init_netaddr();
@@ -61,6 +63,8 @@ static void tear_down(void) {
   if (p) {
     destroy_pool(p);
     p = permanent_pool = NULL;
+    session.c = NULL;
+    session.notes = NULL;
   }
 }
 

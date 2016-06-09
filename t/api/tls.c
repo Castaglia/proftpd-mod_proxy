@@ -81,6 +81,8 @@ static void set_up(void) {
     p = permanent_pool = proxy_pool = make_sub_pool(NULL);
     server_list = NULL;
     main_server = NULL;
+    session.c = NULL;
+    session.notes = NULL;
   }
 
   (void) tests_rmpath(p, test_dir);
@@ -109,6 +111,8 @@ static void tear_down(void) {
     p = permanent_pool = proxy_pool = NULL;
     server_list = NULL;
     main_server = NULL;
+    session.c = NULL;
+    session.notes = NULL;
   }
 }
 
