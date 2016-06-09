@@ -50,6 +50,7 @@ static void set_up(void) {
   init_netaddr();
   init_netio();
   init_inet();
+  init_auth();
 
   server_list = xaset_create(p, NULL);
   pr_parser_prepare(p, &server_list);
@@ -96,17 +97,32 @@ START_TEST (session_free_test) {
 END_TEST
 
 START_TEST (session_alloc_test) {
-  const struct proxy_session *proxy_sess;
+  struct proxy_session *proxy_sess;
 
-  proxy_sess = proxy_session_alloc(NULL);
+  proxy_sess = (struct proxy_session *) proxy_session_alloc(NULL);
   fail_unless(proxy_sess == NULL, "Failed to handle null argument");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
-  proxy_sess = proxy_session_alloc(p);
+  proxy_sess = (struct proxy_session *) proxy_session_alloc(p);
   fail_unless(proxy_sess != NULL, "Failed to allocate proxy session: %s",
     strerror(errno));
 
+  mark_point();
+  proxy_session_free(p, proxy_sess);
+
+  proxy_sess = (struct proxy_session *) proxy_session_alloc(p);
+  fail_unless(proxy_sess != NULL, "Failed to allocate proxy session: %s",
+    strerror(errno));
+
+  proxy_sess->frontend_data_conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY,
+    FALSE);
+  proxy_sess->backend_ctrl_conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY,
+    FALSE);
+  proxy_sess->backend_data_conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY,
+    FALSE);
+
+  mark_point();
   proxy_session_free(p, proxy_sess);
 }
 END_TEST
@@ -167,6 +183,16 @@ START_TEST (session_setup_env_test) {
   session.c->remote_name = pstrdup(p, "127.0.0.1");
 
   user = "foo";
+
+  mark_point();
+  res = proxy_session_setup_env(p, user, flags);
+  fail_unless(res == 0, "Failed to setup environment: %s", strerror(errno));
+  fail_unless(proxy_sess_state & PROXY_SESS_STATE_PROXY_AUTHENTICATED,
+    "Expected PROXY_AUTHENTICATED state set");
+
+  proxy_sess_state &= ~PROXY_SESS_STATE_PROXY_AUTHENTICATED;
+
+  user = "root";
 
   mark_point();
   res = proxy_session_setup_env(p, user, flags);
