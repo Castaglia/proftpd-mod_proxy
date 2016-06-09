@@ -49,12 +49,6 @@ static void tear_down(void) {
   }
 }
 
-START_TEST (conn_free_test) {
-  mark_point();
-  proxy_conn_free(NULL);
-}
-END_TEST
-
 START_TEST (conn_create_test) {
   const struct proxy_conn *pconn;
   const char *url;
@@ -425,12 +419,100 @@ START_TEST (conn_clear_password_test) {
 END_TEST
 
 START_TEST (conn_timeout_cb_test) {
-  /* XXX TODO */
+  int res;
+  struct proxy_session *proxy_sess;
+  const pr_netaddr_t *addr;
+
+  session.notes = pr_table_alloc(p, 0);
+
+  proxy_sess = (struct proxy_session *) proxy_session_alloc(p);
+  fail_unless(proxy_sess != NULL, "Failed to allocate proxy session: %s",
+    strerror(errno));
+  pr_table_add(session.notes, "mod_proxy.proxy-session", proxy_sess,
+    sizeof(struct proxy_session));
+
+  addr = pr_netaddr_get_addr(p, "1.2.3.4", NULL);
+  fail_unless(addr != NULL, "Failed to resolve '1.2.3.4': %s", strerror(errno));
+  pr_table_add(session.notes, "mod_proxy.proxy-connect-address", addr,
+    sizeof(pr_netaddr_t));
+
+  proxy_sess->connect_timeout = 1;
+  res = proxy_conn_connect_timeout_cb(0, 0, 0, NULL);
+  fail_unless(res == 0, "Failed to handle timeout: %s", strerror(errno));
+
+  proxy_sess->connect_timeout = 2;
+  res = proxy_conn_connect_timeout_cb(0, 0, 0, NULL);
+  fail_unless(res == 0, "Failed to handle timeout: %s", strerror(errno));
+
+  session.notes = NULL;
+  proxy_session_free(p, proxy_sess);
 }
 END_TEST
 
 START_TEST (conn_send_proxy_test) {
-  /* XXX TODO */
+  int res;
+  conn_t *conn;
+
+  res = proxy_conn_send_proxy(NULL, NULL);
+  fail_unless(res < 0, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  res = proxy_conn_send_proxy(p, NULL);
+  fail_unless(res < 0, "Failed to handle null conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+
+  session.c = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+  session.c->local_addr = session.c->remote_addr = pr_netaddr_get_addr(p,
+    "127.0.0.1", FALSE);
+
+  mark_point();
+  res = proxy_conn_send_proxy(p, conn);
+  fail_unless(res < 0, "Failed to handle invalid conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  session.c->local_addr = session.c->remote_addr = pr_netaddr_get_addr(p,
+    "::1", FALSE);
+
+  mark_point();
+  res = proxy_conn_send_proxy(p, conn);
+  fail_unless(res < 0, "Failed to handle invalid conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  session.c->local_addr = pr_netaddr_get_addr(p, "::1", FALSE);
+  session.c->remote_addr = pr_netaddr_get_addr(p, "127.0.0.1", FALSE);
+
+  mark_point();
+  res = proxy_conn_send_proxy(p, conn);
+  fail_unless(res < 0, "Failed to handle invalid conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  session.c->remote_addr = pr_netaddr_get_addr(p, "::1", FALSE);
+  session.c->local_addr = pr_netaddr_get_addr(p, "127.0.0.1", FALSE);
+
+  mark_point();
+  res = proxy_conn_send_proxy(p, conn);
+  fail_unless(res < 0, "Failed to handle invalid conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  conn->remote_addr = pr_netaddr_get_addr(p, "127.0.0.1", FALSE);
+
+  mark_point();
+  res = proxy_conn_send_proxy(p, conn);
+  fail_unless(res < 0, "Failed to handle invalid conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  pr_inet_close(p, conn);
+  pr_inet_close(p, session.c);
+  session.c = NULL;
 }
 END_TEST
 
@@ -443,7 +525,6 @@ Suite *tests_get_conn_suite(void) {
 
   tcase_add_checked_fixture(testcase, set_up, tear_down);
 
-  tcase_add_test(testcase, conn_free_test);
   tcase_add_test(testcase, conn_create_test);
   tcase_add_test(testcase, conn_get_addr_test);
   tcase_add_test(testcase, conn_get_host_test);

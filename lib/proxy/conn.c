@@ -575,6 +575,12 @@ int proxy_conn_send_proxy(pool *p, conn_t *conn) {
   const char *proto, *src_ipstr, *dst_ipstr;
   pool *sub_pool = NULL;
 
+  if (p == NULL ||
+      conn == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
   /* "PROXY" "TCP4"|"TCP6"|"UNKNOWN"
    *   session.c->remote_addr session.c->local_addr
    *   session.c->remote_port, session.c->local_port "\r\n"
