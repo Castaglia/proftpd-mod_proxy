@@ -31,6 +31,7 @@ extern xaset_t *server_list;
 static pool *p = NULL;
 static const char *test_dir = "/tmp/mod_proxy-test-reverse";
 static const char *test_file = "/tmp/mod_proxy-test-reverse/servers.json";
+static config_rec *policy_config = NULL;
 
 static void create_main_server(void) {
   server_rec *s;
@@ -41,13 +42,8 @@ static void create_main_server(void) {
   main_server = s;
 }
 
-static void reset_main_server(void) {
-  pr_parser_server_ctxt_close();
-  xaset_remove(server_list, (xasetmember_t *) main_server);
-  create_main_server();
-}
-
 static void test_cleanup(pool *cleanup_pool) {
+  (void) proxy_db_close(cleanup_pool, NULL);
   (void) unlink(test_file);
   (void) tests_rmpath(cleanup_pool, test_dir);
 }
@@ -249,9 +245,16 @@ static int test_connect_policy(int policy_id, array_header *src_backends) {
   fclose(fh);
 
   mark_point();
-  c = add_config_param("ProxyReverseConnectPolicy", 1, NULL);
-  c->argv[0] = palloc(c->pool, sizeof(int));
-  *((int *) c->argv[0]) = PROXY_REVERSE_CONNECT_POLICY_SHUFFLE;
+
+  if (policy_config != NULL) {
+    c = policy_config;
+
+  } else {
+    policy_config = c = add_config_param("ProxyReverseConnectPolicy", 1, NULL);
+    c->argv[0] = palloc(c->pool, sizeof(int));
+  }
+
+  *((int *) c->argv[0]) = policy_id;
 
   mark_point();
   c = add_config_param("ProxyReverseServers", 2, NULL, NULL);
@@ -401,9 +404,13 @@ END_TEST
 START_TEST (reverse_connect_policy_pergroup_test) {
   int res;
 
+  /* Note: This should fail without having the UseReverseProxyAuth ProxyOption
+   * enabled.
+   */
   res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_PER_GROUP, NULL);
-  fail_unless(res == 0, "Failed to test ReverseConnectPolicy PerGroup: %s",
-    strerror(errno));
+  fail_unless(res < 0, "Expected ReverseConnectPolicy PerGroup to fail");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+    strerror(errno), errno);
 
   mark_point();
   res = proxy_reverse_sess_exit(p);
@@ -447,9 +454,6 @@ static void test_handle_user_pass(int policy_id, array_header *src_backends) {
 
   fh = test_prep();
   fclose(fh);
-
-  mark_point();
-  reset_main_server();
 
   mark_point();
   res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_RANDOM, src_backends);
@@ -514,11 +518,11 @@ START_TEST (reverse_handle_user_pass_random_test) {
 
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
-  uri = "ftp://ftp.microsoft.com:21";
+  uri = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
-  uri = "ftp://127.0.0.1:21";
+  uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
@@ -534,11 +538,11 @@ START_TEST (reverse_handle_user_pass_roundrobin_test) {
 
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
-  uri = "ftp://ftp.microsoft.com:21";
+  uri = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
-  uri = "ftp://127.0.0.1:21";
+  uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
@@ -554,11 +558,11 @@ START_TEST (reverse_handle_user_pass_leastconns_test) {
 
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
-  uri = "ftp://ftp.microsoft.com:21";
+  uri = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
-  uri = "ftp://127.0.0.1:21";
+  uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
@@ -574,11 +578,11 @@ START_TEST (reverse_handle_user_pass_leastresponsetime_test) {
 
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
-  uri = "ftp://ftp.microsoft.com:21";
+  uri = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
-  uri = "ftp://127.0.0.1:21";
+  uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
@@ -596,11 +600,11 @@ START_TEST (reverse_handle_user_pass_shuffle_test) {
 
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
-  uri = "ftp://ftp.microsoft.com:21";
+  uri = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
-  uri = "ftp://127.0.0.1:21";
+  uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
@@ -616,11 +620,11 @@ START_TEST (reverse_handle_user_pass_peruser_test) {
 
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
-  uri = "ftp://ftp.microsoft.com:21";
+  uri = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
-  uri = "ftp://127.0.0.1:21";
+  uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
@@ -636,11 +640,11 @@ START_TEST (reverse_handle_user_pass_pergroup_test) {
 
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
-  uri = "ftp://ftp.microsoft.com:21";
+  uri = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
-  uri = "ftp://127.0.0.1:21";
+  uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
@@ -656,11 +660,11 @@ START_TEST (reverse_handle_user_pass_perhost_test) {
 
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
-  uri = "ftp://ftp.microsoft.com:21";
+  uri = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
-  uri = "ftp://127.0.0.1:21";
+  uri = "ftp://ftp.microsoft.com:21";
   pconn = proxy_conn_create(p, uri);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
