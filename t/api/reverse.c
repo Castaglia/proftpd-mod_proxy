@@ -43,7 +43,6 @@ static void create_main_server(void) {
 }
 
 static void test_cleanup(pool *cleanup_pool) {
-  (void) proxy_db_close(cleanup_pool, NULL);
   (void) unlink(test_file);
   (void) tests_rmpath(cleanup_pool, test_dir);
 }
