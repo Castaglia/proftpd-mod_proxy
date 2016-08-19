@@ -6,6 +6,7 @@ compiler:
   - clang
 
 install:
+  - sudo apt-get update -qq
   # for unit tests
   - sudo apt-get install -y check
   # for OpenSSL support
