@@ -2818,7 +2818,7 @@ int proxy_tls_init(pool *p, const char *tables_dir, int flags) {
 }
 
 int proxy_tls_free(pool *p) {
-  int res;
+  int res = 0;
 
   if (p == NULL) {
     errno = EINVAL;
@@ -2839,7 +2839,7 @@ int proxy_tls_free(pool *p) {
   }
 #endif /* PR_USE_OPENSSL */
 
-  return 0;
+  return res;
 }
 
 #ifdef PR_USE_OPENSSL
