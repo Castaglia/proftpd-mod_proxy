@@ -3371,6 +3371,18 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *block_responses) {
   int successful = FALSE, res = 0;
 
+  /* It's possible that the client only sent a PASS command with no arguments,
+   * effectively a blank/missing password.  Some other FTP servers may not
+   * handle this as well as ProFTPD does.
+   */
+  if (cmd->argc == 1) {
+    cmd_rec *new_cmd;
+
+    new_cmd = pr_cmd_alloc(cmd->pool, 2, C_PASS, pstrdup(cmd->pool, ""));
+    new_cmd->arg = pstrdup(new_cmd->pool, "");
+    cmd = new_cmd;
+  }
+
   if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_AUTHENTICATED) {
     /* If we've already authenticated, then let the backend server deal with
      * this.
