@@ -750,17 +750,20 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
   c = add_config_param(cmd->argv[0], 1, NULL);
 
   for (i = 1; i < cmd->argc; i++) {
-    if (strncmp(cmd->argv[i], "UseProxyProtocol", 17) == 0) {
+    if (strcmp(cmd->argv[i], "UseProxyProtocol") == 0) {
       opts |= PROXY_OPT_USE_PROXY_PROTOCOL;
 
-    } else if (strncmp(cmd->argv[i], "ShowFeatures", 13) == 0) {
+    } else if (strcmp(cmd->argv[i], "ShowFeatures") == 0) {
       opts |= PROXY_OPT_SHOW_FEATURES;
 
-    } else if (strncmp(cmd->argv[i], "UseReverseProxyAuth", 20) == 0) {
+    } else if (strcmp(cmd->argv[i], "UseReverseProxyAuth") == 0) {
       opts |= PROXY_OPT_USE_REVERSE_PROXY_AUTH;
 
-    } else if (strncmp(cmd->argv[i], "UseDirectDataTransfers", 23) == 0) {
+    } else if (strcmp(cmd->argv[i], "UseDirectDataTransfers") == 0) {
       opts |= PROXY_OPT_USE_DIRECT_DATA_TRANSFERS;
+
+    } else if (strcmp(cmd->argv[i], "IgnoreConfigPerms") == 0) {
+      opts |= PROXY_OPT_IGNORE_CONFIG_PERMS;
 
     } else {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxyOption '",

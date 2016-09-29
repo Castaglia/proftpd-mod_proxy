@@ -99,9 +99,11 @@ START_TEST (send_auth_tls_test) {
 
   mark_point();
   res = proxy_ftp_sess_send_auth_tls(p, proxy_sess);
+#ifdef PR_USE_OPENSSL
   fail_unless(res < 0, "Sent AUTH TLS unexpectedly");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
+#endif /* PR_USE_OPENSSL */
 
   proxy_session_free(p, proxy_sess);
 }

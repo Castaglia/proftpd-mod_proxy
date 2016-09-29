@@ -224,6 +224,7 @@ START_TEST (tls_using_tls_test) {
 #endif /* PR_USE_OPENSSL */
 
   res = proxy_tls_set_tls(7);
+#ifdef PR_USE_OPENSSL
   fail_unless(res < 0, "Set TLS unexpectedly");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
@@ -239,6 +240,7 @@ START_TEST (tls_using_tls_test) {
   res = proxy_tls_set_tls(PROXY_TLS_ENGINE_AUTO);
   tls = proxy_tls_using_tls();
   fail_unless(tls == PROXY_TLS_ENGINE_AUTO, "Expected TLS auto, got %d", tls);
+#endif /* PR_USE_OPENSSL */
 }
 END_TEST
 

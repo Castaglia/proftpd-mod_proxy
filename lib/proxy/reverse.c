@@ -121,7 +121,8 @@ static int check_parent_dir_perms(pool *p, const char *path) {
     return -1;
   }
 
-  if (st.st_mode & S_IWOTH) {
+  if (!(proxy_opts & PROXY_OPT_IGNORE_CONFIG_PERMS) &&
+      (st.st_mode & S_IWOTH)) {
     int xerrno = EPERM;
 
     pr_log_debug(DEBUG0, MOD_PROXY_VERSION

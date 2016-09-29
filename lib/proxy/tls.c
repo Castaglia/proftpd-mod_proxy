@@ -2818,8 +2818,6 @@ int proxy_tls_init(pool *p, const char *tables_dir, int flags) {
 }
 
 int proxy_tls_free(pool *p) {
-  int res;
-
   if (p == NULL) {
     errno = EINVAL;
     return -1;
@@ -2831,8 +2829,7 @@ int proxy_tls_free(pool *p) {
     ssl_ctx = NULL;
   }
 
-  res = proxy_db_close(p, PROXY_TLS_DB_SCHEMA_NAME);
-  if (res < 0) {
+  if (proxy_db_close(p, PROXY_TLS_DB_SCHEMA_NAME) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error detaching database with schema '%s': %s",
       PROXY_TLS_DB_SCHEMA_NAME, strerror(errno));
