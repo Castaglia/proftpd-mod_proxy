@@ -170,11 +170,6 @@ my $TESTS = {
     test_class => [qw(forking mod_tls forward)],
   },
 
-  proxy_forward_frontend_backend_tls_login_after_host => {
-    order => ++$order,
-    test_class => [qw(forking mod_tls forward)],
-  },
-
   proxy_forward_frontend_backend_tls_list_pasv => {
     order => ++$order,
     test_class => [qw(forking mod_tls forward)],
@@ -256,6 +251,8 @@ sub get_forward_proxy_config {
 sub ftp_list {
   my $self = shift;
   my $client = shift;
+  my $skip_quit = shift;
+  $skip_quit = 0 unless defined($skip_quit);
 
   my $conn = $client->list_raw();
   unless ($conn) {
@@ -267,19 +264,25 @@ sub ftp_list {
   $conn->read($buf, 8192, 10);
   eval { $conn->close() };
 
+  if ($ENV{TEST_VERBOSE}) {
+    print STDERR "LIST:\n$buf\n";
+  }
+
   my $resp_code = $client->response_code();
   my $resp_msg = $client->response_msg();
   $self->assert_transfer_ok($resp_code, $resp_msg);
 
-  ($resp_code, $resp_msg) = $client->quit();
+  unless ($skip_quit) {
+    ($resp_code, $resp_msg) = $client->quit();
 
-  my $expected = 221;
-  $self->assert($expected == $resp_code,
-    test_msg("Expected response code $expected, got $resp_code"));
+    my $expected = 221;
+    $self->assert($expected == $resp_code,
+      test_msg("Expected response code $expected, got $resp_code"));
 
-  $expected = 'Goodbye.';
-  $self->assert($expected eq $resp_msg,
-    test_msg("Expected response message '$expected', got '$resp_msg'"));
+    $expected = 'Goodbye.';
+    $self->assert($expected eq $resp_msg,
+      test_msg("Expected response message '$expected', got '$resp_msg'"));
+  }
 
   1;
 }
@@ -3162,18 +3165,21 @@ EOC
 
       # Do the LIST again; there are some reports that a first transfer
       # might succeed, but subsequent ones will fail.
-      $res = $client->list();
-      unless ($res) {
-        die("LIST failed unexpectedly: " . $client->last_message() .
-          "(" . IO::Socket::SSL::errstr() . ")");
+      for (my $i = 0; $i < 3; $i++) {
+        $res = $client->list();
+        unless ($res) {
+          die("LIST failed unexpectedly: " . $client->last_message() .
+            "(" . IO::Socket::SSL::errstr() . ")");
+        }
+
+        $resp_msg = $client->last_message();
+
+        $expected = '226 Transfer complete';
+        $self->assert($expected eq $resp_msg,
+          test_msg("Expected response '$expected', got '$resp_msg'"));
       }
 
-      $resp_msg = $client->last_message();
       $client->quit();
-
-      $expected = '226 Transfer complete';
-      $self->assert($expected eq $resp_msg,
-        test_msg("Expected response '$expected', got '$resp_msg'"));
     };
 
     if ($@) {
@@ -5624,7 +5630,7 @@ sub proxy_forward_backend_tls_list_pasv {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.forward:20 proxy.tls:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 tls:20',
+    Trace => 'DEFAULT:10 event:0 lock:0 netio:20 scoreboard:0 signal:0 proxy:20 proxy.forward:20 proxy.tls:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 tls:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
@@ -5658,7 +5664,6 @@ sub proxy_forward_backend_tls_list_pasv {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -5695,7 +5700,10 @@ EOC
 
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
       $client->login("$user\@127.0.0.1:$vhost_port", $passwd);
-      ftp_list($self, $client);
+
+      for (my $i = 0; $i < 3; $i++) {
+        ftp_list($self, $client, 1);
+      }
     };
 
     if ($@) {
@@ -6037,7 +6045,6 @@ sub proxy_forward_frontend_backend_tls_list_pasv {
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $log_file,
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -6069,7 +6076,6 @@ sub proxy_forward_frontend_backend_tls_list_pasv {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -6135,11 +6141,26 @@ EOC
       }
 
       my $resp_msg = $client->last_message();
-      $client->quit();
-
       my $expected = '226 Transfer complete';
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response '$expected', got '$resp_msg'"));
+
+      # Do the LIST again; there are some reports that a first transfer
+      # might succeed, but subsequent ones will fail.
+      for (my $i = 0; $i < 3; $i++) {
+        $res = $client->list();
+        unless ($res) {
+          die("LIST failed unexpectedly: " . $client->last_message() .
+            "(" . IO::Socket::SSL::errstr() . ")");
+        }
+
+        $resp_msg = $client->last_message();
+        $expected = '226 Transfer complete';
+        $self->assert($expected eq $resp_msg,
+          test_msg("Expected response '$expected', got '$resp_msg'"));
+      }
+
+      $client->quit();
     };
 
     if ($@) {
