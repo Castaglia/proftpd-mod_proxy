@@ -1486,21 +1486,21 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
           proto_name, NULL));
       }
 
-      if (strncasecmp(proto_name, "SSLv3", 6) == 0) {
+      if (strcasecmp(proto_name, "SSLv3") == 0) {
         if (disable) {
           tls_protocol &= ~PROXY_TLS_PROTO_SSL_V3;
         } else {
           tls_protocol |= PROXY_TLS_PROTO_SSL_V3;
         }
 
-      } else if (strncasecmp(proto_name, "TLSv1", 6) == 0) {
+      } else if (strcasecmp(proto_name, "TLSv1") == 0) {
         if (disable) {
           tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1;
         } else {
           tls_protocol |= PROXY_TLS_PROTO_TLS_V1;
         }
 
-      } else if (strncasecmp(proto_name, "TLSv1.1", 8) == 0) {
+      } else if (strcasecmp(proto_name, "TLSv1.1") == 0) {
 # if OPENSSL_VERSION_NUMBER >= 0x10001000L
         if (disable) {
           tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1_1;
@@ -1511,7 +1511,7 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
         CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.1");
 # endif /* OpenSSL 1.0.1 or later */
 
-      } else if (strncasecmp(proto_name, "TLSv1.2", 8) == 0) {
+      } else if (strcasecmp(proto_name, "TLSv1.2") == 0) {
 # if OPENSSL_VERSION_NUMBER >= 0x10001000L
         if (disable) {
           tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1_2;
@@ -1530,24 +1530,24 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
 
   } else {
     for (i = 1; i < cmd->argc; i++) {
-      if (strncasecmp(cmd->argv[i], "SSLv23", 7) == 0) {
+      if (strcasecmp(cmd->argv[i], "SSLv23") == 0) {
         tls_protocol |= PROXY_TLS_PROTO_SSL_V3;
         tls_protocol |= PROXY_TLS_PROTO_TLS_V1;
 
-      } else if (strncasecmp(cmd->argv[i], "SSLv3", 6) == 0) {
+      } else if (strcasecmp(cmd->argv[i], "SSLv3") == 0) {
         tls_protocol |= PROXY_TLS_PROTO_SSL_V3;
 
-      } else if (strncasecmp(cmd->argv[i], "TLSv1", 6) == 0) {
+      } else if (strcasecmp(cmd->argv[i], "TLSv1") == 0) {
         tls_protocol |= PROXY_TLS_PROTO_TLS_V1;
 
-      } else if (strncasecmp(cmd->argv[i], "TLSv1.1", 8) == 0) {
+      } else if (strcasecmp(cmd->argv[i], "TLSv1.1") == 0) {
 # if OPENSSL_VERSION_NUMBER >= 0x10001000L
         tls_protocol |= PROXY_TLS_PROTO_TLS_V1_1;
 # else
         CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.1");
 # endif /* OpenSSL 1.0.1 or later */
 
-      } else if (strncasecmp(cmd->argv[i], "TLSv1.2", 8) == 0) {
+      } else if (strcasecmp(cmd->argv[i], "TLSv1.2") == 0) {
 # if OPENSSL_VERSION_NUMBER >= 0x10001000L
         tls_protocol |= PROXY_TLS_PROTO_TLS_V1_2;
 # else
