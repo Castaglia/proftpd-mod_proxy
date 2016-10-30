@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy forward-proxy API
- * Copyright (c) 2012-2015 TJ Saunders
+ * Copyright (c) 2012-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,12 +22,11 @@
  * source distribution.
  */
 
-#include "mod_proxy.h"
-
-#include "proxy/session.h"
-
 #ifndef MOD_PROXY_FORWARD_H
 #define MOD_PROXY_FORWARD_H
+
+#include "mod_proxy.h"
+#include "proxy/session.h"
 
 #define PROXY_FORWARD_ENABLED_NOTE	"mod_proxy.forward-enabled"
 

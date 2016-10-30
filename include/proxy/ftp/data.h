@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP data conn API
- * Copyright (c) 2012-2015 TJ Saunders
+ * Copyright (c) 2012-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,10 +22,10 @@
  * source distribution.
  */
 
-#include "mod_proxy.h"
-
 #ifndef MOD_PROXY_FTP_DATA_H
 #define MOD_PROXY_FTP_DATA_H
+
+#include "mod_proxy.h"
 
 pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *conn, int frontend_data);
 int proxy_ftp_data_send(pool *p, conn_t *conn, pr_buffer_t *pbuf,

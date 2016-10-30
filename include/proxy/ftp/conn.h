@@ -22,10 +22,10 @@
  * source distribution.
  */
 
-#include "mod_proxy.h"
-
 #ifndef MOD_PROXY_FTP_CONN_H
 #define MOD_PROXY_FTP_CONN_H
+
+#include "mod_proxy.h"
 
 conn_t *proxy_ftp_conn_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn,
   int frontend_data);

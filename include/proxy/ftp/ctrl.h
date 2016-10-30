@@ -22,10 +22,10 @@
  * source distribution.
  */
 
-#include "mod_proxy.h"
-
 #ifndef MOD_PROXY_FTP_CTRL_H
 #define MOD_PROXY_FTP_CTRL_H
+
+#include "mod_proxy.h"
 
 /* Note: this flag is only used for testing. */
 #define PROXY_FTP_CTRL_FL_IGNORE_EOF	0x0001

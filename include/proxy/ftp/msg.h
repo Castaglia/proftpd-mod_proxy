@@ -22,10 +22,10 @@
  * source distribution.
  */
 
-#include "mod_proxy.h"
-
 #ifndef MOD_PROXY_FTP_MSG_H
 #define MOD_PROXY_FTP_MSG_H
+
+#include "mod_proxy.h"
 
 /* Format a string containg the address for use in a PORT command or a
  * PASV response.

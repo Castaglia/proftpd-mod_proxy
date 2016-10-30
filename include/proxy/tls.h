@@ -22,10 +22,10 @@
  * source distribution.
  */
 
-#include "mod_proxy.h"
-
 #ifndef MOD_PROXY_TLS_H
 #define MOD_PROXY_TLS_H
+
+#include "mod_proxy.h"
 
 #ifdef PR_USE_OPENSSL
 # include <openssl/bio.h>

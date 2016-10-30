@@ -22,10 +22,10 @@
  * source distribution.
  */
 
-#include "mod_proxy.h"
-
 #ifndef MOD_PROXY_SESSION_H
 #define MOD_PROXY_SESSION_H
+
+#include "mod_proxy.h"
 
 struct proxy_conn;
 

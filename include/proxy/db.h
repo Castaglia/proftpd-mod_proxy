@@ -22,10 +22,10 @@
  * source distribution.
  */
 
-#include "mod_proxy.h"
-
 #ifndef MOD_PROXY_DB_H
 #define MOD_PROXY_DB_H
+
+#include "mod_proxy.h"
 
 int proxy_db_init(pool *p);
 int proxy_db_free(void);

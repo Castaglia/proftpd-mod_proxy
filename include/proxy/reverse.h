@@ -22,12 +22,11 @@
  * source distribution.
  */
 
-#include "mod_proxy.h"
-
-#include "proxy/session.h"
-
 #ifndef MOD_PROXY_REVERSE_H
 #define MOD_PROXY_REVERSE_H
+
+#include "mod_proxy.h"
+#include "proxy/session.h"
 
 int proxy_reverse_init(pool *p, const char *tables_dir, int flags);
 int proxy_reverse_free(pool *p);

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy random number API
- * Copyright (c) 2013 TJ Saunders
+ * Copyright (c) 2013-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,10 +22,10 @@
  * source distribution.
  */
 
-#include "mod_proxy.h"
-
 #ifndef MOD_PROXY_RANDOM_H
 #define MOD_PROXY_RANDOM_H
+
+#include "mod_proxy.h"
 
 int proxy_random_init(void);
 

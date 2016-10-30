@@ -22,11 +22,11 @@
  * source distribution.
  */
 
-#include "mod_proxy.h"
-#include "proxy/session.h"
-
 #ifndef MOD_PROXY_FTP_SESS_H
 #define MOD_PROXY_FTP_SESS_H
+
+#include "mod_proxy.h"
+#include "proxy/session.h"
 
 int proxy_ftp_sess_get_feat(pool *, const struct proxy_session *proxy_sess);
 int proxy_ftp_sess_send_auth_tls(pool *p,

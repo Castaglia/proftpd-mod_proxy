@@ -22,10 +22,10 @@
  * source distribution.
  */
 
-#include "mod_proxy.h"
-
 #ifndef MOD_PROXY_INET_H
 #define MOD_PROXY_INET_H
+
+#include "mod_proxy.h"
 
 /* Proxied versions of the core Inet API functions; see include/inet.h. */
 

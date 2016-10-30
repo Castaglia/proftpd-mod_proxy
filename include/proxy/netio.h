@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy NetIO API
- * Copyright (c) 2015 TJ Saunders
+ * Copyright (c) 2015-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,10 +22,10 @@
  * source distribution.
  */
 
-#include "mod_proxy.h"
-
 #ifndef MOD_PROXY_NETIO_H
 #define MOD_PROXY_NETIO_H
+
+#include "mod_proxy.h"
 
 pr_netio_t *proxy_netio_unset(int strm_type, const char *fn);
 int proxy_netio_set(int strm_type, pr_netio_t *netio);
