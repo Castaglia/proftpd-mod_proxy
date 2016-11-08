@@ -3724,7 +3724,7 @@ int proxy_tls_sess_init(pool *p, int flags) {
 # endif
   }
 
-  /* We look up the TLSRequired setting here, to know how to properly deal
+  /* We look up the TLSEngine setting here, to know how to properly deal
    * with frontend data connections, i.e. do we need to listen for TLS
    * data connections on the frontend or not.
    */
@@ -3734,15 +3734,7 @@ int proxy_tls_sess_init(pool *p, int flags) {
 
     tls_engine = *((int *) c->argv[0]);
     if (tls_engine == TRUE) {
-      c = find_config(main_server->conf, CONF_PARAM, "TLSRequired", FALSE);
-      if (c != NULL) {
-        int on_frontend_data;
-
-        on_frontend_data = *((int *) c->argv[1]);
-        if (on_frontend_data == 1) {
-          tls_required_on_frontend_data = TRUE;
-        }
-      }
+      tls_required_on_frontend_data = TRUE;
     }
   }
 
