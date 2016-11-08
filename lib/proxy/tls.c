@@ -37,6 +37,7 @@ extern xaset_t *server_list;
 static const char *tls_db_path = NULL;
 static int tls_engine = PROXY_TLS_ENGINE_AUTO;
 static unsigned long tls_opts = 0UL;
+static int tls_required_on_frontend_data = FALSE;
 static int tls_verify_server = TRUE;
 
 #if defined(PSK_MAX_PSK_LEN)
@@ -2011,6 +2012,17 @@ static int netio_close_cb(pr_netio_stream_t *nstrm) {
     if (nstrm->strm_type == PR_NETIO_STRM_DATA &&
         nstrm->strm_mode == PR_NETIO_IO_WR) {
       pr_table_remove(nstrm->notes, PROXY_TLS_NETIO_NOTE, NULL);
+
+      if (tls_data_netio != NULL &&
+          tls_required_on_frontend_data == FALSE) {
+        pr_netio_t *using_netio = NULL;
+
+        if (proxy_netio_using(PR_NETIO_STRM_DATA, &using_netio) == 0) {
+          if (using_netio == tls_data_netio) {
+            proxy_netio_use(PR_NETIO_STRM_DATA, NULL);
+          }
+        }
+      }
     }
   }
 
@@ -2120,13 +2132,13 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
         PROXY_TLS_ADAPTIVE_BYTES_COUNT_KEY, strerror(errno));
     }
 
+    if (netio_install_data() < 0) {
+      pr_trace_msg(trace_channel, 1,
+        "error installing data connection NetIO: %s", strerror(errno));
+    }
+
     if (nstrm->strm_type == PR_NETIO_STRM_CTRL) {
       proxy_sess_state |= PROXY_SESS_STATE_BACKEND_HAS_CTRL_TLS;
-
-      if (netio_install_data() < 0) {
-        pr_trace_msg(trace_channel, 1,
-          "error installing data connection NetIO: %s", strerror(errno));
-      }
     }
   }
 
@@ -2327,9 +2339,16 @@ static int netio_install_data(void) {
   pr_netio_t *netio;
 
   if (tls_data_netio != NULL) {
-    /* If we already have our data netio, then it's been registered, and
-     * we don't need to do anything more.
-     */
+    pr_netio_t *using_netio = NULL;
+
+    if (proxy_netio_using(PR_NETIO_STRM_DATA, &using_netio) == 0) {
+      if (using_netio == NULL) {
+        if (proxy_netio_use(PR_NETIO_STRM_DATA, tls_data_netio) < 0) {
+          return -1;
+        }
+      }
+    }
+
     return 0;
   }
 
@@ -3703,6 +3722,20 @@ int proxy_tls_sess_init(pool *p, int flags) {
 # if OPENSSL_VERSION_NUMBER > 0x000907000L
     SSL_CTX_set_msg_callback(ssl_ctx, tls_msg_cb);
 # endif
+  }
+
+  /* We look up the TLSEngine setting here, to know how to properly deal
+   * with frontend data connections, i.e. do we need to listen for TLS
+   * data connections on the frontend or not.
+   */
+  c = find_config(main_server->conf, CONF_PARAM, "TLSEngine", FALSE);
+  if (c != NULL) {
+    int tls_engine;
+
+    tls_engine = *((int *) c->argv[0]);
+    if (tls_engine == TRUE) {
+      tls_required_on_frontend_data = TRUE;
+    }
   }
 
   if (netio_install_ctrl() < 0) {
