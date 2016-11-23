@@ -31,6 +31,7 @@
 #include "proxy/ftp/ctrl.h"
 
 static const char *feat_crlf = "\r\n";
+static int tls_xfer_prot_policy = 1;
 
 static const char *trace_channel = "proxy.ftp.sess";
 
@@ -289,6 +290,7 @@ int proxy_ftp_sess_send_auth_tls(pool *p,
   cmd_rec *cmd;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
+  config_rec *c;
 
   if (p == NULL ||
       proxy_sess == NULL) {
@@ -417,6 +419,13 @@ int proxy_ftp_sess_send_auth_tls(pool *p,
     return -1;
   }
 
+  /* Now that we have our AUTH TLS, check for TLS-related configs. */
+  c = find_config(main_server->conf, CONF_PARAM,
+    "ProxyTLSTransferProtectionPolicy", NULL);
+  if (c != NULL) {
+    tls_xfer_prot_policy = *((int *) c->argv[0]);
+  }
+
   destroy_pool(tmp_pool);
   return 0;
 }
@@ -471,17 +480,30 @@ int proxy_ftp_sess_send_pbsz_prot(pool *p,
     destroy_pool(tmp_pool);
   }
 
-  if (pr_table_get(proxy_sess->backend_features, C_PROT, NULL) != NULL) {
+  if (tls_xfer_prot_policy != 0 &&
+      pr_table_get(proxy_sess->backend_features, C_PROT, NULL) != NULL) {
     int xerrno;
     pool *tmp_pool;
     cmd_rec *cmd;
+    const char *prot;
     pr_response_t *resp;
     unsigned int resp_nlines = 0;
 
     tmp_pool = make_sub_pool(p);
 
-    cmd = pr_cmd_alloc(tmp_pool, 2, C_PROT, "P");
-    cmd->arg = pstrdup(tmp_pool, "P");
+    switch (tls_xfer_prot_policy) {
+      case -1:
+        prot = "C";
+        break;
+
+      case 1:
+      default:
+        prot = "P";
+        break;
+    }
+
+    cmd = pr_cmd_alloc(tmp_pool, 2, C_PROT, prot);
+    cmd->arg = pstrdup(tmp_pool, prot);
 
     resp = send_recv(tmp_pool, proxy_sess->backend_ctrl_conn, cmd,
       &resp_nlines);

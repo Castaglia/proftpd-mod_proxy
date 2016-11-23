@@ -73,6 +73,7 @@ servers.
   <li><a href="#ProxyTLSPreSharedKey">ProxyTLSPreSharedKey</a>
   <li><a href="#ProxyTLSProtocol">ProxyTLSProtocol</a>
   <li><a href="#ProxyTLSTimeoutHandshake">ProxyTLSTimeoutHandshake</a>
+  <li><a href="#ProxyTLSTransferProtectionPolicy">ProxyTLSTransferProtectionPolicy</a>
   <li><a href="#ProxyTLSVerifyServer">ProxyTLSVerifyServer</a>
 </ul>
 
@@ -1080,6 +1081,53 @@ The <code>ProxyTLSTimeoutHandshake</code> directive configures the maximum
 number of seconds for <code>mod_proxy</code> to complete an SSL/TLS handshake.
 If set to zero, <code>mod_proxy</code> will wait forever for a handshake to
 complete.  The default is 30 seconds.
+
+<p>
+<hr>
+<h2><a name="ProxyTLSTransferProtectionPolicy">ProxyTLSTransferProtectionPolicy</a></h2>
+<strong>Syntax:</strong> ProxyTLSTransferProtectionPolicy <em>client|required|clear</em><br>
+<strong>Default:</strong> ProxyTLSTransferProtectionPolicy required<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc1 and later
+
+<p>
+The <code>ProxyTLSTransferProtectionPolicy</code> directive configures the data
+transfer protection <em>policy</em>, when using SSL/TLS, that
+<code>mod_proxy</code> uses when performing data transfers (<i>e.g.</i> file
+uploads/downloads, directory listings) with the backend/destination server.
+
+<p>
+The currently supported policies are:
+<ul>
+  <li><code>client</code>
+    <p>
+    This policy indicates that <code>mod_proxy</code> will use whatever
+    the connected client uses.  Thus if the client sends <code>PROT C</code>,
+    <code>mod_proxy</code> will send <code>PROT C</code> to the
+    backend/destination server.
+  </li>
+
+  <p>
+  <li><code>required</code>
+    <p>
+    Regardless of the commands sent by the client, <code>mod_proxy</code>
+    will use only <em>protected</em> TLS data transfers (<i>i.e.</i> using
+    <code>PROT P</code> commands) with the backend/destination server.
+
+    <p>
+    This is the <em>recommended policy</em> in most cases.
+  </li>
+
+  <p>
+  <li><code>clear</code>
+    <p>
+    Regardless of the commands sent by the client, <code>mod_proxy</code>
+    will use only <em>clear</em> (<i>i.e.</i> <em>unprotected</em>) data
+    transfers (<i>i.e.</i> using <code>PROT C</code> commands) with the
+    backend/destination server.
+  </li>
+</ul>
 
 <p>
 <hr>

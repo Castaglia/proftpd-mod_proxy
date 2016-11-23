@@ -78,6 +78,11 @@ int proxy_tls_free(pool *p);
 int proxy_tls_sess_init(pool *p, int flags);
 int proxy_tls_sess_free(pool *p);
 
+/* Set whether data transfers require TLS protection, based on e.g. clients'
+ * PROT commands.
+ */
+int proxy_tls_set_data_prot(int);
+
 /* Programmatically set the ProxyTLSEngine value. */
 int proxy_tls_set_tls(int);
 
