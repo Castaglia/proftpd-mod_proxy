@@ -244,6 +244,29 @@ START_TEST (tls_using_tls_test) {
 }
 END_TEST
 
+START_TEST (tls_set_data_prot_test) {
+  int res;
+
+  res = proxy_tls_set_data_prot(TRUE);
+#ifdef PR_USE_OPENSSL
+  fail_unless(res == TRUE, "Expected TRUE, got %d", res);
+
+  res = proxy_tls_set_data_prot(FALSE);
+  fail_unless(res == TRUE, "Expected TRUE, got %d", res);
+#else
+  fail_unless(res == FALSE, "Expected FALSE, got %d", res);
+
+  res = proxy_tls_set_data_prot(FALSE);
+  fail_unless(res == FALSE, "Expected FALSE, got %d", res);
+#endif /* PR_USE_OPENSSL */
+
+  res = proxy_tls_set_data_prot(FALSE);
+  fail_unless(res == FALSE, "Expected FALSE, got %d", res);
+
+  (void) proxy_tls_set_data_prot(TRUE);
+}
+END_TEST
+
 Suite *tests_get_tls_suite(void) {
   Suite *suite;
   TCase *testcase;
@@ -258,6 +281,7 @@ Suite *tests_get_tls_suite(void) {
   tcase_add_test(testcase, tls_sess_free_test);
   tcase_add_test(testcase, tls_sess_init_test);
   tcase_add_test(testcase, tls_using_tls_test);
+  tcase_add_test(testcase, tls_set_data_prot_test);
 
   suite_add_tcase(suite, testcase);
   return suite;

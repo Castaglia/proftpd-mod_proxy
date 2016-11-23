@@ -69,6 +69,7 @@ static int proxy_engine = FALSE;
 static unsigned int proxy_login_attempts = 0;
 static int proxy_role = PROXY_ROLE_REVERSE;
 static const char *proxy_tables_dir = NULL;
+static int proxy_tls_xfer_prot_policy = 1;
 
 static const char *trace_channel = "proxy";
 
@@ -549,7 +550,7 @@ static void proxy_restrict_session(void) {
 /* usage: ProxyDataTransferPolicy "active"|"passive"|"pasv"|"epsv"|"port"|
  *          "eprt"|"client"
  */
-MODRET set_proxydatatransferpolicy(cmd_rec *cmd) {
+MODRET set_proxydataxferpolicy(cmd_rec *cmd) {
   config_rec *c;
   int cmd_id = -1;
 
@@ -1588,6 +1589,41 @@ MODRET set_proxytlstimeouthandshake(cmd_rec *cmd) {
   c = add_config_param(cmd->argv[0], 1, NULL);
   c->argv[0] = pcalloc(c->pool, sizeof(unsigned int));
   *((unsigned int *) c->argv[0]) = timeout;
+
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxyTLSTransferProtectionPolicy client|required|clear */
+MODRET set_proxytlsxferprotpolicy(cmd_rec *cmd) {
+#ifdef PR_USE_OPENSSL
+  config_rec *c;
+  const char *policy;
+  int require_prot = 0;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  policy = cmd->argv[1];
+  if (strcasecmp(policy, "required") == 0) {
+    require_prot = 1;
+
+  } else if (strcasecmp(policy, "client") == 0) {
+    require_prot = 0;
+
+  } else if (strcasecmp(policy, "clear") == 0) {
+    require_prot = -1;
+
+  } else {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+      "unsupported TLSTransferProtectionPolicy: ", policy, NULL));
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = require_prot;
 
   return PR_HANDLED(cmd);
 #else
@@ -3967,8 +4003,13 @@ MODRET proxy_any(cmd_rec *cmd) {
     case PR_CMD_ENC_ID:
     case PR_CMD_MIC_ID:
     case PR_CMD_PBSZ_ID:
-    case PR_CMD_PROT_ID:
       return PR_DECLINED(cmd);
+
+    case PR_CMD_PROT_ID:
+      if (proxy_tls_xfer_prot_policy != 0) {
+        return PR_DECLINED(cmd);
+      }
+      break;
   }
 
   /* If we are not connected to a backend server, then don't try to proxy
@@ -3996,6 +4037,25 @@ MODRET proxy_any(cmd_rec *cmd) {
   }
 
   return proxy_cmd(cmd, proxy_sess, NULL);
+}
+
+MODRET proxy_prot(cmd_rec *cmd) {
+  if (proxy_engine == FALSE) {
+    return PR_DECLINED(cmd);
+  }
+
+  if (proxy_tls_xfer_prot_policy != 0) {
+    return PR_DECLINED(cmd);
+  }
+
+  if (strcasecmp(cmd->arg, "P") == 0) {
+    proxy_tls_set_data_prot(TRUE);
+
+  } else if (strcasecmp(cmd->arg, "C") == 0) {
+    proxy_tls_set_data_prot(FALSE);
+  }
+
+  return PR_DECLINED(cmd);
 }
 
 /* Event handlers
@@ -4207,6 +4267,7 @@ static void proxy_sess_reinit_ev(const void *event_data, void *user_data) {
   proxy_opts = 0UL;
   proxy_login_attempts = 0;
   proxy_role = PROXY_ROLE_REVERSE;
+  proxy_tls_xfer_prot_policy = 1;
 
   res = proxy_sess_init();
   if (res < 0) {
@@ -4452,6 +4513,12 @@ static int proxy_sess_init(void) {
     proxy_sess->linger_timeout = PROXY_LINGER_DEFAULT_TIMEOUT;
   }
 
+  c = find_config(main_server->conf, CONF_PARAM,
+    "ProxyTLSTransferProtectionPolicy", FALSE);
+  if (c != NULL) {
+    proxy_tls_xfer_prot_policy = *((int *) c->argv[0]);
+  }
+
   /* Every proxy session starts off in the ProxyTables/empty/ directory. */
   sess_dir = pdircat(proxy_pool, proxy_tables_dir, "empty", NULL);
   if (pr_fsio_chdir_canon(sess_dir, TRUE) < 0) {
@@ -4518,7 +4585,7 @@ static int proxy_sess_init(void) {
  */
 
 static conftable proxy_conftab[] = {
-  { "ProxyDataTransferPolicy",	set_proxydatatransferpolicy,	NULL },
+  { "ProxyDataTransferPolicy",	set_proxydataxferpolicy,	NULL },
   { "ProxyEngine",		set_proxyengine,		NULL },
   { "ProxyForwardEnabled",	set_proxyforwardenabled,	NULL },
   { "ProxyForwardMethod",	set_proxyforwardmethod,		NULL },
@@ -4547,6 +4614,7 @@ static conftable proxy_conftab[] = {
   { "ProxyTLSPreSharedKey",	set_proxytlspresharedkey,	NULL },
   { "ProxyTLSProtocol",		set_proxytlsprotocol,		NULL },
   { "ProxyTLSTimeoutHandshake",	set_proxytlstimeouthandshake,	NULL },
+  { "ProxyTLSTransferProtectionPolicy",	set_proxytlsxferprotpolicy,	NULL },
   { "ProxyTLSVerifyServer",	set_proxytlsverifyserver,	NULL },
 
   /* Support TransferPriority for proxied connections? */
@@ -4559,6 +4627,7 @@ static conftable proxy_conftab[] = {
 static cmdtable proxy_cmdtab[] = {
   /* XXX Should this be marked with a CL_ value, for logging? */
   { CMD,	C_ANY,	G_NONE,	proxy_any,	FALSE, FALSE },
+  { POST_CMD,	C_PROT,	G_NONE,	proxy_prot,	FALSE, FALSE },
 
   { 0, NULL }
 };

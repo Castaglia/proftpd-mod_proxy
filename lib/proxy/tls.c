@@ -37,6 +37,7 @@ extern xaset_t *server_list;
 static const char *tls_db_path = NULL;
 static int tls_engine = PROXY_TLS_ENGINE_AUTO;
 static unsigned long tls_opts = 0UL;
+static int tls_need_data_prot = TRUE;
 static int tls_required_on_frontend_data = FALSE;
 static int tls_verify_server = TRUE;
 
@@ -1696,7 +1697,7 @@ static int tls_connect(conn_t *conn, const char *host_name,
 #if !defined(OPENSSL_NO_TLSEXT)
   SSL_set_tlsext_debug_callback(ssl, tls_tlsext_cb);
 
-  pr_trace_msg(trace_channel, 9, "sending SNI '%s'", host_name);
+  pr_trace_msg(trace_channel, 9, "sending SNI '%s'", conn->remote_name);
   SSL_set_tlsext_host_name(ssl, conn->remote_name);
 
 # if defined(TLSEXT_STATUSTYPE_ocsp)
@@ -2076,6 +2077,13 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
     uint64_t *adaptive_ms = NULL, start_ms;
     off_t *adaptive_bytes = NULL;
     conn_t *conn = NULL;
+
+    if (nstrm->strm_type == PR_NETIO_STRM_DATA &&
+        tls_need_data_prot == FALSE) {
+      pr_trace_msg(trace_channel, 17,
+        "data connection does not require SSL/TLS, skipping handshake");
+      return 0;
+    }
 
     proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
 
@@ -2783,6 +2791,19 @@ static int tls_db_init(pool *p, const char *tables_dir, int flags) {
   return 0;
 }
 #endif /* PR_USE_OPENSSL */
+
+int proxy_tls_set_data_prot(int data_prot) {
+  int old_data_prot;
+
+#ifdef PR_USE_OPENSSL
+  old_data_prot = tls_need_data_prot;
+  tls_need_data_prot = data_prot;
+#else
+  old_data_prot = FALSE;
+#endif /* PR_USE_OPENSSL */
+
+  return old_data_prot;
+}
 
 int proxy_tls_set_tls(int engine) {
 #ifdef PR_USE_OPENSSL
