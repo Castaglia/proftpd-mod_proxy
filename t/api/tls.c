@@ -250,7 +250,13 @@ START_TEST (tls_set_data_prot_test) {
   res = proxy_tls_set_data_prot(TRUE);
 #ifdef PR_USE_OPENSSL
   fail_unless(res == TRUE, "Expected TRUE, got %d", res);
+
+  res = proxy_tls_set_data_prot(FALSE);
+  fail_unless(res == TRUE, "Expected TRUE, got %d", res);
 #else
+  fail_unless(res == FALSE, "Expected FALSE, got %d", res);
+
+  res = proxy_tls_set_data_prot(FALSE);
   fail_unless(res == FALSE, "Expected FALSE, got %d", res);
 #endif /* PR_USE_OPENSSL */
 
