@@ -1612,6 +1612,59 @@ or this, when reverse proxying:
   ProxyOptions UseReverseProxyAuth
 </pre>
 
+<p><a name="ProxyReverseSelectionByCert">
+<font color=red>Question</font>: Can <code>mod_proxy</code> be configured
+as a reverse proxy, and to select the backend server based on the <em>client
+certificate</em> used by the frontend FTPS client?<br>
+<font color=blue>Answer</font>: Yes, but it requires the use of a custom SQL
+query.
+
+<p>
+The idea here is to define a SQL query which looks up the backend server to
+use, based on information in the frontend FTPS client certificate.  Since the
+<code>mod_proxy</code> module already uses SQLite, you <i>should</i>
+be able to use the <code>mod_sql_sqlite</code> module if needed.  The SQL
+table schema might look like:
+<pre>
+  CREATE TABLE proxy_backends (
+    common_name TEXT PRIMARY KEY,
+    url TEXT
+  );
+</pre>
+
+<pre>
+  &lt;IfModule mod_tls.c&gt;
+    ...
+    # Tell mod_tls to export environment variables containing various
+    # certificate fields, for use by e.g. mod_sql.
+    TLSOptions StdEnvVars
+    ...
+  &lt;/IfModule&gt;
+
+  &lt;IfModule mod_sql.c&gt;
+    ...
+    # Use the TLS_CLIENT_S_DN_CN environment variable (for the CommonName of
+    # the Subject section of the frontend FTPS client certificate) provided
+    # by mod_tls in our selection.
+    SQLNamedQuery get-user-servers SELECT "url FROM proxy_backends WHERE common_name = '%{env:TLS_CLIENT_S_DN_CN}'"
+    ...
+  &lt;/IfModule&gt;
+
+  &lt;IfModule mod_proxy.c&gt;
+    ...
+    ProxyRole reverse
+    ProxyReverseConnectPolicy PerUser
+
+    # Use a named SQL query to lookup the backend server to use.  Note that
+    # the name used here is the name of our SQLNamedQuery defined above.
+    ProxyReverseServers sql://get-user-servers
+    ...
+  &lt;/IfModule&gt;
+</pre>
+Note that the <code>mod_tls</code> module provides many other environment
+variables for other fields of the certificate; using a field other than
+CommonName is also quite doable, depending on your needs.
+
 <p>
 <hr>
 <h2><a name="Installation">Installation</a></h2>
