@@ -1697,8 +1697,8 @@ static int tls_connect(conn_t *conn, const char *host_name,
 #if !defined(OPENSSL_NO_TLSEXT)
   SSL_set_tlsext_debug_callback(ssl, tls_tlsext_cb);
 
-  pr_trace_msg(trace_channel, 9, "sending SNI '%s'", host_name);
-  SSL_set_tlsext_host_name(ssl, host_name);
+  pr_trace_msg(trace_channel, 9, "sending SNI '%s'", conn->remote_name);
+  SSL_set_tlsext_host_name(ssl, conn->remote_name);
 
 # if defined(TLSEXT_STATUSTYPE_ocsp)
   pr_trace_msg(trace_channel, 9, "requesting stapled OCSP response");
