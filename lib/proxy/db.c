@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy database implementation
- * Copyright (c) 2015-2016 TJ Saunders
+ * Copyright (c) 2015-2017 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -468,16 +468,16 @@ int proxy_db_open(pool *p, const char *table_path, const char *schema_name) {
       return -1;
     }
 
-    res = sqlite3_exec(proxy_dbh, "PRAGMA temp_store = MEMORY;", NULL, NULL,
-      NULL);
-    if (res != SQLITE_OK) {
+    if (pr_trace_get_level(trace_channel) >= PROXY_DB_SQLITE_TRACE_LEVEL) {
+      sqlite3_trace(proxy_dbh, db_trace, NULL);
+    }
+
+    stmt = "PRAGMA temp_store = MEMORY;";
+    res = proxy_db_exec_stmt(p, stmt, NULL);
+    if (res < 0) {
       pr_trace_msg(trace_channel, 2,
         "error setting MEMORY temp store on SQLite database '%s': %s",
         table_path, sqlite3_errmsg(proxy_dbh));
-    }
-
-    if (pr_trace_get_level(trace_channel) >= PROXY_DB_SQLITE_TRACE_LEVEL) {
-      sqlite3_trace(proxy_dbh, db_trace, NULL);
     }
 
     prepared_stmts = pr_table_nalloc(db_pool, 0, 4);
@@ -507,8 +507,8 @@ int proxy_db_open(pool *p, const char *table_path, const char *schema_name) {
    */
 
   stmt = pstrcat(p, "PRAGMA ", schema_name, ".journal_mode = MEMORY;", NULL);
-  res = sqlite3_exec(proxy_dbh, stmt, NULL, NULL, NULL);
-  if (res != SQLITE_OK) {
+  res = proxy_db_exec_stmt(p, stmt, NULL);
+  if (res < 0) {
     pr_trace_msg(trace_channel, 2,
       "error setting MEMORY journal mode on SQLite database '%s', "
       "schema '%s': %s", table_path, schema_name, sqlite3_errmsg(proxy_dbh));
