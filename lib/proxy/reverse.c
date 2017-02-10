@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse proxy implementation
- * Copyright (c) 2012-2016 TJ Saunders
+ * Copyright (c) 2012-2017 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
  */
 
 #include "mod_proxy.h"
+#include "json.h"
 
 #include "proxy/db.h"
 #include "proxy/conn.h"
@@ -2885,8 +2886,8 @@ int proxy_reverse_have_authenticated(cmd_rec *cmd) {
   return authd;
 }
 
-static JsonNode *read_json_array(pool *p, pr_fh_t *fh, off_t filesz) {
-  JsonNode *json = NULL;
+static pr_json_array_t *read_json_array(pool *p, pr_fh_t *fh, off_t filesz) {
+  pr_json_array_t *json = NULL;
   char *buf, *ptr;
   int res;
   off_t len;
@@ -2929,7 +2930,7 @@ static JsonNode *read_json_array(pool *p, pr_fh_t *fh, off_t filesz) {
     res = pr_fsio_read(fh, buf, len);
   }
 
-  json = json_decode(ptr);
+  json = pr_json_array_from_text(p, ptr);
   if (json == NULL) {
     pr_trace_msg(trace_channel, 3,
       "invalid JSON format found in '%s'", fh->fh_path);
@@ -2937,39 +2938,17 @@ static JsonNode *read_json_array(pool *p, pr_fh_t *fh, off_t filesz) {
     return NULL;
   }
 
-  if (json->tag != JSON_ARRAY) {
-    /* Not expected JSON format */
-    pr_trace_msg(trace_channel, 3,
-      "JSON array not found as expected in '%s'", fh->fh_path);
-    errno = EINVAL;
-    return NULL;
-  }
-
   return json;
 }
 
-static char *read_json_string(JsonNode *node) {
-  if (node == NULL) {
-    errno = EINVAL;
-    return NULL;
-  }
-
-  if (node->tag != JSON_STRING) {
-    errno = EPERM;
-    return NULL;
-  }
-
-  return node->string_;
-}
-
 array_header *proxy_reverse_json_parse_uris(pool *p, const char *path) {
-  register unsigned int i;
-  int reached_eol = FALSE, res, xerrno = 0;
+  register unsigned int i, nelts;
+  int count = 0, reached_eol = TRUE, res, xerrno = 0;
   pr_fh_t *fh;
   array_header *uris = NULL;
   struct stat st;
   pool *tmp_pool;
-  JsonNode *json = NULL;
+  pr_json_array_t *json = NULL;
 
   if (p == NULL ||
       path == NULL) {
@@ -3055,43 +3034,39 @@ array_header *proxy_reverse_json_parse_uris(pool *p, const char *path) {
     return NULL;
   }
 
+  count = pr_json_array_count(json);
+  if (count >= 0) {
+    pr_trace_msg(trace_channel, 12,
+      "found items (count %d) in JSON file '%s'", count, path);
+  }
+
   uris = make_array(p, 1, sizeof(struct proxy_conn *));
 
-  for (i = 0; i < PROXY_REVERSE_JSON_MAX_ITEMS; i++) {
-    JsonNode *item;
-    char *uri;
+  nelts = count;
+  if (nelts > PROXY_REVERSE_JSON_MAX_ITEMS) {
+    nelts = PROXY_REVERSE_JSON_MAX_ITEMS;
+    reached_eol = FALSE;
+  }
+
+  for (i = 0; i < nelts; i++) {
+    char *uri = NULL;
     const struct proxy_conn *pconn;
 
     pr_signals_handle();
 
-    item = json_find_element(json, i);
-    if (item == NULL) {
-      /* End of array reached. */
-      reached_eol = TRUE;
-      pr_trace_msg(trace_channel, 12,
-        "found items (count %u) in JSON file '%s'", i, path);
-      break;
-    }
+    if (pr_json_array_get_string(p, json, i, &uri) == 0) {
+      pconn = proxy_conn_create(p, uri);
+      if (pconn == NULL) {
+        pr_trace_msg(trace_channel, 9,
+          "skipping malformed URL '%s' found in file '%s'", uri, path);
+        continue;
+      }
 
-    uri = read_json_string(item);
-    if (uri == NULL) {
-      pr_trace_msg(trace_channel, 1,
-        "error obtaining JSON string from item #%u in array: %s", i,
-        strerror(errno));
-      continue;
+      *((const struct proxy_conn **) push_array(uris)) = pconn;
     }
-
-    pconn = proxy_conn_create(p, uri);
-    if (pconn == NULL) {
-      pr_trace_msg(trace_channel, 9,
-        "skipping malformed URL '%s' found in file '%s'", uri, path);
-      continue;
-    }
-
-    *((const struct proxy_conn **) push_array(uris)) = pconn;  
   }
 
-  json_delete(json);
+  (void) pr_json_array_free(json);
   destroy_pool(tmp_pool);
 
   if (reached_eol == FALSE) {

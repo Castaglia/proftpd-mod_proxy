@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2016 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2016-2017 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -454,7 +454,9 @@ END_TEST
 START_TEST (forward_handle_pass_noproxyauth_test) {
   int res, successful = FALSE, block_responses = FALSE;
   cmd_rec *cmd;
+#ifdef PR_USE_OPENSSL
   config_rec *c;
+#endif /* PR_USE_OPENSSL */
   struct proxy_session *proxy_sess;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
