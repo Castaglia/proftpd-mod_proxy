@@ -701,24 +701,6 @@ int proxy_db_open_with_version(pool *p, const char *table_path,
     return -1;
   }
 
-  /* TODO: Use:
-   *
-   *  PRAGMA database_list;
-   *
-   * to list any other attached databases with this handle.  Note that if
-   * there ARE other attached databases, then simply unlinking the database
-   * file associated with this schema will cause a problem (i.e. corrupting
-   * the SQLite database).  We could avoid this by closing the database handle
-   * itself IFF there are no other attached databases.  Otherwise, we need
-   * to close the database handle, and then re-attach those other databases.
-   *
-   * The output from the `database_list` pragma looks like e.g.:
-   *
-   *  sqlite> pragma database_list;
-   *  0|main|/Users/tj/test.db
-   *  2|test2|/Users/tj/test2.db
-   */
-
   proxy_db_close(p, schema_name);
   if (unlink(table_path) < 0) {
     pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
@@ -747,6 +729,66 @@ int proxy_db_open_with_version(pool *p, const char *table_path,
   return 0;
 }
 
+/* Use `PRAGMA database_list;` to list any other attached databases with this
+ * handle.  The output from the `database_list` pragma looks like e.g.:
+ *
+ *  sqlite> pragma database_list;
+ *  0|main|/Users/tj/test.db
+ *  2|test2|/Users/tj/test2.db
+ */
+static array_header *get_attached_databases(pool *p) {
+  register unsigned int i;
+  int res;
+  const char *stmt, *errstr = NULL;
+  array_header *results, *databases = NULL;
+
+  stmt = "PRAGMA database_list;";
+  res = proxy_db_prepare_stmt(p, stmt);
+  if (res < 0) {
+    return NULL;
+  }
+
+  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  if (results == NULL) {
+    return NULL;
+  }
+
+  databases = make_array(p, 0, sizeof(char *));
+
+  /* Skip every other item; we only want the database names. */
+  for (i = 1; i < results->nelts; i += 3) {
+    char *name;
+
+    name = ((char **) results->elts)[i];
+
+    /* Skip the main database and any TEMP databases. */
+    if (strcmp(name, "main") != 0 &&
+        strcasecmp(name, "TEMP") != 0) {
+      pr_trace_msg(trace_channel, 15, "found attached database '%s'", name);
+      *((char **) push_array(databases)) = pstrdup(p, name);
+    }
+  }
+
+  return databases;
+}
+
+static int detach_database(pool *p, const char *name) {
+  int res;
+  const char *stmt, *errstr = NULL;
+
+  stmt = pstrcat(p, "DETACH DATABASE ", name, ";", NULL);
+  res = proxy_db_exec_stmt(p, stmt, errstr);
+  if (res < 0) {
+    pr_trace_msg(trace_channel, 2,
+      "error detaching '%s' from existing SQLite handle using '%s': %s", name,
+      stmt, errstr);
+    errno = EPERM;
+    return -1;
+  }
+
+  return 0;
+}
+
 int proxy_db_close(pool *p, const char *schema_name) {
   if (p == NULL) {
     errno = EINVAL;
@@ -754,29 +796,42 @@ int proxy_db_close(pool *p, const char *schema_name) {
   }
 
   if (proxy_dbh != NULL) {
+    register unsigned int i;
     pool *tmp_pool;
+    array_header *schema_names;
     sqlite3_stmt *pstmt;
     int res;
 
     tmp_pool = make_sub_pool(p);
+    schema_names = make_array(tmp_pool, 1, sizeof(char *));
 
     /* If we're given a schema name, then just detach that schema from the
      * database handle.
      */
     if (schema_name != NULL) {
-      const char *stmt;
+      *((char **) push_array(schema_names)) = pstrdup(tmp_pool, schema_name);
 
-      stmt = pstrcat(tmp_pool, "DETACH DATABASE ", schema_name, ";", NULL);
-      res = sqlite3_exec(proxy_dbh, stmt, NULL, NULL, NULL);
-      if (res != SQLITE_OK) {
-        pr_trace_msg(trace_channel, 2,
-          "error detaching '%s' from existing SQLite handle using '%s': %s",
-          schema_name, stmt, sqlite3_errmsg(proxy_dbh));
+    } else {
+      array_cat(schema_names, get_attached_databases(tmp_pool));
+    }
+
+    for (i = 0; i < schema_names->nelts; i++) {
+      const char *name;
+      int xerrno;
+
+      name = ((char **) schema_names->elts)[i];
+      res = detach_database(tmp_pool, name);
+      xerrno = errno;
+
+      if (res < 0) {
         destroy_pool(tmp_pool);
-        errno = EPERM;
+        errno = xerrno;
         return -1;
       }
+    }
 
+    /* If we were given just one name to detach, we're done. */
+    if (schema_name != NULL) {
       destroy_pool(tmp_pool);
       return 0;
     }
