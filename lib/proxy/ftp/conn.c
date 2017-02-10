@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP connection routines
- * Copyright (c) 2013-2016 TJ Saunders
+ * Copyright (c) 2013-2017 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -122,8 +122,9 @@ conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
   pr_inet_generate_socket_event("proxy.data-connect", main_server,
     conn->local_addr, conn->listen_fd);
 
-  pr_trace_msg(trace_channel, 9, "connecting to %s#%u",
-    pr_netaddr_get_ipstr(remote_addr), ntohs(pr_netaddr_get_port(remote_addr)));
+  pr_trace_msg(trace_channel, 9, "connecting to %s#%u from %s#%u",
+    pr_netaddr_get_ipstr(remote_addr), ntohs(pr_netaddr_get_port(remote_addr)),
+    pr_netaddr_get_ipstr(bind_addr), ntohs(pr_netaddr_get_port(bind_addr)));
 
   if (frontend_data) {
     res = pr_inet_connect(p, conn, remote_addr,

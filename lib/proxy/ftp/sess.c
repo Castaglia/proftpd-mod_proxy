@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP session routines
- * Copyright (c) 2013-2016 TJ Saunders
+ * Copyright (c) 2013-2017 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -421,7 +421,7 @@ int proxy_ftp_sess_send_auth_tls(pool *p,
 
   /* Now that we have our AUTH TLS, check for TLS-related configs. */
   c = find_config(main_server->conf, CONF_PARAM,
-    "ProxyTLSTransferProtectionPolicy", NULL);
+    "ProxyTLSTransferProtectionPolicy", FALSE);
   if (c != NULL) {
     tls_xfer_prot_policy = *((int *) c->argv[0]);
   }

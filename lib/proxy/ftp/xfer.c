@@ -435,10 +435,14 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
   }
 
   switch (pr_cmd_get_id(pasv_cmd->argv[0])) {
-    case PR_CMD_PASV_ID:
+    case PR_CMD_PASV_ID: {
+      int local_family;
+
+      local_family = pr_netaddr_get_family(session.c->local_addr);
       remote_addr = proxy_ftp_msg_parse_addr(cmd->tmp_pool, resp->msg,
-        pr_netaddr_get_family(session.c->local_addr));
+        local_family);
       break;
+    }
 
     case PR_CMD_EPSV_ID:
       remote_addr = proxy_ftp_msg_parse_ext_addr(cmd->tmp_pool, resp->msg,
@@ -497,5 +501,8 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
     return NULL;
   }
 
+  pr_trace_msg(trace_channel, 12,
+    "obtained address %s#%d for passive data transfer",
+    pr_netaddr_get_ipstr(remote_addr), ntohs(pr_netaddr_get_port(remote_addr)));
   return remote_addr;
 }

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy
- * Copyright (c) 2012-2016 TJ Saunders
+ * Copyright (c) 2012-2017 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1846,6 +1846,24 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
       local_addr = pr_netaddr_get_addr(cmd->pool, local_name, NULL);
 
       if (local_addr != NULL) {
+        int bind_family, local_family;
+
+        bind_family = pr_netaddr_get_family(bind_addr);
+        local_family = pr_netaddr_get_family(local_addr);
+        if (bind_family != local_family) {
+          pr_netaddr_t *new_addr = NULL;
+
+#ifdef PR_USE_IPV6
+          if (bind_family == AF_INET6) {
+            new_addr = pr_netaddr_v4tov6(cmd->pool, local_addr);
+          }
+#endif /* PR_USE_IPV6 */
+
+          if (new_addr != NULL) {
+            local_addr = new_addr;
+          }
+        }
+
         pr_trace_msg(trace_channel, 14,
           "%s is a loopback address, and unable to reach %s; using %s instead",
           pr_netaddr_get_ipstr(bind_addr),

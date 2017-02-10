@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy conn implementation
- * Copyright (c) 2012-2016 TJ Saunders
+ * Copyright (c) 2012-2017 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -390,6 +390,24 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     new_local_addr = pr_netaddr_get_addr(p, local_name, NULL);
 
     if (new_local_addr != NULL) {
+      int bind_family, local_family;
+
+      bind_family = pr_netaddr_get_family(bind_addr);
+      local_family = pr_netaddr_get_family(new_local_addr);
+      if (bind_family != local_family) {
+        pr_netaddr_t *new_addr = NULL;
+
+#ifdef PR_USE_IPV6
+        if (bind_family == AF_INET6) {
+          new_addr = pr_netaddr_v4tov6(p, new_local_addr);
+        }
+#endif /* PR_USE_IPV6 */
+
+        if (new_addr != NULL) {
+          new_local_addr = new_addr;
+        }
+      }
+
       pr_trace_msg(trace_channel, 14,
         "%s is a loopback address, and unable to reach %s; using %s instead",
         pr_netaddr_get_ipstr(bind_addr), remote_ipstr,
@@ -411,8 +429,9 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     return NULL;
   }
 
-  pr_trace_msg(trace_channel, 11, "connecting to backend address %s#%u from %s",
-    remote_ipstr, remote_port, pr_netaddr_get_ipstr(bind_addr));
+  pr_trace_msg(trace_channel, 12,
+    "connecting to backend address %s#%u from %s#%u", remote_ipstr, remote_port,
+    pr_netaddr_get_ipstr(bind_addr), ntohs(pr_netaddr_get_port(bind_addr)));
 
   res = pr_inet_connect_nowait(p, server_conn, remote_addr,
     ntohs(pr_netaddr_get_port(remote_addr)));
