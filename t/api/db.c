@@ -553,7 +553,7 @@ START_TEST (db_reindex_test) {
     strerror(errno), errno);
 
   index_name = "test_idx";
-  res = proxy_db_reindex(p, dbh, index_name, NULL);
+  res = proxy_db_reindex(p, dbh, index_name, &errstr);
   fail_unless(res < 0, "Failed to handle invalid index");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
