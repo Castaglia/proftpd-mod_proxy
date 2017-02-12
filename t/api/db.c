@@ -234,11 +234,11 @@ START_TEST (db_exec_stmt_test) {
 END_TEST
 
 static int create_table(pool *stmt_pool, struct proxy_dbh *dbh,
-    const char *schema_name, const char *table_name) {
+    const char *table_name) {
   int res;
   const char *stmt, *errstr = NULL;
 
-  stmt = pstrcat(stmt_pool, "CREATE TABLE ", schema_name, ".", table_name,
+  stmt = pstrcat(stmt_pool, "CREATE TABLE ", table_name,
     " (id INTEGER, name TEXT);", NULL);
   res = proxy_db_exec_stmt(stmt_pool, dbh, stmt, &errstr);
   return res;
@@ -278,7 +278,7 @@ START_TEST (db_prepare_stmt_test) {
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
-  res = create_table(p, dbh, schema_name, "foo");
+  res = create_table(p, dbh, "foo");
   fail_unless(res == 0, "Failed to create table 'foo': %s", strerror(errno));
 
   stmt = "SELECT COUNT(*) FROM foo;";
@@ -290,7 +290,7 @@ START_TEST (db_prepare_stmt_test) {
   fail_unless(res == 0, "Failed to prepare statement '%s': %s", stmt,
     strerror(errno));
 
-  res = create_table(p, dbh, schema_name, "bar");
+  res = create_table(p, dbh, "bar");
   fail_unless(res == 0, "Failed to create table 'bar': %s", strerror(errno));
 
   stmt = "SELECT COUNT(*) FROM bar;";
@@ -339,7 +339,7 @@ START_TEST (db_finish_stmt_test) {
   fail_unless(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
     strerror(errno), errno);
 
-  res = create_table(p, dbh, schema_name, "foo");
+  res = create_table(p, dbh, "foo");
   fail_unless(res == 0, "Failed to create table 'foo': %s", strerror(errno));
 
   res = proxy_db_prepare_stmt(p, dbh, stmt);
@@ -406,7 +406,7 @@ START_TEST (db_bind_stmt_test) {
   fail_unless(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
     strerror(errno), errno);
 
-  res = create_table(p, dbh, schema_name, "foo");
+  res = create_table(p, dbh, "foo");
   fail_unless(res == 0, "Failed to create table 'foo': %s", strerror(errno));
 
   stmt = "SELECT COUNT(*) FROM foo;";
@@ -505,7 +505,7 @@ START_TEST (db_exec_prepared_stmt_test) {
   fail_unless(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
     strerror(errno), errno);
 
-  res = create_table(p, dbh, schema_name, "foo");
+  res = create_table(p, dbh, "foo");
   fail_unless(res == 0, "Failed to create table 'foo': %s", strerror(errno));
 
   res = proxy_db_prepare_stmt(p, dbh, stmt);

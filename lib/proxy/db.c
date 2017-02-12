@@ -42,7 +42,7 @@ static const char *trace_channel = "proxy.db";
 
 static void db_err(void *user_data, int err_code, const char *err_msg) {
   if (current_schema != NULL) {
-    pr_trace_msg(trace_channel, 1, "(sqlite3): schema %s: [error %d] %s",
+    pr_trace_msg(trace_channel, 1, "(sqlite3): schema '%s': [error %d] %s",
       current_schema, err_code, err_msg);
 
   } else {
@@ -57,7 +57,7 @@ static void db_trace(void *user_data, const char *trace_msg) {
 
     schema = user_data;
     pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
-      "(sqlite3): schema %s: %s", schema, trace_msg);
+      "(sqlite3): schema '%s': %s", schema, trace_msg);
 
   } else {
     pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
@@ -171,7 +171,7 @@ int proxy_db_prepare_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt) {
   res = sqlite3_prepare_v2(dbh->db, stmt, -1, &pstmt, NULL);
   if (res != SQLITE_OK) {
     pr_trace_msg(trace_channel, 4,
-      "schema %s: error preparing statement '%s': %s", dbh->schema, stmt,
+      "schema '%s': error preparing statement '%s': %s", dbh->schema, stmt,
       sqlite3_errmsg(dbh->db));
     errno = EINVAL;
     return -1;
@@ -333,7 +333,7 @@ int proxy_db_finish_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt) {
   res = sqlite3_finalize(pstmt);
   if (res != SQLITE_OK) {
     pr_trace_msg(trace_channel, 3,
-      "schema %s: error finishing prepared statement '%s': %s", dbh->schema,
+      "schema '%s': error finishing prepared statement '%s': %s", dbh->schema,
       stmt, sqlite3_errmsg(dbh->db));
     errno = EPERM;
     return -1;
@@ -409,8 +409,8 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
 
     ncols = sqlite3_column_count(pstmt);
     pr_trace_msg(trace_channel, 12,
-      "schema %s: executing prepared statement '%s' returned row (columns: %d)",
-      dbh->schema, stmt, ncols);
+      "schema '%s': executing prepared statement '%s' returned row "
+      "(columns: %d)", dbh->schema, stmt, ncols);
 
     for (i = 0; i < ncols; i++) {
       char *val = NULL;
@@ -440,7 +440,7 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
 
     current_schema = NULL;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "schema %s: executing prepared statement '%s' did not complete "
+      "schema '%s': executing prepared statement '%s' did not complete "
       "successfully: %s", dbh->schema, stmt, errmsg);
     errno = EPERM;
     return NULL;
@@ -597,7 +597,7 @@ static int set_schema_version(pool *p, struct proxy_dbh *dbh,
     xerrno = errno;
 
     (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
-      ": schema %s: error preparing statement '%s': %s", dbh->schema, stmt,
+      ": schema '%s': error preparing statement '%s': %s", dbh->schema, stmt,
       strerror(xerrno));
     errno = xerrno;
     return -1;
@@ -761,7 +761,7 @@ int proxy_db_close(pool *p, struct proxy_dbh *dbh) {
     res = sqlite3_finalize(pstmt);
     if (res != SQLITE_OK) {
       pr_trace_msg(trace_channel, 2,
-        "schema %s: error finishing prepared statement '%s': %s", dbh->schema,
+        "schema '%s': error finishing prepared statement '%s': %s", dbh->schema,
         sql, sqlite3_errmsg(dbh->db));
 
     } else {
