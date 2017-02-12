@@ -49,7 +49,7 @@ static int reverse_retry_count = PROXY_DEFAULT_RETRY_COUNT;
 static struct proxy_dbh *reverse_dbh = NULL;
 static const char *reverse_db_path = NULL;
 #define PROXY_REVERSE_DB_SCHEMA_NAME		"proxy_reverse"
-#define PROXY_REVERSE_DB_SCHEMA_VERSION		4
+#define PROXY_REVERSE_DB_SCHEMA_VERSION		5
 
 /* Flag that indicates that we should select/connect to the backend server
  * at session init time, i.e. when proxy auth is not required, and we're using
@@ -356,7 +356,7 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
   }
 
   /* CREATE INDEX proxy_vhost_reverse_per_user_name_idx */
-  stmt = "CREATE INDEX IF NOT EXISTS proxy_vhosts_reverse_per_user_name_idx ON proxy_vhost_reverse_per_user (user_name);";
+  stmt = "CREATE INDEX IF NOT EXISTS proxy_vhost_reverse_per_user_name_idx ON proxy_vhost_reverse_per_user (user_name);";
   res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,

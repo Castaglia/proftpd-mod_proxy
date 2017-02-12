@@ -81,23 +81,29 @@ END_TEST
 
 START_TEST (db_open_test) {
   int res;
-  const char *table_path;
+  const char *table_path, *schema_name;
   struct proxy_dbh *dbh;
 
-  dbh = proxy_db_open(NULL, NULL);
+  dbh = proxy_db_open(NULL, NULL, NULL);
   fail_unless(dbh == NULL, "Failed to handle null pool");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL, got %s (%d)",
     strerror(errno), errno);
 
-  dbh = proxy_db_open(p, NULL);
+  dbh = proxy_db_open(p, NULL, NULL);
   fail_unless(dbh == NULL, "Failed to handle null table path");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL, got %s (%d)",
     strerror(errno), errno);
 
   (void) unlink(db_test_table);
   table_path = db_test_table;
+  schema_name = "proxy_test";
 
-  dbh = proxy_db_open(p, table_path);
+  dbh = proxy_db_open(p, table_path, NULL);
+  fail_unless(dbh == NULL, "Failed to handle null schema name");
+  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL, got %s (%d)",
+    strerror(errno), errno);
+
+  dbh = proxy_db_open(p, table_path, schema_name);
   fail_unless(dbh != NULL, "Failed to open table '%s': %s", table_path,
     strerror(errno));
 
@@ -187,7 +193,7 @@ END_TEST
 
 START_TEST (db_exec_stmt_test) {
   int res;
-  const char *table_path, *stmt, *errstr;
+  const char *table_path, *schema_name, *stmt, *errstr;
   struct proxy_dbh *dbh;
 
   res = proxy_db_exec_stmt(NULL, NULL, NULL, NULL);
@@ -202,8 +208,9 @@ START_TEST (db_exec_stmt_test) {
 
   (void) unlink(db_test_table);
   table_path = db_test_table;
+  schema_name = "proxy_test";
 
-  dbh = proxy_db_open(p, table_path);
+  dbh = proxy_db_open(p, table_path, schema_name);
   fail_unless(dbh != NULL, "Failed to open table '%s': %s", table_path,
     strerror(errno));
 
@@ -256,7 +263,7 @@ START_TEST (db_prepare_stmt_test) {
   table_path = db_test_table;
   schema_name = "proxy_test";
 
-  dbh = proxy_db_open(p, table_path);
+  dbh = proxy_db_open(p, table_path, schema_name);
   fail_unless(dbh != NULL, "Failed to open table '%s': %s", table_path,
     strerror(errno));
 
@@ -317,7 +324,7 @@ START_TEST (db_finish_stmt_test) {
   table_path = db_test_table;
   schema_name = "proxy_test";
 
-  dbh = proxy_db_open(p, table_path);
+  dbh = proxy_db_open(p, table_path, schema_name);
   fail_unless(dbh != NULL, "Failed to open table '%s': %s", table_path,
     strerror(errno));
 
@@ -377,7 +384,7 @@ START_TEST (db_bind_stmt_test) {
   table_path = db_test_table;
   schema_name = "proxy_test";
 
-  dbh = proxy_db_open(p, table_path);
+  dbh = proxy_db_open(p, table_path, schema_name);
   fail_unless(dbh != NULL, "Failed to open table '%s': %s", table_path,
     strerror(errno));
 
@@ -483,7 +490,7 @@ START_TEST (db_exec_prepared_stmt_test) {
   table_path = db_test_table;
   schema_name = "proxy_test";
 
-  dbh = proxy_db_open(p, table_path);
+  dbh = proxy_db_open(p, table_path, schema_name);
   fail_unless(dbh != NULL, "Failed to open table '%s': %s", table_path,
     strerror(errno));
 
@@ -536,7 +543,7 @@ START_TEST (db_reindex_test) {
   table_path = db_test_table;
   schema_name = "proxy_test";
 
-  dbh = proxy_db_open(p, table_path);
+  dbh = proxy_db_open(p, table_path, schema_name);
   fail_unless(dbh != NULL, "Failed to open table '%s': %s", table_path,
     strerror(errno));
 

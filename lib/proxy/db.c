@@ -30,6 +30,7 @@
 struct proxy_dbh {
   pool *pool;
   sqlite3 *db;
+  const char *schema_name;
   pr_table_t *prepared_stmts;
 };
 
@@ -422,7 +423,8 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
 
 /* Database opening/closing. */
 
-struct proxy_dbh *proxy_db_open(pool *p, const char *table_path) {
+struct proxy_dbh *proxy_db_open(pool *p, const char *table_path,
+    const char *schema_name) {
   int res;
   pool *sub_pool;
   const char *stmt;
@@ -430,13 +432,14 @@ struct proxy_dbh *proxy_db_open(pool *p, const char *table_path) {
   struct proxy_dbh *dbh;
 
   if (p == NULL ||
-      table_path == NULL) {
+      table_path == NULL ||
+      schema_name == NULL) {
     errno = EINVAL;
     return NULL;
   }
 
-  pr_trace_msg(trace_channel, 19, "attempting to open table at path '%s'",
-    table_path);
+  pr_trace_msg(trace_channel, 19, "attempting to open %s tables at path '%s'",
+    schema_name, table_path);
 
   res = sqlite3_open(table_path, &db);
   if (res != SQLITE_OK) {
@@ -456,6 +459,7 @@ struct proxy_dbh *proxy_db_open(pool *p, const char *table_path) {
   dbh = pcalloc(sub_pool, sizeof(struct proxy_dbh));
   dbh->pool = sub_pool;
   dbh->db = db;
+  dbh->schema_name = pstrdup(dbh->pool, schema_name);
 
   stmt = "PRAGMA temp_store = MEMORY;";
   res = proxy_db_exec_stmt(p, dbh, stmt, NULL);
@@ -470,7 +474,7 @@ struct proxy_dbh *proxy_db_open(pool *p, const char *table_path) {
    * of SQLite is supported only for SQLite-3.6.5 and later.
    */
 
-  stmt = pstrcat(p, "PRAGMA journal_mode = MEMORY;", NULL);
+  stmt = "PRAGMA journal_mode = MEMORY;";
   res = proxy_db_exec_stmt(p, dbh, stmt, NULL);
   if (res < 0) {
     pr_trace_msg(trace_channel, 2,
@@ -622,7 +626,7 @@ struct proxy_dbh *proxy_db_open_with_version(pool *p, const char *table_path,
   int res, xerrno = 0;
   unsigned int current_version = 0;
 
-  dbh = proxy_db_open(p, table_path);
+  dbh = proxy_db_open(p, table_path, schema_name);
   if (dbh == NULL) {
     return NULL;
   }
@@ -664,6 +668,9 @@ struct proxy_dbh *proxy_db_open_with_version(pool *p, const char *table_path,
   }
 
   /* The schema version is skewed; delete the old table, create a new one. */
+  pr_trace_msg(trace_channel, 4,
+    "schema version %u < desired version %u for path '%s', deleting file",
+    current_version, schema_version, table_path);
 
   proxy_db_close(p, dbh);
   if (unlink(table_path) < 0) {
@@ -671,7 +678,7 @@ struct proxy_dbh *proxy_db_open_with_version(pool *p, const char *table_path,
       ": error deleting '%s': %s", table_path, strerror(errno));
   }
 
-  dbh = proxy_db_open(p, table_path);
+  dbh = proxy_db_open(p, table_path, schema_name);
   if (dbh == NULL) {
     xerrno = errno;
 

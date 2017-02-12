@@ -110,7 +110,7 @@ static int netio_install_ctrl(void);
 static int netio_install_data(void);
 
 #define PROXY_TLS_DB_SCHEMA_NAME		"proxy_tls"
-#define PROXY_TLS_DB_SCHEMA_VERSION		2
+#define PROXY_TLS_DB_SCHEMA_VERSION		3
 
 /* Indices for data stashed in SSL objects */
 #define PROXY_TLS_IDX_TICKET_KEY		2
