@@ -382,7 +382,7 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
   }
 
   /* CREATE INDEX proxy_vhost_reverse_per_group_name_idx */
-  stmt = "CREATE INDEX IF NOT EXISTS proxy_vhosts_reverse_per_group_name_idx ON proxy_vhost_reverse_per_group (group_name);";
+  stmt = "CREATE INDEX IF NOT EXISTS proxy_vhost_reverse_per_group_name_idx ON proxy_vhost_reverse_per_group (group_name);";
   res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -408,7 +408,7 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
   }
 
   /* CREATE INDEX proxy_vhost_reverse_per_host_ipaddr_idx */
-  stmt = "CREATE INDEX IF NOT EXISTS proxy_vhosts_reverse_per_host_ipaddr_idx ON proxy_vhost_reverse_per_host (ip_addr);";
+  stmt = "CREATE INDEX IF NOT EXISTS proxy_vhost_reverse_per_host_ipaddr_idx ON proxy_vhost_reverse_per_host (ip_addr);";
   res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -498,7 +498,7 @@ static int reverse_truncate_db_tables(pool *p) {
     return -1;
   }
 
-  index_name = "proxy_vhosts_reverse_per_user_name_idx";
+  index_name = "proxy_vhost_reverse_per_user_name_idx";
   res = proxy_db_reindex(p, reverse_dbh, index_name, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -507,7 +507,7 @@ static int reverse_truncate_db_tables(pool *p) {
     return -1;
   }
 
-  index_name = "proxy_vhosts_reverse_per_group_name_idx";
+  index_name = "proxy_vhost_reverse_per_group_name_idx";
   res = proxy_db_reindex(p, reverse_dbh, index_name, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -516,7 +516,7 @@ static int reverse_truncate_db_tables(pool *p) {
     return -1;
   }
 
-  index_name = "proxy_vhosts_reverse_per_host_ipaddr_idx";
+  index_name = "proxy_vhost_reverse_per_host_ipaddr_idx";
   res = proxy_db_reindex(p, reverse_dbh, index_name, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
