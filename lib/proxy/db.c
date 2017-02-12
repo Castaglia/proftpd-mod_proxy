@@ -34,17 +34,16 @@ struct proxy_dbh {
   pr_table_t *prepared_stmts;
 };
 
+static const char *current_schema = NULL;
+
 static const char *trace_channel = "proxy.db";
 
 #define PROXY_DB_SQLITE_TRACE_LEVEL		17
 
 static void db_err(void *user_data, int err_code, const char *err_msg) {
-  if (user_data != NULL) {
-    const char *schema;
-
-    schema = user_data;
+  if (current_schema != NULL) {
     pr_trace_msg(trace_channel, 1, "(sqlite3): schema %s: [error %d] %s",
-      schema, err_code, err_msg);
+      current_schema, err_code, err_msg);
 
   } else {
     pr_trace_msg(trace_channel, 1, "(sqlite3): [error %d] %s", err_code,
@@ -93,7 +92,7 @@ int proxy_db_exec_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt,
     return -1;
   }
 
-  sqlite3_config(SQLITE_CONFIG_LOG, db_err, dbh->schema_name);
+  current_schema = dbh->schema_name;
 
   res = sqlite3_exec(dbh->db, stmt, stmt_cb, (void *) stmt, &ptr);
   while (res != SQLITE_OK) {
@@ -127,7 +126,7 @@ int proxy_db_exec_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt,
       *errstr = pstrdup(p, ptr);
     }
 
-    sqlite3_config(SQLITE_CONFIG_LOG, db_err, NULL);
+    current_schema = NULL;
     sqlite3_free(ptr);
     errno = EINVAL;
     return -1;
@@ -137,7 +136,7 @@ int proxy_db_exec_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt,
     sqlite3_free(ptr);
   }
 
-  sqlite3_config(SQLITE_CONFIG_LOG, db_err, NULL);
+  current_schema = NULL;
   pr_trace_msg(trace_channel, 13, "successfully executed '%s'", stmt);
   return 0;
 }
@@ -333,8 +332,8 @@ int proxy_db_finish_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt) {
   res = sqlite3_finalize(pstmt);
   if (res != SQLITE_OK) {
     pr_trace_msg(trace_channel, 3,
-      "error finishing prepared statement '%s': %s", stmt,
-      sqlite3_errmsg(dbh->db));
+      "schema %s: error finishing prepared statement '%s': %s",
+      dbh->schema_name, stmt, sqlite3_errmsg(dbh->db));
     errno = EPERM;
     return -1;
   }
@@ -369,7 +368,7 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
     return NULL;
   }
 
-  sqlite3_config(SQLITE_CONFIG_LOG, db_err, dbh->schema_name);
+  current_schema = dbh->schema_name;
 
   readonly = sqlite3_stmt_readonly(pstmt);
   if (!readonly) {
@@ -385,12 +384,12 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
       pr_trace_msg(trace_channel, 2,
         "error executing '%s': %s", stmt, errmsg);
 
-      sqlite3_config(SQLITE_CONFIG_LOG, db_err, NULL);
+      current_schema = NULL;
       errno = EPERM;
       return NULL;
     }
 
-    sqlite3_config(SQLITE_CONFIG_LOG, db_err, NULL);
+    current_schema = NULL;
 
     /* Indicate success for non-readonly statements by returning an empty
      * result set.
@@ -438,7 +437,7 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
       *errstr = pstrdup(p, errmsg);
     }
 
-    sqlite3_config(SQLITE_CONFIG_LOG, db_err, NULL);
+    current_schema = NULL;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "executing prepared statement '%s' did not complete successfully: %s",
       stmt, errmsg);
@@ -446,7 +445,7 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
     return NULL;
   }
 
-  sqlite3_config(SQLITE_CONFIG_LOG, db_err, NULL);
+  current_schema = NULL;
   pr_trace_msg(trace_channel, 13, "successfully executed '%s'", stmt);
   return results;
 }
