@@ -30,7 +30,7 @@
 struct proxy_dbh {
   pool *pool;
   sqlite3 *db;
-  const char *schema_name;
+  const char *schema;
   pr_table_t *prepared_stmts;
 };
 
@@ -92,7 +92,7 @@ int proxy_db_exec_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt,
     return -1;
   }
 
-  current_schema = dbh->schema_name;
+  current_schema = dbh->schema;
 
   res = sqlite3_exec(dbh->db, stmt, stmt_cb, (void *) stmt, &ptr);
   while (res != SQLITE_OK) {
@@ -171,7 +171,8 @@ int proxy_db_prepare_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt) {
   res = sqlite3_prepare_v2(dbh->db, stmt, -1, &pstmt, NULL);
   if (res != SQLITE_OK) {
     pr_trace_msg(trace_channel, 4,
-      "error preparing statement '%s': %s", stmt, sqlite3_errmsg(dbh->db));
+      "schema %s: error preparing statement '%s': %s", dbh->schema, stmt,
+      sqlite3_errmsg(dbh->db));
     errno = EINVAL;
     return -1;
   }
@@ -332,8 +333,8 @@ int proxy_db_finish_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt) {
   res = sqlite3_finalize(pstmt);
   if (res != SQLITE_OK) {
     pr_trace_msg(trace_channel, 3,
-      "schema %s: error finishing prepared statement '%s': %s",
-      dbh->schema_name, stmt, sqlite3_errmsg(dbh->db));
+      "schema %s: error finishing prepared statement '%s': %s", dbh->schema,
+      stmt, sqlite3_errmsg(dbh->db));
     errno = EPERM;
     return -1;
   }
@@ -368,7 +369,7 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
     return NULL;
   }
 
-  current_schema = dbh->schema_name;
+  current_schema = dbh->schema;
 
   readonly = sqlite3_stmt_readonly(pstmt);
   if (!readonly) {
@@ -408,8 +409,8 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
 
     ncols = sqlite3_column_count(pstmt);
     pr_trace_msg(trace_channel, 12,
-      "executing prepared statement '%s' returned row (columns: %d)",
-      stmt, ncols);
+      "schema %s: executing prepared statement '%s' returned row (columns: %d)",
+      dbh->schema, stmt, ncols);
 
     for (i = 0; i < ncols; i++) {
       char *val = NULL;
@@ -439,8 +440,8 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
 
     current_schema = NULL;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "executing prepared statement '%s' did not complete successfully: %s",
-      stmt, errmsg);
+      "schema %s: executing prepared statement '%s' did not complete "
+      "successfully: %s", dbh->schema, stmt, errmsg);
     errno = EPERM;
     return NULL;
   }
@@ -488,7 +489,7 @@ struct proxy_dbh *proxy_db_open(pool *p, const char *table_path,
   dbh = pcalloc(sub_pool, sizeof(struct proxy_dbh));
   dbh->pool = sub_pool;
   dbh->db = db;
-  dbh->schema_name = pstrdup(dbh->pool, schema_name);
+  dbh->schema = pstrdup(dbh->pool, schema_name);
 
   stmt = "PRAGMA temp_store = MEMORY;";
   res = proxy_db_exec_stmt(p, dbh, stmt, NULL);
@@ -596,7 +597,8 @@ static int set_schema_version(pool *p, struct proxy_dbh *dbh,
     xerrno = errno;
 
     (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
-      ": error preparing statement '%s': %s", stmt, strerror(xerrno));
+      ": schema %s: error preparing statement '%s': %s", dbh->schema, stmt,
+      strerror(xerrno));
     errno = xerrno;
     return -1;
   }
@@ -740,8 +742,7 @@ int proxy_db_close(pool *p, struct proxy_dbh *dbh) {
     return -1;
   }
 
-  pr_trace_msg(trace_channel, 19, "closing '%s' database handle",
-    dbh->schema_name);
+  pr_trace_msg(trace_channel, 19, "closing '%s' database handle", dbh->schema);
   tmp_pool = make_sub_pool(p);
 
   /* Make sure to close/finish any prepared statements associated with
@@ -760,8 +761,8 @@ int proxy_db_close(pool *p, struct proxy_dbh *dbh) {
     res = sqlite3_finalize(pstmt);
     if (res != SQLITE_OK) {
       pr_trace_msg(trace_channel, 2,
-        "error finishing prepared statement '%s': %s", sql,
-        sqlite3_errmsg(dbh->db));
+        "schema %s: error finishing prepared statement '%s': %s", dbh->schema,
+        sql, sqlite3_errmsg(dbh->db));
 
     } else {
       pr_trace_msg(trace_channel, 18, "finished prepared statement '%s'", sql);
