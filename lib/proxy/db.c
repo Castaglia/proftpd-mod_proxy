@@ -481,7 +481,7 @@ struct proxy_dbh *proxy_db_open(pool *p, const char *table_path,
   }
 
   if (pr_trace_get_level(trace_channel) >= PROXY_DB_SQLITE_TRACE_LEVEL) {
-    sqlite3_trace(db, db_trace, schema_name);
+    sqlite3_trace(db, db_trace, (void *) schema_name);
   }
 
   sub_pool = make_sub_pool(p);
