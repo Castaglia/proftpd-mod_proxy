@@ -879,9 +879,11 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
           CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
             "no usable URLs found in file '", path, NULL));
         }
-      }
 
-      uri = cmd->argv[1];
+      } else {
+        /* Only provide a URI for dynamic lookup, e.g. per-user/group/etc. */
+        uri = cmd->argv[1];
+      }
 
     } else if (strncmp(cmd->argv[1], "sql:/", 5) == 0) {
 

@@ -27,30 +27,32 @@
 
 #include "mod_proxy.h"
 
+struct proxy_dbh;
+
 int proxy_db_init(pool *p);
 int proxy_db_free(void);
 
 /* Create/prepare the database (with the given schema name) at the given path */
-int proxy_db_open(pool *p, const char *table_path, const char *schema_name);
+struct proxy_dbh *proxy_db_open(pool *p, const char *table_path);
 
 /* Create/prepare the database (with the given schema name) at the given path.
  * If the database/schema already exists, check that its schema version is
  * greater than or equal to the given minimum version.  If not, delete that
  * database and create a new one.
  */
-int proxy_db_open_with_version(pool *p, const char *table_path,
+struct proxy_dbh *proxy_db_open_with_version(pool *p, const char *table_path,
   const char *schema_name, unsigned int schema_version, int flags);
 #define PROXY_DB_OPEN_FL_ERROR_ON_SCHEMA_VERSION_SKEW		0x001
 #define PROXY_DB_OPEN_FL_SKIP_INTEGRITY_CHECK			0x002
 #define PROXY_DB_OPEN_FL_SKIP_VACUUM				0x004
 
 /* Close the database. */
-int proxy_db_close(pool *p, const char *schema_name);
+int proxy_db_close(pool *p, struct proxy_dbh *dbh);
 
-int proxy_db_prepare_stmt(pool *p, const char *stmt);
-int proxy_db_finish_stmt(pool *p, const char *stmt);
-int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
-  void *data);
+int proxy_db_prepare_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt);
+int proxy_db_finish_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt);
+int proxy_db_bind_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt,
+  int idx, int type, void *data);
 #define PROXY_DB_BIND_TYPE_INT		1
 #define PROXY_DB_BIND_TYPE_LONG		2
 #define PROXY_DB_BIND_TYPE_TEXT		3
@@ -59,13 +61,15 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
 /* Executes the given statement.  Assumes that the caller is not using a SELECT,
  * and/or is uninterested in the statement results.
  */
-int proxy_db_exec_stmt(pool *p, const char *stmt, const char **errstr);
-
-/* Executes the given statement as a previously prepared statement. */
-array_header *proxy_db_exec_prepared_stmt(pool *p, const char *stmt,
+int proxy_db_exec_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt,
   const char **errstr);
 
+/* Executes the given statement as a previously prepared statement. */
+array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
+  const char *stmt, const char **errstr);
+
 /* Rebuild the named index. */
-int proxy_db_reindex(pool *p, const char *index_name, const char **errstr);
+int proxy_db_reindex(pool *p, struct proxy_dbh *dbh, const char *index_name,
+  const char **errstr);
 
 #endif /* MOD_PROXY_DB_H */

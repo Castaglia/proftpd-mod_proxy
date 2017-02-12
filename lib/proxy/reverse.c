@@ -46,6 +46,7 @@ static int reverse_connect_policy = PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN;
 static unsigned long reverse_flags = 0UL;
 static int reverse_retry_count = PROXY_DEFAULT_RETRY_COUNT;
 
+static struct proxy_dbh *reverse_dbh = NULL;
 static const char *reverse_db_path = NULL;
 #define PROXY_REVERSE_DB_SCHEMA_NAME		"proxy_reverse"
 #define PROXY_REVERSE_DB_SCHEMA_VERSION		4
@@ -253,13 +254,13 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
   int res;
   const char *stmt, *errstr = NULL;
 
-  /* CREATE TABLE proxy_reverse.proxy_vhosts (
+  /* CREATE TABLE proxy_vhosts (
    *   vhost_id INTEGER NOT NULL PRIMARY KEY,
    *   vhost_name TEXT NOT NULL
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts (vhost_id INTEGER NOT NULL PRIMARY KEY, vhost_name TEXT NOT NULL);";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "CREATE TABLE IF NOT EXISTS proxy_vhosts (vhost_id INTEGER NOT NULL PRIMARY KEY, vhost_name TEXT NOT NULL);";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -273,7 +274,7 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
    *  unhealthy_reason TEXT
    */
 
-  /* CREATE TABLE proxy_reverse.proxy_vhost_backends (
+  /* CREATE TABLE proxy_vhost_backends (
    *   vhost_id INTEGER NOT NULL,
    *   backend_id INTEGER NOT NULL,
    *   backend_uri TEXT NOT NULL,
@@ -287,8 +288,8 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
    * backend URIs, which would violate that uniqueness constraint.  Thus we
    * create our own separate index on the vhost_id column.
    */
-  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends (vhost_id INTEGER NOT NULL, backend_id INTEGER NOT NULL, backend_uri TEXT NOT NULL, conn_count INTEGER NOT NULL, connect_ms INTEGER);";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "CREATE TABLE IF NOT EXISTS proxy_vhost_backends (vhost_id INTEGER NOT NULL, backend_id INTEGER NOT NULL, backend_uri TEXT NOT NULL, conn_count INTEGER NOT NULL, connect_ms INTEGER);";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -296,9 +297,9 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
     return -1;
   }
 
-  /* CREATE INDEX proxy_reverse.proxy_vhost_backends_vhost_id_idx */
-  stmt = "CREATE INDEX IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends_vhost_id_idx ON proxy_vhost_backends (vhost_id);";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  /* CREATE INDEX proxy_vhost_backends_vhost_id_idx */
+  stmt = "CREATE INDEX IF NOT EXISTS proxy_vhost_backends_vhost_id_idx ON proxy_vhost_backends (vhost_id);";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -306,15 +307,15 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
     return -1;
   }
 
-  /* CREATE TABLE proxy_reverse.proxy_vhost_reverse_roundrobin (
+  /* CREATE TABLE proxy_vhost_reverse_roundrobin (
    *   vhost_id INTEGER NOT NULL,
    *   current_backend_id INTEGER NOT NULL,
    *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id),
    *   FOREIGN KEY (current_backend_id) REFERENCES proxy_vhost_backends (backend_id)
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_roundrobin (vhost_id INTEGER NOT NULL, current_backend_id INTEGER NOT NULL, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id), FOREIGN KEY (current_backend_id) REFERENCES proxy_vhost_backends (backend_id));";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "CREATE TABLE IF NOT EXISTS proxy_vhost_reverse_roundrobin (vhost_id INTEGER NOT NULL, current_backend_id INTEGER NOT NULL, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id), FOREIGN KEY (current_backend_id) REFERENCES proxy_vhost_backends (backend_id));";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -322,15 +323,15 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
     return -1;
   }
 
-  /* CREATE TABLE proxy_reverse.proxy_vhost_reverse_shuffle (
+  /* CREATE TABLE proxy_vhost_reverse_shuffle (
    *   vhost_id INTEGER NOT NULL,
    *   avail_backend_id INTEGER NOT NULL,
    *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id),
    *   FOREIGN KEY (avail_backend_id) REFERENCES proxy_vhost_backends (backend_id)
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_shuffle (vhost_id INTEGER NOT NULL, avail_backend_id INTEGER NOT NULL, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id), FOREIGN KEY (avail_backend_id) REFERENCES proxy_vhost_backends (backend_id));";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "CREATE TABLE IF NOT EXISTS proxy_vhost_reverse_shuffle (vhost_id INTEGER NOT NULL, avail_backend_id INTEGER NOT NULL, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id), FOREIGN KEY (avail_backend_id) REFERENCES proxy_vhost_backends (backend_id));";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -338,15 +339,15 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
     return -1;
   }
 
-  /* CREATE TABLE proxy_reverse.proxy_vhost_reverse_per_user (
+  /* CREATE TABLE proxy_vhost_reverse_per_user (
    *   vhost_id INTEGER NOT NULL,
    *   user_name TEXT NOT NULL,
    *   backend_uri TEXT,
    *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id)
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user (vhost_id INTEGER NOT NULL, user_name TEXT NOT NULL, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "CREATE TABLE IF NOT EXISTS proxy_vhost_reverse_per_user (vhost_id INTEGER NOT NULL, user_name TEXT NOT NULL, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -354,9 +355,9 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
     return -1;
   }
 
-  /* CREATE INDEX proxy_reverse.proxy_vhost_reverse_per_user_name_idx */
-  stmt = "CREATE INDEX IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts_reverse_per_user_name_idx ON proxy_vhost_reverse_per_user (user_name);";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  /* CREATE INDEX proxy_vhost_reverse_per_user_name_idx */
+  stmt = "CREATE INDEX IF NOT EXISTS proxy_vhosts_reverse_per_user_name_idx ON proxy_vhost_reverse_per_user (user_name);";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -364,15 +365,15 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
     return -1;
   }
 
-  /* CREATE TABLE proxy_reverse.proxy_vhost_reverse_per_group (
+  /* CREATE TABLE proxy_vhost_reverse_per_group (
    *   vhost_id INTEGER NOT NULL,
    *   group_name TEXT NOT NULL,
    *   backend_uri TEXT,
    *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id)
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_group (vhost_id INTEGER NOT NULL, group_name TEXT NOT NULL, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "CREATE TABLE IF NOT EXISTS proxy_vhost_reverse_per_group (vhost_id INTEGER NOT NULL, group_name TEXT NOT NULL, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -380,9 +381,9 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
     return -1;
   }
 
-  /* CREATE INDEX proxy_reverse.proxy_vhost_reverse_per_group_name_idx */
-  stmt = "CREATE INDEX IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts_reverse_per_group_name_idx ON proxy_vhost_reverse_per_group (group_name);";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  /* CREATE INDEX proxy_vhost_reverse_per_group_name_idx */
+  stmt = "CREATE INDEX IF NOT EXISTS proxy_vhosts_reverse_per_group_name_idx ON proxy_vhost_reverse_per_group (group_name);";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -390,15 +391,15 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
     return -1;
   }
 
-  /* CREATE TABLE proxy_reverse.proxy_vhost_reverse_per_host (
+  /* CREATE TABLE proxy_vhost_reverse_per_host (
    *   vhost_id INTEGER NOT NULL,
    *   ip_addr TEXT NOT NULL,
    *   backend_uri TEXT,
    *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id)
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_host (vhost_id INTEGER NOT NULL, ip_addr TEXT NOT NULL, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "CREATE TABLE IF NOT EXISTS proxy_vhost_reverse_per_host (vhost_id INTEGER NOT NULL, ip_addr TEXT NOT NULL, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -406,9 +407,9 @@ static int reverse_db_add_schema(pool *p, const char *db_path) {
     return -1;
   }
 
-  /* CREATE INDEX proxy_reverse.proxy_vhost_reverse_per_host_ipaddr_idx */
-  stmt = "CREATE INDEX IF NOT EXISTS " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts_reverse_per_host_ipaddr_idx ON proxy_vhost_reverse_per_host (ip_addr);";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  /* CREATE INDEX proxy_vhost_reverse_per_host_ipaddr_idx */
+  stmt = "CREATE INDEX IF NOT EXISTS proxy_vhosts_reverse_per_host_ipaddr_idx ON proxy_vhost_reverse_per_host (ip_addr);";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -423,8 +424,8 @@ static int reverse_truncate_db_tables(pool *p) {
   int res;
   const char *index_name, *stmt, *errstr = NULL;
 
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "DELETE FROM proxy_vhosts;";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -432,8 +433,8 @@ static int reverse_truncate_db_tables(pool *p) {
     return -1;
   }
 
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "DELETE FROM proxy_vhost_backends;";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -441,8 +442,8 @@ static int reverse_truncate_db_tables(pool *p) {
     return -1;
   }
 
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_roundrobin;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "DELETE FROM proxy_vhost_reverse_roundrobin;";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -450,8 +451,8 @@ static int reverse_truncate_db_tables(pool *p) {
     return -1;
   }
 
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_shuffle;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "DELETE FROM proxy_vhost_reverse_shuffle;";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -459,8 +460,8 @@ static int reverse_truncate_db_tables(pool *p) {
     return -1;
   }
 
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "DELETE FROM proxy_vhost_reverse_per_user;";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -468,8 +469,8 @@ static int reverse_truncate_db_tables(pool *p) {
     return -1;
   }
 
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_group;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "DELETE FROM proxy_vhost_reverse_per_group;";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -477,8 +478,8 @@ static int reverse_truncate_db_tables(pool *p) {
     return -1;
   }
 
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_host;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "DELETE FROM proxy_vhost_reverse_per_host;";
+  res = proxy_db_exec_stmt(p, reverse_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -488,8 +489,8 @@ static int reverse_truncate_db_tables(pool *p) {
 
   /* Note: don't forget to rebuild the indices, too! */
 
-  index_name = PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends_vhost_id_idx";
-  res = proxy_db_reindex(p, index_name, &errstr);
+  index_name = "proxy_vhost_backends_vhost_id_idx";
+  res = proxy_db_reindex(p, reverse_dbh, index_name, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error reindexing '%s': %s", index_name, errstr);
@@ -497,8 +498,8 @@ static int reverse_truncate_db_tables(pool *p) {
     return -1;
   }
 
-  index_name = PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts_reverse_per_user_name_idx";
-  res = proxy_db_reindex(p, index_name, &errstr);
+  index_name = "proxy_vhosts_reverse_per_user_name_idx";
+  res = proxy_db_reindex(p, reverse_dbh, index_name, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error reindexing '%s': %s", index_name, errstr);
@@ -506,8 +507,8 @@ static int reverse_truncate_db_tables(pool *p) {
     return -1;
   }
 
-  index_name = PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts_reverse_per_group_name_idx";
-  res = proxy_db_reindex(p, index_name, &errstr);
+  index_name = "proxy_vhosts_reverse_per_group_name_idx";
+  res = proxy_db_reindex(p, reverse_dbh, index_name, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error reindexing '%s': %s", index_name, errstr);
@@ -515,8 +516,8 @@ static int reverse_truncate_db_tables(pool *p) {
     return -1;
   }
 
-  index_name = PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts_reverse_per_host_ipaddr_idx";
-  res = proxy_db_reindex(p, index_name, &errstr);
+  index_name = "proxy_vhosts_reverse_per_host_ipaddr_idx";
+  res = proxy_db_reindex(p, reverse_dbh, index_name, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error reindexing '%s': %s", index_name, errstr);
@@ -532,8 +533,8 @@ static int reverse_db_add_vhost(pool *p, server_rec *s) {
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "INSERT INTO " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhosts (vhost_id, vhost_name) VALUES (?, ?);";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "INSERT INTO proxy_vhosts (vhost_id, vhost_name) VALUES (?, ?);";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
@@ -542,19 +543,19 @@ static int reverse_db_add_vhost(pool *p, server_rec *s) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &(s->sid));
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
     (void *) s->ServerName);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -571,25 +572,25 @@ static int reverse_db_add_backend(pool *p, unsigned int vhost_id,
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "INSERT INTO " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends (vhost_id, backend_uri, backend_id, conn_count) VALUES (?, ?, ?, 0);";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "INSERT INTO proxy_vhost_backends (vhost_id, backend_uri, backend_id, conn_count) VALUES (?, ?, ?, 0);";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
     (void *) backend_uri);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 3, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 3, PROXY_DB_BIND_TYPE_INT,
     (void *) &backend_id);
   if (res < 0) {
     return -1;
@@ -599,7 +600,7 @@ static int reverse_db_add_backend(pool *p, unsigned int vhost_id,
     "adding backend '%.100s' to database table at index %d", backend_uri,
     backend_id);
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -656,17 +657,17 @@ static int reverse_db_update_backend(pool *p, unsigned vhost_id,
    */
 
   if (connect_ms > 0) {
-    stmt = "UPDATE " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends SET conn_count = conn_count + ?, connect_ms = ? WHERE vhost_id = ? AND backend_id = ?;";
+    stmt = "UPDATE proxy_vhost_backends SET conn_count = conn_count + ?, connect_ms = ? WHERE vhost_id = ? AND backend_id = ?;";
   } else {
-    stmt = "UPDATE " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends SET conn_count = conn_count + ? WHERE vhost_id = ? AND backend_id = ?;";
+    stmt = "UPDATE proxy_vhost_backends SET conn_count = conn_count + ? WHERE vhost_id = ? AND backend_id = ?;";
   }
 
-  res = proxy_db_prepare_stmt(p, stmt);
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, idx, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT,
     (void *) &conn_incr);
   if (res < 0) {
     return -1;
@@ -675,7 +676,7 @@ static int reverse_db_update_backend(pool *p, unsigned vhost_id,
   idx++;
 
   if (connect_ms > 0) {
-    res = proxy_db_bind_stmt(p, stmt, idx, PROXY_DB_BIND_TYPE_LONG,
+    res = proxy_db_bind_stmt(p, reverse_dbh, stmt, idx, PROXY_DB_BIND_TYPE_LONG,
       (void *) &connect_ms);
     if (res < 0) {
       return -1;
@@ -684,7 +685,7 @@ static int reverse_db_update_backend(pool *p, unsigned vhost_id,
     idx++;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, idx, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return -1;
@@ -692,13 +693,13 @@ static int reverse_db_update_backend(pool *p, unsigned vhost_id,
 
   idx++;
 
-  res = proxy_db_bind_stmt(p, stmt, idx, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT,
     (void *) &backend_id);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -717,25 +718,25 @@ static int reverse_db_add_shuffle(pool *p, unsigned int vhost_id,
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "INSERT INTO " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_shuffle (vhost_id, avail_backend_id) VALUES (?, ?);";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "INSERT INTO proxy_vhost_reverse_shuffle (vhost_id, avail_backend_id) VALUES (?, ?);";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 2, PROXY_DB_BIND_TYPE_INT,
     (void *) &backend_id);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -773,19 +774,19 @@ static int reverse_db_shuffle_next(pool *p, unsigned int vhost_id) {
   array_header *results;
   unsigned int nrows = 0;
 
-  stmt = "SELECT COUNT(*) FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_shuffle WHERE vhost_id = ?;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "SELECT COUNT(*) FROM proxy_vhost_reverse_shuffle WHERE vhost_id = ?;";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -821,8 +822,8 @@ static int reverse_db_shuffle_used(pool *p, unsigned int vhost_id,
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_shuffle WHERE vhost_id = ? AND avail_backend_id = ?;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "DELETE FROM proxy_vhost_reverse_shuffle WHERE vhost_id = ? AND avail_backend_id = ?;";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
@@ -831,19 +832,19 @@ static int reverse_db_shuffle_used(pool *p, unsigned int vhost_id,
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 2, PROXY_DB_BIND_TYPE_INT,
     (void *) &backend_id);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -862,25 +863,25 @@ static int reverse_db_roundrobin_update(pool *p, unsigned int vhost_id,
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "UPDATE " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_roundrobin SET current_backend_id = ? WHERE vhost_id = ?;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "UPDATE proxy_vhost_reverse_roundrobin SET current_backend_id = ? WHERE vhost_id = ?;";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &backend_id);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 2, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -897,25 +898,25 @@ static int reverse_db_roundrobin_init(pool *p, unsigned int vhost_id,
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "INSERT INTO " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_roundrobin (vhost_id, current_backend_id) VALUES (?, ?);";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "INSERT INTO proxy_vhost_reverse_roundrobin (vhost_id, current_backend_id) VALUES (?, ?);";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 2, PROXY_DB_BIND_TYPE_INT,
     (void *) &backend_id);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -931,19 +932,19 @@ static int reverse_db_roundrobin_next(pool *p, unsigned int vhost_id) {
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "SELECT current_backend_id FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_roundrobin WHERE vhost_id = ?;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "SELECT current_backend_id FROM proxy_vhost_reverse_roundrobin WHERE vhost_id = ?;";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -984,19 +985,19 @@ static int reverse_db_leastconns_next(pool *p, unsigned int vhost_id) {
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "SELECT backend_id FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends WHERE vhost_id = ? ORDER BY conn_count ASC LIMIT 1;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "SELECT backend_id FROM proxy_vhost_backends WHERE vhost_id = ? ORDER BY conn_count ASC LIMIT 1;";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -1039,19 +1040,19 @@ static int reverse_db_leastresponsetime_next(pool *p, unsigned int vhost_id) {
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "SELECT backend_id FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_backends WHERE vhost_id = ? ORDER BY (conn_count * connect_ms) ASC LIMIT 1;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "SELECT backend_id FROM proxy_vhost_backends WHERE vhost_id = ? ORDER BY (conn_count * connect_ms) ASC LIMIT 1;";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -1421,24 +1422,25 @@ static array_header *reverse_db_peruser_get(pool *p, unsigned int vhost_id,
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "SELECT backend_uri FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user WHERE vhost_id = ? AND user_name = ?;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "SELECT backend_uri FROM proxy_vhost_reverse_per_user WHERE vhost_id = ? AND user_name = ?;";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return NULL;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return NULL;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT, (void *) user);
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) user);
   if (res < 0) {
     return NULL;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -1499,30 +1501,32 @@ static const struct proxy_conn *reverse_db_peruser_init(pool *p,
    * choose another?
    */
 
-  stmt = "INSERT INTO " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user (vhost_id, user_name, backend_uri) VALUES (?, ?, ?);";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "INSERT INTO proxy_vhost_reverse_per_user (vhost_id, user_name, backend_uri) VALUES (?, ?, ?);";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return NULL;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return NULL;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT, (void *) user);
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) user);
   if (res < 0) {
     return NULL;
   }
 
   uri = proxy_conn_get_uri(pconn);
-  res = proxy_db_bind_stmt(p, stmt, 3, PROXY_DB_BIND_TYPE_TEXT, (void *) uri);
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 3, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) uri);
   if (res < 0) {
     return NULL;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -1577,13 +1581,13 @@ static int reverse_db_peruser_used(pool *p, unsigned int vhost_id,
    * in the table if we're over our limit.
    */
 
-  stmt = "SELECT COUNT(*) FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "SELECT COUNT(*) FROM proxy_vhost_reverse_per_user;";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -1608,13 +1612,13 @@ static int reverse_db_peruser_used(pool *p, unsigned int vhost_id,
     "PerUser entry count (%d) exceeds max (%d), purging", count,
     PROXY_REVERSE_PERUSER_MAX_ENTRIES);
 
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_user;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "DELETE FROM proxy_vhost_reverse_per_user;";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -1633,24 +1637,25 @@ static array_header *reverse_db_pergroup_get(pool *p, unsigned int vhost_id,
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "SELECT backend_uri FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_group WHERE vhost_id = ? AND group_name = ?;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "SELECT backend_uri FROM proxy_vhost_reverse_per_group WHERE vhost_id = ? AND group_name = ?;";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return NULL;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return NULL;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT, (void *) group);
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) group);
   if (res < 0) {
     return NULL;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -1711,30 +1716,32 @@ static const struct proxy_conn *reverse_db_pergroup_init(pool *p,
    * choose another?
    */
 
-  stmt = "INSERT INTO " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_group (vhost_id, group_name, backend_uri) VALUES (?, ?, ?);";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "INSERT INTO proxy_vhost_reverse_per_group (vhost_id, group_name, backend_uri) VALUES (?, ?, ?);";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return NULL;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return NULL;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT, (void *) group);
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) group);
   if (res < 0) {
     return NULL;
   }
 
   uri = proxy_conn_get_uri(pconn);
-  res = proxy_db_bind_stmt(p, stmt, 3, PROXY_DB_BIND_TYPE_TEXT, (void *) uri);
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 3, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) uri);
   if (res < 0) {
     return NULL;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -1789,13 +1796,13 @@ static int reverse_db_pergroup_used(pool *p, unsigned int vhost_id,
    * in the table if we're over our limit.
    */
 
-  stmt = "SELECT COUNT(*) FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_group;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "SELECT COUNT(*) FROM proxy_vhost_reverse_per_group;";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -1820,13 +1827,13 @@ static int reverse_db_pergroup_used(pool *p, unsigned int vhost_id,
     "PerGroup entry count (%d) exceeds max (%d), purging", count,
     PROXY_REVERSE_PERGROUP_MAX_ENTRIES);
 
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_group;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "DELETE FROM proxy_vhost_reverse_per_group;";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -1845,25 +1852,26 @@ static array_header *reverse_db_perhost_get(pool *p, unsigned int vhost_id,
   const char *stmt, *errstr = NULL, *ip;
   array_header *results;
 
-  stmt = "SELECT backend_uri FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_host WHERE vhost_id = ? AND ip_addr = ?;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "SELECT backend_uri FROM proxy_vhost_reverse_per_host WHERE vhost_id = ? AND ip_addr = ?;";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return NULL;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return NULL;
   }
 
   ip = pr_netaddr_get_ipstr(addr);
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT, (void *) ip);
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) ip);
   if (res < 0) {
     return NULL;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -1900,30 +1908,32 @@ static const struct proxy_conn *reverse_db_perhost_init(pool *p,
     pconn = conns[idx];
   }
 
-  stmt = "INSERT INTO " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_host (vhost_id, ip_addr, backend_uri) VALUES (?, ?, ?);";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "INSERT INTO proxy_vhost_reverse_per_host (vhost_id, ip_addr, backend_uri) VALUES (?, ?, ?);";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return NULL;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return NULL;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT, (void *) ip);
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) ip);
   if (res < 0) {
     return NULL;
   }
 
   uri = proxy_conn_get_uri(pconn);
-  res = proxy_db_bind_stmt(p, stmt, 3, PROXY_DB_BIND_TYPE_TEXT, (void *) uri);
+  res = proxy_db_bind_stmt(p, reverse_dbh, stmt, 3, PROXY_DB_BIND_TYPE_TEXT,
+    (void *) uri);
   if (res < 0) {
     return NULL;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -1979,13 +1989,13 @@ static int reverse_db_perhost_used(pool *p, unsigned int vhost_id,
    * in the table if we're over our limit.
    */
 
-  stmt = "SELECT COUNT(*) FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_host;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "SELECT COUNT(*) FROM proxy_vhost_reverse_per_host;";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -2010,13 +2020,13 @@ static int reverse_db_perhost_used(pool *p, unsigned int vhost_id,
     "PerHost entry count (%d) exceeds max (%d), purging", count,
     PROXY_REVERSE_PERHOST_MAX_ENTRIES);
 
-  stmt = "DELETE FROM " PROXY_REVERSE_DB_SCHEMA_NAME ".proxy_vhost_reverse_per_host;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "DELETE FROM proxy_vhost_reverse_per_host;";
+  res = proxy_db_prepare_stmt(p, reverse_dbh, stmt);
   if (res < 0) {
     return -1;
   }
  
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, reverse_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -2522,12 +2532,12 @@ int proxy_reverse_init(pool *p, const char *tables_dir, int flags) {
   reverse_db_path = pdircat(p, tables_dir, "proxy-reverse.db", NULL);
 
   PRIVS_ROOT
-  res = proxy_db_open_with_version(p, reverse_db_path,
+  reverse_dbh = proxy_db_open_with_version(p, reverse_db_path,
     PROXY_REVERSE_DB_SCHEMA_NAME, PROXY_REVERSE_DB_SCHEMA_VERSION, flags);
   xerrno = errno;
   PRIVS_RELINQUISH
 
-  if (res < 0) {
+  if (reverse_dbh == NULL) {
     (void) pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
       ": error opening database '%s' for schema '%s', version %u: %s",
       reverse_db_path, PROXY_REVERSE_DB_SCHEMA_NAME,
@@ -2543,7 +2553,8 @@ int proxy_reverse_init(pool *p, const char *tables_dir, int flags) {
     (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
       ": error creating schema in database '%s' for '%s': %s", reverse_db_path,
       PROXY_REVERSE_DB_SCHEMA_NAME, strerror(xerrno));
-    (void) proxy_db_close(p, PROXY_REVERSE_DB_SCHEMA_NAME);
+    (void) proxy_db_close(p, reverse_dbh);
+    reverse_dbh = NULL;
     reverse_db_path = NULL;
     errno = xerrno;
     return -1;
@@ -2552,7 +2563,8 @@ int proxy_reverse_init(pool *p, const char *tables_dir, int flags) {
   res = reverse_truncate_db_tables(p);
   if (res < 0) {
     xerrno = errno;
-    (void) proxy_db_close(p, PROXY_REVERSE_DB_SCHEMA_NAME);
+    (void) proxy_db_close(p, reverse_dbh);
+    reverse_dbh = NULL;
     reverse_db_path = NULL;
     errno = xerrno;
     return -1;
@@ -2570,7 +2582,8 @@ int proxy_reverse_init(pool *p, const char *tables_dir, int flags) {
       (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
         ": error adding database entry for server '%s' in schema '%s': %s",
         s->ServerName, PROXY_REVERSE_DB_SCHEMA_NAME, strerror(xerrno));
-      (void) proxy_db_close(p, PROXY_REVERSE_DB_SCHEMA_NAME);
+      (void) proxy_db_close(p, reverse_dbh);
+      reverse_dbh = NULL;
       reverse_db_path = NULL;
       errno = xerrno;
       return -1;
@@ -2707,11 +2720,13 @@ int proxy_reverse_init(pool *p, const char *tables_dir, int flags) {
     }
   }
 
+  proxy_db_close(p, reverse_dbh);
+  reverse_dbh = NULL;
+
   return 0;
 }
 
 int proxy_reverse_free(pool *p) {
-  int res;
 
   if (p == NULL) {
     errno = EINVAL;
@@ -2719,11 +2734,18 @@ int proxy_reverse_free(pool *p) {
   }
 
   /* TODO: Implement any necessary cleanup */
-  res = proxy_db_close(p, PROXY_REVERSE_DB_SCHEMA_NAME);
-  if (res < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error detaching database with schema '%s': %s",
-      PROXY_REVERSE_DB_SCHEMA_NAME, strerror(errno));
+
+  if (reverse_dbh != NULL) {
+    int res;
+
+    res = proxy_db_close(p, reverse_dbh);
+    if (res < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error detaching database with schema '%s': %s",
+        PROXY_REVERSE_DB_SCHEMA_NAME, strerror(errno));
+    }
+
+    reverse_dbh = NULL;
   }
 
   return 0;
@@ -2784,7 +2806,10 @@ int proxy_reverse_sess_free(pool *p, struct proxy_session *proxy_sess) {
   reverse_flags = 0UL;
   reverse_retry_count = PROXY_DEFAULT_RETRY_COUNT;
 
-  (void) proxy_db_close(p, PROXY_REVERSE_DB_SCHEMA_NAME);
+  if (reverse_dbh != NULL) {
+    (void) proxy_db_close(p, reverse_dbh);
+  }
+
   return 0;
 }
 
@@ -2841,16 +2866,18 @@ int proxy_reverse_sess_init(pool *p, const char *tables_dir,
    * recommendation.
    */
   PRIVS_ROOT
-  res = proxy_db_open_with_version(proxy_pool, reverse_db_path,
+  reverse_dbh = proxy_db_open_with_version(proxy_pool, reverse_db_path,
     PROXY_REVERSE_DB_SCHEMA_NAME, PROXY_REVERSE_DB_SCHEMA_VERSION, flags);
   xerrno = errno;
   PRIVS_RELINQUISH
 
-  if (res < 0) {
+  if (reverse_dbh == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error opening database '%s' for schema '%s', version %u: %s",
       reverse_db_path, PROXY_REVERSE_DB_SCHEMA_NAME,
       PROXY_REVERSE_DB_SCHEMA_VERSION, strerror(xerrno));
+    errno = xerrno;
+    return -1;
   }
 
   if (set_reverse_flags() < 0) {
@@ -3063,6 +3090,11 @@ array_header *proxy_reverse_json_parse_uris(pool *p, const char *path) {
       }
 
       *((const struct proxy_conn **) push_array(uris)) = pconn;
+
+    } else {
+      pr_trace_msg(trace_channel, 2,
+        "error getting string from JSON array at index %u: %s", i,
+        strerror(errno));
     }
   }
 
@@ -3075,6 +3107,8 @@ array_header *proxy_reverse_json_parse_uris(pool *p, const char *path) {
       "first %u items)", path, i);
   }
 
+  pr_trace_msg(trace_channel, 12,
+    "created URIs (count %u) from JSON file '%s'", uris->nelts, path);
   return uris;
 }
 
