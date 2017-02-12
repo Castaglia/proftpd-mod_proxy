@@ -711,6 +711,8 @@ int proxy_db_close(pool *p, struct proxy_dbh *dbh) {
     return -1;
   }
 
+  pr_trace_msg(trace_channel, 19, "closing '%s' database handle",
+    dbh->schema_name);
   tmp_pool = make_sub_pool(p);
 
   /* Make sure to close/finish any prepared statements associated with
