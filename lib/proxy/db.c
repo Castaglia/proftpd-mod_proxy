@@ -497,7 +497,7 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
 
 struct proxy_dbh *proxy_db_open(pool *p, const char *table_path,
     const char *schema_name) {
-  int res, res;
+  int res, flags;
   pool *sub_pool;
   const char *stmt;
   sqlite3 *db = NULL;
