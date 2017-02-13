@@ -76,7 +76,7 @@ static void db_sql(void *user_data, sqlite3 *db, const char *info,
       if (current_schema != NULL) {
         pr_trace_msg(trace_channel, 1,
           "(sqlite3): schema '%s': executed statement: %s", current_schema,
-          info)
+          info);
 
       } else {
         pr_trace_msg(trace_channel, 1, "(sqlite3): executed statement: %s",
