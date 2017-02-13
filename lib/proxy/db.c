@@ -40,6 +40,18 @@ static const char *trace_channel = "proxy.db";
 
 #define PROXY_DB_SQLITE_TRACE_LEVEL		17
 
+static int db_busy(void *user_data, int busy_count) {
+  if (current_schema != NULL) {
+    pr_trace_msg(trace_channel, 1, "(sqlite3): schema '%s': busy count = %d",
+      current_schema, busy_count);
+
+  } else {
+    pr_trace_msg(trace_channel, 1, "(sqlite3): busy count = %d", busy_count);
+  }
+
+  return 0;
+}
+
 static void db_err(void *user_data, int err_code, const char *err_msg) {
   if (current_schema != NULL) {
     pr_trace_msg(trace_channel, 1, "(sqlite3): schema '%s': [error %d] %s",
@@ -50,6 +62,36 @@ static void db_err(void *user_data, int err_code, const char *err_msg) {
       err_msg);
   }
 }
+
+#ifdef SQLITE_CONFIG_SQLLOG
+static void db_sql(void *user_data, sqlite3 *db, const char *info,
+    int event_type) {
+  switch (event_type) {
+    case 0:
+      /* Opening database. */
+      pr_trace_msg(trace_channel, 1, "(sqlite3): opened database: %s", info);
+      break;
+
+    case 1:
+      if (current_schema != NULL) {
+        pr_trace_msg(trace_channel, 1,
+          "(sqlite3): schema '%s': executed statement: %s", current_schema,
+          info)
+
+      } else {
+        pr_trace_msg(trace_channel, 1, "(sqlite3): executed statement: %s",
+          info);
+      }
+      break;
+
+    case 2:
+      /* Closing database. */
+      pr_trace_msg(trace_channel, 1, "(sqlite3): closed database: %s",
+        sqlite3_db_filename(db, "main"));
+      break;
+  }
+}
+#endif /* SQLITE_CONFIG_SQLLOG */
 
 static void db_trace(void *user_data, const char *trace_msg) {
   if (user_data != NULL) {
@@ -455,7 +497,7 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
 
 struct proxy_dbh *proxy_db_open(pool *p, const char *table_path,
     const char *schema_name) {
-  int res;
+  int res, res;
   pool *sub_pool;
   const char *stmt;
   sqlite3 *db = NULL;
@@ -471,16 +513,26 @@ struct proxy_dbh *proxy_db_open(pool *p, const char *table_path,
   pr_trace_msg(trace_channel, 19, "attempting to open %s tables at path '%s'",
     schema_name, table_path);
 
-  res = sqlite3_open(table_path, &db);
+  flags = SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE;
+#ifdef SQLITE_OPEN_PRIVATECACHE
+  /* By default, disable the shared cache mode. */
+  flags |= SQLITE_OPEN_PRIVATECACHE;
+#endif
+
+  res = sqlite3_open_v2(table_path, &db, flags, NULL);
   if (res != SQLITE_OK) {
     pr_log_debug(DEBUG0, MOD_PROXY_VERSION
       ": error opening SQLite database '%s': %s", table_path,
       sqlite3_errmsg(db));
+    if (db != NULL) {
+      sqlite3_close(db);
+    }
     errno = EPERM;
     return NULL;
   }
 
   if (pr_trace_get_level(trace_channel) >= PROXY_DB_SQLITE_TRACE_LEVEL) {
+    sqlite3_busy_handler(db, db_busy, (void *) schema_name);
     sqlite3_trace(db, db_trace, (void *) schema_name);
   }
 
@@ -816,6 +868,9 @@ int proxy_db_init(pool *p) {
 
   /* Register an error logging callback with SQLite3. */
   sqlite3_config(SQLITE_CONFIG_LOG, db_err, NULL);
+#ifdef SQLITE_CONFIG_SQLLOG
+  sqlite3_config(SQLITE_CONFIG_SQLLOG, db_sql, NULL);
+#endif /* SQLITE_CONFIG_SQLLOG */
 
   /* Check that the SQLite headers used match the version of the SQLite
    * library used.
