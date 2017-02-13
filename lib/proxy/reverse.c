@@ -2863,8 +2863,11 @@ int proxy_reverse_sess_init(pool *p, const char *tables_dir,
   }
 
   /* Make sure we have our own per-session database handle, per SQLite3
-   * recommendation.
+   * recommendation.  Skip integrity checks and vacuuming, assuming that they
+   * were done on startup.
    */
+  flags |= (PROXY_DB_OPEN_FL_SKIP_INTEGRITY_CHECK|PROXY_DB_OPEN_FL_SKIP_VACUUM);
+
   PRIVS_ROOT
   reverse_dbh = proxy_db_open_with_version(proxy_pool, reverse_db_path,
     PROXY_REVERSE_DB_SCHEMA_NAME, PROXY_REVERSE_DB_SCHEMA_VERSION, flags);

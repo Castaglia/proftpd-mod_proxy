@@ -3478,8 +3478,11 @@ int proxy_tls_sess_init(pool *p, int flags) {
   }
 
   /* Make sure we have our own per-session database handle, per SQLite3
-   * recommendation.
+   * recommendation.  Skip integrity checks and vacuuming, assuming that they
+   * were done on startup.
    */
+  flags |= (PROXY_DB_OPEN_FL_SKIP_INTEGRITY_CHECK|PROXY_DB_OPEN_FL_SKIP_VACUUM);
+
   PRIVS_ROOT
   tls_dbh = proxy_db_open_with_version(proxy_pool, tls_db_path,
     PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION, flags);
