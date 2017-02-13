@@ -134,8 +134,10 @@ int proxy_db_exec_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt,
     return -1;
   }
 
-  current_schema = dbh->schema;
+  pr_trace_msg(trace_channel, 10, "schema '%s': executing statement '%s'",
+    dbh->schema, stmt);
 
+  current_schema = dbh->schema;
   res = sqlite3_exec(dbh->db, stmt, stmt_cb, (void *) stmt, &ptr);
   while (res != SQLITE_OK) {
     if (res == SQLITE_BUSY) {
