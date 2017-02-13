@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS implementation
- * Copyright (c) 2015-2016 TJ Saunders
+ * Copyright (c) 2015-2017 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,6 +35,7 @@
 extern xaset_t *server_list;
 
 static const char *tls_db_path = NULL;
+static struct proxy_dbh *tls_dbh = NULL;
 static int tls_engine = PROXY_TLS_ENGINE_AUTO;
 static unsigned long tls_opts = 0UL;
 static int tls_need_data_prot = TRUE;
@@ -109,7 +110,7 @@ static int netio_install_ctrl(void);
 static int netio_install_data(void);
 
 #define PROXY_TLS_DB_SCHEMA_NAME		"proxy_tls"
-#define PROXY_TLS_DB_SCHEMA_VERSION		2
+#define PROXY_TLS_DB_SCHEMA_VERSION		3
 
 /* Indices for data stashed in SSL objects */
 #define PROXY_TLS_IDX_TICKET_KEY		2
@@ -1371,8 +1372,8 @@ static int tls_db_add_sess(pool *p, const char *key, SSL_SESSION *sess) {
   /* We use INSERT OR REPLACE here to get upsert semantics; we only want/
    * need one cached SSL session per URI.
    */
-  stmt = "INSERT OR REPLACE INTO " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_sessions (vhost_id, backend_uri, session) VALUES (?, ?, ?);";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "INSERT OR REPLACE INTO proxy_tls_sessions (vhost_id, backend_uri, session) VALUES (?, ?, ?);";
+  res = proxy_db_prepare_stmt(p, tls_dbh, stmt);
   if (res < 0) {
     xerrno = errno;
 
@@ -1382,7 +1383,7 @@ static int tls_db_add_sess(pool *p, const char *key, SSL_SESSION *sess) {
   }
 
   vhost_id = main_server->sid;
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     xerrno = errno;
@@ -1392,7 +1393,7 @@ static int tls_db_add_sess(pool *p, const char *key, SSL_SESSION *sess) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
     (void *) key);
   if (res < 0) {
     xerrno = errno;
@@ -1402,7 +1403,7 @@ static int tls_db_add_sess(pool *p, const char *key, SSL_SESSION *sess) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 3, PROXY_DB_BIND_TYPE_TEXT,
+  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 3, PROXY_DB_BIND_TYPE_TEXT,
     (void *) data);
   if (res < 0) {
     xerrno = errno;
@@ -1412,7 +1413,7 @@ static int tls_db_add_sess(pool *p, const char *key, SSL_SESSION *sess) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, tls_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -1433,26 +1434,26 @@ static int tls_db_remove_sess(pool *p, const char *key) {
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "DELETE FROM " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_sessions WHERE vhost_id = ? AND backend_uri = ?;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "DELETE FROM proxy_tls_sessions WHERE vhost_id = ? AND backend_uri = ?;";
+  res = proxy_db_prepare_stmt(p, tls_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
   vhost_id = main_server->sid;
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
     (void *) key);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, tls_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -1474,27 +1475,26 @@ static SSL_SESSION *tls_db_get_sess(pool *p, const char *key) {
   long sess_age;
   time_t now;
 
-  stmt = "SELECT session FROM " PROXY_TLS_DB_SCHEMA_NAME
-    ".proxy_tls_sessions WHERE vhost_id = ? AND backend_uri = ?;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "SELECT session FROM proxy_tls_sessions WHERE vhost_id = ? AND backend_uri = ?;";
+  res = proxy_db_prepare_stmt(p, tls_dbh, stmt);
   if (res < 0) {
     return NULL;
   }
 
   vhost_id = main_server->sid;
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &vhost_id);
   if (res < 0) {
     return NULL;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
     (void *) key);
   if (res < 0) {
     return NULL;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, tls_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -1545,14 +1545,13 @@ static int tls_db_get_cached_sess_count(pool *p) {
   const char *stmt, *errstr = NULL;
   array_header *results;
   
-  stmt = "SELECT COUNT(*) FROM " PROXY_TLS_DB_SCHEMA_NAME
-    ".proxy_tls_sessions;";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "SELECT COUNT(*) FROM proxy_tls_sessions;";
+  res = proxy_db_prepare_stmt(p, tls_dbh, stmt);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, tls_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -2635,13 +2634,13 @@ static int tls_db_add_schema(pool *p, const char *db_path) {
   int res;
   const char *stmt, *errstr = NULL;
 
-  /* CREATE TABLE proxy_tls.proxy_tls_vhosts (
+  /* CREATE TABLE proxy_tls_vhosts (
    *   vhost_id INTEGER NOT NULL PRIMARY KEY,
    *   vhost_name TEXT NOT NULL
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_vhosts (vhost_id INTEGER NOT NULL PRIMARY KEY, vhost_name TEXT NOT NULL);";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "CREATE TABLE IF NOT EXISTS proxy_tls_vhosts (vhost_id INTEGER NOT NULL PRIMARY KEY, vhost_name TEXT NOT NULL);";
+  res = proxy_db_exec_stmt(p, tls_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -2649,15 +2648,15 @@ static int tls_db_add_schema(pool *p, const char *db_path) {
     return -1;
   }
 
-  /* CREATE TABLE proxy_tls.proxy_tls_sessions (
+  /* CREATE TABLE proxy_tls_sessions (
    *   backend_uri STRING NOT NULL PRIMARY KEY,
    *   vhost_id INTEGER NOT NULL,
    *   session TEXT NOT NULL,
    *   FOREIGN KEY (vhost_id) REFERENCES proxy_tls_vhosts (vhost_id)
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_sessions (backend_uri STRING NOT NULL PRIMARY KEY, vhost_id INTEGER NOT NULL, session TEXT NOT NULL, FOREIGN KEY (vhost_id) REFERENCES proxy_tls_hosts (vhost_id));";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "CREATE TABLE IF NOT EXISTS proxy_tls_sessions (backend_uri STRING NOT NULL PRIMARY KEY, vhost_id INTEGER NOT NULL, session TEXT NOT NULL, FOREIGN KEY (vhost_id) REFERENCES proxy_tls_hosts (vhost_id));";
+  res = proxy_db_exec_stmt(p, tls_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -2674,8 +2673,8 @@ static int tls_truncate_db_tables(pool *p) {
   int res;
   const char *stmt, *errstr = NULL;
 
-  stmt = "DELETE FROM " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_vhosts;";
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "DELETE FROM proxy_tls_vhosts;";
+  res = proxy_db_exec_stmt(p, tls_dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr);
@@ -2692,8 +2691,8 @@ static int tls_db_add_vhost(pool *p, server_rec *s) {
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = "INSERT INTO " PROXY_TLS_DB_SCHEMA_NAME ".proxy_tls_vhosts (vhost_id, vhost_name) VALUES (?, ?);";
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "INSERT INTO proxy_tls_vhosts (vhost_id, vhost_name) VALUES (?, ?);";
+  res = proxy_db_prepare_stmt(p, tls_dbh, stmt);
   if (res < 0) {
     xerrno = errno;
     (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
@@ -2702,19 +2701,19 @@ static int tls_db_add_vhost(pool *p, server_rec *s) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
     (void *) &(s->sid));
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
+  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
     (void *) s->ServerName);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, tls_dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
@@ -2738,12 +2737,12 @@ static int tls_db_init(pool *p, const char *tables_dir, int flags) {
   tls_db_path = pdircat(p, tables_dir, "proxy-tls.db", NULL);
 
   PRIVS_ROOT
-  res = proxy_db_open_with_version(p, tls_db_path, PROXY_TLS_DB_SCHEMA_NAME,
+  tls_dbh = proxy_db_open_with_version(p, tls_db_path, PROXY_TLS_DB_SCHEMA_NAME,
     PROXY_TLS_DB_SCHEMA_VERSION, flags);
   xerrno = errno;
   PRIVS_RELINQUISH
 
-  if (res < 0) {
+  if (tls_dbh == NULL) {
     (void) pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
       ": error opening database '%s' for schema '%s', version %u: %s",
       tls_db_path, PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION,
@@ -2759,7 +2758,8 @@ static int tls_db_init(pool *p, const char *tables_dir, int flags) {
     (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
       ": error creating schema in database '%s' for '%s': %s", tls_db_path,
       PROXY_TLS_DB_SCHEMA_NAME, strerror(xerrno));
-    (void) proxy_db_close(p, PROXY_TLS_DB_SCHEMA_NAME);
+    (void) proxy_db_close(p, tls_dbh);
+    tls_dbh = NULL;
     tls_db_path = NULL;
     errno = xerrno;
     return -1;
@@ -2768,7 +2768,8 @@ static int tls_db_init(pool *p, const char *tables_dir, int flags) {
   res = tls_truncate_db_tables(p);
   if (res < 0) {
     xerrno = errno;
-    (void) proxy_db_close(p, PROXY_TLS_DB_SCHEMA_NAME);
+    (void) proxy_db_close(p, tls_dbh);
+    tls_dbh = NULL;
     tls_db_path = NULL;
     errno = xerrno;
     return -1;
@@ -2781,12 +2782,16 @@ static int tls_db_init(pool *p, const char *tables_dir, int flags) {
       (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
         ": error adding database entry for server '%s' in '%s': %s",
         s->ServerName, PROXY_TLS_DB_SCHEMA_NAME, strerror(xerrno));
-      (void) proxy_db_close(p, PROXY_TLS_DB_SCHEMA_NAME);
+      (void) proxy_db_close(p, tls_dbh);
+      tls_dbh = NULL;
       tls_db_path = NULL;
       errno = xerrno;
       return -1;
     }
   }
+
+  (void) proxy_db_close(p, tls_dbh);
+  tls_dbh = NULL;
 
   return 0;
 }
@@ -2869,10 +2874,14 @@ int proxy_tls_free(pool *p) {
     ssl_ctx = NULL;
   }
 
-  if (proxy_db_close(p, PROXY_TLS_DB_SCHEMA_NAME) < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error detaching database with schema '%s': %s",
-      PROXY_TLS_DB_SCHEMA_NAME, strerror(errno));
+  if (tls_dbh != NULL) {
+    if (proxy_db_close(p, tls_dbh) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error closing %s database: %s", PROXY_TLS_DB_SCHEMA_NAME,
+        strerror(errno));
+    }
+
+    tls_dbh = NULL;
   }
 #endif /* PR_USE_OPENSSL */
 
@@ -3469,15 +3478,18 @@ int proxy_tls_sess_init(pool *p, int flags) {
   }
 
   /* Make sure we have our own per-session database handle, per SQLite3
-   * recommendation.
+   * recommendation.  Skip integrity checks and vacuuming, assuming that they
+   * were done on startup.
    */
+  flags |= (PROXY_DB_OPEN_FL_SKIP_INTEGRITY_CHECK|PROXY_DB_OPEN_FL_SKIP_VACUUM);
+
   PRIVS_ROOT
-  res = proxy_db_open_with_version(proxy_pool, tls_db_path,
+  tls_dbh = proxy_db_open_with_version(proxy_pool, tls_db_path,
     PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION, flags);
   xerrno = errno;
   PRIVS_RELINQUISH
 
-  if (res < 0) {
+  if (tls_dbh == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error opening database '%s' for schema '%s', version %u: %s",
       tls_db_path, PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION,
@@ -3751,10 +3763,10 @@ int proxy_tls_sess_init(pool *p, int flags) {
    */
   c = find_config(main_server->conf, CONF_PARAM, "TLSEngine", FALSE);
   if (c != NULL) {
-    int tls_engine;
+    int engine;
 
-    tls_engine = *((int *) c->argv[0]);
-    if (tls_engine == TRUE) {
+    engine = *((int *) c->argv[0]);
+    if (engine == TRUE) {
       tls_required_on_frontend_data = TRUE;
     }
   }
@@ -3798,7 +3810,8 @@ int proxy_tls_sess_free(pool *p) {
     tls_psk_used = FALSE;
 # endif /* PSK support */
 
-    proxy_db_close(p, PROXY_TLS_DB_SCHEMA_NAME);
+    proxy_db_close(p, tls_dbh);
+    tls_dbh = NULL;
 
     if (ssl_ctx != NULL) {
       if (init_ssl_ctx() < 0) {

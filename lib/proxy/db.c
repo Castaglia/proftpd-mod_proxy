@@ -27,22 +27,84 @@
 
 #include <sqlite3.h>
 
-static pool *db_pool = NULL;
-static pr_table_t *prepared_stmts = NULL;
-static sqlite3 *proxy_dbh = NULL;
+struct proxy_dbh {
+  pool *pool;
+  sqlite3 *db;
+  const char *schema;
+  pr_table_t *prepared_stmts;
+};
+
+static const char *current_schema = NULL;
 
 static const char *trace_channel = "proxy.db";
 
 #define PROXY_DB_SQLITE_TRACE_LEVEL		17
 
-static void db_err(void *user_data, int err_code, const char *err_msg) {
-  pr_trace_msg(trace_channel, 1, "(sqlite3): [error %d] %s", err_code,
-    err_msg);
+static int db_busy(void *user_data, int busy_count) {
+  if (current_schema != NULL) {
+    pr_trace_msg(trace_channel, 1, "(sqlite3): schema '%s': busy count = %d",
+      current_schema, busy_count);
+
+  } else {
+    pr_trace_msg(trace_channel, 1, "(sqlite3): busy count = %d", busy_count);
+  }
+
+  return 0;
 }
 
+static void db_err(void *user_data, int err_code, const char *err_msg) {
+  if (current_schema != NULL) {
+    pr_trace_msg(trace_channel, 1, "(sqlite3): schema '%s': [error %d] %s",
+      current_schema, err_code, err_msg);
+
+  } else {
+    pr_trace_msg(trace_channel, 1, "(sqlite3): [error %d] %s", err_code,
+      err_msg);
+  }
+}
+
+#ifdef SQLITE_CONFIG_SQLLOG
+static void db_sql(void *user_data, sqlite3 *db, const char *info,
+    int event_type) {
+  switch (event_type) {
+    case 0:
+      /* Opening database. */
+      pr_trace_msg(trace_channel, 1, "(sqlite3): opened database: %s", info);
+      break;
+
+    case 1:
+      if (current_schema != NULL) {
+        pr_trace_msg(trace_channel, 1,
+          "(sqlite3): schema '%s': executed statement: %s", current_schema,
+          info)
+
+      } else {
+        pr_trace_msg(trace_channel, 1, "(sqlite3): executed statement: %s",
+          info);
+      }
+      break;
+
+    case 2:
+      /* Closing database. */
+      pr_trace_msg(trace_channel, 1, "(sqlite3): closed database: %s",
+        sqlite3_db_filename(db, "main"));
+      break;
+  }
+}
+#endif /* SQLITE_CONFIG_SQLLOG */
+
 static void db_trace(void *user_data, const char *trace_msg) {
-  pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
-    "(sqlite3): %s", trace_msg);
+  if (user_data != NULL) {
+    const char *schema;
+
+    schema = user_data;
+    pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+      "(sqlite3): schema '%s': %s", schema, trace_msg);
+
+  } else {
+    pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+      "(sqlite3): %s", trace_msg);
+  }
 }
 
 static int stmt_cb(void *v, int ncols, char **cols, char **col_names) {
@@ -60,25 +122,21 @@ static int stmt_cb(void *v, int ncols, char **cols, char **col_names) {
   return 0;
 }
 
-int proxy_db_exec_stmt(pool *p, const char *stmt, const char **errstr) {
+int proxy_db_exec_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt,
+    const char **errstr) {
   int res;
   char *ptr = NULL;
   unsigned int nretries = 0;
 
-  if (p == NULL ||
+  if (dbh == NULL ||
       stmt == NULL) {
     errno = EINVAL;
     return -1;
   }
 
-  if (proxy_dbh == NULL) {
-    pr_trace_msg(trace_channel, 3,
-      "unable to execute statement '%s': no open database handle", stmt);
-    errno = EPERM;
-    return -1;
-  }
+  current_schema = dbh->schema;
 
-  res = sqlite3_exec(proxy_dbh, stmt, stmt_cb, (void *) stmt, &ptr);
+  res = sqlite3_exec(dbh->db, stmt, stmt_cb, (void *) stmt, &ptr);
   while (res != SQLITE_OK) {
     if (res == SQLITE_BUSY) {
       struct timeval tv;
@@ -99,7 +157,7 @@ int proxy_db_exec_stmt(pool *p, const char *stmt, const char **errstr) {
         }
       }
 
-      res = sqlite3_exec(proxy_dbh, stmt, NULL, NULL, &ptr);
+      res = sqlite3_exec(dbh->db, stmt, NULL, NULL, &ptr);
       continue;
     }
 
@@ -110,6 +168,7 @@ int proxy_db_exec_stmt(pool *p, const char *stmt, const char **errstr) {
       *errstr = pstrdup(p, ptr);
     }
 
+    current_schema = NULL;
     sqlite3_free(ptr);
     errno = EINVAL;
     return -1;
@@ -119,36 +178,31 @@ int proxy_db_exec_stmt(pool *p, const char *stmt, const char **errstr) {
     sqlite3_free(ptr);
   }
 
+  current_schema = NULL;
   pr_trace_msg(trace_channel, 13, "successfully executed '%s'", stmt);
   return 0;
 }
 
 /* Prepared statements */
 
-int proxy_db_prepare_stmt(pool *p, const char *stmt) {
+int proxy_db_prepare_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt) {
   sqlite3_stmt *pstmt = NULL;
   int res;
 
   if (p == NULL ||
+      dbh == NULL ||
       stmt == NULL) {
     errno = EINVAL;
     return -1;
   }
 
-  if (proxy_dbh == NULL) {
-    pr_trace_msg(trace_channel, 3,
-      "unable to prepare statement '%s': no open database handle", stmt);
-    errno = EPERM;
-    return -1;
-  }
-
-  pstmt = (sqlite3_stmt *) pr_table_get(prepared_stmts, stmt, NULL);
+  pstmt = (sqlite3_stmt *) pr_table_get(dbh->prepared_stmts, stmt, NULL);
   if (pstmt != NULL) {
     res = sqlite3_reset(pstmt);
     if (res != SQLITE_OK) {
       pr_trace_msg(trace_channel, 3,
         "error resetting prepared statement '%s': %s", stmt,
-        sqlite3_errmsg(proxy_dbh));
+        sqlite3_errmsg(dbh->db));
       errno = EPERM;
       return -1;
     }
@@ -156,10 +210,11 @@ int proxy_db_prepare_stmt(pool *p, const char *stmt) {
     return 0;
   }
 
-  res = sqlite3_prepare_v2(proxy_dbh, stmt, -1, &pstmt, NULL);
+  res = sqlite3_prepare_v2(dbh->db, stmt, -1, &pstmt, NULL);
   if (res != SQLITE_OK) {
     pr_trace_msg(trace_channel, 4,
-      "error preparing statement '%s': %s", stmt, sqlite3_errmsg(proxy_dbh));
+      "schema '%s': error preparing statement '%s': %s", dbh->schema, stmt,
+      sqlite3_errmsg(dbh->db));
     errno = EINVAL;
     return -1;
   }
@@ -167,7 +222,7 @@ int proxy_db_prepare_stmt(pool *p, const char *stmt) {
   /* The prepared statement handling here relies on this cache, thus if we fail
    * to stash the prepared statement here, it will cause problems later.
    */
-  res = pr_table_add(prepared_stmts, pstrdup(db_pool, stmt), pstmt,
+  res = pr_table_add(dbh->prepared_stmts, pstrdup(dbh->pool, stmt), pstmt,
     sizeof(sqlite3_stmt *));
   if (res < 0) {
     int xerrno = errno;
@@ -180,12 +235,13 @@ int proxy_db_prepare_stmt(pool *p, const char *stmt) {
   return 0; 
 }
 
-int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
-    void *data) {
+int proxy_db_bind_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt,
+    int idx, int type, void *data) {
   sqlite3_stmt *pstmt;
   int res;
  
   if (p == NULL ||
+      dbh == NULL ||
       stmt == NULL) {
     errno = EINVAL;
     return -1;
@@ -197,12 +253,12 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
     return -1;
   }
 
-  if (prepared_stmts == NULL) {
+  if (dbh->prepared_stmts == NULL) {
     errno = ENOENT;
     return -1;
   }
 
-  pstmt = (sqlite3_stmt *) pr_table_get(prepared_stmts, stmt, NULL);
+  pstmt = (sqlite3_stmt *) pr_table_get(dbh->prepared_stmts, stmt, NULL);
   if (pstmt == NULL) {
     pr_trace_msg(trace_channel, 19,
       "unable to find prepared statement for '%s'", stmt);
@@ -224,7 +280,7 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
       if (res != SQLITE_OK) {
         pr_trace_msg(trace_channel, 4,
           "error binding parameter %d of '%s' to INT %d: %s", idx, stmt, i,
-          sqlite3_errmsg(proxy_dbh));
+          sqlite3_errmsg(dbh->db));
         errno = EPERM;
         return -1;
       }
@@ -244,7 +300,7 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
       if (res != SQLITE_OK) {
         pr_trace_msg(trace_channel, 4,
           "error binding parameter %d of '%s' to LONG %ld: %s", idx, stmt, l,
-          sqlite3_errmsg(proxy_dbh));
+          sqlite3_errmsg(dbh->db));
         errno = EPERM;
         return -1;
       }
@@ -264,7 +320,7 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
       if (res != SQLITE_OK) {
         pr_trace_msg(trace_channel, 4,
           "error binding parameter %d of '%s' to TEXT '%s': %s", idx, stmt,
-          text, sqlite3_errmsg(proxy_dbh));
+          text, sqlite3_errmsg(dbh->db));
         errno = EPERM;
         return -1;
       }
@@ -276,7 +332,7 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
       if (res != SQLITE_OK) {
         pr_trace_msg(trace_channel, 4,
           "error binding parameter %d of '%s' to NULL: %s", idx, stmt,
-          sqlite3_errmsg(proxy_dbh));
+          sqlite3_errmsg(dbh->db));
         errno = EPERM;
         return -1;
       }
@@ -292,22 +348,23 @@ int proxy_db_bind_stmt(pool *p, const char *stmt, int idx, int type,
   return 0;
 }
 
-int proxy_db_finish_stmt(pool *p, const char *stmt) {
+int proxy_db_finish_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt) {
   sqlite3_stmt *pstmt;
   int res;
 
   if (p == NULL ||
+      dbh == NULL ||
       stmt == NULL) {
     errno = EINVAL;
     return -1;
   }
 
-  if (prepared_stmts == NULL) {
+  if (dbh->prepared_stmts == NULL) {
     errno = ENOENT;
     return -1;
   }
 
-  pstmt = (sqlite3_stmt *) pr_table_get(prepared_stmts, stmt, NULL);
+  pstmt = (sqlite3_stmt *) pr_table_get(dbh->prepared_stmts, stmt, NULL);
   if (pstmt == NULL) {
     pr_trace_msg(trace_channel, 19,
       "unable to find prepared statement for '%s'", stmt);
@@ -318,48 +375,43 @@ int proxy_db_finish_stmt(pool *p, const char *stmt) {
   res = sqlite3_finalize(pstmt);
   if (res != SQLITE_OK) {
     pr_trace_msg(trace_channel, 3,
-      "error finishing prepared statement '%s': %s", stmt,
-      sqlite3_errmsg(proxy_dbh));
+      "schema '%s': error finishing prepared statement '%s': %s", dbh->schema,
+      stmt, sqlite3_errmsg(dbh->db));
     errno = EPERM;
     return -1;
   }
 
-  (void) pr_table_remove(prepared_stmts, stmt, NULL); 
+  (void) pr_table_remove(dbh->prepared_stmts, stmt, NULL); 
   return 0;
 }
 
-array_header *proxy_db_exec_prepared_stmt(pool *p, const char *stmt,
-    const char **errstr) {
+array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
+    const char *stmt, const char **errstr) {
   sqlite3_stmt *pstmt;
   int readonly = FALSE, res;
   array_header *results = NULL;
 
   if (p == NULL ||
+      dbh == NULL ||
       stmt == NULL) {
     errno = EINVAL;
     return NULL;
   }
 
-  if (proxy_dbh == NULL) {
-    pr_trace_msg(trace_channel, 3,
-      "unable to execute prepared statement '%s': no open database handle",
-      stmt);
-    errno = EPERM;
-    return NULL;
-  }
-
-  if (prepared_stmts == NULL) {
+  if (dbh->prepared_stmts == NULL) {
     errno = ENOENT;
     return NULL;
   }
 
-  pstmt = (sqlite3_stmt *) pr_table_get(prepared_stmts, stmt, NULL);
+  pstmt = (sqlite3_stmt *) pr_table_get(dbh->prepared_stmts, stmt, NULL);
   if (pstmt == NULL) {
     pr_trace_msg(trace_channel, 19,
       "unable to find prepared statement for '%s'", stmt);
     errno = ENOENT;
     return NULL;
   }
+
+  current_schema = dbh->schema;
 
   readonly = sqlite3_stmt_readonly(pstmt);
   if (!readonly) {
@@ -368,15 +420,19 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, const char *stmt,
     if (res != SQLITE_DONE) {
       const char *errmsg;
 
-      errmsg = sqlite3_errmsg(proxy_dbh);
+      errmsg = sqlite3_errmsg(dbh->db);
       if (errstr) {
         *errstr = pstrdup(p, errmsg);
       }
       pr_trace_msg(trace_channel, 2,
         "error executing '%s': %s", stmt, errmsg);
+
+      current_schema = NULL;
       errno = EPERM;
       return NULL;
     }
+
+    current_schema = NULL;
 
     /* Indicate success for non-readonly statements by returning an empty
      * result set.
@@ -395,8 +451,8 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, const char *stmt,
 
     ncols = sqlite3_column_count(pstmt);
     pr_trace_msg(trace_channel, 12,
-      "executing prepared statement '%s' returned row (columns: %d)",
-      stmt, ncols);
+      "schema '%s': executing prepared statement '%s' returned row "
+      "(columns: %d)", dbh->schema, stmt, ncols);
 
     for (i = 0; i < ncols; i++) {
       char *val = NULL;
@@ -419,86 +475,80 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, const char *stmt,
   if (res != SQLITE_DONE) {
     const char *errmsg;
 
-    errmsg = sqlite3_errmsg(proxy_dbh);
+    errmsg = sqlite3_errmsg(dbh->db);
     if (errstr != NULL) {
       *errstr = pstrdup(p, errmsg);
     }
 
+    current_schema = NULL;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "executing prepared statement '%s' did not complete successfully: %s",
-      stmt, errmsg);
+      "schema '%s': executing prepared statement '%s' did not complete "
+      "successfully: %s", dbh->schema, stmt, errmsg);
     errno = EPERM;
     return NULL;
   }
 
+  current_schema = NULL;
   pr_trace_msg(trace_channel, 13, "successfully executed '%s'", stmt);
   return results;
 }
 
 /* Database opening/closing. */
 
-int proxy_db_open(pool *p, const char *table_path, const char *schema_name) {
-  int res;
-  pool *tmp_pool;
+struct proxy_dbh *proxy_db_open(pool *p, const char *table_path,
+    const char *schema_name) {
+  int res, flags;
+  pool *sub_pool;
   const char *stmt;
+  sqlite3 *db = NULL;
+  struct proxy_dbh *dbh;
 
   if (p == NULL ||
       table_path == NULL ||
       schema_name == NULL) {
     errno = EINVAL;
-    return -1;
+    return NULL;
   }
 
-  pr_trace_msg(trace_channel, 19,
-    "attempting to open table at path '%s', with schema '%s'", table_path,
-    schema_name);
+  pr_trace_msg(trace_channel, 19, "attempting to open %s tables at path '%s'",
+    schema_name, table_path);
 
-  /* If we already have a database handle open, then attach the given
-   * path to our handle.  Otherwise, open/create the database file first.
-   */
+  flags = SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE;
+#ifdef SQLITE_OPEN_PRIVATECACHE
+  /* By default, disable the shared cache mode. */
+  flags |= SQLITE_OPEN_PRIVATECACHE;
+#endif
 
-  if (proxy_dbh == NULL) {
-    res = sqlite3_open(table_path, &proxy_dbh);
-    if (res != SQLITE_OK) {
-      pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-        ": error opening SQLite database '%s': %s", table_path,
-        sqlite3_errmsg(proxy_dbh));
-      proxy_dbh = NULL;
-      errno = EPERM;
-      return -1;
-    }
-
-    if (pr_trace_get_level(trace_channel) >= PROXY_DB_SQLITE_TRACE_LEVEL) {
-      sqlite3_trace(proxy_dbh, db_trace, NULL);
-    }
-
-    stmt = "PRAGMA temp_store = MEMORY;";
-    res = proxy_db_exec_stmt(p, stmt, NULL);
-    if (res < 0) {
-      pr_trace_msg(trace_channel, 2,
-        "error setting MEMORY temp store on SQLite database '%s': %s",
-        table_path, sqlite3_errmsg(proxy_dbh));
-    }
-
-    prepared_stmts = pr_table_nalloc(db_pool, 0, 4);
-
-    pr_trace_msg(trace_channel, 9, "opened SQLite table '%s' (schema '%s')",
-      table_path, schema_name);
-  }
-
-  tmp_pool = make_sub_pool(p);
-
-  stmt = pstrcat(tmp_pool, "ATTACH DATABASE '", table_path, "' AS ",
-    schema_name, ";", NULL);
-  res = sqlite3_exec(proxy_dbh, stmt, NULL, NULL, NULL);
+  res = sqlite3_open_v2(table_path, &db, flags, NULL);
   if (res != SQLITE_OK) {
-    pr_trace_msg(trace_channel, 2,
-      "error attaching database '%s' (as '%s') to existing SQLite handle "
-      "using '%s': %s", table_path, schema_name, stmt,
-      sqlite3_errmsg(proxy_dbh));
-    destroy_pool(tmp_pool);
+    pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+      ": error opening SQLite database '%s': %s", table_path,
+      sqlite3_errmsg(db));
+    if (db != NULL) {
+      sqlite3_close(db);
+    }
     errno = EPERM;
-    return -1;
+    return NULL;
+  }
+
+  if (pr_trace_get_level(trace_channel) >= PROXY_DB_SQLITE_TRACE_LEVEL) {
+    sqlite3_busy_handler(db, db_busy, (void *) schema_name);
+    sqlite3_trace(db, db_trace, (void *) schema_name);
+  }
+
+  sub_pool = make_sub_pool(p);
+  pr_pool_tag(sub_pool, "Proxy Database Pool");
+  dbh = pcalloc(sub_pool, sizeof(struct proxy_dbh));
+  dbh->pool = sub_pool;
+  dbh->db = db;
+  dbh->schema = pstrdup(dbh->pool, schema_name);
+
+  stmt = "PRAGMA temp_store = MEMORY;";
+  res = proxy_db_exec_stmt(p, dbh, stmt, NULL);
+  if (res < 0) {
+    pr_trace_msg(trace_channel, 2,
+      "error setting MEMORY temp store on SQLite database '%s': %s",
+      table_path, sqlite3_errmsg(dbh->db));
   }
 
   /* Tell SQLite to only use in-memory journals.  This is necessary for
@@ -506,26 +556,28 @@ int proxy_db_open(pool *p, const char *table_path, const char *schema_name) {
    * of SQLite is supported only for SQLite-3.6.5 and later.
    */
 
-  stmt = pstrcat(p, "PRAGMA ", schema_name, ".journal_mode = MEMORY;", NULL);
-  res = proxy_db_exec_stmt(p, stmt, NULL);
+  stmt = "PRAGMA journal_mode = MEMORY;";
+  res = proxy_db_exec_stmt(p, dbh, stmt, NULL);
   if (res < 0) {
     pr_trace_msg(trace_channel, 2,
-      "error setting MEMORY journal mode on SQLite database '%s', "
-      "schema '%s': %s", table_path, schema_name, sqlite3_errmsg(proxy_dbh));
+      "error setting MEMORY journal mode on SQLite database '%s': %s",
+      table_path, sqlite3_errmsg(dbh->db));
   }
 
-  destroy_pool(tmp_pool);
-  return 0;
+  dbh->prepared_stmts = pr_table_nalloc(dbh->pool, 0, 4);
+  pr_trace_msg(trace_channel, 9, "opened SQLite table '%s'", table_path);
+
+  return dbh;
 }
 
-static int get_schema_version(pool *p, const char *schema_name,
-    unsigned int *schema_version) {
+static int get_schema_version(pool *p, struct proxy_dbh *dbh,
+    const char *schema_name, unsigned int *schema_version) {
   int res, version;
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  stmt = pstrcat(p, "SELECT version FROM ", schema_name, ".schema_version WHERE schema = ?;", NULL);
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "SELECT version FROM schema_version WHERE schema = ?;";
+  res = proxy_db_prepare_stmt(p, dbh, stmt);
   if (res < 0) {
     /* This can happen when the schema_version table does not exist; treat
      * as "missing".
@@ -537,13 +589,13 @@ static int get_schema_version(pool *p, const char *schema_name,
     return 0;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_TEXT,
+  res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_TEXT,
     (void *) schema_name);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, dbh, stmt, &errstr);
   if (results == NULL) {
     *schema_version = 0;
     return 0;
@@ -571,19 +623,19 @@ static int get_schema_version(pool *p, const char *schema_name,
   return 0;
 }
 
-static int set_schema_version(pool *p, const char *schema_name,
-    unsigned int schema_version) {
+static int set_schema_version(pool *p, struct proxy_dbh *dbh,
+    const char *schema_name, unsigned int schema_version) {
   int res, xerrno = 0;
   const char *stmt, *errstr = NULL;
   array_header *results;
 
-  /* CREATE TABLE $schema_name.schema_version (
+  /* CREATE TABLE schema_version (
    *   schema TEXT NOT NULL PRIMARY KEY,
    *   version INTEGER NOT NULL
    * );
    */
-  stmt = pstrcat(p, "CREATE TABLE IF NOT EXISTS ", schema_name, ".schema_version (schema TEXT NOT NULL PRIMARY KEY, version INTEGER NOT NULL);", NULL);
-  res = proxy_db_exec_stmt(p, stmt, &errstr);
+  stmt = "CREATE TABLE IF NOT EXISTS schema_version (schema TEXT NOT NULL PRIMARY KEY, version INTEGER NOT NULL);";
+  res = proxy_db_exec_stmt(p, dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
       ": error executing statement '%s': %s", stmt, errstr);
@@ -591,30 +643,31 @@ static int set_schema_version(pool *p, const char *schema_name,
     return -1;
   }
 
-  stmt = pstrcat(p, "INSERT INTO ", schema_name, ".schema_version (schema, version) VALUES (?, ?);", NULL);
-  res = proxy_db_prepare_stmt(p, stmt);
+  stmt = "INSERT INTO schema_version (schema, version) VALUES (?, ?);";
+  res = proxy_db_prepare_stmt(p, dbh, stmt);
   if (res < 0) {
     xerrno = errno;
 
     (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
-      ": error preparing statement '%s': %s", stmt, strerror(xerrno));
+      ": schema '%s': error preparing statement '%s': %s", dbh->schema, stmt,
+      strerror(xerrno));
     errno = xerrno;
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 1, PROXY_DB_BIND_TYPE_TEXT,
+  res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_TEXT,
     (void *) schema_name);
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_db_bind_stmt(p, stmt, 2, PROXY_DB_BIND_TYPE_INT,
+  res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_INT,
     (void *) &schema_version);
   if (res < 0) {
     return -1;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
+  results = proxy_db_exec_prepared_stmt(p, dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
       ": error executing statement '%s': %s", stmt,
@@ -626,20 +679,13 @@ static int set_schema_version(pool *p, const char *schema_name,
   return 0;
 }
 
-static void check_db_integrity(pool *p, const char *schema_name, int flags) {
+static void check_db_integrity(pool *p, struct proxy_dbh *dbh, int flags) {
   int res;
   const char *stmt, *errstr = NULL;
 
-  if (proxy_dbh == NULL) {
-    pr_trace_msg(trace_channel, 9,
-      "unable to check integrity of schema '%s': no open database handle",
-      schema_name);
-    return;
-  }
-
   if (!(flags & PROXY_DB_OPEN_FL_SKIP_INTEGRITY_CHECK)) {
-    stmt = pstrcat(p, "PRAGMA ", schema_name, ".integrity_check;", NULL);
-    res = proxy_db_exec_stmt(p, stmt, &errstr);
+    stmt =  "PRAGMA integrity_check;";
+    res = proxy_db_exec_stmt(p, dbh, stmt, &errstr);
     if (res < 0) {
       (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
         ": error executing statement '%s': %s", stmt, errstr);
@@ -648,7 +694,7 @@ static void check_db_integrity(pool *p, const char *schema_name, int flags) {
 
   if (!(flags & PROXY_DB_OPEN_FL_SKIP_VACUUM)) {
     stmt = "VACUUM;";
-    res = proxy_db_exec_stmt(p, stmt, &errstr);
+    res = proxy_db_exec_stmt(p, dbh, stmt, &errstr);
     if (res < 0) {
       (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
         ": error executing statement '%s': %s", stmt, errstr);
@@ -656,253 +702,159 @@ static void check_db_integrity(pool *p, const char *schema_name, int flags) {
   }
 }
 
-int proxy_db_open_with_version(pool *p, const char *table_path,
+struct proxy_dbh *proxy_db_open_with_version(pool *p, const char *table_path,
     const char *schema_name, unsigned int schema_version, int flags) {
   pool *tmp_pool;
+  struct proxy_dbh *dbh;
   int res, xerrno = 0;
   unsigned int current_version = 0;
 
-  res = proxy_db_open(p, table_path, schema_name);
-  if (res < 0) {
-    return -1;
+  dbh = proxy_db_open(p, table_path, schema_name);
+  if (dbh == NULL) {
+    return NULL;
   }
 
   pr_trace_msg(trace_channel, 19,
-    "ensuring that table at path '%s', schema '%s', has at least schema "
-    "version %u", table_path, schema_name, schema_version);
+    "ensuring that schema at path '%s' has at least schema version %u",
+    table_path, schema_version);
 
   tmp_pool = make_sub_pool(p);
-  res = get_schema_version(tmp_pool, schema_name, &current_version);
+  res = get_schema_version(tmp_pool, dbh, schema_name, &current_version);
   if (res < 0) {
     xerrno = errno;
 
+    proxy_db_close(p, dbh);
     destroy_pool(tmp_pool);
     errno = xerrno;
-    return -1;
+    return NULL;
   }
 
   if (current_version >= schema_version) {
     pr_trace_msg(trace_channel, 11,
-      "schema version %u >= desired version %u for schema '%s'",
-      current_version, schema_version, schema_name);
+      "schema version %u >= desired version %u for path '%s'",
+      current_version, schema_version, table_path);
 
-    check_db_integrity(tmp_pool, schema_name, flags);
+    check_db_integrity(tmp_pool, dbh, flags);
     destroy_pool(tmp_pool);
 
-    return 0;
+    return dbh;
   }
 
   if (flags & PROXY_DB_OPEN_FL_ERROR_ON_SCHEMA_VERSION_SKEW) {
     pr_trace_msg(trace_channel, 5,
-      "schema version %u < desired version %u for schema '%s', failing",
-      current_version, schema_version, schema_name);
+      "schema version %u < desired version %u for path '%s', failing",
+      current_version, schema_version, table_path);
+    proxy_db_close(p, dbh);
     destroy_pool(tmp_pool);
     errno = EPERM;
-    return -1;
+    return NULL;
   }
 
-  proxy_db_close(p, schema_name);
+  /* The schema version is skewed; delete the old table, create a new one. */
+  pr_trace_msg(trace_channel, 4,
+    "schema version %u < desired version %u for path '%s', deleting file",
+    current_version, schema_version, table_path);
+
+  proxy_db_close(p, dbh);
   if (unlink(table_path) < 0) {
     pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
       ": error deleting '%s': %s", table_path, strerror(errno));
   }
 
-  res = proxy_db_open(p, table_path, schema_name);
-  if (res < 0) {
+  dbh = proxy_db_open(p, table_path, schema_name);
+  if (dbh == NULL) {
     xerrno = errno;
 
     destroy_pool(tmp_pool);
     errno = xerrno;
-    return -1;
+    return NULL;
   }
 
-  res = set_schema_version(tmp_pool, schema_name, schema_version);
+  res = set_schema_version(tmp_pool, dbh, schema_name, schema_version);
   xerrno = errno;
 
   destroy_pool(tmp_pool);
 
   if (res < 0) {
     errno = xerrno;
-    return -1;
-  }
-
-  return 0;
-}
-
-/* Use `PRAGMA database_list;` to list any other attached databases with this
- * handle.  The output from the `database_list` pragma looks like e.g.:
- *
- *  sqlite> pragma database_list;
- *  0|main|/Users/tj/test.db
- *  2|test2|/Users/tj/test2.db
- */
-static array_header *get_attached_databases(pool *p) {
-  register unsigned int i;
-  int res;
-  const char *stmt, *errstr = NULL;
-  array_header *results, *databases = NULL;
-
-  stmt = "PRAGMA database_list;";
-  res = proxy_db_prepare_stmt(p, stmt);
-  if (res < 0) {
     return NULL;
   }
 
-  results = proxy_db_exec_prepared_stmt(p, stmt, &errstr);
-  if (results == NULL) {
-    return NULL;
-  }
-
-  databases = make_array(p, 0, sizeof(char *));
-
-  /* Skip every other item; we only want the database names. */
-  for (i = 1; i < results->nelts; i += 3) {
-    char *name;
-
-    name = ((char **) results->elts)[i];
-
-    /* Skip the main database and any TEMP databases. */
-    if (strcmp(name, "main") != 0 &&
-        strcasecmp(name, "TEMP") != 0) {
-      pr_trace_msg(trace_channel, 15, "found attached database '%s'", name);
-      *((char **) push_array(databases)) = pstrdup(p, name);
-    }
-  }
-
-  return databases;
+  return dbh;
 }
 
-static int detach_database(pool *p, const char *name) {
+int proxy_db_close(pool *p, struct proxy_dbh *dbh) {
+  pool *tmp_pool;
+  sqlite3_stmt *pstmt;
   int res;
-  const char *stmt, *errstr = NULL;
 
-  stmt = pstrcat(p, "DETACH DATABASE ", name, ";", NULL);
-  res = proxy_db_exec_stmt(p, stmt, errstr);
-  if (res < 0) {
-    pr_trace_msg(trace_channel, 2,
-      "error detaching '%s' from existing SQLite handle using '%s': %s", name,
-      stmt, errstr);
-    errno = EPERM;
-    return -1;
-  }
-
-  return 0;
-}
-
-int proxy_db_close(pool *p, const char *schema_name) {
-  if (p == NULL) {
+  if (p == NULL ||
+      dbh == NULL) {
     errno = EINVAL;
     return -1;
   }
 
-  if (proxy_dbh != NULL) {
-    register unsigned int i;
-    pool *tmp_pool;
-    array_header *schema_names;
-    sqlite3_stmt *pstmt;
-    int res;
+  pr_trace_msg(trace_channel, 19, "closing '%s' database handle", dbh->schema);
+  tmp_pool = make_sub_pool(p);
 
-    tmp_pool = make_sub_pool(p);
-    schema_names = make_array(tmp_pool, 1, sizeof(char *));
+  /* Make sure to close/finish any prepared statements associated with
+   * the database.
+   */
+  pstmt = sqlite3_next_stmt(dbh->db, NULL);
+  while (pstmt != NULL) {
+    sqlite3_stmt *next;
+    const char *sql;
 
-    /* If we're given a schema name, then just detach that schema from the
-     * database handle.
-     */
-    if (schema_name != NULL) {
-      *((char **) push_array(schema_names)) = pstrdup(tmp_pool, schema_name);
+    pr_signals_handle();
 
-    } else {
-      array_cat(schema_names, get_attached_databases(tmp_pool));
-    }
+    next = sqlite3_next_stmt(dbh->db, pstmt);
+    sql = pstrdup(tmp_pool, sqlite3_sql(pstmt));
 
-    for (i = 0; i < schema_names->nelts; i++) {
-      const char *name;
-      int xerrno;
-
-      name = ((char **) schema_names->elts)[i];
-      res = detach_database(tmp_pool, name);
-      xerrno = errno;
-
-      if (res < 0) {
-        destroy_pool(tmp_pool);
-        errno = xerrno;
-        return -1;
-      }
-    }
-
-    /* If we were given just one name to detach, we're done. */
-    if (schema_name != NULL) {
-      destroy_pool(tmp_pool);
-      return 0;
-    }
-
-    /* Make sure to close/finish any prepared statements associated with
-     * the database.
-     */
-    pstmt = sqlite3_next_stmt(proxy_dbh, NULL);
-    while (pstmt != NULL) {
-      sqlite3_stmt *next;
-      const char *sql;
-
-      pr_signals_handle();
-
-      next = sqlite3_next_stmt(proxy_dbh, pstmt);
-      sql = pstrdup(tmp_pool, sqlite3_sql(pstmt));
-
-      res = sqlite3_finalize(pstmt);
-      if (res != SQLITE_OK) {
-        pr_trace_msg(trace_channel, 2,
-          "error finishing prepared statement '%s': %s", sql,
-          sqlite3_errmsg(proxy_dbh));
-
-      } else {
-        pr_trace_msg(trace_channel, 18,
-          "finished prepared statement '%s'", sql);
-      }
-
-      pstmt = next;
-    }
-
-    destroy_pool(tmp_pool);
-
-    res = sqlite3_close(proxy_dbh);
+    res = sqlite3_finalize(pstmt);
     if (res != SQLITE_OK) {
       pr_trace_msg(trace_channel, 2,
-        "error closing SQLite database: %s", sqlite3_errmsg(proxy_dbh));
-      errno = EPERM;
-      return -1;
-    }
-
-    if (schema_name == NULL) {
-      pr_trace_msg(trace_channel, 18, "%s", "closed SQLite database");
+        "schema '%s': error finishing prepared statement '%s': %s", dbh->schema,
+        sql, sqlite3_errmsg(dbh->db));
 
     } else {
-      pr_trace_msg(trace_channel, 18, "closed SQLite database (schema '%s')",
-        schema_name);
+      pr_trace_msg(trace_channel, 18, "finished prepared statement '%s'", sql);
     }
 
-    proxy_dbh = NULL;
+    pstmt = next;
   }
 
-  pr_table_empty(prepared_stmts);
-  pr_table_free(prepared_stmts);
-  prepared_stmts = NULL;
+  destroy_pool(tmp_pool);
 
+  res = sqlite3_close(dbh->db);
+  if (res != SQLITE_OK) {
+    pr_trace_msg(trace_channel, 2,
+      "error closing SQLite database: %s", sqlite3_errmsg(dbh->db));
+    errno = EPERM;
+    return -1;
+  }
+
+  pr_table_empty(dbh->prepared_stmts);
+  pr_table_free(dbh->prepared_stmts);
+  destroy_pool(dbh->pool);
+
+  pr_trace_msg(trace_channel, 18, "%s", "closed SQLite database");
   return 0;
 }
 
-int proxy_db_reindex(pool *p, const char *index_name, const char **errstr) {
+int proxy_db_reindex(pool *p, struct proxy_dbh *dbh, const char *index_name,
+    const char **errstr) {
   int res;
   const char *stmt;
 
   if (p == NULL ||
+      dbh == NULL ||
       index_name == NULL) {
     errno = EINVAL;
     return -1;
   }
 
   stmt = pstrcat(p, "REINDEX ", index_name, ";", NULL);
-  res = proxy_db_exec_stmt(p, stmt, errstr);
+  res = proxy_db_exec_stmt(p, dbh, stmt, errstr);
   return res;
 }
 
@@ -914,12 +866,11 @@ int proxy_db_init(pool *p) {
     return -1;
   }
 
-  if (db_pool != NULL) {
-    return 0;
-  }
-
   /* Register an error logging callback with SQLite3. */
   sqlite3_config(SQLITE_CONFIG_LOG, db_err, NULL);
+#ifdef SQLITE_CONFIG_SQLLOG
+  sqlite3_config(SQLITE_CONFIG_SQLLOG, db_sql, NULL);
+#endif /* SQLITE_CONFIG_SQLLOG */
 
   /* Check that the SQLite headers used match the version of the SQLite
    * library used.
@@ -934,20 +885,9 @@ int proxy_db_init(pool *p) {
   }
 
   pr_trace_msg(trace_channel, 9, "using SQLite %s", version);
-
-  db_pool = make_sub_pool(p);
-  pr_pool_tag(db_pool, "Proxy Database Pool");
-  
   return 0;
 }
 
 int proxy_db_free(void) {
-
-  if (db_pool != NULL) {
-    destroy_pool(db_pool);
-    db_pool = NULL;
-    prepared_stmts = NULL;
-  }
-
   return 0;
 }
