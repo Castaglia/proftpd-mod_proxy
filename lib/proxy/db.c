@@ -685,8 +685,8 @@ static void check_db_integrity(pool *p, struct proxy_dbh *dbh, int flags) {
   int res;
   const char *stmt, *errstr = NULL;
 
-  if (!(flags & PROXY_DB_OPEN_FL_SKIP_INTEGRITY_CHECK)) {
-    stmt =  "PRAGMA integrity_check;";
+  if (flags & PROXY_DB_OPEN_FL_INTEGRITY_CHECK) {
+    stmt = "PRAGMA integrity_check;";
     res = proxy_db_exec_stmt(p, dbh, stmt, &errstr);
     if (res < 0) {
       (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
@@ -694,7 +694,7 @@ static void check_db_integrity(pool *p, struct proxy_dbh *dbh, int flags) {
     }
   }
 
-  if (!(flags & PROXY_DB_OPEN_FL_SKIP_VACUUM)) {
+  if (flags & PROXY_DB_OPEN_FL_VACUUM) {
     stmt = "VACUUM;";
     res = proxy_db_exec_stmt(p, dbh, stmt, &errstr);
     if (res < 0) {
@@ -706,9 +706,9 @@ static void check_db_integrity(pool *p, struct proxy_dbh *dbh, int flags) {
 
 struct proxy_dbh *proxy_db_open_with_version(pool *p, const char *table_path,
     const char *schema_name, unsigned int schema_version, int flags) {
-  pool *tmp_pool;
-  struct proxy_dbh *dbh;
-  int res, xerrno = 0;
+  pool *tmp_pool = NULL;
+  struct proxy_dbh *dbh = NULL;
+  int res = 0, xerrno = 0;
   unsigned int current_version = 0;
 
   dbh = proxy_db_open(p, table_path, schema_name);
@@ -716,64 +716,73 @@ struct proxy_dbh *proxy_db_open_with_version(pool *p, const char *table_path,
     return NULL;
   }
 
-  pr_trace_msg(trace_channel, 19,
-    "ensuring that schema at path '%s' has at least schema version %u",
-    table_path, schema_version);
+  if (flags & PROXY_DB_OPEN_FL_SCHEMA_VERSION_CHECK) {
+    pr_trace_msg(trace_channel, 19,
+      "ensuring that schema at path '%s' has at least schema version %u",
+      table_path, schema_version);
 
-  tmp_pool = make_sub_pool(p);
-  res = get_schema_version(tmp_pool, dbh, schema_name, &current_version);
-  if (res < 0) {
-    xerrno = errno;
+    tmp_pool = make_sub_pool(p);
+    res = get_schema_version(tmp_pool, dbh, schema_name, &current_version);
+      if (res < 0) {
+      xerrno = errno;
 
-    proxy_db_close(p, dbh);
-    destroy_pool(tmp_pool);
-    errno = xerrno;
-    return NULL;
-  }
+      proxy_db_close(p, dbh);
+      destroy_pool(tmp_pool);
+      errno = xerrno;
+      return NULL;
+    }
 
-  if (current_version >= schema_version) {
-    pr_trace_msg(trace_channel, 11,
-      "schema version %u >= desired version %u for path '%s'",
+    if (current_version >= schema_version) {
+      pr_trace_msg(trace_channel, 11,
+        "schema version %u >= desired version %u for path '%s'",
+        current_version, schema_version, table_path);
+
+      check_db_integrity(tmp_pool, dbh, flags);
+      destroy_pool(tmp_pool);
+
+      return dbh;
+    }
+
+    if (flags & PROXY_DB_OPEN_FL_ERROR_ON_SCHEMA_VERSION_SKEW) {
+      pr_trace_msg(trace_channel, 5,
+        "schema version %u < desired version %u for path '%s', failing",
+        current_version, schema_version, table_path);
+      proxy_db_close(p, dbh);
+      destroy_pool(tmp_pool);
+      errno = EPERM;
+      return NULL;
+    }
+
+    /* The schema version is skewed; delete the old table, create a new one. */
+    pr_trace_msg(trace_channel, 4,
+      "schema version %u < desired version %u for path '%s', deleting file",
       current_version, schema_version, table_path);
 
+    if (proxy_db_close(p, dbh) < 0) {
+      pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+        ": error closing '%s' database: %s", table_path, strerror(errno));
+    }
+
+    if (unlink(table_path) < 0) {
+      pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
+        ": error deleting '%s': %s", table_path, strerror(errno));
+    }
+
+    dbh = proxy_db_open(p, table_path, schema_name);
+    if (dbh == NULL) {
+      xerrno = errno;
+
+      destroy_pool(tmp_pool);
+      errno = xerrno;
+      return NULL;
+    }
+
+    res = set_schema_version(tmp_pool, dbh, schema_name, schema_version);
+    xerrno = errno;
+
+  } else {
     check_db_integrity(tmp_pool, dbh, flags);
-    destroy_pool(tmp_pool);
-
-    return dbh;
   }
-
-  if (flags & PROXY_DB_OPEN_FL_ERROR_ON_SCHEMA_VERSION_SKEW) {
-    pr_trace_msg(trace_channel, 5,
-      "schema version %u < desired version %u for path '%s', failing",
-      current_version, schema_version, table_path);
-    proxy_db_close(p, dbh);
-    destroy_pool(tmp_pool);
-    errno = EPERM;
-    return NULL;
-  }
-
-  /* The schema version is skewed; delete the old table, create a new one. */
-  pr_trace_msg(trace_channel, 4,
-    "schema version %u < desired version %u for path '%s', deleting file",
-    current_version, schema_version, table_path);
-
-  proxy_db_close(p, dbh);
-  if (unlink(table_path) < 0) {
-    pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
-      ": error deleting '%s': %s", table_path, strerror(errno));
-  }
-
-  dbh = proxy_db_open(p, table_path, schema_name);
-  if (dbh == NULL) {
-    xerrno = errno;
-
-    destroy_pool(tmp_pool);
-    errno = xerrno;
-    return NULL;
-  }
-
-  res = set_schema_version(tmp_pool, dbh, schema_name, schema_version);
-  xerrno = errno;
 
   destroy_pool(tmp_pool);
 

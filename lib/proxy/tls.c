@@ -2725,7 +2725,7 @@ static int tls_db_add_vhost(pool *p, server_rec *s) {
 }
 
 static int tls_db_init(pool *p, const char *tables_dir, int flags) {
-  int res, xerrno = 0;
+  int db_flags, res, xerrno = 0;
   server_rec *s;
 
   if (p == NULL ||
@@ -2735,10 +2735,15 @@ static int tls_db_init(pool *p, const char *tables_dir, int flags) {
   }
 
   tls_db_path = pdircat(p, tables_dir, "proxy-tls.db", NULL);
+  db_flags = PROXY_DB_OPEN_FL_SCHEMA_VERSION_CHECK|PROXY_DB_OPEN_FL_INTEGRITY_CHECK|PROXY_DB_OPEN_FL_VACUUM;
+  if (flags & PROXY_DB_OPEN_FL_SKIP_VACUUM) {
+    /* If the caller needs us to skip the vacuum, we will. */
+    db_flags &= ~PROXY_DB_OPEN_FL_VACUUM;
+  }
 
   PRIVS_ROOT
   tls_dbh = proxy_db_open_with_version(p, tls_db_path, PROXY_TLS_DB_SCHEMA_NAME,
-    PROXY_TLS_DB_SCHEMA_VERSION, flags);
+    PROXY_TLS_DB_SCHEMA_VERSION, db_flags);
   xerrno = errno;
   PRIVS_RELINQUISH
 
@@ -3478,14 +3483,12 @@ int proxy_tls_sess_init(pool *p, int flags) {
   }
 
   /* Make sure we have our own per-session database handle, per SQLite3
-   * recommendation.  Skip integrity checks and vacuuming, assuming that they
-   * were done on startup.
+   * recommendation.
    */
-  flags |= (PROXY_DB_OPEN_FL_SKIP_INTEGRITY_CHECK|PROXY_DB_OPEN_FL_SKIP_VACUUM);
 
   PRIVS_ROOT
   tls_dbh = proxy_db_open_with_version(proxy_pool, tls_db_path,
-    PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION, flags);
+    PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION, 0);
   xerrno = errno;
   PRIVS_RELINQUISH
 
