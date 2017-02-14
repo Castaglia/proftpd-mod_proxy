@@ -130,9 +130,7 @@ START_TEST (db_open_with_version_test) {
   schema_name = "proxy_test";
   schema_version = 0;
 
-  if (getenv("TRAVIS_CI") != NULL) {
-    /* Disable the integrity checks, vacuuming for these tests. */
-    flags |= PROXY_DB_OPEN_FL_SKIP_VACUUM;
+  if (getenv("TRAVIS_CI") == NULL) {
   }
 
   mark_point();
@@ -145,9 +143,40 @@ START_TEST (db_open_with_version_test) {
   res = proxy_db_close(p, dbh);
   fail_unless(res == 0, "Failed to close database: %s", strerror(errno));
 
+  flags |= PROXY_DB_OPEN_FL_INTEGRITY_CHECK;
+
+  mark_point();
+  dbh = proxy_db_open_with_version(p, table_path, schema_name, schema_version,
+    flags);
+  fail_unless(dbh != NULL,
+    "Failed to open table '%s', schema '%s', version %u: %s", table_path,
+    schema_name, schema_version, strerror(errno));
+
+  res = proxy_db_close(p, dbh);
+  fail_unless(res == 0, "Failed to close database: %s", strerror(errno));
+
+  if (getenv("TRAVIS_CI") == NULL) {
+    /* Enable the vacuuming for these tests. */
+    flags |= PROXY_DB_OPEN_FL_VACUUM;
+
+    mark_point();
+    dbh = proxy_db_open_with_version(p, table_path, schema_name, schema_version,
+      flags);
+    fail_unless(dbh != NULL,
+      "Failed to open table '%s', schema '%s', version %u: %s", table_path,
+      schema_name, schema_version, strerror(errno));
+
+    res = proxy_db_close(p, dbh);
+    fail_unless(res == 0, "Failed to close database: %s", strerror(errno));
+
+    flags &= ~PROXY_DB_OPEN_FL_VACUUM;
+  }
+
+  flags &= ~PROXY_DB_OPEN_FL_INTEGRITY_CHECK;
+
   mark_point();
   schema_version = 76;
-  flags |= PROXY_DB_OPEN_FL_ERROR_ON_SCHEMA_VERSION_SKEW;
+  flags |= PROXY_DB_OPEN_FL_SCHEMA_VERSION_CHECK|PROXY_DB_OPEN_FL_ERROR_ON_SCHEMA_VERSION_SKEW;
   dbh = proxy_db_open_with_version(p, table_path, schema_name, schema_version,
     flags);
   fail_unless(dbh == NULL, "Opened table with version skew unexpectedly");

@@ -43,9 +43,11 @@ struct proxy_dbh *proxy_db_open(pool *p, const char *table_path,
  */
 struct proxy_dbh *proxy_db_open_with_version(pool *p, const char *table_path,
   const char *schema_name, unsigned int schema_version, int flags);
-#define PROXY_DB_OPEN_FL_ERROR_ON_SCHEMA_VERSION_SKEW		0x001
-#define PROXY_DB_OPEN_FL_SKIP_INTEGRITY_CHECK			0x002
-#define PROXY_DB_OPEN_FL_SKIP_VACUUM				0x004
+#define PROXY_DB_OPEN_FL_SCHEMA_VERSION_CHECK			0x001
+#define PROXY_DB_OPEN_FL_ERROR_ON_SCHEMA_VERSION_SKEW		0x002
+#define PROXY_DB_OPEN_FL_INTEGRITY_CHECK			0x004
+#define PROXY_DB_OPEN_FL_VACUUM					0x008
+#define PROXY_DB_OPEN_FL_SKIP_VACUUM				0x010
 
 /* Close the database. */
 int proxy_db_close(pool *p, struct proxy_dbh *dbh);

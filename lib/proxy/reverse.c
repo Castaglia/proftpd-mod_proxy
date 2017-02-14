@@ -2520,7 +2520,7 @@ int proxy_reverse_use_proxy_auth(void) {
 }
 
 int proxy_reverse_init(pool *p, const char *tables_dir, int flags) {
-  int res, xerrno = 0;
+  int db_flags, res, xerrno = 0;
   server_rec *s;
 
   if (p == NULL ||
@@ -2531,9 +2531,15 @@ int proxy_reverse_init(pool *p, const char *tables_dir, int flags) {
 
   reverse_db_path = pdircat(p, tables_dir, "proxy-reverse.db", NULL);
 
+  db_flags = PROXY_DB_OPEN_FL_SCHEMA_VERSION_CHECK|PROXY_DB_OPEN_FL_INTEGRITY_CHECK|PROXY_DB_OPEN_FL_VACUUM;
+  if (flags & PROXY_DB_OPEN_FL_SKIP_VACUUM) {
+    /* If the caller needs us to skip the vacuum, we will. */
+    db_flags &= ~PROXY_DB_OPEN_FL_VACUUM;
+  }
+
   PRIVS_ROOT
   reverse_dbh = proxy_db_open_with_version(p, reverse_db_path,
-    PROXY_REVERSE_DB_SCHEMA_NAME, PROXY_REVERSE_DB_SCHEMA_VERSION, flags);
+    PROXY_REVERSE_DB_SCHEMA_NAME, PROXY_REVERSE_DB_SCHEMA_VERSION, db_flags);
   xerrno = errno;
   PRIVS_RELINQUISH
 
@@ -2863,14 +2869,12 @@ int proxy_reverse_sess_init(pool *p, const char *tables_dir,
   }
 
   /* Make sure we have our own per-session database handle, per SQLite3
-   * recommendation.  Skip integrity checks and vacuuming, assuming that they
-   * were done on startup.
+   * recommendation.
    */
-  flags |= (PROXY_DB_OPEN_FL_SKIP_INTEGRITY_CHECK|PROXY_DB_OPEN_FL_SKIP_VACUUM);
 
   PRIVS_ROOT
   reverse_dbh = proxy_db_open_with_version(proxy_pool, reverse_db_path,
-    PROXY_REVERSE_DB_SCHEMA_NAME, PROXY_REVERSE_DB_SCHEMA_VERSION, flags);
+    PROXY_REVERSE_DB_SCHEMA_NAME, PROXY_REVERSE_DB_SCHEMA_VERSION, 0);
   xerrno = errno;
   PRIVS_RELINQUISH
 
