@@ -38,18 +38,35 @@ static const char *current_schema = NULL;
 
 static const char *trace_channel = "proxy.db";
 
+#define PROXY_DB_SQLITE_MAX_RETRY_COUNT		4
+#define PROXY_DB_SQLITE_MAX_RETRY_DELAY_MS	250
+
 #define PROXY_DB_SQLITE_TRACE_LEVEL		17
 
 static int db_busy(void *user_data, int busy_count) {
-  if (current_schema != NULL) {
-    pr_trace_msg(trace_channel, 1, "(sqlite3): schema '%s': busy count = %d",
-      current_schema, busy_count);
+  int retry = FALSE;
 
-  } else {
-    pr_trace_msg(trace_channel, 1, "(sqlite3): busy count = %d", busy_count);
+  /* How many retries do we want to allow? */
+  if (busy_count <= PROXY_DB_SQLITE_MAX_RETRY_COUNT) {
+    retry = TRUE;
   }
 
-  return 0;
+  if (current_schema != NULL) {
+    pr_trace_msg(trace_channel, 1,
+      "(sqlite3): schema '%s': busy count = %d, retry = %s", current_schema,
+      busy_count, retry ? "true" : "false");
+
+  } else {
+    pr_trace_msg(trace_channel, 1, "(sqlite3): busy count = %d, retry = %s",
+      busy_count, retry ? "true" : "false");
+  }
+
+  /* If we're busy, then sleep for a short while, on the assumption that the
+   * other process will finish its business with our tables.
+   */
+  (void) pr_timer_usleep(PROXY_DB_SQLITE_MAX_RETRY_DELAY_MS);
+
+  return retry;
 }
 
 static void db_err(void *user_data, int err_code, const char *err_msg) {
