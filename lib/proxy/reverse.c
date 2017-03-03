@@ -652,29 +652,31 @@ static int reverse_db_update_backend(pool *p, unsigned vhost_id,
    * This also helps avoid database contention under load for these policies.
    */
   if (reverse_policy_is_sticky(reverse_connect_policy) == TRUE) {
-    const char *policy_name;
+    if (pr_trace_get_level(trace_channel) >= 17) {
+      const char *policy_name;
 
-    switch (reverse_connect_policy) {
-      case PROXY_REVERSE_CONNECT_POLICY_PER_USER:
-        policy_name = "PerUser";
-        break;
+      switch (reverse_connect_policy) {
+        case PROXY_REVERSE_CONNECT_POLICY_PER_USER:
+          policy_name = "PerUser";
+          break;
 
-      case PROXY_REVERSE_CONNECT_POLICY_PER_GROUP:
-        policy_name = "PerGroup";
-        break;
+        case PROXY_REVERSE_CONNECT_POLICY_PER_GROUP:
+          policy_name = "PerGroup";
+          break;
 
-      case PROXY_REVERSE_CONNECT_POLICY_PER_HOST:
-        policy_name = "PerHost";
-        break;
+        case PROXY_REVERSE_CONNECT_POLICY_PER_HOST:
+          policy_name = "PerHost";
+          break;
 
-      default:
-        policy_name = "(unknown)";
-        break;
+        default:
+          policy_name = "(unknown)";
+          break;
+      }
+
+      pr_trace_msg(trace_channel, 17, "sticky ProxyReverseConnectPolicy %s "
+        "does not require updates, skipping", policy_name);
     }
 
-    pr_trace_msg(trace_channel, 17,
-      "sticky ProxyReverseConnectPolicy %s does not require updates, skipping",
-      policy_name);
     return 0;
   }
 
