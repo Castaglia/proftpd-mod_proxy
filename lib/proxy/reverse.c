@@ -80,6 +80,8 @@ static const char *reverse_db_path = NULL;
 
 static const char *trace_channel = "proxy.reverse";
 
+static int reverse_policy_is_sticky(int policy_id);
+
 static void clear_user_creds(void) {
   register unsigned int i;
 
