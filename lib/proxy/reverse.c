@@ -80,6 +80,8 @@ static const char *reverse_db_path = NULL;
 
 static const char *trace_channel = "proxy.reverse";
 
+static int reverse_policy_is_sticky(int policy_id);
+
 static void clear_user_creds(void) {
   register unsigned int i;
 
@@ -646,6 +648,39 @@ static int reverse_db_update_backend(pool *p, unsigned vhost_id,
   int res, idx = 1;
   const char *stmt, *errstr = NULL;
   array_header *results;
+
+  /* If our ReverseConnectPolicy is one of PerUser, PerGroup, or PerHost,
+   * we can skip this step: those policies do not use the connection count/time.
+   * This also helps avoid database contention under load for these policies.
+   */
+  if (reverse_policy_is_sticky(reverse_connect_policy) == TRUE) {
+    if (pr_trace_get_level(trace_channel) >= 17) {
+      const char *policy_name;
+
+      switch (reverse_connect_policy) {
+        case PROXY_REVERSE_CONNECT_POLICY_PER_USER:
+          policy_name = "PerUser";
+          break;
+
+        case PROXY_REVERSE_CONNECT_POLICY_PER_GROUP:
+          policy_name = "PerGroup";
+          break;
+
+        case PROXY_REVERSE_CONNECT_POLICY_PER_HOST:
+          policy_name = "PerHost";
+          break;
+
+        default:
+          policy_name = "(unknown)";
+          break;
+      }
+
+      pr_trace_msg(trace_channel, 17, "sticky ProxyReverseConnectPolicy %s "
+        "does not require updates, skipping", policy_name);
+    }
+
+    return 0;
+  }
 
   /* TODO: Right now, we simply overwrite/track the very latest connect ms.
    * But this could unfairly skew policies such as LeastResponseTime, as when
