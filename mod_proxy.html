@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html>
 <head>
 <title>ProFTPD module mod_proxy</title>
@@ -48,6 +49,7 @@ servers.
 <h2>Directives</h2>
 <ul>
   <li><a href="#ProxyDataTransferPolicy">ProxyDataTransferPolicy</a>
+  <li><a href="#ProxyDatastore">ProxyDatastore</a>
   <li><a href="#ProxyEngine">ProxyEngine</a>
   <li><a href="#ProxyForwardEnabled">ProxyForwardEnabled</a>
   <li><a href="#ProxyForwardMethod">ProxyForwardMethod</a>
@@ -80,7 +82,7 @@ servers.
 
 <p>
 <hr>
-<h2><a name="ProxyDataTransferPolicy">ProxyDataTransferPolicy</a></h2>
+<h3><a name="ProxyDataTransferPolicy">ProxyDataTransferPolicy</a></h3>
 <strong>Syntax:</strong> ProxyDataTransferPolicy <em>client|active|passive|pasv|epsv|port|eprt</em><br>
 <strong>Default:</strong> ProxyDataTransferPolicy client<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -158,7 +160,24 @@ The currently supported policies are:
 
 <p>
 <hr>
-<h2><a name="ProxyEngine">ProxyEngine</a></h2>
+<h3><a name="ProxyDatastore">ProxyDatastore</a></h3>
+<strong>Syntax:</strong> ProxyDatastore <em>type [info]</em><br>
+<strong>Default:</strong> ProxyDatastore SQLite<br>
+<strong>Context:</strong> server config<br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc1 and later
+
+<p>
+The <code>ProxyDatastore</code> directive configures the <em>type</em> of
+datastore that <code>mod_proxy</code> uses for persistence.  The currently
+supported datastore <em>types</em> are:
+<ul>
+  <li>SQLite
+<ul>
+
+<p>
+<hr>
+<h3><a name="ProxyEngine">ProxyEngine</a></h3>
 <strong>Syntax:</strong> ProxyEngine <em>on|off</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -174,7 +193,7 @@ both the main server and all configured virtual hosts.
 
 <p>
 <hr>
-<h2><a name="ProxyForwardEnabled">ProxyForwardEnabled</a></h2>
+<h3><a name="ProxyForwardEnabled">ProxyForwardEnabled</a></h3>
 <strong>Syntax:</strong> ProxyForwardEnabled <em>on|off</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> <code>&lt;Class&gt;</code><br>
@@ -216,7 +235,7 @@ See also: <a href="#ProxyForwardTo"><code>ProxyForwardTo</code></a>
 
 <p>
 <hr>
-<h2><a name="ProxyForwardMethod">ProxyForwardMethod</a></h2>
+<h3><a name="ProxyForwardMethod">ProxyForwardMethod</a></h3>
 <strong>Syntax:</strong> ProxyForwardMethod <em>method</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -295,7 +314,7 @@ greatly, depending on the FTP client.
 
 <p>
 <hr>
-<h2><a name="ProxyForwardTo">ProxyForwardTo</a></h2>
+<h3><a name="ProxyForwardTo">ProxyForwardTo</a></h3>
 <strong>Syntax:</strong> ProxyForwardTo <em>[!]pattern [flags]</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -327,7 +346,7 @@ forward proxying based on where clients connect <b>from</b>.
 
 <p>
 <hr>
-<h2><a name="ProxyLog">ProxyLog</a></h2>
+<h3><a name="ProxyLog">ProxyLog</a></h3>
 <strong>Syntax:</strong> ProxyLog <em>path|"none"</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -346,7 +365,7 @@ unless <code>AllowLogSymlinks</code> is explicitly set to <em>on</em>
 
 <p>
 <hr>
-<h2><a name="ProxyOptions">ProxyOptions</a></h2>
+<h3><a name="ProxyOptions">ProxyOptions</a></h3>
 <strong>Syntax:</strong> ProxyOptions <em>opt1 ...</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -423,7 +442,7 @@ The currently implemented options are:
 
 <p>
 <hr>
-<h2><a name="ProxyRetryCount">ProxyRetryCount</a></h2>
+<h3><a name="ProxyRetryCount">ProxyRetryCount</a></h3>
 <strong>Syntax:</strong> ProxyRetryCount <em>count</em><br>
 <strong>Default:</strong> ProxyRetryCount 5<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -437,7 +456,7 @@ server.  The default is <em>5</em> attempts.
 
 <p>
 <hr>
-<h2><a name="ProxyReverseConnectPolicy">ProxyReverseConnectPolicy</a></h2>
+<h3><a name="ProxyReverseConnectPolicy">ProxyReverseConnectPolicy</a></h3>
 <strong>Syntax:</strong> ProxyReverseConnectPolicy <em>policy</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -519,7 +538,7 @@ The currently supported policies are:
 
 <p>
 <hr>
-<h2><a name="ProxyReverseServers">ProxyReverseServers</a></h2>
+<h3><a name="ProxyReverseServers">ProxyReverseServers</a></h3>
 <strong>Syntax:</strong> ProxyReverseServers <em>servers</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -593,7 +612,7 @@ by <code>mod_sql</code>, can be used.
 
 <p>
 <hr>
-<h2><a name="ProxyRole">ProxyRole</a></h2>
+<h3><a name="ProxyRole">ProxyRole</a></h3>
 <strong>Syntax:</strong> ProxyRole <em>role</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -624,7 +643,7 @@ connections to <code>mod_proxy</code> will fail.
 
 <p>
 <hr>
-<h2><a name="ProxySourceAddress">ProxySourceAddress</a></h2>
+<h3><a name="ProxySourceAddress">ProxySourceAddress</a></h3>
 <strong>Syntax:</strong> ProxySourceAddress <em>address</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -642,7 +661,7 @@ on a proxying host.
 
 <p>
 <hr>
-<h2><a name="ProxyTables">ProxyTables</a></h2>
+<h3><a name="ProxyTables">ProxyTables</a></h3>
 <strong>Syntax:</strong> ProxyTables <em>table-info</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config<br>
@@ -662,7 +681,7 @@ connections to <code>mod_proxy</code> will fail.
 
 <p>
 <hr>
-<h2><a name="ProxyTimeoutConnect">ProxyTimeoutConnect</a></h2>
+<h3><a name="ProxyTimeoutConnect">ProxyTimeoutConnect</a></h3>
 <strong>Syntax:</strong> ProxyTimeoutConnect <em>timeout</em><br>
 <strong>Default:</strong> ProxyTimeoutConnect 5sec<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -686,7 +705,7 @@ servers, a more aggressively short timeout can be used:
 
 <p>
 <hr>
-<h2><a name="ProxyTimeoutLinger">ProxyTimeoutLinger</a></h2>
+<h3><a name="ProxyTimeoutLinger">ProxyTimeoutLinger</a></h3>
 <strong>Syntax:</strong> ProxyTimeoutLinger <em>timeout</em><br>
 <strong>Default:</strong> ProxyTimeoutLinger 3sec<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -701,7 +720,7 @@ explicit "end of transfer" response from the backend server, before giving up.
 
 <p>
 <hr>
-<h2><a name="ProxyTLSCACertificateFile">ProxyTLSCACertificateFile</a></h2>
+<h3><a name="ProxyTLSCACertificateFile">ProxyTLSCACertificateFile</a></h3>
 <strong>Syntax:</strong> ProxyTLSCACertificateFile <em>path</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -734,7 +753,7 @@ this reason, <code>mod_proxy</code> ships with its own default
 
 <p>
 <hr>
-<h2><a name="ProxyTLSCACertificatePath">ProxyTLSCACertificatePath</a></h2>
+<h3><a name="ProxyTLSCACertificatePath">ProxyTLSCACertificatePath</a></h3>
 <strong>Syntax:</strong> ProxyTLSCACertificatePath <em>directory</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -762,7 +781,7 @@ Example:
 
 <p>
 <hr>
-<h2><a name="ProxyTLSCARevocationFile">ProxyTLSCARevocationFile</a></h2>
+<h3><a name="ProxyTLSCARevocationFile">ProxyTLSCARevocationFile</a></h3>
 <strong>Syntax:</strong> ProxyTLSCACertificateFile <em>path</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -785,7 +804,7 @@ Example:
 
 <p>
 <hr>
-<h2><a name="ProxyTLSCARevocationPath">ProxyTLSCARevocationPath</a></h2>
+<h3><a name="ProxyTLSCARevocationPath">ProxyTLSCARevocationPath</a></h3>
 <strong>Syntax:</strong> ProxyTLSCARevocationPath <em>directory</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -814,7 +833,7 @@ Example:
 
 <p>
 <hr>
-<h2><a name="ProxyTLSCertificateFile">ProxyTLSCertificateFile</a></h2>
+<h3><a name="ProxyTLSCertificateFile">ProxyTLSCertificateFile</a></h3>
 <strong>Syntax:</strong> ProxyTLSCertificateFile <em>path</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -835,7 +854,7 @@ Example:
 
 <p>
 <hr>
-<h2><a name="ProxyTLSCertificateKeyFile">ProxyTLSCertificateKeyFile</a></h2>
+<h3><a name="ProxyTLSCertificateKeyFile">ProxyTLSCertificateKeyFile</a></h3>
 <strong>Syntax:</strong> ProxyTLSCertificateKeyFile <em>path</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -859,7 +878,7 @@ the certificate and the private key.
 
 <p>
 <hr>
-<h2><a name="ProxyTLSCipherSuite">ProxyTLSCipherSuite</a></h2>
+<h3><a name="ProxyTLSCipherSuite">ProxyTLSCipherSuite</a></h3>
 <strong>Syntax:</strong> ProxyTLSCipherSuite <em>cipher-list</em><br>
 <strong>Default:</strong> ProxyTLSCipherSuite DEFAULT:!ADH:!EXPORT:!DES<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -878,7 +897,7 @@ may be used to list all of the ciphers and the order described by a specific
 
 <p>
 <hr>
-<h2><a name="ProxyTLSEngine">ProxyTLSEngine</a></h2>
+<h3><a name="ProxyTLSEngine">ProxyTLSEngine</a></h3>
 <strong>Syntax:</strong> ProxyTLSEngine <em>on|off|auto</em><br>
 <strong>Default:</strong> ProxyTLSEngine auto<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -918,7 +937,7 @@ The <code>ProxyTLSEngine</code> directive configures the use of SSL/TLS for
 
 <p>
 <hr>
-<h2><a name="ProxyTLSOptions">ProxyTLSOptions</a></h2>
+<h3><a name="ProxyTLSOptions">ProxyTLSOptions</a></h3>
 <strong>Syntax:</strong> ProxyTLSOptions <em>options</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -968,7 +987,7 @@ The currently implemented options are:
 
 <p>
 <hr>
-<h2><a name="ProxyTLSPreSharedKey">ProxyTLSPreSharedKey</a></h2>
+<h3><a name="ProxyTLSPreSharedKey">ProxyTLSPreSharedKey</a></h3>
 <strong>Syntax:</strong> ProxyTLSPreSharedKey <em>identity key-info</em><br>
 <strong>Default:</strong> None<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -1010,7 +1029,7 @@ it via:
 
 <p>
 <hr>
-<h2><a name="ProxyTLSProtocol">ProxyTLSProtocol</a></h2>
+<h3><a name="ProxyTLSProtocol">ProxyTLSProtocol</a></h3>
 <strong>Syntax:</strong> ProxyTLSProtocol <em>protocols</em><br>
 <strong>Default:</strong> ProxyTLSProtocol TLSv1 TLSv1.1 TLSv1.2<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -1070,7 +1089,7 @@ always be expanded to all of the supported SSL/TLS protocols known by
 
 <p>
 <hr>
-<h2><a name="ProxyTLSTimeoutHandshake">ProxyTLSTimeoutHandshake</a></h2>
+<h3><a name="ProxyTLSTimeoutHandshake">ProxyTLSTimeoutHandshake</a></h3>
 <strong>Syntax:</strong> ProxyTLSTimeoutHandshake <em>timeout</em><br>
 <strong>Default:</strong> ProxyTLSTimeoutHandshake 30sec<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -1085,7 +1104,7 @@ complete.  The default is 30 seconds.
 
 <p>
 <hr>
-<h2><a name="ProxyTLSTransferProtectionPolicy">ProxyTLSTransferProtectionPolicy</a></h2>
+<h3><a name="ProxyTLSTransferProtectionPolicy">ProxyTLSTransferProtectionPolicy</a></h3>
 <strong>Syntax:</strong> ProxyTLSTransferProtectionPolicy <em>client|required|clear</em><br>
 <strong>Default:</strong> ProxyTLSTransferProtectionPolicy required<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -1132,7 +1151,7 @@ The currently supported policies are:
 
 <p>
 <hr>
-<h2><a name="ProxyTLSVerifyServer">ProxyTLSVerifyServer</a></h2>
+<h3><a name="ProxyTLSVerifyServer">ProxyTLSVerifyServer</a></h3>
 <strong>Syntax:</strong> ProxyTLSVerifyServer <em>on|off</em><br>
 <strong>Default:</strong> ProxyTLSVerifyServer on<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
@@ -1698,7 +1717,7 @@ building <code>mod_proxy</code>.
 <hr>
 
 <font size=2><b><i>
-&copy; Copyright 2015-2016 TJ Saunders<br>
+&copy; Copyright 2015-2017 TJ Saunders<br>
  All Rights Reserved<br>
 </i></b></font>
 
