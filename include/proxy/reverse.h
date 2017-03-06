@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse-proxy API
- * Copyright (c) 2012-2016 TJ Saunders
+ * Copyright (c) 2012-2017 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -59,7 +59,42 @@ array_header *proxy_reverse_json_parse_uris(pool *p, const char *path);
  */
 int proxy_reverse_connect_get_policy(const char *policy);
 
+/* Returns TRUE if the given policy ID is a "sticky" policy, i.e. one of
+ * PerUser, PerGroup, or PerHost.
+ */
+int proxy_reverse_policy_is_sticky(int policy_id);
+
+/* Returns a textual name for the given policy ID. */
+const char *proxy_reverse_policy_name(int policy_id);
+
+/* Returns the per-user/group backends for the given name. */
+array_header *proxy_reverse_pername_backends(pool *p, const char *name,
+  int per_user);
+
 /* Returns TRUE if the Reverse API is using proxy auth, FALSE otherwise. */
 int proxy_reverse_use_proxy_auth(void);
+
+/* Defines the datastore interface. */
+struct proxy_reverse_datastore {
+  /* Policy callbacks */
+  int (*policy_init)(pool *p, void *dsh, int policy_id, unsigned int vhost_id,
+    array_header *backends, unsigned long opts);
+  const struct proxy_conn *(*policy_next_backend)(pool *p, void *dsh,
+    int policy_id, unsigned int vhost_id, array_header *default_backends,
+    const void *policy_data);
+  int (*policy_used_backend)(pool *p, void *dsh, int policy_id,
+    unsigned int vhost_id, int backend_id);
+  int (*policy_update_backend)(pool *p, void *dsh, int policy_id,
+    unsigned int vhost_id, int backend_id, int conn_incr, long connect_ms);
+
+  void *(*init)(pool *p, const char *path, int flags);
+  void *(*open)(pool *p, const char *path, array_header *backends);
+  int (*close)(pool *p, void *dsh);
+
+  /* Datastore handle returned by the open callback. */
+  void *dsh;
+
+  int backend_id;
+};
 
 #endif /* MOD_PROXY_REVERSE_H */

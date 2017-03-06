@@ -36,6 +36,8 @@ static const char *trace_channel = "proxy.tls.db";
 #define PROXY_TLS_DB_SCHEMA_NAME		"proxy_tls"
 #define PROXY_TLS_DB_SCHEMA_VERSION		3
 
+static unsigned long db_opts = 0UL;
+
 static int tls_db_add_sess(pool *p, void *dbh, const char *key,
     SSL_SESSION *sess) {
   int res, vhost_id, xerrno = 0;
@@ -64,7 +66,7 @@ static int tls_db_add_sess(pool *p, void *dbh, const char *key,
 
   data[datalen] = '\0';
 
-  if (proxy_tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
+  if (db_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
     BIO *diags_bio;
 
     diags_bio = BIO_new(BIO_s_mem());
@@ -443,7 +445,7 @@ static int tls_db_close(pool *p, void *dbh) {
   return 0;
 }
 
-static void *tls_db_open(pool *p, const char *tables_dir) {
+static void *tls_db_open(pool *p, const char *tables_dir, unsigned long opts) {
   int xerrno = 0;
   struct proxy_dbh *dbh;
   const char *db_path;
@@ -465,11 +467,12 @@ static void *tls_db_open(pool *p, const char *tables_dir) {
     return NULL;
   }
 
+  db_opts = opts;
   return dbh;
 }
 #endif /* PR_USE_OPENSSL */
 
-int proxy_tls_db_for_datastore(struct proxy_tls_datastore *ds, void *ds_data,
+int proxy_tls_db_as_datastore(struct proxy_tls_datastore *ds, void *ds_data,
     size_t ds_datasz) {
   if (ds == NULL) {
     errno = EINVAL;

@@ -72,8 +72,6 @@
 /* This is used for e.g. "ProxyTLSProtocol ALL -SSLv3 ...". */
 #define PROXY_TLS_PROTO_ALL		(PROXY_TLS_PROTO_SSL_V3|PROXY_TLS_PROTO_TLS_V1|PROXY_TLS_PROTO_TLS_V1_1|PROXY_TLS_PROTO_TLS_V1_2)
 
-extern unsigned long proxy_tls_opts;
-
 const char *proxy_tls_get_errors(void);
 
 int proxy_tls_init(pool *p, const char *tables_dir, int flags);
@@ -93,7 +91,7 @@ int proxy_tls_set_tls(int);
 /* Returns the ProxyTLSEngine value; see above. */
 int proxy_tls_using_tls(void);
 
-/* Used for defining the datastore used. */
+/* Defines the datastore interface. */
 struct proxy_tls_datastore {
 #ifdef PR_USE_OPENSSL
   int (*add_sess)(pool *p, void *dsh, const char *key, SSL_SESSION *sess);
@@ -102,8 +100,11 @@ struct proxy_tls_datastore {
   int (*count_sess)(pool *p, void *dsh);
 #endif /* PR_USE_OPENSSL */
   int (*init)(pool *p, const char *path, int flags);
-  void *(*open)(pool *p, const char *path);
+  void *(*open)(pool *p, const char *path, unsigned long opts);
   int (*close)(pool *p, void *dsh);
+
+  /* Datastore handle returned by the open callback. */
+  void *dsh;
 };
 
 #endif /* MOD_PROXY_TLS_H */
