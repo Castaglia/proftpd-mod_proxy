@@ -954,6 +954,7 @@ int proxy_reverse_use_proxy_auth(void) {
 }
 
 int proxy_reverse_init(pool *p, const char *tables_dir, int flags) {
+  const char *ds_name = "(unknown/unsupported)";
   int res, xerrno;
   void *dsh = NULL;
   server_rec *s = NULL;
@@ -963,17 +964,27 @@ int proxy_reverse_init(pool *p, const char *tables_dir, int flags) {
 
   switch (proxy_datastore) {
     case PROXY_DATASTORE_SQLITE:
-      dsh = proxy_reverse_db_as_datastore(&reverse_ds, proxy_datastore_data,
+      ds_name = "SQLite";
+      res = proxy_reverse_db_as_datastore(&reverse_ds, proxy_datastore_data,
         proxy_datastore_datasz);
+      xerrno = errno;
       break;
 
     default:
-      dsh = NULL;
-      errno = EINVAL;
+      res = -1;
+      xerrno = errno = EINVAL;
       break;
   }
 
+  if (res < 0) {
+    return -1;
+  }
+
+  dsh = (reverse_ds.init)(p, tables_dir, flags);
   if (dsh == NULL) {
+    pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
+      ": failed to initialize %s datastore: %s", ds_name, strerror(xerrno));
+    errno = xerrno;
     return -1;
   }
 
