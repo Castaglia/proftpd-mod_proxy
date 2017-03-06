@@ -2272,8 +2272,8 @@ static int tls_npn_cb(SSL *ssl,
       "NPN protocols advertised by server:");
     for (i = 0; i < npn_inlen; i++) {
       pr_trace_msg(trace_channel, 12,
-        " %*s", npn_in[i], &(npn_in[i+1]));
-      i += npn_in[i] + 1;
+        " %.*s", (int) npn_in[i], (char *) &(npn_in[i+1]));
+      i += npn_in[i];
     }
 
     res = SSL_select_next_proto(npn_out, npn_outlen, npn_in, npn_inlen,
@@ -2311,7 +2311,7 @@ static int set_next_protocol(SSL_CTX *ctx) {
   next_proto->encoded_protolen = encoded_protolen;
 
 # if defined(PR_USE_OPENSSL_NPN)
-  SSL_CTX_set_next_proto_select_cb(ctx, tls_npn_cb, &next_proto);
+  SSL_CTX_set_next_proto_select_cb(ctx, tls_npn_cb, next_proto);
 # endif /* NPN */
 
 # if defined(PR_USE_OPENSSL_ALPN)

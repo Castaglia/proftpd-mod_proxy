@@ -28,7 +28,7 @@
 #include "mod_proxy.h"
 #include "proxy/reverse.h"
 
-void *proxy_reverse_db_as_datastore(struct proxy_reverse_datastore *ds,
+int proxy_reverse_db_as_datastore(struct proxy_reverse_datastore *ds,
   void *ds_data, size_t ds_datasz);
 
 #endif /* MOD_PROXY_REVERSE_DB_H */
