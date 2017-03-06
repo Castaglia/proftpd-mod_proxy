@@ -1,5 +1,5 @@
 /*
- * ProFTPD - mod_proxy TLS Database API
+ * ProFTPD - mod_proxy Reverse Database API
  * Copyright (c) 2017 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
@@ -22,13 +22,13 @@
  * source distribution.
  */
 
-#ifndef MOD_PROXY_TLS_DB_H
-#define MOD_PROXY_TLS_DB_H
+#ifndef MOD_PROXY_REVERSE_DB_H
+#define MOD_PROXY_REVERSE_DB_H
 
 #include "mod_proxy.h"
-#include "proxy/tls.h"
+#include "proxy/reverse.h"
 
-int proxy_tls_db_as_datastore(struct proxy_tls_datastore *ds, void *ds_data,
-  size_t ds_datasz);
+void *proxy_reverse_db_as_datastore(struct proxy_reverse_datastore *ds,
+  void *ds_data, size_t ds_datasz);
 
-#endif /* MOD_PROXY_TLS_DB_H */
+#endif /* MOD_PROXY_REVERSE_DB_H */

@@ -34,11 +34,10 @@
 
 extern xaset_t *server_list;
 
-unsigned long proxy_tls_opts = 0UL;
+static unsigned long tls_opts = 0UL;
 
 static const char *tls_tables_path = NULL;
 static struct proxy_tls_datastore tls_ds;
-static void *tls_dsh = NULL;
 static int tls_engine = PROXY_TLS_ENGINE_AUTO;
 static int tls_need_data_prot = TRUE;
 static int tls_required_on_frontend_data = FALSE;
@@ -1300,7 +1299,7 @@ static int tls_verify_cb(int ok, X509_STORE_CTX *ctx) {
       ok = 1;
     }
   } else {
-    if (proxy_tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
+    if (tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "[tls.verify]: cert subject: %s",
         tls_x509_name_oneline(X509_get_subject_name(cert)));
@@ -1317,8 +1316,8 @@ static int tls_get_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
   char port_str[32], *sess_key = NULL;
   SSL_SESSION *sess = NULL;
 
-  if (proxy_tls_opts & PROXY_TLS_OPT_NO_SESSION_CACHE) {
-    if (proxy_tls_opts & PROXY_TLS_OPT_NO_SESSION_TICKETS) {
+  if (tls_opts & PROXY_TLS_OPT_NO_SESSION_CACHE) {
+    if (tls_opts & PROXY_TLS_OPT_NO_SESSION_TICKETS) {
       pr_trace_msg(trace_channel, 19,
         "NoSessionCache and NoSessionTickets ProxyTLSOptions in effect, "
         "not using cached SSL sessions");
@@ -1334,7 +1333,7 @@ static int tls_get_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
   pr_trace_msg(trace_channel, 19,
     "looking for cached SSL session using key '%s'", sess_key);
 
-  sess = (tls_ds.get_sess)(p, tls_dsh, sess_key);
+  sess = (tls_ds.get_sess)(p, tls_ds.dsh, sess_key);
   if (sess != NULL) {
     long sess_age;
     time_t now;
@@ -1344,7 +1343,7 @@ static int tls_get_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
 
     if (sess_age >= PROXY_TLS_MAX_SESSION_AGE) {
       pr_trace_msg(trace_channel, 9, "cached SSL session expired, removing");
-      (void) (tls_ds.remove_sess)(p, tls_dsh, sess_key);
+      (void) (tls_ds.remove_sess)(p, tls_ds.dsh, sess_key);
 
       SSL_SESSION_free(sess);
       errno = ENOENT;
@@ -1380,8 +1379,8 @@ static int tls_add_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
   int res, sess_count, xerrno = 0;
   time_t now, sess_age;
 
-  if (proxy_tls_opts & PROXY_TLS_OPT_NO_SESSION_CACHE) {
-    if (proxy_tls_opts & PROXY_TLS_OPT_NO_SESSION_TICKETS) {
+  if (tls_opts & PROXY_TLS_OPT_NO_SESSION_CACHE) {
+    if (tls_opts & PROXY_TLS_OPT_NO_SESSION_TICKETS) {
       pr_trace_msg(trace_channel, 19,
         "NoSessionCache and NoSessionTickets ProxyTLSOptions in effect, "
         "not caching SSL sessions");
@@ -1389,7 +1388,7 @@ static int tls_add_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
     }
   }
 
-  sess_count = (tls_ds.count_sess)(p, tls_dsh);
+  sess_count = (tls_ds.count_sess)(p, tls_ds.dsh);
   if (sess_count < 0) {
     return -1;
   }
@@ -1420,7 +1419,7 @@ static int tls_add_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
   pr_trace_msg(trace_channel, 19,
     "caching SSL session using key '%s'", sess_key);
 
-  res = (tls_ds.add_sess)(p, tls_dsh, sess_key, sess);
+  res = (tls_ds.add_sess)(p, tls_ds.dsh, sess_key, sess);
   xerrno = errno;
   SSL_SESSION_free(sess);
 
@@ -2193,7 +2192,7 @@ static unsigned int tls_psk_cb(SSL *ssl, const char *psk_hint, char *identity,
     return 0;
   }
 
-  if (proxy_tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
+  if (tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "[tls.psk] used PSK identity '%s'", tls_psk_name);
   }
@@ -2448,7 +2447,7 @@ int proxy_tls_init(pool *p, const char *tables_path, int flags) {
 
   switch (proxy_datastore) {
     case PROXY_DATASTORE_SQLITE:
-      res = proxy_tls_db_for_datastore(&tls_ds, proxy_datastore_data,
+      res = proxy_tls_db_as_datastore(&tls_ds, proxy_datastore_data,
         proxy_datastore_datasz);
       break;
 
@@ -2501,16 +2500,16 @@ int proxy_tls_free(pool *p) {
     ssl_ctx = NULL;
   }
 
-  if (tls_dsh != NULL) {
+  if (tls_ds.dsh != NULL) {
     int res;
 
-    res = (tls_ds.close)(p, tls_dsh);
+    res = (tls_ds.close)(p, tls_ds.dsh);
     if (res < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "error closing datastore: %s", strerror(errno));
     }
 
-    tls_dsh = NULL;
+    tls_ds.dsh = NULL;
   }
 #endif /* PR_USE_OPENSSL */
 
@@ -3106,18 +3105,6 @@ int proxy_tls_sess_init(pool *p, int flags) {
     return -1;
   }
 
-  PRIVS_ROOT
-  tls_dsh = (tls_ds.open)(proxy_pool, tls_tables_path);
-  xerrno = errno;
-  PRIVS_RELINQUISH
-
-  if (tls_dsh == NULL) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error opening TLS datastore: %s", strerror(xerrno));
-    errno = xerrno;
-    return -1;
-  }
-
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSOptions", FALSE);
   while (c != NULL) {
     unsigned long opts = 0;
@@ -3125,9 +3112,21 @@ int proxy_tls_sess_init(pool *p, int flags) {
     pr_signals_handle();
 
     opts = *((unsigned long *) c->argv[0]);
-    proxy_tls_opts |= opts;
+    tls_opts |= opts;
 
     c = find_config_next(c, c->next, CONF_PARAM, "ProxyTLSOptions", FALSE);
+  }
+
+  PRIVS_ROOT
+  tls_ds.dsh = (tls_ds.open)(proxy_pool, tls_tables_path, tls_opts);
+  xerrno = errno;
+  PRIVS_RELINQUISH
+
+  if (tls_ds.dsh == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error opening TLS datastore: %s", strerror(xerrno));
+    errno = xerrno;
+    return -1;
   }
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSProtocol", FALSE);
@@ -3374,7 +3373,7 @@ int proxy_tls_sess_init(pool *p, int flags) {
   SSL_CTX_set_tlsext_status_cb(ssl_ctx, tls_ocsp_response_cb);
 # endif /* OCSP support */
 
-  if (proxy_tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
+  if (tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
     SSL_CTX_set_info_callback(ssl_ctx, tls_info_cb);
 # if OPENSSL_VERSION_NUMBER > 0x000907000L
     SSL_CTX_set_msg_callback(ssl_ctx, tls_msg_cb);
@@ -3423,7 +3422,7 @@ int proxy_tls_sess_free(pool *p) {
   if (session.rfc2228_mech == NULL) {
     handshake_timeout = 30;
 
-    proxy_tls_opts = 0UL;
+    tls_opts = 0UL;
     tls_engine = PROXY_TLS_ENGINE_AUTO;
     tls_verify_server = TRUE;
     tls_cipher_suite = NULL;
@@ -3434,8 +3433,8 @@ int proxy_tls_sess_free(pool *p) {
     tls_psk_used = FALSE;
 # endif /* PSK support */
 
-    (void) (tls_ds.close)(p, tls_dsh);
-    tls_dsh = NULL;
+    (void) (tls_ds.close)(p, tls_ds.dsh);
+    tls_ds.dsh = NULL;
 
     if (ssl_ctx != NULL) {
       if (init_ssl_ctx() < 0) {
