@@ -611,6 +611,17 @@ MODRET set_proxydatastore(cmd_rec *cmd) {
     ds_data = NULL;
     ds_datasz = 0;
 
+#ifdef PR_USE_REDIS
+  } else if (strcasecmp(ds_name, "redis") == 0) {
+    if (cmd->argc != 3) {
+      CONF_ERROR(cmd, "missing required Redis key prefix");
+    }
+
+    ds = PROXY_DATASTORE_REDIS;
+    ds_data = pstrdup(proxy_pool, cmd->argv[2]);
+    ds_datasz = strlen(ds_data);
+#endif /* PR_USE_REDIS */
+
   } else {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unsupported ProxyDatastore: ",
       ds_name, NULL));

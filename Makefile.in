@@ -20,6 +20,7 @@ MODULE_OBJS=mod_proxy.o \
   lib/proxy/inet.o \
   lib/proxy/tls.o \
   lib/proxy/tls/db.o \
+  lib/proxy/tls/redis.o \
   lib/proxy/uri.o \
   lib/proxy/forward.o \
   lib/proxy/reverse.o \

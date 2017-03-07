@@ -172,8 +172,16 @@ The <code>ProxyDatastore</code> directive configures the <em>type</em> of
 datastore that <code>mod_proxy</code> uses for persistence.  The currently
 supported datastore <em>types</em> are:
 <ul>
+  <li>Redis
   <li>SQLite
 <ul>
+
+<p>
+<b>Note</b> that the Redis <em>type</em> also requires the <em>info</em>
+paramter, namely a prefix for all of the Redis keys.  This prefix <b>must</b>
+be different/unique among all of your <code>mod_proxy</code> servers using
+that Redis server/cluster; the prefix is used to keep all of the data
+<i>for this server</i> separate from all other servers.
 
 <p>
 <hr>
