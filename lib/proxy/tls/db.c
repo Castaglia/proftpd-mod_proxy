@@ -77,10 +77,10 @@ static int tls_db_add_sess(pool *p, void *dbh, const char *key,
 
         diags_datalen = BIO_get_mem_data(diags_bio, &diags_data);
         if (diags_data != NULL) {
-          data[diags_datalen] = '\0';
+          diags_data[diags_datalen] = '\0';
           (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "[tls] caching SSL session (%ld bytes):\n%s", diags_datalen,
-            diags_data);
+            "[tls.db] caching SSL session (%lu bytes):\n%s",
+            (unsigned long) datalen, diags_data);
         }
       }
     }

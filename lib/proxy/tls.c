@@ -29,6 +29,7 @@
 #include "proxy/session.h"
 #include "proxy/tls.h"
 #include "proxy/tls/db.h"
+#include "proxy/tls/redis.h"
 
 #ifdef PR_USE_OPENSSL
 
@@ -2448,6 +2449,11 @@ int proxy_tls_init(pool *p, const char *tables_path, int flags) {
   switch (proxy_datastore) {
     case PROXY_DATASTORE_SQLITE:
       res = proxy_tls_db_as_datastore(&tls_ds, proxy_datastore_data,
+        proxy_datastore_datasz);
+      break;
+
+    case PROXY_DATASTORE_REDIS:
+      res = proxy_tls_redis_as_datastore(&tls_ds, proxy_datastore_data,
         proxy_datastore_datasz);
       break;
 

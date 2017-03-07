@@ -963,6 +963,7 @@ int proxy_reverse_init(pool *p, const char *tables_dir, int flags) {
   reverse_ds.backend_id = -1;
 
   switch (proxy_datastore) {
+    case PROXY_DATASTORE_REDIS:
     case PROXY_DATASTORE_SQLITE:
       ds_name = "SQLite";
       res = proxy_reverse_db_as_datastore(&reverse_ds, proxy_datastore_data,
