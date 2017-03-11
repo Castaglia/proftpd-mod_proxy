@@ -47,8 +47,12 @@ TEST_API_DEPS=\
   $(module_srcdir)/lib/proxy/netio.o \
   $(module_srcdir)/lib/proxy/inet.o \
   $(module_srcdir)/lib/proxy/tls.o \
+  $(module_srcdir)/lib/proxy/tls/db.o \
+  $(module_srcdir)/lib/proxy/tls/redis.o \
   $(module_srcdir)/lib/proxy/session.o \
   $(module_srcdir)/lib/proxy/reverse.o \
+  $(module_srcdir)/lib/proxy/reverse/db.o \
+  $(module_srcdir)/lib/proxy/reverse/redis.o \
   $(module_srcdir)/lib/proxy/forward.o \
   $(module_srcdir)/lib/proxy/ftp/conn.o \
   $(module_srcdir)/lib/proxy/ftp/ctrl.o \
