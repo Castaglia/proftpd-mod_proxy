@@ -25,6 +25,7 @@ MODULE_OBJS=mod_proxy.o \
   lib/proxy/forward.o \
   lib/proxy/reverse.o \
   lib/proxy/reverse/db.o \
+  lib/proxy/reverse/redis.o \
   lib/proxy/ftp/conn.o \
   lib/proxy/ftp/ctrl.o \
   lib/proxy/ftp/data.o \
@@ -45,6 +46,7 @@ SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/forward.lo \
   lib/proxy/reverse.lo \
   lib/proxy/reverse/db.lo \
+  lib/proxy/reverse/redis.lo \
   lib/proxy/ftp/conn.lo \
   lib/proxy/ftp/ctrl.lo \
   lib/proxy/ftp/data.lo \

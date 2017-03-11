@@ -31,6 +31,7 @@
 #include "proxy/inet.h"
 #include "proxy/reverse.h"
 #include "proxy/reverse/db.h"
+#include "proxy/reverse/redis.h"
 #include "proxy/random.h"
 #include "proxy/tls.h"
 #include "proxy/ftp/ctrl.h"
@@ -965,10 +966,16 @@ int proxy_reverse_init(pool *p, const char *tables_dir, int flags) {
   reverse_ds.backend_id = -1;
 
   switch (proxy_datastore) {
-    case PROXY_DATASTORE_REDIS:
     case PROXY_DATASTORE_SQLITE:
       ds_name = "SQLite";
       res = proxy_reverse_db_as_datastore(&reverse_ds, proxy_datastore_data,
+        proxy_datastore_datasz);
+      xerrno = errno;
+      break;
+
+    case PROXY_DATASTORE_REDIS:
+      ds_name = "Redis";
+      res = proxy_reverse_redis_as_datastore(&reverse_ds, proxy_datastore_data,
         proxy_datastore_datasz);
       xerrno = errno;
       break;
