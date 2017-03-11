@@ -164,6 +164,9 @@ static int redis_set_list_backends(pool *p, pr_redis_t *redis,
 
     backend_urisz = strlen(backend_uri);
     *((size_t *) push_array(backend_uriszs)) = backend_urisz;
+
+    pr_trace_msg(trace_channel, 19, "adding %s list backend #%u: '%.*s'",
+      policy, i+1, (int) backend_urisz, backend_uri);
   }
 
   res = pr_redis_list_setall(redis, &proxy_module, key, backend_uris,
@@ -210,6 +213,10 @@ static int redis_set_sorted_set_backends(pool *p, pr_redis_t *redis,
     *((size_t *) push_array(backend_uriszs)) = backend_urisz;
 
     *((float *) push_array(backend_scores)) = init_score;
+
+    pr_trace_msg(trace_channel, 19,
+      "adding %s sorted set backend #%u: '%.*s' (%0.3f)", policy, i+1,
+      (int) backend_urisz, backend_uri, init_score);
   }
 
   res = pr_redis_sorted_set_setall(redis, &proxy_module, key, backend_uris,
@@ -480,7 +487,7 @@ static int reverse_redis_leastconns_update(pool *p, pr_redis_t *redis,
 
 static int reverse_redis_leastresponsetime_init(pool *p, pr_redis_t *redis,
     unsigned int vhost_id, array_header *backends) {
-  return redis_set_sorted_set_backends(p, redis, "LeastConns", vhost_id,
+  return redis_set_sorted_set_backends(p, redis, "LeastResponseTime", vhost_id,
     backends, 0.0);
 }
 
