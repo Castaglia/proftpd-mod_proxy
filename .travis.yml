@@ -9,6 +9,8 @@ install:
   - sudo apt-get update -qq
   # for unit tests
   - sudo apt-get install -y check
+  # for Redis support
+  - sudo apt-get install -y libhiredis-dev
   # for OpenSSL support
   - sudo apt-get install -y libssl-dev
   # for mod_sql_sqlite
@@ -39,15 +41,15 @@ script:
   - cp install-sh proftpd/contrib/mod_proxy/
   - cd proftpd
   # First, a build without mod_tls
-  - ./configure --enable-devel=coverage --enable-tests --with-module=mod_proxy
+  - ./configure --enable-devel=coverage --enable-redis --enable-tests --with-module=mod_proxy
   - make
   # Next, a build WITH mod_tls (as a shared module)
   - make clean
-  - ./configure --enable-devel=coverage --enable-dso --enable-tests --with-shared=mod_tls:mod_proxy
+  - ./configure --enable-devel=coverage --enable-dso --enable-redis --enable-tests --with-shared=mod_tls:mod_proxy
   - make
   # Last, a build with mod_tls (as a static module), and run the tests
   - make clean
-  - ./configure --enable-devel=coverage --enable-tests --with-modules=mod_tls:mod_proxy
+  - ./configure --enable-devel=coverage --enable-redis --enable-tests --with-modules=mod_tls:mod_proxy
   - make
   - cd contrib/mod_proxy && make TEST_VERBOSE=1 check && cd ../../
 
