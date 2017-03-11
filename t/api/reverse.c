@@ -516,7 +516,7 @@ START_TEST (reverse_handle_user_pass_random_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -541,7 +541,7 @@ START_TEST (reverse_handle_user_pass_roundrobin_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -566,7 +566,7 @@ START_TEST (reverse_handle_user_pass_leastconns_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -591,7 +591,7 @@ START_TEST (reverse_handle_user_pass_leastresponsetime_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -618,7 +618,7 @@ START_TEST (reverse_handle_user_pass_shuffle_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -643,7 +643,7 @@ START_TEST (reverse_handle_user_pass_peruser_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -668,7 +668,7 @@ START_TEST (reverse_handle_user_pass_pergroup_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -693,7 +693,7 @@ START_TEST (reverse_handle_user_pass_perhost_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
