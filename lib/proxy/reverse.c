@@ -960,6 +960,11 @@ int proxy_reverse_init(pool *p, const char *tables_dir, int flags) {
   void *dsh = NULL;
   server_rec *s = NULL;
 
+  if (p == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
   memset(&reverse_ds, 0, sizeof(reverse_ds));
   reverse_ds.backend_id = -1;
 
@@ -1165,6 +1170,11 @@ int proxy_reverse_sess_init(pool *p, const char *tables_dir,
   int res;
   config_rec *c;
   void *dsh;
+
+  if (p == NULL) {
+    errno = EINVAL;
+    return - 1;
+  }
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyRetryCount", FALSE);
   if (c != NULL) {

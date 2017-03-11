@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy session routines
- * Copyright (c) 2012-2016 TJ Saunders
+ * Copyright (c) 2012-2017 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -107,6 +107,7 @@ int proxy_session_check_password(pool *p, const char *user,
         "password authentication for user '%s' failed: No such user", user);
       pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): No such user found",
         user);
+      errno = ENOENT;
       return -1;
 
     case PR_AUTH_BADPWD:
@@ -115,6 +116,7 @@ int proxy_session_check_password(pool *p, const char *user,
         user);
       pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): Incorrect password",
         user);
+      errno = EACCES;
       return -1;
 
     case PR_AUTH_AGEPWD:
@@ -123,6 +125,7 @@ int proxy_session_check_password(pool *p, const char *user,
         user);
       pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): Password expired",
         user);
+      errno = EPERM;
       return -1;
 
     case PR_AUTH_DISABLEDPWD:
@@ -131,11 +134,13 @@ int proxy_session_check_password(pool *p, const char *user,
         user);
       pr_log_auth(PR_LOG_NOTICE, "USER %s (Login failed): Account disabled",
         user);
+      errno = EPERM;
       return -1;
 
     default:
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unknown authentication value (%d), returning error", res);
+      errno = EINVAL;
       return -1;
   }
 

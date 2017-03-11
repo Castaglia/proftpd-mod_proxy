@@ -1752,8 +1752,7 @@ static void *reverse_db_init(pool *p, const char *tables_path, int flags) {
   server_rec *s;
   struct proxy_dbh *dbh;
 
-  if (p == NULL ||
-      tables_path == NULL) {
+  if (tables_path == NULL) {
     errno = EINVAL;
     return NULL;
   }

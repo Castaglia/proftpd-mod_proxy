@@ -203,6 +203,12 @@ START_TEST (reverse_sess_init_test) {
 
   mark_point();
   res = proxy_reverse_sess_init(NULL, NULL, NULL, flags);
+  fail_unless(res < 0, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_reverse_sess_init(p, NULL, NULL, flags);
   fail_unless(res < 0, "Unexpectedly init'd Reverse API session resources");
   fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
     strerror(errno), errno);

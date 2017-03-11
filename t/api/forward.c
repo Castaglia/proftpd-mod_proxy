@@ -353,8 +353,8 @@ START_TEST (forward_handle_user_noproxyauth_test) {
     strerror(errno), errno);
 
   /* Valid external host (with port) in USER command. */
-  cmd = pr_cmd_alloc(p, 2, "USER", "anonymous@ftp.microsoft.com:21");
-  cmd->arg = pstrdup(p, "anonymous@ftp.microsoft.com");
+  cmd = pr_cmd_alloc(p, 2, "USER", "anonymous@ftp.cisco.com:21");
+  cmd->arg = pstrdup(p, "anonymous@ftp.cisco.com");
 
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
@@ -484,8 +484,8 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
 /* XXX TODO: Use a file fd for the "backend control conn" fd (/dev/null?) */
 
   /* Valid external host (with port) in USER command. */
-  cmd = pr_cmd_alloc(p, 2, "USER", "anonymous@ftp.microsoft.com:21");
-  cmd->arg = pstrdup(p, "anonymous@ftp.microsoft.com:21");
+  cmd = pr_cmd_alloc(p, 2, "USER", "anonymous@ftp.cisco.com:21");
+  cmd->arg = pstrdup(p, "anonymous@ftp.cisco.com:21");
 
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,

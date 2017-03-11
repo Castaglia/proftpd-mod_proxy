@@ -3439,8 +3439,10 @@ int proxy_tls_sess_free(pool *p) {
     tls_psk_used = FALSE;
 # endif /* PSK support */
 
-    (void) (tls_ds.close)(p, tls_ds.dsh);
-    tls_ds.dsh = NULL;
+    if (tls_ds.dsh != NULL) {
+      (void) (tls_ds.close)(p, tls_ds.dsh);
+      tls_ds.dsh = NULL;
+    }
 
     if (ssl_ctx != NULL) {
       if (init_ssl_ctx() < 0) {

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2015-2016 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2015-2017 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -168,8 +168,17 @@ START_TEST (tls_sess_free_test) {
     strerror(errno), errno);
 
   mark_point();
+  res = proxy_tls_init(p, test_dir, PROXY_DB_OPEN_FL_SKIP_VACUUM);
+  fail_unless(res == 0, "Failed to init TLS API resources: %s",
+    strerror(errno));
+
+  mark_point();
   res = proxy_tls_sess_free(p);
   fail_unless(res == 0, "Failed to release TLS API session resources: %s",
+    strerror(errno));
+
+  res = proxy_tls_free(p);
+  fail_unless(res == 0, "Failed to free TLS API resources: %s",
     strerror(errno));
 }
 END_TEST

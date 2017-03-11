@@ -377,6 +377,11 @@ static int tls_db_init(pool *p, const char *tables_path, int flags) {
   struct proxy_dbh *dbh = NULL;
   const char *db_path = NULL;
 
+  if (tables_path == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
   db_path = pdircat(p, tables_path, "proxy-tls.db", NULL);
   db_flags = PROXY_DB_OPEN_FL_SCHEMA_VERSION_CHECK|PROXY_DB_OPEN_FL_INTEGRITY_CHECK|PROXY_DB_OPEN_FL_VACUUM;
   if (flags & PROXY_DB_OPEN_FL_SKIP_VACUUM) {
