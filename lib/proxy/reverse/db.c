@@ -23,11 +23,9 @@
  */
 
 #include "mod_proxy.h"
-#include "json.h"
 
 #include "proxy/db.h"
 #include "proxy/conn.h"
-#include "proxy/reverse.h"
 #include "proxy/reverse.h"
 #include "proxy/random.h"
 #include "proxy/tls.h"
@@ -237,7 +235,7 @@ static int reverse_db_add_schema(pool *p, struct proxy_dbh *dbh,
   return 0;
 }
 
-static int reverse_truncate_db_tables(pool *p, struct proxy_dbh *dbh) {
+static int reverse_db_truncate_tables(pool *p, struct proxy_dbh *dbh) {
   int res;
   const char *index_name, *stmt, *errstr = NULL;
 
@@ -1794,7 +1792,7 @@ static void *reverse_db_init(pool *p, const char *tables_path, int flags) {
     return NULL;
   }
 
-  res = reverse_truncate_db_tables(p, dbh);
+  res = reverse_db_truncate_tables(p, dbh);
   if (res < 0) {
     xerrno = errno;
     (void) proxy_db_close(p, dbh);

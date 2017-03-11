@@ -37,7 +37,7 @@ static void *redis_prefix = NULL;
 static size_t redis_prefixsz = 0;
 static unsigned long redis_opts = 0UL;
 
-static char *make_hash_key(pool *p, unsigned int vhost_id) {
+static char *make_key(pool *p, unsigned int vhost_id) {
   char *key;
   size_t keysz;
 
@@ -98,7 +98,7 @@ static int tls_redis_add_sess(pool *p, void *redis, const char *sess_key,
 
   tmp_pool = make_sub_pool(p);
 
-  key = make_hash_key(tmp_pool, main_server->sid);
+  key = make_key(tmp_pool, main_server->sid);
   res = pr_redis_hash_set(redis, &proxy_module, key, sess_key, data, datalen);
   xerrno = errno;
 
@@ -128,7 +128,7 @@ static int tls_redis_remove_sess(pool *p, void *redis, const char *sess_key) {
 
   tmp_pool = make_sub_pool(p);
 
-  key = make_hash_key(tmp_pool, main_server->sid);
+  key = make_key(tmp_pool, main_server->sid);
   res = pr_redis_hash_delete(redis, &proxy_module, key, sess_key);
   xerrno = errno;
 
@@ -160,7 +160,7 @@ static SSL_SESSION *tls_redis_get_sess(pool *p, void *redis,
 
   tmp_pool = make_sub_pool(p);
 
-  key = make_hash_key(tmp_pool, main_server->sid);
+  key = make_key(tmp_pool, main_server->sid);
   res = pr_redis_hash_get(tmp_pool, redis, &proxy_module, key, sess_key,
     (void **) &data, &datalen);
   xerrno = errno;
@@ -181,7 +181,7 @@ static SSL_SESSION *tls_redis_get_sess(pool *p, void *redis,
     "retrieved cached session (%lu bytes) for key '%s'",
     (unsigned long) datalen, sess_key);
 
-  bio = BIO_new_mem_buf((char *) data, datalen + 1);
+  bio = BIO_new_mem_buf((char *) data, datalen);
   sess = PEM_read_bio_SSL_SESSION(bio, NULL, 0, NULL);
   destroy_pool(tmp_pool);
 
@@ -211,7 +211,7 @@ static int tls_redis_count_sess(pool *p, void *redis) {
 
   tmp_pool = make_sub_pool(p);
 
-  key = make_hash_key(tmp_pool, main_server->sid);
+  key = make_key(tmp_pool, main_server->sid);
   res = pr_redis_hash_count(redis, &proxy_module, key, &count);
   xerrno = errno;
 
@@ -240,23 +240,24 @@ static int tls_redis_truncate_tables(pool *p, pr_redis_t *redis,
 
   tmp_pool = make_sub_pool(p);
 
-  key = make_hash_key(tmp_pool, vhost_id);
+  key = make_key(tmp_pool, vhost_id);
   res = pr_redis_hash_keys(tmp_pool, redis, &proxy_module, key, &fields);
   xerrno = errno;
 
   if (res < 0) {
-    if (xerrno != ENOENT) {
+    if (xerrno == ENOENT) {
+      /* Ignore. */
+      res = 0;
+
+    } else {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "error obtaining fields from Redis hash '%s': %s", key,
         strerror(errno));
-
-      destroy_pool(tmp_pool);
-      errno = xerrno;
-      return -1;
     }
 
     destroy_pool(tmp_pool);
-    return 0;
+    errno = xerrno;
+    return res;
   }
 
   pr_trace_msg(trace_channel, 17, "deleting %u %s for hash '%s'",
@@ -285,6 +286,7 @@ static int tls_redis_init(pool *p, const char *tables_path, int flags) {
   server_rec *s;
   pr_redis_t *redis = NULL;
 
+  (void) tables_path;
   (void) flags;
 
   redis = pr_redis_conn_new(p, &proxy_module, 0);
@@ -296,6 +298,9 @@ static int tls_redis_init(pool *p, const char *tables_path, int flags) {
     errno = xerrno;
     return -1;
   }
+
+  (void) pr_redis_conn_set_namespace(redis, &proxy_module, redis_prefix,
+    redis_prefixsz);
 
   for (s = (server_rec *) server_list->xas_list; s; s = s->next) {
     res = tls_redis_truncate_tables(p, redis, s->sid);
@@ -336,6 +341,8 @@ static void *tls_redis_open(pool *p, const char *tables_dir,
     return NULL;
   }
 
+  (void) pr_redis_conn_set_namespace(redis, &proxy_module, redis_prefix,
+    redis_prefixsz);
   redis_opts = opts;
   return redis;
 }

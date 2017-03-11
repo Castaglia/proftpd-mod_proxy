@@ -181,7 +181,11 @@ supported datastore <em>types</em> are:
 paramter, namely a prefix for all of the Redis keys.  This prefix <b>must</b>
 be different/unique among all of your <code>mod_proxy</code> servers using
 that Redis server/cluster; the prefix is used to keep all of the data
-<i>for this server</i> separate from all other servers.
+<i>for this server</i> separate from all other servers.  For example:
+<pre>
+  # Use our IP address as our prefix
+  ProxyDatastore Redis 1.2.3.4.
+</pre>
 
 <p>
 <hr>
@@ -1467,9 +1471,11 @@ purposes, the module also uses <a href="http://www.proftpd.org/docs/howto/Tracin
   <li>proxy.netio
   <li>proxy.reverse
   <li>proxy.reverse.db
+  <li>proxy.reverse.redis
   <li>proxy.session
   <li>proxy.tls
   <li>proxy.tls.db
+  <li>proxy.tls.redis
   <li>proxy.uri
 </ul>
 
