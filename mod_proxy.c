@@ -64,6 +64,9 @@ int proxy_logfd = -1;
 pool *proxy_pool = NULL;
 unsigned long proxy_opts = 0UL;
 unsigned int proxy_sess_state = 0U;
+int proxy_datastore = PROXY_DATASTORE_SQLITE;
+void *proxy_datastore_data = NULL;
+size_t proxy_datastore_datasz = 0;
 
 static int proxy_engine = FALSE;
 static unsigned int proxy_login_attempts = 0;
@@ -588,6 +591,45 @@ MODRET set_proxydataxferpolicy(cmd_rec *cmd) {
   c = add_config_param(cmd->argv[0], 1, NULL);
   c->argv[0] = palloc(c->pool, sizeof(int));
   *((int *) c->argv[0]) = cmd_id;
+
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxyDatastore type [info] */
+MODRET set_proxydatastore(cmd_rec *cmd) {
+  int ds;
+  const char *ds_name;
+  void *ds_data;
+  size_t ds_datasz;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT);
+
+  ds_name = cmd->argv[1];
+  if (strcasecmp(ds_name, "sqlite") == 0) {
+    ds = PROXY_DATASTORE_SQLITE;
+    ds_data = NULL;
+    ds_datasz = 0;
+
+#ifdef PR_USE_REDIS
+  } else if (strcasecmp(ds_name, "redis") == 0) {
+    if (cmd->argc != 3) {
+      CONF_ERROR(cmd, "missing required Redis key prefix");
+    }
+
+    ds = PROXY_DATASTORE_REDIS;
+    ds_data = pstrdup(proxy_pool, cmd->argv[2]);
+    ds_datasz = strlen(ds_data);
+#endif /* PR_USE_REDIS */
+
+  } else {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unsupported ProxyDatastore: ",
+      ds_name, NULL));
+  }
+
+  proxy_datastore = ds;
+  proxy_datastore_data = ds_data;
+  proxy_datastore_datasz = ds_datasz;
 
   return PR_HANDLED(cmd);
 }
@@ -4606,6 +4648,7 @@ static int proxy_sess_init(void) {
 
 static conftable proxy_conftab[] = {
   { "ProxyDataTransferPolicy",	set_proxydataxferpolicy,	NULL },
+  { "ProxyDatastore",		set_proxydatastore,		NULL },
   { "ProxyEngine",		set_proxyengine,		NULL },
   { "ProxyForwardEnabled",	set_proxyforwardenabled,	NULL },
   { "ProxyForwardMethod",	set_proxyforwardmethod,		NULL },

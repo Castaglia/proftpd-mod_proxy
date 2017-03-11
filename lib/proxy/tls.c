@@ -24,20 +24,22 @@
 
 #include "mod_proxy.h"
 
-#include "proxy/db.h"
 #include "proxy/conn.h"
 #include "proxy/netio.h"
 #include "proxy/session.h"
 #include "proxy/tls.h"
+#include "proxy/tls/db.h"
+#include "proxy/tls/redis.h"
 
 #ifdef PR_USE_OPENSSL
 
 extern xaset_t *server_list;
 
-static const char *tls_db_path = NULL;
-static struct proxy_dbh *tls_dbh = NULL;
-static int tls_engine = PROXY_TLS_ENGINE_AUTO;
 static unsigned long tls_opts = 0UL;
+
+static const char *tls_tables_path = NULL;
+static struct proxy_tls_datastore tls_ds;
+static int tls_engine = PROXY_TLS_ENGINE_AUTO;
 static int tls_need_data_prot = TRUE;
 static int tls_required_on_frontend_data = FALSE;
 static int tls_verify_server = TRUE;
@@ -109,9 +111,6 @@ static SSL *tls_ctrl_ssl = NULL;
 static int netio_install_ctrl(void);
 static int netio_install_data(void);
 
-#define PROXY_TLS_DB_SCHEMA_NAME		"proxy_tls"
-#define PROXY_TLS_DB_SCHEMA_VERSION		3
-
 /* Indices for data stashed in SSL objects */
 #define PROXY_TLS_IDX_TICKET_KEY		2
 #define PROXY_TLS_IDX_HAD_TICKET		3
@@ -121,7 +120,7 @@ static int handshake_timeout_cb(CALLBACK_FRAME) {
   return 0;
 }
 
-static const char *get_errors(void) {
+const char *proxy_tls_get_errors(void) {
   unsigned int count = 0;
   unsigned long error_code;
   BIO *bio = NULL;
@@ -247,7 +246,7 @@ static void tls_fatal(long error, int lineno) {
 
     case SSL_ERROR_SSL:
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "panic: SSL_ERROR_SSL, line %d: %s", lineno, get_errors());
+        "panic: SSL_ERROR_SSL, line %d: %s", lineno, proxy_tls_get_errors());
       break;
 
     case SSL_ERROR_WANT_READ:
@@ -291,7 +290,8 @@ static void tls_fatal(long error, int lineno) {
 
       } else {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-         "panic: SSL_ERROR_SYSCALL, line %d: %s", lineno, get_errors());
+          "panic: SSL_ERROR_SYSCALL, line %d: %s", lineno,
+          proxy_tls_get_errors());
       }
 
       break;
@@ -404,7 +404,7 @@ static void tls_end_sess(SSL *ssl, int strms, int flags) {
         default: {
           const char *errors;
 
-          errors = get_errors();
+          errors = proxy_tls_get_errors();
           (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
             "SSL_shutdown error [%ld]: %s", err_code, errors);
           pr_log_debug(DEBUG0, MOD_PROXY_VERSION
@@ -957,7 +957,8 @@ static int cert_match_cn(pool *p, X509 *cert, const char *name,
   if (cn_entry == NULL) {
     pr_trace_msg(trace_channel, 12,
       "unable to check certificate CommonName against '%s': "
-      "error obtaining CommoName atribute found: %s", name, get_errors());
+      "error obtaining CommoName atribute found: %s", name,
+      proxy_tls_get_errors());
     return 0;
   }
 
@@ -967,7 +968,7 @@ static int cert_match_cn(pool *p, X509 *cert, const char *name,
     pr_trace_msg(trace_channel, 12,
       "unable to check certificate CommonName against '%s': "
       "error converting CommoName atribute to ASN.1: %s", name,
-      get_errors());
+      proxy_tls_get_errors());
     return 0;
   }
 
@@ -1312,265 +1313,6 @@ static int tls_verify_cb(int ok, X509_STORE_CTX *ctx) {
   return ok;
 }
 
-static int tls_db_add_sess(pool *p, const char *key, SSL_SESSION *sess) {
-  int res, vhost_id, xerrno = 0;
-  const char *stmt, *errstr = NULL;
-  time_t now, sess_age;
-  BIO *bio;
-  char *data = NULL;
-  long datalen = 0;
-  array_header *results;
-
-  /* If this session is already past our expiration policy, ignore it. */
-  now = time(NULL);
-  sess_age = now - SSL_SESSION_get_time(sess);
-  if (sess_age >= PROXY_TLS_MAX_SESSION_AGE) {
-    pr_trace_msg(trace_channel, 9,
-      "SSL session has already expired, not caching");
-    return 0;
-  }
-
-  bio = BIO_new(BIO_s_mem());
-  BIO_set_flags(bio, BIO_FLAGS_BASE64_NO_NL);
-  res = PEM_write_bio_SSL_SESSION(bio, sess);
-  if (res != 1) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error writing PEM-encoded SSL session data: %s", get_errors());
-  }
-  (void) BIO_flush(bio);
-
-  datalen = BIO_get_mem_data(bio, &data);
-  if (data == NULL) {
-    pr_trace_msg(trace_channel, 9,
-      "no PEM data found for SSL session, not caching");
-    BIO_free(bio);
-    return 0;
-  }
-
-  data[datalen] = '\0';
-
-  if (tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
-    BIO *diags_bio;
-
-    diags_bio = BIO_new(BIO_s_mem());
-    if (diags_bio != NULL) {
-      if (SSL_SESSION_print(diags_bio, sess) == 1) {
-        char *diags_data = NULL;
-        long diags_datalen = 0;
-
-        diags_datalen = BIO_get_mem_data(diags_bio, &diags_data);
-        if (diags_data != NULL) {
-          data[diags_datalen] = '\0';
-          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "[tls] caching SSL session (%ld bytes):\n%s", diags_datalen,
-            diags_data);
-        }
-      }
-    }
-  }
-
-  /* We use INSERT OR REPLACE here to get upsert semantics; we only want/
-   * need one cached SSL session per URI.
-   */
-  stmt = "INSERT OR REPLACE INTO proxy_tls_sessions (vhost_id, backend_uri, session) VALUES (?, ?, ?);";
-  res = proxy_db_prepare_stmt(p, tls_dbh, stmt);
-  if (res < 0) {
-    xerrno = errno;
-
-    BIO_free(bio);
-    errno = xerrno;
-    return -1;
-  }
-
-  vhost_id = main_server->sid;
-  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
-  if (res < 0) {
-    xerrno = errno;
-
-    BIO_free(bio);
-    errno = xerrno;
-    return -1;
-  }
-
-  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) key);
-  if (res < 0) {
-    xerrno = errno;
-
-    BIO_free(bio);
-    errno = xerrno;
-    return -1;
-  }
-
-  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 3, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) data);
-  if (res < 0) {
-    xerrno = errno;
-
-    BIO_free(bio);
-    errno = xerrno;
-    return -1;
-  }
-
-  results = proxy_db_exec_prepared_stmt(p, tls_dbh, stmt, &errstr);
-  if (results == NULL) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
-
-    BIO_free(bio);
-    errno = EPERM;
-    return -1;
-  }
-
-  BIO_free(bio);
-
-  pr_trace_msg(trace_channel, 17, "cached SSL session for key '%s'", key);
-  return 0;
-}
-
-static int tls_db_remove_sess(pool *p, const char *key) {
-  int res, vhost_id;
-  const char *stmt, *errstr = NULL;
-  array_header *results;
-
-  stmt = "DELETE FROM proxy_tls_sessions WHERE vhost_id = ? AND backend_uri = ?;";
-  res = proxy_db_prepare_stmt(p, tls_dbh, stmt);
-  if (res < 0) {
-    return -1;
-  }
-
-  vhost_id = main_server->sid;
-  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
-  if (res < 0) {
-    return -1;
-  }
-
-  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) key);
-  if (res < 0) {
-    return -1;
-  }
-
-  results = proxy_db_exec_prepared_stmt(p, tls_dbh, stmt, &errstr);
-  if (results == NULL) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
-    errno = EPERM;
-    return -1;
-  }
-
-  return 0;
-}
-
-static SSL_SESSION *tls_db_get_sess(pool *p, const char *key) {
-  int res, vhost_id;
-  BIO *bio;
-  const char *stmt, *errstr = NULL;
-  array_header *results;
-  char *data = NULL;
-  size_t datalen;
-  SSL_SESSION *sess = NULL;
-  long sess_age;
-  time_t now;
-
-  stmt = "SELECT session FROM proxy_tls_sessions WHERE vhost_id = ? AND backend_uri = ?;";
-  res = proxy_db_prepare_stmt(p, tls_dbh, stmt);
-  if (res < 0) {
-    return NULL;
-  }
-
-  vhost_id = main_server->sid;
-  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
-  if (res < 0) {
-    return NULL;
-  }
-
-  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) key);
-  if (res < 0) {
-    return NULL;
-  }
-
-  results = proxy_db_exec_prepared_stmt(p, tls_dbh, stmt, &errstr);
-  if (results == NULL) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
-    errno = EPERM;
-    return NULL;
-  }
-
-  if (results->nelts == 0) {
-    errno = ENOENT;
-    return NULL;
-  }
-
-  data = ((char **) results->elts)[0];
-  datalen = strlen(data) + 1;
-
-  bio = BIO_new_mem_buf(data, datalen);
-  sess = PEM_read_bio_SSL_SESSION(bio, NULL, 0, NULL);
-
-  if (sess == NULL) {
-    pr_trace_msg(trace_channel, 3,
-      "error converting database entry to SSL session: %s", get_errors());
-  }
-
-  BIO_free(bio);
-
-  if (sess == NULL) {
-    errno = ENOENT;
-    return NULL;
-  }
-
-  now = time(NULL);
-  sess_age = now - SSL_SESSION_get_time(sess);
-
-  if (sess_age >= PROXY_TLS_MAX_SESSION_AGE) {
-    pr_trace_msg(trace_channel, 9, "cached SSL session expired, removing");
-    tls_db_remove_sess(p, key);
-
-    SSL_SESSION_free(sess);
-    errno = ENOENT;
-    return NULL;
-  }
-
-  return sess;
-}
-
-static int tls_db_get_cached_sess_count(pool *p) {
-  int count = 0, res;
-  const char *stmt, *errstr = NULL;
-  array_header *results;
-  
-  stmt = "SELECT COUNT(*) FROM proxy_tls_sessions;";
-  res = proxy_db_prepare_stmt(p, tls_dbh, stmt);
-  if (res < 0) {
-    return -1;
-  }
-
-  results = proxy_db_exec_prepared_stmt(p, tls_dbh, stmt, &errstr);
-  if (results == NULL) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
-    errno = EPERM;
-    return -1;
-  }
-
-  if (results->nelts != 1) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "expected 1 result from statement '%s', got %d", stmt,
-      results->nelts);
-    errno = EINVAL;
-    return -1;
-  }
-
-  count = atoi(((char **) results->elts)[0]); 
-  return count;
-}
-
 static int tls_get_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
   char port_str[32], *sess_key = NULL;
   SSL_SESSION *sess = NULL;
@@ -1592,14 +1334,25 @@ static int tls_get_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
   pr_trace_msg(trace_channel, 19,
     "looking for cached SSL session using key '%s'", sess_key);
 
-  sess = tls_db_get_sess(p, sess_key);
+  sess = (tls_ds.get_sess)(p, tls_ds.dsh, sess_key);
   if (sess != NULL) {
-    pr_trace_msg(trace_channel, 12,
-      "found cached SSL session using key '%s'", sess_key);
-    SSL_set_session(ssl, sess);
-    SSL_SESSION_free(sess);
+    long sess_age;
+    time_t now;
 
-  } else {
+    now = time(NULL);
+    sess_age = now - SSL_SESSION_get_time(sess);
+
+    if (sess_age >= PROXY_TLS_MAX_SESSION_AGE) {
+      pr_trace_msg(trace_channel, 9, "cached SSL session expired, removing");
+      (void) (tls_ds.remove_sess)(p, tls_ds.dsh, sess_key);
+
+      SSL_SESSION_free(sess);
+      errno = ENOENT;
+      sess = NULL;
+    }
+  }
+
+  if (sess == NULL) {
     if (errno == ENOENT) {
       pr_trace_msg(trace_channel, 19,
         "no cached sessions found for key '%s'", sess_key);
@@ -1609,7 +1362,14 @@ static int tls_get_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
         "error getting cached session using key '%s': %s", sess_key,
         strerror(errno));
     } 
+
+    return 0;
   }
+
+  pr_trace_msg(trace_channel, 12,
+    "found cached SSL session using key '%s'", sess_key);
+  SSL_set_session(ssl, sess);
+  SSL_SESSION_free(sess);
 
   return 0;
 }
@@ -1618,6 +1378,7 @@ static int tls_add_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
   char port_str[32], *sess_key = NULL;
   SSL_SESSION *sess = NULL;
   int res, sess_count, xerrno = 0;
+  time_t now, sess_age;
 
   if (tls_opts & PROXY_TLS_OPT_NO_SESSION_CACHE) {
     if (tls_opts & PROXY_TLS_OPT_NO_SESSION_TICKETS) {
@@ -1628,7 +1389,7 @@ static int tls_add_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
     }
   }
 
-  sess_count = tls_db_get_cached_sess_count(p);
+  sess_count = (tls_ds.count_sess)(p, tls_ds.dsh);
   if (sess_count < 0) {
     return -1;
   }
@@ -1640,6 +1401,18 @@ static int tls_add_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
     return 0;
   }
 
+  sess = SSL_get1_session(ssl);
+
+  /* If this session is already past our expiration policy, ignore it. */
+  now = time(NULL);
+  sess_age = now - SSL_SESSION_get_time(sess);
+  if (sess_age >= PROXY_TLS_MAX_SESSION_AGE) {
+    pr_trace_msg(trace_channel, 9,
+      "SSL session has already expired, not caching");
+    SSL_SESSION_free(sess);
+    return 0;
+  }
+
   memset(port_str, '\0', sizeof(port_str));
   snprintf(port_str, sizeof(port_str)-1, "%d", port);
   sess_key = pstrcat(p, "ftp://", host, ":", port_str, NULL);
@@ -1647,8 +1420,7 @@ static int tls_add_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
   pr_trace_msg(trace_channel, 19,
     "caching SSL session using key '%s'", sess_key);
 
-  sess = SSL_get1_session(ssl);
-  res = tls_db_add_sess(p, sess_key, sess);
+  res = (tls_ds.add_sess)(p, tls_ds.dsh, sess_key, sess);
   xerrno = errno;
   SSL_SESSION_free(sess);
 
@@ -1682,7 +1454,7 @@ static int tls_connect(conn_t *conn, const char *host_name,
   ssl = SSL_new(ssl_ctx);
   if (ssl == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error: unable to allocate SSL session: %s", get_errors());
+      "error: unable to allocate SSL session: %s", proxy_tls_get_errors());
     return -2;
   }
 
@@ -1826,7 +1598,7 @@ static int tls_connect(conn_t *conn, const char *host_name,
 
         } else {
           (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "%s: system call error: %s", msg, get_errors());
+            "%s: system call error: %s", msg, proxy_tls_get_errors());
         }
 
         break;
@@ -1834,7 +1606,7 @@ static int tls_connect(conn_t *conn, const char *host_name,
 
       case SSL_ERROR_SSL:
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "%s: protocol error: %s", msg, get_errors());
+          "%s: protocol error: %s", msg, proxy_tls_get_errors());
         break;
     }
 
@@ -2416,7 +2188,8 @@ static unsigned int tls_psk_cb(SSL *ssl, const char *psk_hint, char *identity,
   psklen = BN_bn2bin(tls_psk_bn, psk);
   if (psklen == 0) {
     pr_trace_msg(trace_channel, 6,
-      "error converting '%s' PSK to binary: %s", tls_psk_name, get_errors());
+      "error converting '%s' PSK to binary: %s", tls_psk_name,
+      proxy_tls_get_errors());
     return 0;
   }
 
@@ -2500,8 +2273,8 @@ static int tls_npn_cb(SSL *ssl,
       "NPN protocols advertised by server:");
     for (i = 0; i < npn_inlen; i++) {
       pr_trace_msg(trace_channel, 12,
-        " %*s", npn_in[i], &(npn_in[i+1]));
-      i += npn_in[i] + 1;
+        " %.*s", (int) npn_in[i], (char *) &(npn_in[i+1]));
+      i += npn_in[i];
     }
 
     res = SSL_select_next_proto(npn_out, npn_outlen, npn_in, npn_inlen,
@@ -2539,7 +2312,7 @@ static int set_next_protocol(SSL_CTX *ctx) {
   next_proto->encoded_protolen = encoded_protolen;
 
 # if defined(PR_USE_OPENSSL_NPN)
-  SSL_CTX_set_next_proto_select_cb(ctx, tls_npn_cb, &next_proto);
+  SSL_CTX_set_next_proto_select_cb(ctx, tls_npn_cb, next_proto);
 # endif /* NPN */
 
 # if defined(PR_USE_OPENSSL_ALPN)
@@ -2563,7 +2336,7 @@ static int init_ssl_ctx(void) {
   ssl_ctx = SSL_CTX_new(SSLv23_client_method());
   if (ssl_ctx == NULL) {
     pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-      ": error creating SSL_CTX: %s", get_errors());
+      ": error creating SSL_CTX: %s", proxy_tls_get_errors());
     errno = EPERM;
     return -1;
   }
@@ -2629,177 +2402,6 @@ static int init_ssl_ctx(void) {
 static void proxy_tls_shutdown_ev(const void *event_data, void *user_data) {
   RAND_cleanup();
 }
-
-static int tls_db_add_schema(pool *p, const char *db_path) {
-  int res;
-  const char *stmt, *errstr = NULL;
-
-  /* CREATE TABLE proxy_tls_vhosts (
-   *   vhost_id INTEGER NOT NULL PRIMARY KEY,
-   *   vhost_name TEXT NOT NULL
-   * );
-   */
-  stmt = "CREATE TABLE IF NOT EXISTS proxy_tls_vhosts (vhost_id INTEGER NOT NULL PRIMARY KEY, vhost_name TEXT NOT NULL);";
-  res = proxy_db_exec_stmt(p, tls_dbh, stmt, &errstr);
-  if (res < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr);
-    errno = EPERM;
-    return -1;
-  }
-
-  /* CREATE TABLE proxy_tls_sessions (
-   *   backend_uri STRING NOT NULL PRIMARY KEY,
-   *   vhost_id INTEGER NOT NULL,
-   *   session TEXT NOT NULL,
-   *   FOREIGN KEY (vhost_id) REFERENCES proxy_tls_vhosts (vhost_id)
-   * );
-   */
-  stmt = "CREATE TABLE IF NOT EXISTS proxy_tls_sessions (backend_uri STRING NOT NULL PRIMARY KEY, vhost_id INTEGER NOT NULL, session TEXT NOT NULL, FOREIGN KEY (vhost_id) REFERENCES proxy_tls_hosts (vhost_id));";
-  res = proxy_db_exec_stmt(p, tls_dbh, stmt, &errstr);
-  if (res < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr);
-    errno = EPERM;
-    return -1;
-  }
-
-  /* Note that we deliberately do NOT truncate the session cache table. */
-
-  return 0;
-}
-
-static int tls_truncate_db_tables(pool *p) {
-  int res;
-  const char *stmt, *errstr = NULL;
-
-  stmt = "DELETE FROM proxy_tls_vhosts;";
-  res = proxy_db_exec_stmt(p, tls_dbh, stmt, &errstr);
-  if (res < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr);
-    errno = EPERM;
-    return -1;
-  }
-
-  /* Note that we deliberately do NOT truncate the session cache table. */
-  return 0;
-}
-
-static int tls_db_add_vhost(pool *p, server_rec *s) {
-  int res, xerrno = 0;
-  const char *stmt, *errstr = NULL;
-  array_header *results;
-
-  stmt = "INSERT INTO proxy_tls_vhosts (vhost_id, vhost_name) VALUES (?, ?);";
-  res = proxy_db_prepare_stmt(p, tls_dbh, stmt);
-  if (res < 0) {
-    xerrno = errno;
-    (void) pr_log_debug(DEBUG3, MOD_PROXY_VERSION
-      ": error preparing statement '%s': %s", stmt, strerror(xerrno));
-    errno = xerrno;
-    return -1;
-  }
-
-  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &(s->sid));
-  if (res < 0) {
-    return -1;
-  }
-
-  res = proxy_db_bind_stmt(p, tls_dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) s->ServerName);
-  if (res < 0) {
-    return -1;
-  }
-
-  results = proxy_db_exec_prepared_stmt(p, tls_dbh, stmt, &errstr);
-  if (results == NULL) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error executing '%s': %s", stmt, errstr ? errstr : strerror(errno));
-    errno = EPERM;
-    return -1;
-  }
-
-  return 0;
-}
-
-static int tls_db_init(pool *p, const char *tables_dir, int flags) {
-  int db_flags, res, xerrno = 0;
-  server_rec *s;
-
-  if (p == NULL ||
-      tables_dir == NULL) {
-    errno = EINVAL;
-    return -1;
-  }
-
-  tls_db_path = pdircat(p, tables_dir, "proxy-tls.db", NULL);
-  db_flags = PROXY_DB_OPEN_FL_SCHEMA_VERSION_CHECK|PROXY_DB_OPEN_FL_INTEGRITY_CHECK|PROXY_DB_OPEN_FL_VACUUM;
-  if (flags & PROXY_DB_OPEN_FL_SKIP_VACUUM) {
-    /* If the caller needs us to skip the vacuum, we will. */
-    db_flags &= ~PROXY_DB_OPEN_FL_VACUUM;
-  }
-
-  PRIVS_ROOT
-  tls_dbh = proxy_db_open_with_version(p, tls_db_path, PROXY_TLS_DB_SCHEMA_NAME,
-    PROXY_TLS_DB_SCHEMA_VERSION, db_flags);
-  xerrno = errno;
-  PRIVS_RELINQUISH
-
-  if (tls_dbh == NULL) {
-    (void) pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
-      ": error opening database '%s' for schema '%s', version %u: %s",
-      tls_db_path, PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION,
-      strerror(xerrno));
-    tls_db_path = NULL;
-    errno = xerrno;
-    return -1;
-  }
-
-  res = tls_db_add_schema(p, tls_db_path);
-  if (res < 0) {
-    xerrno = errno;
-    (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-      ": error creating schema in database '%s' for '%s': %s", tls_db_path,
-      PROXY_TLS_DB_SCHEMA_NAME, strerror(xerrno));
-    (void) proxy_db_close(p, tls_dbh);
-    tls_dbh = NULL;
-    tls_db_path = NULL;
-    errno = xerrno;
-    return -1;
-  }
-
-  res = tls_truncate_db_tables(p);
-  if (res < 0) {
-    xerrno = errno;
-    (void) proxy_db_close(p, tls_dbh);
-    tls_dbh = NULL;
-    tls_db_path = NULL;
-    errno = xerrno;
-    return -1;
-  }
-
-  for (s = (server_rec *) server_list->xas_list; s; s = s->next) {
-    res = tls_db_add_vhost(p, s);
-    if (res < 0) {
-      xerrno = errno;
-      (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-        ": error adding database entry for server '%s' in '%s': %s",
-        s->ServerName, PROXY_TLS_DB_SCHEMA_NAME, strerror(xerrno));
-      (void) proxy_db_close(p, tls_dbh);
-      tls_dbh = NULL;
-      tls_db_path = NULL;
-      errno = xerrno;
-      return -1;
-    }
-  }
-
-  (void) proxy_db_close(p, tls_dbh);
-  tls_dbh = NULL;
-
-  return 0;
-}
 #endif /* PR_USE_OPENSSL */
 
 int proxy_tls_set_data_prot(int data_prot) {
@@ -2838,11 +2440,34 @@ int proxy_tls_using_tls(void) {
 #endif /* PR_USE_OPENSSL */
 }
 
-int proxy_tls_init(pool *p, const char *tables_dir, int flags) {
+int proxy_tls_init(pool *p, const char *tables_path, int flags) {
 #ifdef PR_USE_OPENSSL
   int res;
 
-  res = tls_db_init(p, tables_dir, flags);
+  memset(&tls_ds, 0, sizeof(tls_ds));
+
+  switch (proxy_datastore) {
+    case PROXY_DATASTORE_SQLITE:
+      res = proxy_tls_db_as_datastore(&tls_ds, proxy_datastore_data,
+        proxy_datastore_datasz);
+      break;
+
+    case PROXY_DATASTORE_REDIS:
+      res = proxy_tls_redis_as_datastore(&tls_ds, proxy_datastore_data,
+        proxy_datastore_datasz);
+      break;
+
+    default:
+      res = -1;
+      errno = EINVAL;
+      break;
+  }
+
+  if (res < 0) {
+    return -1;
+  }
+
+  res = (tls_ds.init)(p, tables_path, flags);
   if (res < 0) {
     return -1;
   }
@@ -2859,6 +2484,8 @@ int proxy_tls_init(pool *p, const char *tables_dir, int flags) {
   if (res < 0) {
     return -1;
   }
+
+  tls_tables_path = pstrdup(proxy_pool, tables_path);
 
   pr_event_register(&proxy_module, "core.shutdown", proxy_tls_shutdown_ev,
     NULL);
@@ -2879,14 +2506,16 @@ int proxy_tls_free(pool *p) {
     ssl_ctx = NULL;
   }
 
-  if (tls_dbh != NULL) {
-    if (proxy_db_close(p, tls_dbh) < 0) {
+  if (tls_ds.dsh != NULL) {
+    int res;
+
+    res = (tls_ds.close)(p, tls_ds.dsh);
+    if (res < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error closing %s database: %s", PROXY_TLS_DB_SCHEMA_NAME,
-        strerror(errno));
+        "error closing datastore: %s", strerror(errno));
     }
 
-    tls_dbh = NULL;
+    tls_ds.dsh = NULL;
   }
 #endif /* PR_USE_OPENSSL */
 
@@ -3084,7 +2713,7 @@ static int tls_load_psk(const char *identity, const char *path) {
   if (res == 0) {
     pr_trace_msg(trace_channel, 6,
       "failed to convert '%s' data from ProxyTLSPreSharedKey file '%s' "
-      "to BIGNUM: %s", key_buf, path, get_errors());
+      "to BIGNUM: %s", key_buf, path, proxy_tls_get_errors());
 
     if (bn != NULL) {
       BN_free(bn);
@@ -3182,7 +2811,7 @@ static void tls_info_cb(const SSL *ssl, int where, int ret) {
     if (ret == 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "[tls.info] %s: failed in %s: %s", str, SSL_state_string_long(ssl),
-        get_errors());
+        proxy_tls_get_errors());
 
     } else if (ret < 0 &&
                errno != 0 &&
@@ -3482,23 +3111,6 @@ int proxy_tls_sess_init(pool *p, int flags) {
     return -1;
   }
 
-  /* Make sure we have our own per-session database handle, per SQLite3
-   * recommendation.
-   */
-
-  PRIVS_ROOT
-  tls_dbh = proxy_db_open_with_version(proxy_pool, tls_db_path,
-    PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION, 0);
-  xerrno = errno;
-  PRIVS_RELINQUISH
-
-  if (tls_dbh == NULL) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error opening database '%s' for schema '%s', version %u: %s",
-      tls_db_path, PROXY_TLS_DB_SCHEMA_NAME, PROXY_TLS_DB_SCHEMA_VERSION,
-      strerror(xerrno));
-  }
-
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSOptions", FALSE);
   while (c != NULL) {
     unsigned long opts = 0;
@@ -3509,6 +3121,18 @@ int proxy_tls_sess_init(pool *p, int flags) {
     tls_opts |= opts;
 
     c = find_config_next(c, c->next, CONF_PARAM, "ProxyTLSOptions", FALSE);
+  }
+
+  PRIVS_ROOT
+  tls_ds.dsh = (tls_ds.open)(proxy_pool, tls_tables_path, tls_opts);
+  xerrno = errno;
+  PRIVS_RELINQUISH
+
+  if (tls_ds.dsh == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error opening TLS datastore: %s", strerror(xerrno));
+    errno = xerrno;
+    return -1;
   }
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSProtocol", FALSE);
@@ -3578,7 +3202,7 @@ int proxy_tls_sess_init(pool *p, int flags) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unable to set CA verification using file '%s' or "
         "directory '%s': %s", ca_file ? ca_file : "(none)",
-        ca_path ? ca_path : "(none)", get_errors());
+        ca_path ? ca_path : "(none)", proxy_tls_get_errors());
       errno = EPERM;
       return -1;
     }
@@ -3608,12 +3232,14 @@ int proxy_tls_sess_init(pool *p, int flags) {
 
     if (X509_VERIFY_PARAM_set_flags(verify_param, verify_flags) != 1) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error preparing X509 verification parameters: %s", get_errors());
+        "error preparing X509 verification parameters: %s",
+        proxy_tls_get_errors());
 
     } else {
       if (SSL_CTX_set1_param(ssl_ctx, verify_param) != 1) {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "error setting X509 verification parameters: %s", get_errors());
+          "error setting X509 verification parameters: %s",
+          proxy_tls_get_errors());
       }
     }
 
@@ -3626,7 +3252,7 @@ int proxy_tls_sess_init(pool *p, int flags) {
     if (SSL_CTX_set_default_verify_paths(ssl_ctx) != 1) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "error setting default CA verification locations: %s",
-        get_errors());
+        proxy_tls_get_errors());
     }
   }
 
@@ -3649,14 +3275,14 @@ int proxy_tls_sess_init(pool *p, int flags) {
     crl_store = X509_STORE_new();
     if (crl_store == NULL) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error allocating CRL store: %s", get_errors());
+        "error allocating CRL store: %s", proxy_tls_get_errors());
       errno = EPERM;
       return -1;
     }
 
     if (X509_STORE_load_locations(crl_store, crl_file, crl_path) != 1) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error loading ProxyTLSCARevocation files: %s", get_errors());
+        "error loading ProxyTLSCARevocation files: %s", proxy_tls_get_errors());
 
     } else {
       SSL_CTX_set_cert_store(ssl_ctx, crl_store);
@@ -3693,7 +3319,7 @@ int proxy_tls_sess_init(pool *p, int flags) {
     if (res != 1) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "error loading certificate from ProxyTLSCertificateFile '%s': %s",
-        cert_file, get_errors());
+        cert_file, proxy_tls_get_errors());
       ok = FALSE;
     }
 
@@ -3705,7 +3331,7 @@ int proxy_tls_sess_init(pool *p, int flags) {
       if (res != 1) {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "error loading private key from ProxyTLSCertificateKeyFile '%s': %s",
-          key_file, get_errors());
+          key_file, proxy_tls_get_errors());
         ok = FALSE;
       }
     }
@@ -3802,8 +3428,8 @@ int proxy_tls_sess_free(pool *p) {
   if (session.rfc2228_mech == NULL) {
     handshake_timeout = 30;
 
-    tls_engine = PROXY_TLS_ENGINE_AUTO;
     tls_opts = 0UL;
+    tls_engine = PROXY_TLS_ENGINE_AUTO;
     tls_verify_server = TRUE;
     tls_cipher_suite = NULL;
 
@@ -3813,8 +3439,10 @@ int proxy_tls_sess_free(pool *p) {
     tls_psk_used = FALSE;
 # endif /* PSK support */
 
-    proxy_db_close(p, tls_dbh);
-    tls_dbh = NULL;
+    if (tls_ds.dsh != NULL) {
+      (void) (tls_ds.close)(p, tls_ds.dsh);
+      tls_ds.dsh = NULL;
+    }
 
     if (ssl_ctx != NULL) {
       if (init_ssl_ctx() < 0) {

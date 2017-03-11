@@ -1821,12 +1821,12 @@ sub proxy_reverse_backend_tls_login_psk {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $server_cert_file
     TLSCACertificateFile $ca_file
     TLSCipherSuite PSK
     TLSPreSharedKey $psk_id hex:$psk_file
+    TLSOptions EnableDiags
   </IfModule>
 </VirtualHost>
 EOC

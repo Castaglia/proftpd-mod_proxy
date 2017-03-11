@@ -130,9 +130,6 @@ START_TEST (db_open_with_version_test) {
   schema_name = "proxy_test";
   schema_version = 0;
 
-  if (getenv("TRAVIS_CI") == NULL) {
-  }
-
   mark_point();
   dbh = proxy_db_open_with_version(p, table_path, schema_name, schema_version,
     flags);
@@ -155,7 +152,7 @@ START_TEST (db_open_with_version_test) {
   res = proxy_db_close(p, dbh);
   fail_unless(res == 0, "Failed to close database: %s", strerror(errno));
 
-  if (getenv("TRAVIS_CI") == NULL) {
+  if (getenv("TRAVIS") == NULL) {
     /* Enable the vacuuming for these tests. */
     flags |= PROXY_DB_OPEN_FL_VACUUM;
 

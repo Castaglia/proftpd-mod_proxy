@@ -203,6 +203,12 @@ START_TEST (reverse_sess_init_test) {
 
   mark_point();
   res = proxy_reverse_sess_init(NULL, NULL, NULL, flags);
+  fail_unless(res < 0, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  res = proxy_reverse_sess_init(p, NULL, NULL, flags);
   fail_unless(res < 0, "Unexpectedly init'd Reverse API session resources");
   fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
     strerror(errno), errno);
@@ -516,7 +522,7 @@ START_TEST (reverse_handle_user_pass_random_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -541,7 +547,7 @@ START_TEST (reverse_handle_user_pass_roundrobin_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -566,7 +572,7 @@ START_TEST (reverse_handle_user_pass_leastconns_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -591,7 +597,7 @@ START_TEST (reverse_handle_user_pass_leastresponsetime_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -618,7 +624,7 @@ START_TEST (reverse_handle_user_pass_shuffle_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -643,7 +649,7 @@ START_TEST (reverse_handle_user_pass_peruser_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -668,7 +674,7 @@ START_TEST (reverse_handle_user_pass_pergroup_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -693,7 +699,7 @@ START_TEST (reverse_handle_user_pass_perhost_test) {
   array_header *backends;
 
   /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  if (getenv("TRAVIS") != NULL) {
     return;
   }
 
