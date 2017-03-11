@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy API testsuite
- * Copyright (c) 2012-2016 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2012-2017 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,7 +41,9 @@ module proxy_module;
 pool *proxy_pool = NULL;
 unsigned long proxy_opts = 0UL;
 unsigned int proxy_sess_state = 0;
-
+int proxy_datastore = 1;
+void *proxy_datastore_data = NULL;
+size_t proxy_datastore_datasz = 0;
 static cmd_rec *next_cmd = NULL;
 
 int tests_rmpath(pool *p, const char *path) {
