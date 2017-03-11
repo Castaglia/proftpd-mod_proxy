@@ -541,16 +541,18 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
   cmd = pr_cmd_alloc(p, 2, "USER", "anonymous@ftp.cisco.com:990");
   cmd->arg = pstrdup(p, "anonymous@ftp.cisco.com:990");
 
-  mark_point();
-  res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
-    &block_responses);
+  if (getenv("TRAVIS") == NULL) {
+    mark_point();
+    res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
+      &block_responses);
 
-  /* Once you've performed a TLS handshake with ftp.cisco.com, it does not
-   * accept anonymous logins.  Fine.
-   */
-  fail_if(res == 1, "Handled USER command unexpectedly");
-  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
-    strerror(errno), errno);
+    /* Once you've performed a TLS handshake with ftp.cisco.com, it does not
+     * accept anonymous logins.  Fine.
+     */
+    fail_if(res == 1, "Handled USER command unexpectedly");
+    fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+      strerror(errno), errno);
+  }
 
   mark_point();
   res = proxy_tls_sess_free(p);
