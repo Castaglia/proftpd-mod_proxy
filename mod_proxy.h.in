@@ -46,7 +46,7 @@
 /* Define if you have the srandom(3) function.  */
 #undef HAVE_SRANDOM
 
-#define MOD_PROXY_VERSION	"mod_proxy/0.3"
+#define MOD_PROXY_VERSION	"mod_proxy/0.4"
 
 /* Make sure the version of proftpd is as necessary. */
 #if PROFTPD_VERSION_NUMBER < 0x0001030605
