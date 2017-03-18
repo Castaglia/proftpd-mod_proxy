@@ -69,6 +69,7 @@ static int db_busy(void *user_data, int busy_count) {
   return retry;
 }
 
+#ifdef SQLITE_CONFIG_LOG
 static void db_err(void *user_data, int err_code, const char *err_msg) {
   if (current_schema != NULL) {
     pr_trace_msg(trace_channel, 1, "(sqlite3): schema '%s': [error %d] %s",
@@ -79,6 +80,7 @@ static void db_err(void *user_data, int err_code, const char *err_msg) {
       err_msg);
   }
 }
+#endif /* SQLITE_CONFIG_LOG */
 
 #ifdef SQLITE_CONFIG_SQLLOG
 static void db_sql(void *user_data, sqlite3 *db, const char *info,
@@ -432,8 +434,14 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
 
   current_schema = dbh->schema;
 
+  /* The sqlit3_stmt_readonly() function first appeared in SQLite 3.7.x. */
+#if SQLITE_VERSION_NUMBER >= 3007000
   readonly = sqlite3_stmt_readonly(pstmt);
-  if (!readonly) {
+#else
+  readonly = FALSE;
+#endif /* SQLite 3.7.x or earlier */
+
+  if (readonly == FALSE) {
     /* Assume this is an INSERT/UPDATE/DELETE. */
     res = sqlite3_step(pstmt);
     if (res != SQLITE_DONE) {
@@ -894,8 +902,11 @@ int proxy_db_init(pool *p) {
     return -1;
   }
 
+#ifdef SQLITE_CONFIG_LOG
   /* Register an error logging callback with SQLite3. */
   sqlite3_config(SQLITE_CONFIG_LOG, db_err, NULL);
+#endif /* SQLITE_CONFIG_LOG */
+
 #ifdef SQLITE_CONFIG_SQLLOG
   sqlite3_config(SQLITE_CONFIG_SQLLOG, db_sql, NULL);
 #endif /* SQLITE_CONFIG_SQLLOG */
