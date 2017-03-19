@@ -112,23 +112,7 @@ static void db_sql(void *user_data, sqlite3 *db, const char *info,
 }
 #endif /* SQLITE_CONFIG_SQLLOG */
 
-#ifdef HAVE_SQLITE3_TRACE
-static void db_trace(void *user_data, const char *trace_msg) {
-  if (user_data != NULL) {
-    const char *schema;
-
-    schema = user_data;
-    pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
-      "(sqlite3): schema '%s': %s", schema, trace_msg);
-
-  } else {
-    pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
-      "(sqlite3): %s", trace_msg);
-  }
-}
-#endif /* HAVE_SQLITE3_TRACE */
-
-#ifdef HAVE_SQLITE3_TRACE_V2
+#if defined(HAVE_SQLITE3_TRACE_V2)
 static int db_trace2(unsigned int trace_type, void *user_data, void *ptr,
     void *ptr_data) {
   const char *schema_name;
@@ -185,8 +169,22 @@ static int db_trace2(unsigned int trace_type, void *user_data, void *ptr,
   }
 
   return 0;
-)
-#endif /* HAVE_SQLITE3_TRACE_V2 */
+}
+#elif defined(HAVE_SQLITE3_TRACE)
+static void db_trace(void *user_data, const char *trace_msg) {
+  if (user_data != NULL) {
+    const char *schema;
+
+    schema = user_data;
+    pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+      "(sqlite3): schema '%s': %s", schema, trace_msg);
+
+  } else {
+    pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+      "(sqlite3): %s", trace_msg);
+  }
+}
+#endif /* HAVE_SQLITE3_TRACE */
 
 static int stmt_cb(void *v, int ncols, char **cols, char **col_names) {
   register int i;
