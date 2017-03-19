@@ -39,7 +39,10 @@ script:
   - cp config* proftpd/contrib/mod_proxy/
   - cp install-sh proftpd/contrib/mod_proxy/
   - cd proftpd
-  # First, a build without mod_tls
+  # First, a build without mod_tls and without Redis
+  - ./configure --enable-devel=coverage --enable-tests --with-module=mod_proxy
+  - make
+  # Next, a build with Redis, without mod_tls
   - ./configure --enable-devel=coverage --enable-redis --enable-tests --with-module=mod_proxy
   - make
   # Next, a build WITH mod_tls (as a shared module)
