@@ -112,6 +112,7 @@ static void db_sql(void *user_data, sqlite3 *db, const char *info,
 }
 #endif /* SQLITE_CONFIG_SQLLOG */
 
+#ifdef HAVE_SQLITE3_TRACE
 static void db_trace(void *user_data, const char *trace_msg) {
   if (user_data != NULL) {
     const char *schema;
@@ -125,6 +126,67 @@ static void db_trace(void *user_data, const char *trace_msg) {
       "(sqlite3): %s", trace_msg);
   }
 }
+#endif /* HAVE_SQLITE3_TRACE */
+
+#ifdef HAVE_SQLITE3_TRACE_V2
+static int db_trace2(unsigned int trace_type, void *user_data, void *ptr,
+    void *ptr_data) {
+  const char *schema_name;
+
+  schema_name = user_data;
+
+  switch (trace_type) {
+    case SQLITE_TRACE_STMT: {
+      sqlite3_stmt *pstmt;
+      const char *stmt;
+
+      pstmt = ptr;
+      stmt = ptr_data;
+
+      pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+        "(sqlite3): executing stmt '%s'", stmt);
+      break;
+    }
+
+    case SQLITE_TRACE_PROFILE: {
+      sqlite3_stmt *pstmt;
+      int64_t ns = 0;
+
+      pstmt = ptr;
+      ns = *((int64_t *) ptr_data);
+      pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+        "(sqlite3): stmt '%s' ran for %lu nanosecs",
+        sqlite3_expanded_sql(pstmt), (unsigned long) ns);
+      break;
+    }
+
+    case SQLITE_TRACE_ROW: {
+      sqlite3_stmt *pstmt;
+
+      pstmt = ptr;
+      pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+        "(sqlite3): returning result row for stmt '%s'",
+        sqlite3_expanded_sql(pstmt));
+      break;
+    }
+
+    case SQLITE_TRACE_CLOSE: {
+      sqlite3 *db;
+
+      db = ptr;
+      pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+        "(sqlite3): closing database connection to %s",
+        sqlite3_db_filename(db, "main"));
+      break;
+    }
+
+    default:
+      break;
+  }
+
+  return 0;
+)
+#endif /* HAVE_SQLITE3_TRACE_V2 */
 
 static int stmt_cb(void *v, int ncols, char **cols, char **col_names) {
   register int i;
@@ -435,7 +497,7 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
   current_schema = dbh->schema;
 
   /* The sqlit3_stmt_readonly() function first appeared in SQLite 3.7.x. */
-#if SQLITE_VERSION_NUMBER >= 3007000
+#ifdef HAVE_SQLITE3_STMT_READONLY
   readonly = sqlite3_stmt_readonly(pstmt);
 #else
   readonly = FALSE;
@@ -560,7 +622,13 @@ struct proxy_dbh *proxy_db_open(pool *p, const char *table_path,
 
   if (pr_trace_get_level(trace_channel) >= PROXY_DB_SQLITE_TRACE_LEVEL) {
     sqlite3_busy_handler(db, db_busy, (void *) schema_name);
+
+#if defined(HAVE_SQLITE3_TRACE_V2)
+    sqlite3_trace_v2(db, SQLITE_TRACE_STMT|SQLITE_TRACE_PROFILE|SQLITE_TRACE_ROW|SQLITE_TRACE_CLOSE,
+      db_trace2, (void *) schema_name);
+#elif defined(HAVE_SQLITE3_TRACE)
     sqlite3_trace(db, db_trace, (void *) schema_name);
+#endif /* HAVE_SQLITE3_TRACE or HAVE_SQLITE3_TRACE_V2 */
   }
 
   sub_pool = make_sub_pool(p);

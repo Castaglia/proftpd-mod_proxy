@@ -1,5 +1,5 @@
 dnl ProFTPD - mod_proxy
-dnl Copyright (c) 2012-2015 TJ Saunders <tj@castaglia.org>
+dnl Copyright (c) 2012-2017 TJ Saunders <tj@castaglia.org>
 dnl
 dnl This program is free software; you can redistribute it and/or modify
 dnl it under the terms of the GNU General Public License as published by
@@ -66,6 +66,67 @@ AC_ARG_WITH(libraries,
 AC_HEADER_STDC
 AC_CHECK_HEADERS(sqlite3.h stdlib.h unistd.h limits.h fcntl.h sys/sysctl.h sys/sysinfo.h)
 AC_CHECK_FUNCS(random srandom sysctl sysinfo)
+
+# Check for SQLite-isms
+AC_MSG_CHECKING([for sqlite3_stmt_readonly])
+saved_libs="$LIBS"
+LIBS="-lsqlite3"
+AC_TRY_LINK([
+    #include <stdlib.h>
+    #include <sys/types.h>
+    #ifdef HAVE_SQLITE3_H
+    # include <sqlite3.h>
+    #endif
+  ], [
+    (void) sqlite3_stmt_readonly(NULL);
+  ], [
+    AC_MSG_RESULT(yes)
+    AC_DEFINE(HAVE_SQLITE3_STMT_READONLY, 1, [Define if you have the sqlite3_stmt_readonly function])
+  ], [
+    AC_MSG_RESULT(no)
+  ]
+)
+LIBS="$saved_libs"
+
+AC_MSG_CHECKING([for sqlite3_trace])
+saved_libs="$LIBS"
+LIBS="-lsqlite3"
+AC_TRY_LINK([
+    #include <stdlib.h>
+    #include <sys/types.h>
+    #ifdef HAVE_SQLITE3_H
+    # include <sqlite3.h>
+    #endif
+  ], [
+    (void) sqlite3_trace(NULL, NULL, NULL);
+  ], [
+    AC_MSG_RESULT(yes)
+    AC_DEFINE(HAVE_SQLITE3_TRACE, 1, [Define if you have the sqlite3_trace function])
+  ], [
+    AC_MSG_RESULT(no)
+  ]
+)
+LIBS="$saved_libs"
+
+AC_MSG_CHECKING([for sqlite3_trace_v2])
+saved_libs="$LIBS"
+LIBS="-lsqlite3"
+AC_TRY_LINK([
+    #include <stdlib.h>
+    #include <sys/types.h>
+    #ifdef HAVE_SQLITE3_H
+    # include <sqlite3.h>
+    #endif
+  ], [
+    (void) sqlite3_trace_v2(NULL, 0, NULL, NULL);
+  ], [
+    AC_MSG_RESULT(yes)
+    AC_DEFINE(HAVE_SQLITE3_TRACE_V2, 1, [Define if you have the sqlite3_trace_v2 function])
+  ], [
+    AC_MSG_RESULT(no)
+  ]
+)
+LIBS="$saved_libs"
 
 INCLUDES="$ac_build_addl_includes"
 LIBDIRS="$ac_build_addl_libdirs"
