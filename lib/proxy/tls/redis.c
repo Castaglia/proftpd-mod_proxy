@@ -355,10 +355,10 @@ int proxy_tls_redis_as_datastore(struct proxy_tls_datastore *ds, void *ds_data,
     return -1;
   }
 
+#ifdef PR_USE_OPENSSL
   redis_prefix = ds_data;
   redis_prefixsz = ds_datasz;
 
-#ifdef PR_USE_OPENSSL
   ds->add_sess = tls_redis_add_sess;
   ds->remove_sess = tls_redis_remove_sess;
   ds->get_sess = tls_redis_get_sess;

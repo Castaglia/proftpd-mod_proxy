@@ -43,6 +43,15 @@
 /* Define if you have the random(3) function.  */
 #undef HAVE_RANDOM
 
+/* Define if you have the sqlite3_stmt_readonly() function.  */
+#undef HAVE_SQLITE3_STMT_READONLY
+
+/* Define if you have the sqlite3_trace() function.  */
+#undef HAVE_SQLITE3_TRACE
+
+/* Define if you have the sqlite3_trace_v2() function.  */
+#undef HAVE_SQLITE3_TRACE_V2
+
 /* Define if you have the srandom(3) function.  */
 #undef HAVE_SRANDOM
 
