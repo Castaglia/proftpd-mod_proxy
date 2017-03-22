@@ -613,7 +613,7 @@ using <code>ProxyReverseServers</code> like this:
 
   ProxyRole reverse
   ProxyReverseConnectPolicy PerUser
-  ProxyReverseServers sql://get-user-servers
+  ProxyReverseServers sql:/get-user-servers
 </pre>
 
 <p>
@@ -1693,7 +1693,7 @@ table schema might look like:
 
     # Use a named SQL query to lookup the backend server to use.  Note that
     # the name used here is the name of our SQLNamedQuery defined above.
-    ProxyReverseServers sql://get-user-servers
+    ProxyReverseServers sql:/get-user-servers
     ...
   &lt;/IfModule&gt;
 </pre>
