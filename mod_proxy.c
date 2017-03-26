@@ -3805,20 +3805,22 @@ MODRET proxy_any(cmd_rec *cmd) {
   /* Backend servers can send "asynchronous" messages to us; we need to check
    * for them.
    */
-  if (proxy_ftp_ctrl_handle_async(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-      proxy_sess->frontend_ctrl_conn, 0) < 0) {
-    int xerrno = errno;
+  if (proxy_sess->backend_ctrl_conn != NULL) {
+    if (proxy_ftp_ctrl_handle_async(cmd->tmp_pool,
+        proxy_sess->backend_ctrl_conn, proxy_sess->frontend_ctrl_conn, 0) < 0) {
+      int xerrno = errno;
 
-    pr_trace_msg(trace_channel, 7,
-      "error checking for async messages from the backend server: %s",
-      strerror(xerrno));
+      pr_trace_msg(trace_channel, 7,
+        "error checking for async messages from the backend server: %s",
+        strerror(xerrno));
 
-    if (xerrno == ECONNRESET ||
-        xerrno == ECONNABORTED ||
-        xerrno == ENOENT ||
-        xerrno == EPIPE) {
-      pr_session_disconnect(&proxy_module,
-        PR_SESS_DISCONNECT_BY_APPLICATION, "Backend control connection lost");
+      if (xerrno == ECONNRESET ||
+          xerrno == ECONNABORTED ||
+          xerrno == ENOENT ||
+          xerrno == EPIPE) {
+        pr_session_disconnect(&proxy_module,
+          PR_SESS_DISCONNECT_BY_APPLICATION, "Backend control connection lost");
+      }
     }
   }
 
