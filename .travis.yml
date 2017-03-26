@@ -54,6 +54,7 @@ script:
   - ./configure --enable-devel=coverage --enable-redis --enable-tests --with-modules=mod_tls:mod_proxy
   - make
   - cd contrib/mod_proxy && make TEST_VERBOSE=1 check && cd ../../
+  # Run `tidy -e -q mod_proxy.html` for doc validation
 
 after_success:
   - cd ${TRAVIS_BUILD_DIR}

@@ -174,7 +174,7 @@ supported datastore <em>types</em> are:
 <ul>
   <li>Redis
   <li>SQLite
-<ul>
+</ul>
 
 <p>
 <b>Note</b> that the Redis <em>type</em> also requires the <em>info</em>
@@ -1489,7 +1489,7 @@ your <code>proftpd.conf</code>:
 This trace logging can generate large files; it is intended for debugging
 use only, and should be removed from any production configuration.
 
-<p><a name="Wishlist">
+<p><a name="Wishlist"></a>
 <b>Suggested Future Features</b><br>
 The following lists the features I hope to add to <code>mod_proxy</code>,
 according to need, demand, inclination, and time:
@@ -1502,10 +1502,10 @@ according to need, demand, inclination, and time:
 <p>
 See the GitHub <a href="https://github.com/Castaglia/proftpd-mod_proxy/issues">issues</a> page for current bugs and feature requests, and to report issues.
 
-<p><a name="FAQ">
+<p><a name="FAQ"></a>
 <b>Frequently Asked Questions</b><br>
 
-<p><a name="ProxyRoundRobinVsLeastConns">
+<p><a name="ProxyRoundRobinVsLeastConns"></a>
 <font color=red>Question</font>: I have heard a lot about both "round robin"
 and "least conns" for load balancing.  Which is better for FTP connections?<br>
 <font color=blue>Answer</font>:  There is not an easy answer to this, because
@@ -1525,7 +1525,7 @@ On the other hand, <b><i>if</i></b> your FTP sessions tend to be shorter
 RoundRobin</code> might provide a more even distribution of connections
 across your pool of backend servers.
 
-<p><a name="ProxyPerHostBackendServers">
+<p><a name="ProxyPerHostBackendServers"></a>
 <font color=red>Question</font>: I am using:
 <pre>
   ProxyReverseConnectPolicy PerHost
@@ -1554,7 +1554,7 @@ example:
   &lt;/IfClass&gt;
 </pre>
 
-<p><a name="ProxyFTPSSupport">
+<p><a name="ProxyFTPSSupport"></a>
 <font color=red>Question</font>: Does <code>mod_proxy</code> support SSL/TLS
 connections, <i>i.e.</i> FTPS?<br>
 <font color=blue>Answer</font>:  Short answer: yes.
@@ -1578,7 +1578,7 @@ capabilities to old/legacy FTP servers which do not implement it.   The
 configurations, where the FTPS support can be used to provide SSL/TLS
 capabilities to old/legacy FTP clients which do not implement it.
 
-<p><a name="ProxyReverseProxyCredentials">
+<p><a name="ProxyReverseProxyCredentials"></a>
 <font color=red>Question</font>: I want to use <code>mod_proxy</code> for
 reverse proxying.  I want to centralize all of my user authentication in
 <code>mod_proxy</code>, <b>and</b> I want to use <em>different</em> user
@@ -1611,7 +1611,7 @@ When a URL uses the "username:password" syntax for including the credentials
 to use for that connection, <code>mod_proxy</code> will use those URI
 credentials when logging in to that backend server.
 
-<p><a name="ProxyLimitByGroup">
+<p><a name="ProxyLimitByGroup"></a>
 <font color=red>Question</font>: I have configured <code>mod_proxy</code> to
 block the <code>LIST</code> command for one group of users, like so:
 <pre>
@@ -1648,7 +1648,7 @@ or this, when reverse proxying:
   ProxyOptions UseReverseProxyAuth
 </pre>
 
-<p><a name="ProxyReverseSelectionByCert">
+<p><a name="ProxyReverseSelectionByCert"></a>
 <font color=red>Question</font>: Can <code>mod_proxy</code> be configured
 as a reverse proxy, and to select the backend server based on the <em>client
 certificate</em> used by the frontend FTPS client?<br>
