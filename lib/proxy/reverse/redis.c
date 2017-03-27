@@ -609,30 +609,26 @@ static const struct proxy_conn *reverse_redis_peruser_next(pool *p,
   array_header *backend_uris;
   const struct proxy_conn *pconn = NULL;
 
-  backend_uris = reverse_redis_peruser_get(p, redis, vhost_id, user);
-  if (backend_uris == NULL &&
-      errno == ENOENT) {
+  pconn = reverse_redis_peruser_init(p, redis, vhost_id, user);
+  if (pconn == NULL) {
+    backend_uris = reverse_redis_peruser_get(p, redis, vhost_id, user);
+    if (backend_uris != NULL) {
+      char **vals;
 
-    /* This can happen the very first time; perform an on-demand discovery
-     * of the backends for this user, and try again.
-     */
-    pconn = reverse_redis_peruser_init(p, redis, vhost_id, user);
-    if (pconn == NULL) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error preparing PerUser Redis entries for user '%s': %s", user,
-        strerror(errno));
-      errno = EPERM;
-      return NULL;
+      vals = backend_uris->elts;
+      pconn = proxy_conn_create(p, vals[0]);
     }
-
-  } else {
-    char **vals;
-
-    vals = backend_uris->elts;
-    pconn = proxy_conn_create(p, vals[0]);
   }
 
-  return pconn;
+  if (pconn != NULL) {
+    return pconn;
+  }
+
+  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+    "error preparing PerUser Redis entries for user '%s': %s", user,
+    strerror(ENOENT));
+  errno = EPERM;
+  return NULL;
 }
 
 static int reverse_redis_peruser_used(pool *p, pr_redis_t *redis,
@@ -694,30 +690,26 @@ static const struct proxy_conn *reverse_redis_pergroup_next(pool *p,
   array_header *backend_uris;
   const struct proxy_conn *pconn = NULL;
 
-  backend_uris = reverse_redis_pergroup_get(p, redis, vhost_id, group);
-  if (backend_uris == NULL &&
-      errno == ENOENT) {
+  pconn = reverse_redis_pergroup_init(p, redis, vhost_id, group);
+  if (pconn == NULL) {
+    backend_uris = reverse_redis_pergroup_get(p, redis, vhost_id, group);
+    if (backend_uris != NULL) {
+      char **vals;
 
-    /* This can happen the very first time; perform an on-demand discovery
-     * of the backends for this group, and try again.
-     */
-    pconn = reverse_redis_pergroup_init(p, redis, vhost_id, group);
-    if (pconn == NULL) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error preparing PerGroup Redis entries for group '%s': %s", group,
-        strerror(errno));
-      errno = EPERM;
-      return NULL;
+      vals = backend_uris->elts;
+      pconn = proxy_conn_create(p, vals[0]);
     }
-
-  } else {
-    char **vals;
-
-    vals = backend_uris->elts;
-    pconn = proxy_conn_create(p, vals[0]);
   }
 
-  return pconn;
+  if (pconn != NULL) {
+    return pconn;
+  }
+
+  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+    "error preparing PerGroup Redis entries for group '%s': %s", group,
+    strerror(ENOENT));
+  errno = EPERM;
+  return NULL;
 }
 
 static int reverse_redis_pergroup_used(pool *p, pr_redis_t *redis,
@@ -905,15 +897,7 @@ static const struct proxy_conn *reverse_redis_policy_next_backend(pool *p,
     nelts = redis_backends->nelts;
   }
 
-  /* Sticky policies such as PerUser might have their own ways of looking up
-   * other backends to use.
-   */
-  if (proxy_reverse_policy_is_sticky(policy_id) == TRUE) {
-    if (nelts == 1) {
-      return conns[0];
-    }
-
-  } else {
+  if (proxy_reverse_policy_is_sticky(policy_id) != TRUE) {
     if (conns == NULL &&
         default_backends != NULL &&
         redis_backends == NULL) {

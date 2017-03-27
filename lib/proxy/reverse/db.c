@@ -943,33 +943,27 @@ static const struct proxy_conn *reverse_db_peruser_next(pool *p,
   array_header *results;
   const struct proxy_conn *pconn = NULL;
 
-  results = reverse_db_peruser_get(p, dbh, vhost_id, user);
-  if (results == NULL) {
-    return NULL;
-  }
+  pconn = reverse_db_peruser_init(p, dbh, vhost_id, user);
+  if (pconn == NULL) {
+    results = reverse_db_peruser_get(p, dbh, vhost_id, user);
+    if (results != NULL &&
+        results->nelts > 0) {
+      char **vals;
 
-  if (results->nelts == 0) {
-    /* This can happen the very first time; perform an on-demand discovery
-     * of the backends for this user, and try again.
-     */
-
-    pconn = reverse_db_peruser_init(p, dbh, vhost_id, user);
-    if (pconn == NULL) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error preparing database for ProxyReverseConnectPolicy "
-        "PerUser for user '%s': %s", user, strerror(errno));
-      errno = EPERM;
-      return NULL;
+      vals = results->elts;
+      pconn = proxy_conn_create(p, vals[0]);
     }
-
-  } else {
-    char **vals;
-
-    vals = results->elts;
-    pconn = proxy_conn_create(p, vals[0]);
   }
 
-  return pconn;
+  if (pconn != NULL) {
+    return pconn;
+  }
+
+  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+    "error preparing database for ProxyReverseConnectPolicy PerUser for "
+    "user '%s': %s", user, strerror(ENOENT));
+  errno = EPERM;
+  return NULL;
 }
 
 static int reverse_db_peruser_used(pool *p, struct proxy_dbh *dbh,
@@ -1145,33 +1139,27 @@ static const struct proxy_conn *reverse_db_pergroup_next(pool *p,
   array_header *results;
   const struct proxy_conn *pconn = NULL;
 
-  results = reverse_db_pergroup_get(p, dbh, vhost_id, group);
-  if (results == NULL) {
-    return NULL;
-  }
+  pconn = reverse_db_pergroup_init(p, dbh, vhost_id, group);
+  if (pconn == NULL) {
+    results = reverse_db_pergroup_get(p, dbh, vhost_id, group);
+    if (results != NULL &&
+        results->nelts > 0) {
+      char **vals;
 
-  if (results->nelts == 0) {
-    /* This can happen the very first time; perform an on-demand discovery
-     * of the backends for this group, and try again.
-     */
-
-    pconn = reverse_db_pergroup_init(p, dbh, vhost_id, group);
-    if (pconn == NULL) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error preparing database for ProxyReverseConnectPolicy "
-        "PerGroup for group '%s': %s", group, strerror(errno));
-      errno = EPERM;
-      return NULL;
+      vals = results->elts;
+      pconn = proxy_conn_create(p, vals[0]);
     }
-
-  } else {
-    char **vals;
-
-    vals = results->elts;
-    pconn = proxy_conn_create(p, vals[0]);
   }
 
-  return pconn;
+  if (pconn != NULL) {
+    return pconn;
+  }
+
+  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+    "error preparing database for ProxyReverseConnectPolicy PerGroup for "
+    "group '%s': %s", group, strerror(ENOENT));
+  errno = EPERM;
+  return NULL;
 }
 
 static int reverse_db_pergroup_used(pool *p, struct proxy_dbh *dbh,
@@ -1511,15 +1499,7 @@ static const struct proxy_conn *reverse_db_policy_next_backend(pool *p,
     nelts = db_backends->nelts;
   }
 
-  /* Sticky policies such as PerUser might have their own ways of looking up
-   * other backends to use.
-   */
-  if (proxy_reverse_policy_is_sticky(policy_id) == TRUE) {
-    if (nelts == 1) {
-      return conns[0];
-    }
-
-  } else {
+  if (proxy_reverse_policy_is_sticky(policy_id) != TRUE) {
     if (conns == NULL &&
         default_backends != NULL &&
         db_backends == NULL) {
