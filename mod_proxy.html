@@ -183,8 +183,14 @@ be different/unique among all of your <code>mod_proxy</code> servers using
 that Redis server/cluster; the prefix is used to keep all of the data
 <i>for this server</i> separate from all other servers.  For example:
 <pre>
-  # Use our IP address as our prefix
-  ProxyDatastore Redis 1.2.3.4.
+  &lt;IfModule mod_proxy.c&gt;
+
+    ...
+    &lt;IfModule mod_redis.c&gt;
+      # Use our IP address as our prefix
+      ProxyDatastore Redis 1.2.3.4.
+    &lt;/IfModule&gt;
+  &lt;/IfModule&gt;
 </pre>
 
 <p>
