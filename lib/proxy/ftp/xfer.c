@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP data transfer routines
- * Copyright (c) 2013-2016 TJ Saunders
+ * Copyright (c) 2013-2017 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -154,6 +154,11 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
             "active transfer using PORT", pr_netaddr_get_ipstr(bind_addr),
             pr_netaddr_get_ipstr(mapped_addr));
           bind_addr = mapped_addr;
+
+        } else {
+          pr_trace_msg(trace_channel, 3,
+            "unable to convert IPv6 address '%s' to IPv4: %s",
+            pr_netaddr_get_ipstr(bind_addr), strerror(errno));
         }
       }
     }
@@ -172,6 +177,11 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
           "active transfer with IPv4 peer", pr_netaddr_get_ipstr(bind_addr),
           pr_netaddr_get_ipstr(mapped_addr));
         bind_addr = mapped_addr;
+
+      } else {
+        pr_trace_msg(trace_channel, 3,
+          "unable to convert IPv6 address '%s' to IPv4: %s",
+          pr_netaddr_get_ipstr(bind_addr), strerror(errno));
       }
     }
   }
