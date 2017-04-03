@@ -24,6 +24,7 @@
 
 #include "mod_proxy.h"
 
+#include "include/proxy/conn.h"
 #include "include/proxy/inet.h"
 #include "include/proxy/ftp/conn.h"
 #include "include/proxy/ftp/ctrl.h"
@@ -37,9 +38,9 @@ static const char *trace_channel = "proxy.ftp.xfer";
 
 int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
     const char *error_code, struct proxy_session *proxy_sess, int flags) {
-  int backend_family, bind_family, res, xerrno = 0;
+  int backend_family, bind_family, ipv6_backend, res, xerrno = 0;
   cmd_rec *actv_cmd;
-  const pr_netaddr_t *bind_addr = NULL;
+  const pr_netaddr_t *backend_addr, *bind_addr = NULL;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
   conn_t *data_conn = NULL;
@@ -54,10 +55,21 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
     return -1;
   }
 
+  ipv6_backend = FALSE;
+  backend_addr = proxy_conn_get_addr(proxy_sess->dst_pconn, NULL);
+  if (pr_netaddr_get_family(backend_addr) != AF_INET) {
+    ipv6_backend = TRUE;
+  }
+
   switch (policy_id) {
     case PR_CMD_PORT_ID:
-      active_cmd = C_PORT;
-      break;
+      /* If we have an IPv6 address for the backend server, automatically switch
+       * to using EPRT by falling through to the EPRT case.
+       */
+      if (ipv6_backend == FALSE) {
+        active_cmd = C_PORT;
+        break;
+      }
 
     case PR_CMD_EPRT_ID:
       /* If the remote host does not mention EPRT in its features, fall back
@@ -89,6 +101,18 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
       }
 
       active_cmd = cmd->argv[0];
+
+      /* If we have an IPv6 address for the backend server, automatically switch
+       * to using EPRT.
+       */
+      if (pr_cmd_cmp(cmd, PR_CMD_PORT_ID) == 0 &&
+          ipv6_backend == TRUE) {
+        pr_trace_msg(trace_channel, 19,
+          "automatically switching from %s to %s for IPv6 backend server",
+          active_cmd, C_EPRT);
+        active_cmd = C_EPRT;
+        policy_id = PR_CMD_EPRT_ID;
+      }
 
       if (pr_cmd_cmp(cmd, PR_CMD_EPRT_ID) == 0) {
         /* If the remote host does not mention EPRT in its features, fall back
@@ -296,9 +320,9 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
 
 const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
     const char *error_code, struct proxy_session *proxy_sess, int flags) {
-  int res, xerrno = 0;
+  int ipv6_backend, res, xerrno = 0;
   cmd_rec *pasv_cmd;
-  const pr_netaddr_t *remote_addr = NULL;
+  const pr_netaddr_t *backend_addr, *remote_addr = NULL;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
   unsigned short remote_port;
@@ -313,19 +337,42 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
   }
 
   /* Whether we send a PASV (and expect 227) or an EPSV (and expect 229)
-   * need to depend on the policy_id.
+   * needs to depend on the policy_id, AND on the backend address.
    */
+  ipv6_backend = FALSE;
+  backend_addr = proxy_conn_get_addr(proxy_sess->dst_pconn, NULL);
+  if (pr_netaddr_get_family(backend_addr) != AF_INET) {
+    ipv6_backend = TRUE;
+  }
+
   switch (policy_id) {
     case PR_CMD_PASV_ID:
-      passive_cmd = C_PASV;
-      break;
-
-    case PR_CMD_EPSV_ID:
-      /* If the remote host does not mention EPSV in its features, fall back
-       * to using PASV.
+      /* If we have an IPv6 address for the backend server, automatically switch
+       * to using EPSV by falling through to the EPSV case.
        */
+      if (ipv6_backend == FALSE) {
+        passive_cmd = C_PASV;
+        break;
+      }
+
+    case PR_CMD_EPSV_ID: {
+      int epsv_supported = TRUE;
+
       passive_cmd = C_EPSV;
+
       if (pr_table_get(proxy_sess->backend_features, C_EPSV, NULL) == NULL) {
+        epsv_supported = FALSE;
+
+        /* If the remote host does not mention EPSV in its features, fall back
+         * to using PASV.  Note, however, that some servers (e.g. pure-ftpd)
+         * only mention EPRT in their FEAT to cover both EPRT and EPSV.
+         */
+        if (pr_table_get(proxy_sess->backend_features, C_EPRT, NULL) != NULL) {
+          epsv_supported = TRUE;
+        }
+      }
+
+      if (epsv_supported == FALSE) {
         pr_trace_msg(trace_channel, 19,
           "EPSV not supported by backend server (via FEAT), using PASV");
         if (proxy_sess->dataxfer_policy == PR_CMD_EPSV_ID) {
@@ -336,6 +383,7 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
         policy_id = PR_CMD_PASV_ID;
       }
       break;
+    }
 
     default:
       /* In this case, the cmd we were given is the one we should send to
@@ -351,11 +399,32 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
 
       passive_cmd = cmd->argv[0];
 
+      /* If we have an IPv6 address for the backend server, automatically switch
+       * to using EPSV.
+       */
+      if (pr_cmd_cmp(cmd, PR_CMD_PASV_ID) == 0 &&
+          ipv6_backend == TRUE) {
+        pr_trace_msg(trace_channel, 19,
+          "automatically switching from %s to %s for IPv6 backend server",
+          passive_cmd, C_EPSV);
+        passive_cmd = C_EPSV;
+      }
+
       if (pr_cmd_cmp(cmd, PR_CMD_EPSV_ID) == 0) {
-        /* If the remote host does not mention EPSV in its features, fall back
-         * to using PASV.
-         */
+        int epsv_supported = TRUE;
+
         if (pr_table_get(proxy_sess->backend_features, C_EPSV, NULL) == NULL) {
+          /* If the remote host does not mention EPSV in its features, fall back
+           * to using PASV.  Note, however, that some servers (e.g. pure-ftpd)
+           * only mention EPRT in their FEAT to cover both EPRT and EPSV.
+           */
+
+          if (pr_table_get(proxy_sess->backend_features, C_EPRT, NULL) != NULL) {
+            epsv_supported = TRUE;
+          }
+        }
+
+        if (epsv_supported == FALSE) {
           pr_trace_msg(trace_channel, 19,
             "EPSV not supported by backend server (via FEAT), using PASV");
           if (proxy_sess->dataxfer_policy == PR_CMD_EPSV_ID) {
@@ -456,7 +525,7 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
 
     case PR_CMD_EPSV_ID:
       remote_addr = proxy_ftp_msg_parse_ext_addr(cmd->tmp_pool, resp->msg,
-        session.c->remote_addr, PR_CMD_EPSV_ID, NULL);
+        backend_addr, PR_CMD_EPSV_ID, NULL);
       break;
   }
 

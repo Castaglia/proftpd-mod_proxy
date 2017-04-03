@@ -257,6 +257,12 @@ int proxy_ftp_sess_send_host(pool *p, const struct proxy_session *proxy_sess) {
   tmp_pool = make_sub_pool(p);
 
   host = proxy_conn_get_host(proxy_sess->dst_pconn);
+
+  /* Make sure we format the HOST parameter properly for an IPv6 address. */
+  if (pr_netaddr_is_v6(host) == TRUE) {
+    host = pstrcat(tmp_pool, "[", host, "]", NULL);
+  }
+
   cmd = pr_cmd_alloc(tmp_pool, 2, C_HOST, host);
   cmd->arg = pstrdup(tmp_pool, host);
 

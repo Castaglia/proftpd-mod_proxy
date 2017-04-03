@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP message routines
- * Copyright (c) 2013-2016 TJ Saunders
+ * Copyright (c) 2013-2017 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -314,6 +314,9 @@ const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
             break;
           }
 #endif /* PR_USE_IPV6 */
+
+        default:
+          break;
       }
 
     } else {
@@ -326,10 +329,12 @@ const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
 
   switch (family) {
     case 1:
+      pr_trace_msg(trace_channel, 19, "parsed IPv4 address from '%s'", msg);
       break;
 
 #ifdef PR_USE_IPV6
     case 2:
+      pr_trace_msg(trace_channel, 19, "parsed IPv6 address from '%s'", msg);
       if (pr_netaddr_use_ipv6()) {
         break;
       }

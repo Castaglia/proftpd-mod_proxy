@@ -118,7 +118,7 @@ conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
   }
 
   pr_inet_set_proto_opts(session.pool, conn,
-    main_server->tcp_mss_len, 0, IPTOS_THROUGHPUT, 1);
+    main_server->tcp_mss_len, 1, IPTOS_THROUGHPUT, 1);
   pr_inet_generate_socket_event("proxy.data-connect", main_server,
     conn->local_addr, conn->listen_fd);
 
@@ -235,7 +235,7 @@ conn_t *proxy_ftp_conn_listen(pool *p, const pr_netaddr_t *bind_addr,
   /* Make sure that necessary socket options are set on the socket prior
    * to the call to listen(2).
    */
-  pr_inet_set_proto_opts(session.pool, conn, main_server->tcp_mss_len, 0,
+  pr_inet_set_proto_opts(session.pool, conn, main_server->tcp_mss_len, 1,
     IPTOS_THROUGHPUT, 1);
   pr_inet_generate_socket_event("proxy.data-listen", main_server,
     conn->local_addr, conn->listen_fd);
