@@ -748,12 +748,12 @@ static const struct proxy_conn *reverse_redis_perhost_init(pool *p,
     pconn = conns[0];
 
   } else {
-    size_t ip_len;
+    size_t iplen;
     unsigned int h;
     int idx;
 
-    ip_len = strlen(ip);
-    h = str2hash(ip, ip_len);
+    iplen = strlen(ip);
+    h = str2hash(ip, iplen);
     idx = h % backends->nelts;
 
     pconn = conns[idx];
