@@ -27,6 +27,7 @@
 #include "proxy/db.h"
 #include "proxy/conn.h"
 #include "proxy/reverse.h"
+#include "proxy/reverse/db.h"
 #include "proxy/random.h"
 #include "proxy/tls.h"
 #include "proxy/ftp/ctrl.h"
