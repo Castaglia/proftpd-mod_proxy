@@ -37,7 +37,7 @@
 extern xaset_t *server_list;
 
 #define PROXY_REVERSE_DB_SCHEMA_NAME		"proxy_reverse"
-#define PROXY_REVERSE_DB_SCHEMA_VERSION		5
+#define PROXY_REVERSE_DB_SCHEMA_VERSION		6
 
 /* PerHost/PerUser/PerGroup table limits */
 #define PROXY_REVERSE_DB_PERHOST_MAX_ENTRIES		8192
@@ -159,10 +159,11 @@ static int reverse_db_add_schema(pool *p, struct proxy_dbh *dbh,
    *   vhost_id INTEGER NOT NULL,
    *   user_name TEXT NOT NULL,
    *   backend_uri TEXT,
-   *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id)
+   *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id),
+   *   UNIQUE (vhost_id, user_name)
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS proxy_vhost_reverse_per_user (vhost_id INTEGER NOT NULL, user_name TEXT NOT NULL, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  stmt = "CREATE TABLE IF NOT EXISTS proxy_vhost_reverse_per_user (vhost_id INTEGER NOT NULL, user_name TEXT NOT NULL, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id), UNIQUE (vhost_id, user_name));";
   res = proxy_db_exec_stmt(p, dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -185,10 +186,11 @@ static int reverse_db_add_schema(pool *p, struct proxy_dbh *dbh,
    *   vhost_id INTEGER NOT NULL,
    *   group_name TEXT NOT NULL,
    *   backend_uri TEXT,
-   *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id)
+   *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id),
+   *   UNIQUE (vhost_id, group_name)
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS proxy_vhost_reverse_per_group (vhost_id INTEGER NOT NULL, group_name TEXT NOT NULL, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  stmt = "CREATE TABLE IF NOT EXISTS proxy_vhost_reverse_per_group (vhost_id INTEGER NOT NULL, group_name TEXT NOT NULL, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id), UNIQUE (vhost_id, group_name));";
   res = proxy_db_exec_stmt(p, dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -211,10 +213,11 @@ static int reverse_db_add_schema(pool *p, struct proxy_dbh *dbh,
    *   vhost_id INTEGER NOT NULL,
    *   ip_addr TEXT NOT NULL,
    *   backend_uri TEXT,
-   *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id)
+   *   FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id),
+   *   UNIQUE (vhost_id, ip_addr)
    * );
    */
-  stmt = "CREATE TABLE IF NOT EXISTS proxy_vhost_reverse_per_host (vhost_id INTEGER NOT NULL, ip_addr TEXT NOT NULL, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id));";
+  stmt = "CREATE TABLE IF NOT EXISTS proxy_vhost_reverse_per_host (vhost_id INTEGER NOT NULL, ip_addr TEXT NOT NULL, backend_uri TEXT, FOREIGN KEY (vhost_id) REFERENCES proxy_vhosts (vhost_id), UNIQUE (vhost_id, ip_addr));";
   res = proxy_db_exec_stmt(p, dbh, stmt, &errstr);
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -903,7 +906,7 @@ static const struct proxy_conn *reverse_db_peruser_init(pool *p,
    * choose another?
    */
 
-  stmt = "INSERT INTO proxy_vhost_reverse_per_user (vhost_id, user_name, backend_uri) VALUES (?, ?, ?);";
+  stmt = "INSERT OR IGNORE INTO proxy_vhost_reverse_per_user (vhost_id, user_name, backend_uri) VALUES (?, ?, ?);";
   res = proxy_db_prepare_stmt(p, dbh, stmt);
   if (res < 0) {
     return NULL;
@@ -1099,7 +1102,7 @@ static const struct proxy_conn *reverse_db_pergroup_init(pool *p,
    * choose another?
    */
 
-  stmt = "INSERT INTO proxy_vhost_reverse_per_group (vhost_id, group_name, backend_uri) VALUES (?, ?, ?);";
+  stmt = "INSERT OR IGNORE INTO proxy_vhost_reverse_per_group (vhost_id, group_name, backend_uri) VALUES (?, ?, ?);";
   res = proxy_db_prepare_stmt(p, dbh, stmt);
   if (res < 0) {
     return NULL;
@@ -1286,7 +1289,7 @@ static const struct proxy_conn *reverse_db_perhost_init(pool *p,
     pconn = conns[idx];
   }
 
-  stmt = "INSERT INTO proxy_vhost_reverse_per_host (vhost_id, ip_addr, backend_uri) VALUES (?, ?, ?);";
+  stmt = "INSERT OR IGNORE INTO proxy_vhost_reverse_per_host (vhost_id, ip_addr, backend_uri) VALUES (?, ?, ?);";
   res = proxy_db_prepare_stmt(p, dbh, stmt);
   if (res < 0) {
     return NULL;
