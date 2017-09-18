@@ -207,7 +207,7 @@ START_TEST (inet_connect_ipv6_test) {
   mark_point();
   res = proxy_inet_connect(p, conn, addr, 80);
   fail_unless(res < 0, "Connected to 127.0.0.1#80 unexpectedly");
-  fail_unless(errno == ECONNREFUSED || errno == ENETUNREACH || errno == EADDRNOTAVAIL,,
+  fail_unless(errno == ECONNREFUSED || errno == ENETUNREACH || errno == EADDRNOTAVAIL,
     "Expected ECONNREFUSED (%d), ENETUNREACH (%d), or EADDRNOTAVAIL (%d), got %s (%d)",
     ECONNREFUSED, ENETUNREACH, EADDRNOTAVAIL, strerror(errno), errno);
   proxy_inet_close(p, conn);
