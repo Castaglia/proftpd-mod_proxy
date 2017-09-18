@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2015-2016 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2015-2017 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -207,9 +207,9 @@ START_TEST (inet_connect_ipv6_test) {
   mark_point();
   res = proxy_inet_connect(p, conn, addr, 80);
   fail_unless(res < 0, "Connected to 127.0.0.1#80 unexpectedly");
-  fail_unless(errno == ECONNREFUSED || errno == ENETUNREACH,
-    "Expected ECONNREFUSED (%d) or ENETUNREACH (%d), got %s (%d)",
-    ECONNREFUSED, ENETUNREACH, strerror(errno), errno);
+  fail_unless(errno == ECONNREFUSED || errno == ENETUNREACH || errno == EADDRNOTAVAIL,,
+    "Expected ECONNREFUSED (%d), ENETUNREACH (%d), or EADDRNOTAVAIL (%d), got %s (%d)",
+    ECONNREFUSED, ENETUNREACH, EADDRNOTAVAIL, strerror(errno), errno);
   proxy_inet_close(p, conn);
 
   /* Try connecting to Google's DNS server. */
