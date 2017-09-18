@@ -225,9 +225,9 @@ START_TEST (inet_connect_ipv6_test) {
   res = proxy_inet_connect(p, conn, addr, 53);
   if (res < 0) {
     /* This could be expected, e.g. if there's no route. */
-    fail_unless(errno == EHOSTUNREACH || errno == ENETUNREACH,
-      "Expected EHOSTUNREACH (%d) or ENETUNREACH (%d), got %s (%d)",
-      EHOSTUNREACH, ENETUNREACH, strerror(errno), errno);
+    fail_unless(errno == ECONNREFUSED || errno == ENETUNREACH || errno == EADDRNOTAVAIL,
+      "Expected ECONNREFUSED (%d), ENETUNREACH (%d), or EADDRNOTAVAIL (%d), got %s (%d)",
+      ECONNREFUSED, ENETUNREACH, EADDRNOTAVAIL, strerror(errno), errno);
   }
 
   mark_point();
