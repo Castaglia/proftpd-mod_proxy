@@ -2292,8 +2292,6 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
    * burden.  Configurable?)
    */
 
-  proxy_sess->frontend_sess_flags |= SF_XFER;
-
   while (TRUE) {
     fd_set rfds;
     struct timeval tv;
@@ -2316,7 +2314,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     FD_ZERO(&rfds);
 
     /* The source/origin data connection depends on our direction:
-     * downloads (IO_RD) from the backend, uploads (IO_WR) to the frontend.
+     * downloads (IO_RD) from the backend, uploads (IO_WR) to the backend.
      */
     switch (xfer_direction) {
       case PR_NETIO_IO_RD:
@@ -2384,6 +2382,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
 
       pr_timer_remove(PR_TIMER_STALLED, ANY_MODULE);
       proxy_sess->frontend_sess_flags &= ~SF_XFER;
+      proxy_sess->backend_sess_flags &= ~SF_XFER;
 
       pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
         strerror(xerrno));
@@ -2409,6 +2408,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
 
         pr_timer_remove(PR_TIMER_STALLED, ANY_MODULE);
         proxy_sess->frontend_sess_flags &= ~SF_XFER;
+        proxy_sess->backend_sess_flags &= ~SF_XFER;
 
         xerrno = data_eof ? ETIMEDOUT : dst_xerrno;
         pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
@@ -2418,7 +2418,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
         pr_response_block(TRUE);
         errno = xerrno;
         return PR_ERROR(cmd);
-     }
+      }
 
       /* XXX Have MAX_RETRIES logic here. */
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -2483,6 +2483,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
           }
 
           proxy_sess->frontend_sess_flags &= ~SF_XFER;
+          proxy_sess->backend_sess_flags &= ~SF_XFER;
           data_eof = TRUE;
 
         } else {
@@ -2522,6 +2523,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
             }
 
             proxy_sess->frontend_sess_flags &= ~SF_XFER;
+            proxy_sess->backend_sess_flags &= ~SF_XFER;
             xfer_ok = FALSE;
             dst_xerrno = xerrno;
           }
@@ -2594,7 +2596,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
         if (resp->num[0] != '1') {
           switch (xfer_direction) {
             case PR_NETIO_IO_RD:
-              if (session.d != NULL) {
+              if (proxy_sess->frontend_data_conn != NULL) {
                 pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
                 proxy_sess->frontend_data_conn = session.d = NULL;
               }
@@ -2654,6 +2656,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
   pr_throttle_pause(bytes_transferred, TRUE);
 
   proxy_sess->frontend_sess_flags &= ~SF_XFER;
+  proxy_sess->backend_sess_flags &= ~SF_XFER;
   pr_response_clear(&resp_list);
   pr_response_clear(&resp_err_list);
 
@@ -3935,6 +3938,11 @@ MODRET proxy_any(cmd_rec *cmd) {
     case PR_CMD_MLSD_ID:
     case PR_CMD_NLST_ID:
       if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
+        if (session.xfer.p != NULL) {
+          destroy_pool(session.xfer.p);
+        }
+
+        memset(&session.xfer, 0, sizeof(session.xfer));
         session.xfer.p = make_sub_pool(session.pool);
         session.xfer.direction = PR_NETIO_IO_WR;
 
@@ -3949,9 +3957,6 @@ MODRET proxy_any(cmd_rec *cmd) {
         } else {
           mr = proxy_data(proxy_sess, cmd);
         }
-
-        destroy_pool(session.xfer.p);
-        memset(&session.xfer, 0, sizeof(session.xfer));
 
         pr_response_block(TRUE);
         return mr;
@@ -3970,6 +3975,10 @@ MODRET proxy_any(cmd_rec *cmd) {
         /* In addition to the same setup as for directory listings, we also
          * track more things, for supporting e.g. TransferLog.
          */
+
+        if (session.xfer.p != NULL) {
+          destroy_pool(session.xfer.p);
+        }
         memset(&session.xfer, 0, sizeof(session.xfer));
 
         if (pr_cmd_cmp(cmd, PR_CMD_RETR_ID) == 0) {
@@ -3996,9 +4005,6 @@ MODRET proxy_any(cmd_rec *cmd) {
         if (MODRET_ISHANDLED(mr)) {
           proxy_log_xfer(cmd, 'c');
         }
-
-        destroy_pool(session.xfer.p);
-        memset(&session.xfer, 0, sizeof(session.xfer));
 
         pr_response_block(TRUE);
         return mr;
