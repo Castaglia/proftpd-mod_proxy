@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy API testsuite
- * Copyright (c) 2012-2017 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2012-2018 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -246,6 +246,9 @@ void pr_log_pri(int prio, const char *fmt, ...) {
   }
 }
 
+void pr_log_stacktrace(int fd, const char *name) {
+}
+
 int pr_log_writefile(int fd, const char *name, const char *fmt, ...) {
   if (getenv("TEST_VERBOSE") != NULL) {
     va_list msg;
@@ -267,6 +270,10 @@ int pr_scoreboard_entry_update(pid_t pid, ...) {
 }
 
 void pr_session_disconnect(module *m, int reason_code, const char *details) {
+}
+
+const char *pr_session_get_protocol(int flags) {
+  return "ftp";
 }
 
 void pr_signals_handle(void) {

@@ -41,6 +41,7 @@ TEST_API_DEPS=\
   $(top_srcdir)/src/support.o \
   $(top_srcdir)/src/json.o \
   $(top_srcdir)/src/redis.o \
+  $(top_srcdir)/src/error.o \
   $(module_srcdir)/lib/proxy/random.o \
   $(module_srcdir)/lib/proxy/db.o \
   $(module_srcdir)/lib/proxy/uri.o \

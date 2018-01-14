@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS implementation
- * Copyright (c) 2015-2017 TJ Saunders
+ * Copyright (c) 2015-2018 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,6 +30,11 @@
 #include "proxy/tls.h"
 #include "proxy/tls/db.h"
 #include "proxy/tls/redis.h"
+
+/* Define if you have the LibreSSL library.  */
+#if defined(LIBRESSL_VERSION_NUMBER)
+# define HAVE_LIBRESSL  1
+#endif
 
 #ifdef PR_USE_OPENSSL
 
@@ -1077,7 +1082,8 @@ static int check_server_cert(SSL *ssl, conn_t *conn, const char *host_name) {
 
 static void stash_stream_ssl(pr_netio_stream_t *nstrm, SSL *ssl) {
   if (pr_table_add(nstrm->notes,
-      pstrdup(nstrm->strm_pool, PROXY_TLS_NETIO_NOTE), ssl, sizeof(SSL)) < 0) {
+      pstrdup(nstrm->strm_pool, PROXY_TLS_NETIO_NOTE), ssl,
+      sizeof(SSL *)) < 0) {
     if (errno != EEXIST) {
       pr_trace_msg(trace_channel, 4,
         "error stashing '%s' note on %s %s stream: %s",
@@ -1251,7 +1257,11 @@ static int tls_verify_cb(int ok, X509_STORE_CTX *ctx) {
       X509_STORE_CTX_set_error(ctx, X509_V_ERR_CERT_CHAIN_TOO_LONG);
     }
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
     verify_error = X509_STORE_CTX_get_error(ctx);
+#else
+    verify_error = ctx->error;
+#endif /* OpenSSL-1.1.x and later */
     switch (verify_error) {
       case X509_V_ERR_CERT_CHAIN_TOO_LONG:
       case X509_V_ERR_CERT_NOT_YET_VALID:
@@ -1264,7 +1274,7 @@ static int tls_verify_cb(int ok, X509_STORE_CTX *ctx) {
       case X509_V_ERR_APPLICATION_VERIFICATION:
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "server certificate failed verification: %s",
-          X509_verify_cert_error_string(ctx->error));
+          X509_verify_cert_error_string(verify_error));
         ok = 0;
         break;
 
@@ -1274,7 +1284,7 @@ static int tls_verify_cb(int ok, X509_STORE_CTX *ctx) {
 
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "server certificate failed verification: %s",
-          X509_verify_cert_error_string(ctx->error));
+          X509_verify_cert_error_string(verify_error));
 
         for (i = 0; i < count; i++) {
           X509_PURPOSE *purp = X509_PURPOSE_get0(i);
@@ -2473,7 +2483,9 @@ int proxy_tls_init(pool *p, const char *tables_path, int flags) {
   }
 
   if (pr_module_exists("mod_tls.c") == FALSE) {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
     OPENSSL_config(NULL);
+#endif /* prior to OpenSSL-1.1.x */
     SSL_load_error_strings();
     SSL_library_init();
     ERR_load_crypto_strings();
@@ -2754,7 +2766,12 @@ static void tls_info_cb(const SSL *ssl, int where, int ret) {
         break;
 # endif
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
+    !defined(HAVE_LIBRESSL)
+      case TLS_ST_OK:
+#else
       case SSL_ST_OK:
+#endif /* OpenSSL-1.1.x and later */
         str = "ok";
         break;
 

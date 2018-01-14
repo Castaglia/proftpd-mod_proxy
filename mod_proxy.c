@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy
- * Copyright (c) 2012-2017 TJ Saunders
+ * Copyright (c) 2012-2018 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1485,7 +1485,7 @@ MODRET set_proxytlspresharedkey(cmd_rec *cmd) {
 # else
   pr_log_debug(DEBUG0,
     "%s is not supported by this build/version of OpenSSL, ignoring",
-    cmd->argv[0]);
+    (char *) cmd->argv[0]);
 # endif /* PSK support */
   return PR_HANDLED(cmd);
 #else
