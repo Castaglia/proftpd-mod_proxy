@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy API testsuite
- * Copyright (c) 2012-2017 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2012-2018 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -244,6 +244,9 @@ void pr_log_pri(int prio, const char *fmt, ...) {
 
     fprintf(stderr, "\n");
   }
+}
+
+void pr_log_stacktrace(int fd, const char *name) {
 }
 
 int pr_log_writefile(int fd, const char *name, const char *fmt, ...) {
