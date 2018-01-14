@@ -272,6 +272,10 @@ int pr_scoreboard_entry_update(pid_t pid, ...) {
 void pr_session_disconnect(module *m, int reason_code, const char *details) {
 }
 
+const char *pr_session_get_protocol(int flags) {
+  return "ftp";
+}
+
 void pr_signals_handle(void) {
 }
 
