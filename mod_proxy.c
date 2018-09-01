@@ -1115,11 +1115,11 @@ MODRET set_proxytables(cmd_rec *cmd) {
       PRIVS_ROOT
       res = proxy_mkpath(cmd->tmp_pool, proxy_chroot, euid, egid, 0111);
       xerrno = errno;
-      PRIVS_RELINQUISIH
+      PRIVS_RELINQUISH
 
       if (res < 0) {
         CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to create directory '",
-          proxy_chroot, "': ", strerror(errno), NULL));
+          proxy_chroot, "': ", strerror(xerrno), NULL));
       }
 
     } else {
