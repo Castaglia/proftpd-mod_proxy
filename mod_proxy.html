@@ -690,7 +690,8 @@ on a proxying host.
 The <code>ProxyTables</code> directive is used to specify a directory that
 <code>mod_proxy</code> will use for storing its database files; these files
 are used for tracking the various load balancing/healthcheck statistics used
-for proxying.
+for proxying.  When ProFTPD shuts down, <b>this directory and all contents
+will be deleted automatically</b>.
 
 <p>
 <b>Note</b> that the <code>ProxyTables</code> directive is <b>required</b>

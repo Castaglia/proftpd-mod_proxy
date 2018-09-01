@@ -1043,6 +1043,9 @@ MODRET set_proxytables(cmd_rec *cmd) {
   res = stat(path, &st);
   if (res < 0) {
     char *proxy_chroot;
+    uid_t euid;
+    gid_t egid;
+    int xerrno;
 
     if (errno != ENOENT) {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to stat '", path,
@@ -1052,20 +1055,31 @@ MODRET set_proxytables(cmd_rec *cmd) {
     pr_log_debug(DEBUG0, MOD_PROXY_VERSION
       ": ProxyTables directory '%s' does not exist, creating it", path);
 
+    euid = geteuid();
+    egid = getegid();
+
     /* Create the directory. */
-    res = proxy_mkpath(cmd->tmp_pool, path, geteuid(), getegid(), 0755);
+    PRIVS_ROOT
+    res = proxy_mkpath(cmd->tmp_pool, path, euid, egid, 0755);
+    xerrno = errno;
+    PRIVS_RELINQUISH
+
     if (res < 0) {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to create directory '",
-        path, "': ", strerror(errno), NULL));
+        path, "': ", strerror(xerrno), NULL));
     }
 
     /* Also create the empty/ directory underneath, for the chroot. */
     proxy_chroot = pdircat(cmd->tmp_pool, path, "empty", NULL);
 
-    res = proxy_mkpath(cmd->tmp_pool, proxy_chroot, geteuid(), getegid(), 0111);
+    PRIVS_ROOT
+    res = proxy_mkpath(cmd->tmp_pool, proxy_chroot, euid, egid, 0111);
+    xerrno = errno;
+    PRIVS_RELINQUISH
+
     if (res < 0) {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to create directory '",
-        proxy_chroot, "': ", strerror(errno), NULL));
+        proxy_chroot, "': ", strerror(xerrno), NULL));
     }
 
     pr_log_debug(DEBUG2, MOD_PROXY_VERSION
@@ -1086,13 +1100,23 @@ MODRET set_proxytables(cmd_rec *cmd) {
 
     res = stat(proxy_chroot, &st);
     if (res < 0) {
+      uid_t euid;
+      gid_t egid;
+      int xerrno;
+
       if (errno != ENOENT) {
         CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to stat '", proxy_chroot,
           "': ", strerror(errno), NULL));
       }
 
-      res = proxy_mkpath(cmd->tmp_pool, proxy_chroot, geteuid(), getegid(),
-        0111);
+      euid = geteuid();
+      egid = getegid();
+
+      PRIVS_ROOT
+      res = proxy_mkpath(cmd->tmp_pool, proxy_chroot, euid, egid, 0111);
+      xerrno = errno;
+      PRIVS_RELINQUISIH
+
       if (res < 0) {
         CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to create directory '",
           proxy_chroot, "': ", strerror(errno), NULL));
