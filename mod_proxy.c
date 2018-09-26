@@ -4076,8 +4076,10 @@ MODRET proxy_any(cmd_rec *cmd) {
       return PR_DECLINED(cmd);
 
     case PR_CMD_PROT_ID:
-      if (proxy_tls_xfer_prot_policy != 0) {
-        return PR_DECLINED(cmd);
+      if (proxy_role == PROXY_ROLE_REVERSE) {
+        if (proxy_tls_xfer_prot_policy != 0) {
+          return PR_DECLINED(cmd);
+        }
       }
       break;
   }
