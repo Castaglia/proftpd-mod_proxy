@@ -389,9 +389,13 @@ static int tls_db_init(pool *p, const char *tables_path, int flags) {
     db_flags &= ~PROXY_DB_OPEN_FL_VACUUM;
   }
 
+  /* prevent error 'operation not permitted' */
+  PRIVS_ROOT
   dbh = proxy_db_open_with_version(p, db_path, PROXY_TLS_DB_SCHEMA_NAME,
     PROXY_TLS_DB_SCHEMA_VERSION, db_flags);
   xerrno = errno;
+  /* prevent error 'operation not permitted' */
+  PRIVS_RELINQUISH
 
   if (dbh == NULL) {
     (void) pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
