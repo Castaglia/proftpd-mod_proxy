@@ -8,7 +8,7 @@ install:
   - sudo apt-get update -qq
   # for unit tests
   - sudo apt-get install -y check
-  - sudo apt-get install -y libsubunit
+  - sudo apt-get install -y libsubunit-dev
   # for Redis support
   - sudo apt-get install -y libhiredis-dev
   # for OpenSSL support
