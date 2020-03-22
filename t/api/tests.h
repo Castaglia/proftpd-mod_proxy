@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy API testsuite
- * Copyright (c) 2012-2016 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2012-2020 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -77,7 +77,7 @@ Suite *tests_get_ftp_data_suite(void);
 Suite *tests_get_ftp_sess_suite(void);
 Suite *tests_get_ftp_xfer_suite(void);
 
-unsigned int recvd_signal_flags;
+extern volatile unsigned int recvd_signal_flags;
 extern pid_t mpid;
 extern server_rec *main_server;
 
