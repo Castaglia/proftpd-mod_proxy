@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy session routines
- * Copyright (c) 2012-2017 TJ Saunders
+ * Copyright (c) 2012-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -181,7 +181,7 @@ int proxy_session_setup_env(pool *p, const char *user, int flags) {
       if (root_login == FALSE) {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "root login attempted, denied by RootLogin configuration");
-        pr_log_auth(PR_LOG_NOTICE, "SECURITY VIOLATION: Root login attempted.");
+        pr_log_auth(PR_LOG_NOTICE, "SECURITY VIOLATION: Root login attempted");
         return -1;
       }
 
