@@ -360,6 +360,9 @@ static void tls_end_sess(SSL *ssl, int strms, int flags) {
     errno = 0;
 
     /* 'close_notify' not already sent; send it now. */
+    pr_trace_msg(trace_channel, 17,
+      "shutting down TLS session, 'close_notify' not already sent; "
+      "sending now");
     lineno = __LINE__ + 1;
     res = SSL_shutdown(ssl);
   }
@@ -373,6 +376,8 @@ static void tls_end_sess(SSL *ssl, int strms, int flags) {
       if (!(shutdown_state & SSL_RECEIVED_SHUTDOWN)) {
         errno = 0;
 
+        pr_trace_msg(trace_channel, 17,
+          "shutting down TLS session, 'close_notify' not received; try again");
         lineno = __LINE__ + 1;
         res = SSL_shutdown(ssl);
       }
@@ -480,6 +485,10 @@ static void tls_end_sess(SSL *ssl, int strms, int flags) {
   }
 
   SSL_free(ssl);
+
+  if (res >= 0) {
+    pr_trace_msg(trace_channel, 17, "TLS session cleanly shut down");
+  }
 }
 
 static int tls_readmore(int rfd) {
@@ -1921,6 +1930,20 @@ static int netio_shutdown_cb(pr_netio_stream_t *nstrm, int how) {
         (nstrm->strm_type == PR_NETIO_STRM_CTRL ||
          nstrm->strm_type == PR_NETIO_STRM_DATA)) {
       SSL *ssl;
+
+      /* If we do not have TLS on this connection, then don't try to do
+       * a TLS shutdown.
+       */
+      if (nstrm->strm_type == PR_NETIO_STRM_CTRL) {
+        if (!(proxy_sess_state & PROXY_SESS_STATE_BACKEND_HAS_CTRL_TLS)) {
+          return shutdown(nstrm->strm_fd, how);
+        }
+
+      } else if (nstrm->strm_type == PR_NETIO_STRM_DATA) {
+        if (!(proxy_sess_state & PROXY_SESS_STATE_BACKEND_HAS_DATA_TLS)) {
+          return shutdown(nstrm->strm_fd, how);
+        }
+      }
 
       ssl = (SSL *) pr_table_get(nstrm->notes, PROXY_TLS_NETIO_NOTE, NULL);
       if (ssl != NULL) {
