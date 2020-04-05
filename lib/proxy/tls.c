@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS implementation
- * Copyright (c) 2015-2018 TJ Saunders
+ * Copyright (c) 2015-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -273,6 +273,9 @@ static void tls_fatal(long error, int lineno) {
       long xerrcode = ERR_get_error();
 
       if (errno == ECONNRESET) {
+        pr_trace_msg(trace_channel, 17,
+          "SSL_ERROR_SYSCALL error (errcode %ld) occurred on line %d; ignoring "
+          "ECONNRESET (%s)", xerrcode, lineno, strerror(errno));
         return;
       }
 
@@ -327,7 +330,7 @@ static void tls_fatal(long error, int lineno) {
 }
 
 static void tls_end_sess(SSL *ssl, int strms, int flags) {
-  int res = 0;
+  int lineno, res = 0;
   int shutdown_state;
   BIO *rbio, *wbio;
   int bread, bwritten;
@@ -353,6 +356,7 @@ static void tls_end_sess(SSL *ssl, int strms, int flags) {
     errno = 0;
 
     /* 'close_notify' not already sent; send it now. */
+    lineno = __LINE__ + 1;
     res = SSL_shutdown(ssl);
   }
 
@@ -364,6 +368,8 @@ static void tls_end_sess(SSL *ssl, int strms, int flags) {
       res = 1;
       if (!(shutdown_state & SSL_RECEIVED_SHUTDOWN)) {
         errno = 0;
+
+        lineno = __LINE__ + 1;
         res = SSL_shutdown(ssl);
       }
     }
@@ -448,7 +454,7 @@ static void tls_end_sess(SSL *ssl, int strms, int flags) {
         break;
 
       default:
-        tls_fatal(err_code, __LINE__);
+        tls_fatal(err_code, lineno);
         break;
     }
   }
@@ -502,10 +508,12 @@ static int tls_writemore(int wfd) {
 
 static ssize_t tls_read(SSL *ssl, void *buf, size_t len,
     int nstrm_type, pr_table_t *notes) {
+  int lineno;
   ssize_t count;
 
   read_retry:
   pr_signals_handle();
+  lineno = __LINE__ + 1;
   count = SSL_read(ssl, buf, len);
   if (count < 0) {
     long err;
@@ -570,7 +578,7 @@ static ssize_t tls_read(SSL *ssl, void *buf, size_t len,
         break;
 
       default:
-        tls_fatal(err, __LINE__);
+        tls_fatal(err, lineno);
         break;
     }
   }
@@ -580,8 +588,10 @@ static ssize_t tls_read(SSL *ssl, void *buf, size_t len,
 
 static ssize_t tls_write(SSL *ssl, const void *buf, size_t len,
     int nstrm_type, pr_table_t *notes) {
+  int lineno;
   ssize_t count;
 
+  lineno = __LINE__ + 1;
   count = SSL_write(ssl, buf, len);
   if (count < 0) {
     long err = SSL_get_error(ssl, count);
@@ -597,7 +607,7 @@ static ssize_t tls_write(SSL *ssl, const void *buf, size_t len,
         break;
 
       default:
-        tls_fatal(err, __LINE__);
+        tls_fatal(err, lineno);
         break;
     }
   }

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy database implementation
- * Copyright (c) 2015-2017 TJ Saunders
+ * Copyright (c) 2015-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -121,14 +121,19 @@ static int db_trace2(unsigned int trace_type, void *user_data, void *ptr,
 
   switch (trace_type) {
     case SQLITE_TRACE_STMT: {
-      sqlite3_stmt *pstmt;
       const char *stmt;
 
-      pstmt = ptr;
       stmt = ptr_data;
 
-      pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
-        "(sqlite3): executing stmt '%s'", stmt);
+      if (schema_name == NULL) {
+        pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+          "(sqlite3): executing stmt '%s'", stmt);
+
+      } else {
+        pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+          "(sqlite3): schema '%s': executing stmt '%s'", schema_name, stmt);
+      }
+
       break;
     }
 
@@ -138,9 +143,18 @@ static int db_trace2(unsigned int trace_type, void *user_data, void *ptr,
 
       pstmt = ptr;
       ns = *((int64_t *) ptr_data);
-      pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
-        "(sqlite3): stmt '%s' ran for %lu nanosecs",
-        sqlite3_expanded_sql(pstmt), (unsigned long) ns);
+
+      if (schema_name == NULL) {
+        pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+          "(sqlite3): stmt '%s' ran for %lu nanosecs",
+          sqlite3_expanded_sql(pstmt), (unsigned long) ns);
+
+      } else {
+        pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+          "(sqlite3): schema '%s': stmt '%s' ran for %lu nanosecs", schema_name,
+          sqlite3_expanded_sql(pstmt), (unsigned long) ns);
+      }
+
       break;
     }
 
@@ -148,9 +162,18 @@ static int db_trace2(unsigned int trace_type, void *user_data, void *ptr,
       sqlite3_stmt *pstmt;
 
       pstmt = ptr;
-      pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
-        "(sqlite3): returning result row for stmt '%s'",
-        sqlite3_expanded_sql(pstmt));
+
+      if (schema_name == NULL) {
+        pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+          "(sqlite3): returning result row for stmt '%s'",
+          sqlite3_expanded_sql(pstmt));
+
+      } else {
+        pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+          "(sqlite3): schema '%s': returning result row for stmt '%s'",
+          schema_name, sqlite3_expanded_sql(pstmt));
+      }
+
       break;
     }
 
@@ -158,9 +181,18 @@ static int db_trace2(unsigned int trace_type, void *user_data, void *ptr,
       sqlite3 *db;
 
       db = ptr;
-      pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
-        "(sqlite3): closing database connection to %s",
-        sqlite3_db_filename(db, "main"));
+
+      if (schema_name == NULL) {
+        pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+          "(sqlite3): closing database connection to %s",
+          sqlite3_db_filename(db, "main"));
+
+      } else {
+        pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
+          "(sqlite3): schema '%s': closing database connection to %s",
+          schema_name, sqlite3_db_filename(db, "main"));
+      }
+
       break;
     }
 
@@ -173,11 +205,11 @@ static int db_trace2(unsigned int trace_type, void *user_data, void *ptr,
 #elif defined(HAVE_SQLITE3_TRACE)
 static void db_trace(void *user_data, const char *trace_msg) {
   if (user_data != NULL) {
-    const char *schema;
+    const char *schema_name;
 
-    schema = user_data;
+    schema_name = user_data;
     pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
-      "(sqlite3): schema '%s': %s", schema, trace_msg);
+      "(sqlite3): schema '%s': %s", schema_name, trace_msg);
 
   } else {
     pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
