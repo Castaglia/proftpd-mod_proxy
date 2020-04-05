@@ -1488,8 +1488,19 @@ static int tls_connect(conn_t *conn, const char *host_name,
 #if !defined(OPENSSL_NO_TLSEXT)
   SSL_set_tlsext_debug_callback(ssl, tls_tlsext_cb);
 
-  pr_trace_msg(trace_channel, 9, "sending SNI '%s'", conn->remote_name);
-  SSL_set_tlsext_host_name(ssl, conn->remote_name);
+  /* We should be a well-behaved TLS client, and NOT send an SNI value
+   * that is an IP address.  Per RFC 6066, literal IPv4/IPv6 addresses are NOT
+   * permitted in the SNI.
+   */
+  if (pr_netaddr_is_v4(conn->remote_name) != TRUE &&
+      pr_netaddr_is_v6(conn->remote_name) != TRUE) {
+    pr_trace_msg(trace_channel, 9, "sending SNI '%s'", conn->remote_name);
+    SSL_set_tlsext_host_name(ssl, conn->remote_name);
+
+  } else {
+    pr_trace_msg(trace_channel, 9, "skipping sending of IP address SNI '%s'",
+      conn->remote_name);
+  }
 
 # if defined(TLSEXT_STATUSTYPE_ocsp)
   pr_trace_msg(trace_channel, 9, "requesting stapled OCSP response");
