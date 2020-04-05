@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse proxy implementation
- * Copyright (c) 2012-2017 TJ Saunders
+ * Copyright (c) 2012-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -756,7 +756,7 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
       if (reverse_connect_index_used(p, main_server->sid, backend_id, -1) < 0) {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "error updating database for backend server index %d: %s", backend_id,
-          strerror(xerrno));
+          strerror(errno));
       }
     }
  
