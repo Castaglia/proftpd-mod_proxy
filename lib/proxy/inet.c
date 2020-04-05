@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy Inet implementation
- * Copyright (c) 2015-2016 TJ Saunders
+ * Copyright (c) 2015-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -73,11 +73,13 @@ void proxy_inet_close(pool *p, conn_t *conn) {
      */
 
     if (conn->instrm != NULL) {
+      proxy_netio_shutdown(conn->instrm, 0);
       proxy_netio_close(conn->instrm);
       conn->instrm = NULL;
     }
 
     if (conn->outstrm != NULL) {
+      proxy_netio_shutdown(conn->outstrm, 1);
       proxy_netio_close(conn->outstrm);
       conn->outstrm = NULL;
     }
