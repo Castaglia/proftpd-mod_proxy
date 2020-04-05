@@ -7,6 +7,7 @@ mod_proxy.h
 tests.log
 .libs
 .*.swp
+*.a
 *.la
 *.lo
 *Tests*.log

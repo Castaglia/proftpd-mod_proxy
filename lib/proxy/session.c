@@ -97,6 +97,7 @@ int proxy_session_check_password(pool *p, const char *user,
     const char *passwd) {
   int res;
 
+  pr_trace_msg(trace_channel, 18, "checking password for user '%s'", user);
   res = pr_auth_authenticate(p, user, passwd);
   switch (res) {
     case PR_AUTH_OK:

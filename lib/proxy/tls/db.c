@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS Database implementation
- * Copyright (c) 2017 TJ Saunders
+ * Copyright (c) 2017-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,6 +26,7 @@
 
 #include "proxy/db.h"
 #include "proxy/tls.h"
+#include "proxy/tls/db.h"
 
 #ifdef PR_USE_OPENSSL
 
