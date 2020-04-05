@@ -140,19 +140,28 @@ static int db_trace2(unsigned int trace_type, void *user_data, void *ptr,
     case SQLITE_TRACE_PROFILE: {
       sqlite3_stmt *pstmt;
       int64_t ns = 0;
+      const char *expanded_sql;
 
       pstmt = ptr;
       ns = *((int64_t *) ptr_data);
+      expanded_sql = sqlite3_expanded_sql(pstmt);
+
+      /* There are some SQL statements whose values we do NOT want to log.
+       * Thus we have a hacky way to look for them.  Sigh.
+       */
+      if (strstr(expanded_sql, "SSL SESSION PARAMETERS") != NULL) {
+        expanded_sql = "(full SQL statement redacted)";
+      }
 
       if (schema_name == NULL) {
         pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
-          "(sqlite3): stmt '%s' ran for %lu nanosecs",
-          sqlite3_expanded_sql(pstmt), (unsigned long) ns);
+          "(sqlite3): stmt '%s' ran for %lu nanosecs", expanded_sql,
+          (unsigned long) ns);
 
       } else {
         pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
           "(sqlite3): schema '%s': stmt '%s' ran for %lu nanosecs", schema_name,
-          sqlite3_expanded_sql(pstmt), (unsigned long) ns);
+          expanded_sql, (unsigned long) ns);
       }
 
       break;
