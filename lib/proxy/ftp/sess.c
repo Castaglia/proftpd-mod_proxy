@@ -373,7 +373,8 @@ int proxy_ftp_sess_send_auth_tls(pool *p,
     register unsigned int i;
 
     pr_trace_msg(trace_channel, 9, "parsed FEAT value '%s' into %d %s",
-      auth_feat, auth_feats->nelts, auth_feat->nelts != 1 ? "values" : "value");
+      auth_feat, auth_feats->nelts,
+      auth_feats->nelts != 1 ? "values" : "value");
     for (i = 0; i < auth_feats->nelts; i++) {
       char *val;
 
