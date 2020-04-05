@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP message routines
- * Copyright (c) 2013-2017 TJ Saunders
+ * Copyright (c) 2013-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -259,6 +259,8 @@ const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
   }
 
   if (cmd_id == PR_CMD_EPSV_ID) {
+    int decr = 0;
+
     /* First, find the opening '(' character. */
     ptr = strchr(msg, '(');
     if (ptr == NULL) {
@@ -268,16 +270,24 @@ const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
       return NULL;
     }
 
-    /* Make sure that the last character is a closing ')'. */
+    /* Make sure that one of the last characters is a closing ')'.  Note that
+     * some servers may have a trailing '.' as well.
+     */
     msglen = strlen(ptr);
-    if (ptr[msglen-1] != ')') {
+    if (ptr[msglen-1] == ')') {
+      decr = 1;
+
+    } else if (ptr[msglen-2] == ')') {
+      decr = 2;
+
+    } else {
       pr_trace_msg(trace_channel, 12,
         "missing ending ')' character for extended address in '%s'", msg);
       errno = EINVAL;
       return NULL;
     }
 
-    msg_str = pstrndup(p, ptr+1, msglen-2);
+    msg_str = pstrndup(p, ptr+1, msglen-decr-1);
 
   } else {
     msg_str = pstrdup(p, msg);
