@@ -1694,6 +1694,7 @@ static int netio_close_cb(pr_netio_stream_t *nstrm) {
 
       pr_table_remove(nstrm->notes, PROXY_TLS_NETIO_NOTE, NULL);
       tls_end_sess(ssl, nstrm->strm_type, 0);
+      proxy_sess_state &= ~PROXY_SESS_STATE_BACKEND_HAS_CTRL_TLS;
     }
 
     if (nstrm->strm_type == PR_NETIO_STRM_DATA &&
@@ -1779,6 +1780,9 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
        * This happens when the frontend is NOT using TLS, and is using passive
        * data transfers, but the backed IS using TLS, and is using active
        * data transfers.
+       *
+       * NOTE: This is still a bug; mod_proxy is calling pr_netio_postopen(),
+       * which should not be invoking this callback.
        */
       if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_HAS_DATA_TLS) {
         pr_trace_msg(trace_channel, 27,
@@ -1962,6 +1966,10 @@ static int netio_shutdown_cb(pr_netio_stream_t *nstrm, int how) {
         if (!(SSL_get_shutdown(ssl) & SSL_SENT_SHUTDOWN)) {
           /* We haven't sent a 'close_notify' alert yet; do so now. */
           SSL_shutdown(ssl);
+        }
+
+        if (nstrm->strm_type == PR_NETIO_STRM_DATA) {
+          proxy_sess_state &= ~PROXY_SESS_STATE_BACKEND_HAS_DATA_TLS;
         }
 
         bread = (BIO_number_read(rbio) - rbio_rbytes) +
