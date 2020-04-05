@@ -140,7 +140,7 @@ static int db_trace2(unsigned int trace_type, void *user_data, void *ptr,
     case SQLITE_TRACE_PROFILE: {
       sqlite3_stmt *pstmt;
       int64_t ns = 0;
-      const char *expanded_sql;
+      const char *expanded_sql = NULL;
 
       pstmt = ptr;
       ns = *((int64_t *) ptr_data);
@@ -149,7 +149,8 @@ static int db_trace2(unsigned int trace_type, void *user_data, void *ptr,
       /* There are some SQL statements whose values we do NOT want to log.
        * Thus we have a hacky way to look for them.  Sigh.
        */
-      if (strstr(expanded_sql, "SSL SESSION PARAMETERS") != NULL) {
+      if (expanded_sql != NULL &&
+          strstr(expanded_sql, "SSL SESSION PARAMETERS") != NULL) {
         expanded_sql = "(full SQL statement redacted)";
       }
 
@@ -169,18 +170,27 @@ static int db_trace2(unsigned int trace_type, void *user_data, void *ptr,
 
     case SQLITE_TRACE_ROW: {
       sqlite3_stmt *pstmt;
+      const char *expanded_sql = NULL;
 
       pstmt = ptr;
+      expanded_sql = sqlite3_expanded_sql(pstmt);
+
+      /* There are some SQL statements whose values we do NOT want to log.
+       * Thus we have a hacky way to look for them.  Sigh.
+       */
+      if (expanded_sql != NULL &&
+          strstr(expanded_sql, "SSL SESSION PARAMETERS") != NULL) {
+        expanded_sql = "(full SQL statement redacted)";
+      }
 
       if (schema_name == NULL) {
         pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
-          "(sqlite3): returning result row for stmt '%s'",
-          sqlite3_expanded_sql(pstmt));
+          "(sqlite3): returning result row for stmt '%s'", expanded_sql);
 
       } else {
         pr_trace_msg(trace_channel, PROXY_DB_SQLITE_TRACE_LEVEL,
           "(sqlite3): schema '%s': returning result row for stmt '%s'",
-          schema_name, sqlite3_expanded_sql(pstmt));
+          schema_name, expanded_sql);
       }
 
       break;
