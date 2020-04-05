@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS API
- * Copyright (c) 2015-2017 TJ Saunders
+ * Copyright (c) 2015-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -62,15 +62,21 @@
 #define PROXY_TLS_PROTO_TLS_V1		0x0002
 #define PROXY_TLS_PROTO_TLS_V1_1	0x0004
 #define PROXY_TLS_PROTO_TLS_V1_2	0x0008
+#define PROXY_TLS_PROTO_TLS_V1_3	0x0010
 
-#if defined(PR_USE_OPENSSL) && OPENSSL_VERSION_NUMBER >= 0x10001000L
-# define PROXY_TLS_PROTO_DEFAULT	(PROXY_TLS_PROTO_TLS_V1|PROXY_TLS_PROTO_TLS_V1_1|PROXY_TLS_PROTO_TLS_V1_2)
+#if defined(PR_USE_OPENSSL) && \
+  OPENSSL_VERSION_NUMBER >= 0x10001000L
+# if defined(TLS1_3_VERSION)
+#  define PROXY_TLS_PROTO_DEFAULT	(PROXY_TLS_PROTO_TLS_V1|PROXY_TLS_PROTO_TLS_V1_1|PROXY_TLS_PROTO_TLS_V1_2|PROXY_TLS_PROTO_TLS_V1_3)
+# else
+#  define PROXY_TLS_PROTO_DEFAULT	(PROXY_TLS_PROTO_TLS_V1|PROXY_TLS_PROTO_TLS_V1_1|PROXY_TLS_PROTO_TLS_V1_2)
+# endif /* TLS1_3_VERSION */
 #else
 # define PROXY_TLS_PROTO_DEFAULT	(PROXY_TLS_PROTO_TLS_V1)
 #endif /* OpenSSL 1.0.1 or later */
 
 /* This is used for e.g. "ProxyTLSProtocol ALL -SSLv3 ...". */
-#define PROXY_TLS_PROTO_ALL		(PROXY_TLS_PROTO_SSL_V3|PROXY_TLS_PROTO_TLS_V1|PROXY_TLS_PROTO_TLS_V1_1|PROXY_TLS_PROTO_TLS_V1_2)
+#define PROXY_TLS_PROTO_ALL		(PROXY_TLS_PROTO_SSL_V3|PROXY_TLS_PROTO_TLS_V1|PROXY_TLS_PROTO_TLS_V1_1|PROXY_TLS_PROTO_TLS_V1_2|PROXY_TLS_PROTO_TLS_V1_3)
 
 const char *proxy_tls_get_errors(void);
 
