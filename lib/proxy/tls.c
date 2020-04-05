@@ -3463,6 +3463,12 @@ int proxy_tls_sess_init(pool *p, int flags) {
   SSL_CTX_set_tlsext_status_cb(ssl_ctx, tls_ocsp_response_cb);
 # endif /* OCSP support */
 
+  if (tls_opts & PROXY_TLS_OPT_ALLOW_WEAK_SECURITY) {
+# if OPENSSL_VERSION_NUMBER >= 0x10100000L
+    SSL_CTX_set_security_level(ssl_ctx, 0);
+# endif /* OpenSSL-1.1.0 and later */
+  }
+
   if (tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
     SSL_CTX_set_info_callback(ssl_ctx, tls_info_cb);
 # if OPENSSL_VERSION_NUMBER > 0x000907000L

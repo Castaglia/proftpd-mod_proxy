@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy
- * Copyright (c) 2012-2018 TJ Saunders
+ * Copyright (c) 2012-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1423,7 +1423,16 @@ MODRET set_proxytlsoptions(cmd_rec *cmd) {
   c = add_config_param(cmd->argv[0], 1, NULL);
 
   for (i = 1; i < cmd->argc; i++) {
-    if (strcmp(cmd->argv[i], "EnableDiags") == 0) {
+    if (strcmp(cmd->argv[i], "AllowWeakSecurity") == 0) {
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+      opts |= PROXY_TLS_OPT_ALLOW_WEAK_SECURITY;
+#else
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "The ", cmd->argv[i],
+        " option cannot be used on this system, as your OpenSSL version "
+        "is too old; requires OpenSSL-1.1.0 or later", NULL));
+#endif /* OpenSSL-1.1.0 and later */
+
+    } else if (strcmp(cmd->argv[i], "EnableDiags") == 0) {
       opts |= PROXY_TLS_OPT_ENABLE_DIAGS;
 
     } else if (strcmp(cmd->argv[i], "NoSessionCache") == 0) {
@@ -4749,4 +4758,3 @@ module proxy_module = {
   /* Module version */
   MOD_PROXY_VERSION
 };
-

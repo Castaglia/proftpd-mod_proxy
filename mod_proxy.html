@@ -975,6 +975,15 @@ Example:
 <p>
 The currently implemented options are:
 <ul>
+  <li><code>AllowWeakSecurity</code>
+    <p>
+    Sets the cryptographic security level to "zero", meaning that any/all
+    ciphers and key sizes are permitted.  This option allows for the best
+    interoperability with <i>any</i> FTPS server, but is
+    <b>not recommended</b>.  Use only when necessary.
+  </li>
+
+  <p>
   <li><code>EnableDiags</code>
     <p>
     Sets callbacks in the OpenSSL library such that <b>a lot</b> of
@@ -1744,7 +1753,7 @@ these problems disappeared once SQLite was upgraded to a newer version.
 <hr>
 
 <font size=2><b><i>
-&copy; Copyright 2015-2017 TJ Saunders<br>
+&copy; Copyright 2015-2020 TJ Saunders<br>
  All Rights Reserved<br>
 </i></b></font>
 
