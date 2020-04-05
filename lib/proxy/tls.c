@@ -1359,14 +1359,14 @@ static int tls_connect(conn_t *conn, const char *host_name,
    * that is an IP address.  Per RFC 6066, literal IPv4/IPv6 addresses are NOT
    * permitted in the SNI.
    */
-  if (pr_netaddr_is_v4(conn->remote_name) != TRUE &&
-      pr_netaddr_is_v6(conn->remote_name) != TRUE) {
-    pr_trace_msg(trace_channel, 9, "sending SNI '%s'", conn->remote_name);
-    SSL_set_tlsext_host_name(ssl, conn->remote_name);
+  if (pr_netaddr_is_v4(host_name) != TRUE &&
+      pr_netaddr_is_v6(host_name) != TRUE) {
+    pr_trace_msg(trace_channel, 9, "sending SNI '%s'", host_name);
+    SSL_set_tlsext_host_name(ssl, host_name);
 
   } else {
     pr_trace_msg(trace_channel, 9, "skipping sending of IP address SNI '%s'",
-      conn->remote_name);
+      host_name);
   }
 
 # if defined(TLSEXT_STATUSTYPE_ocsp)
@@ -1754,6 +1754,7 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
     uint64_t *adaptive_ms = NULL, start_ms;
     off_t *adaptive_bytes = NULL;
     conn_t *conn = NULL;
+    const char *host_name;
 
     if (nstrm->strm_type == PR_NETIO_STRM_DATA &&
         tls_need_data_prot == FALSE) {
@@ -1779,11 +1780,11 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
       conn = proxy_sess->backend_data_conn;
     }
 
-    if (tls_connect(conn, proxy_conn_get_host(proxy_sess->dst_pconn),
-        nstrm) < 0) {
+    host_name = proxy_conn_get_host(proxy_sess->dst_pconn);
+    if (tls_connect(conn, host_name, nstrm) < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "unable to open %s connection: TLS negotiation failed",
-        nstrm->strm_type == PR_NETIO_STRM_CTRL ? "control" : "data");
+        "unable to open %s connection to %s: TLS negotiation failed",
+        nstrm->strm_type == PR_NETIO_STRM_CTRL ? "control" : "data", host_name);
       errno = EPERM;
       return -1;
     }
