@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy
- * Copyright (c) 2012-2017 TJ Saunders
+ * Copyright (c) 2012-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -88,6 +88,7 @@ extern size_t proxy_datastore_datasz;
 #define PROXY_SESS_STATE_CONNECTED		0x0002
 #define PROXY_SESS_STATE_BACKEND_AUTHENTICATED	0x0004
 #define PROXY_SESS_STATE_BACKEND_HAS_CTRL_TLS	0x0008
+#define PROXY_SESS_STATE_BACKEND_HAS_DATA_TLS	0x0010
 
 #ifndef PROXY_DEFAULT_RETRY_COUNT
 # define PROXY_DEFAULT_RETRY_COUNT		5 

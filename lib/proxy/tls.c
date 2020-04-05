@@ -1756,11 +1756,26 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
     conn_t *conn = NULL;
     const char *host_name;
 
-    if (nstrm->strm_type == PR_NETIO_STRM_DATA &&
-        tls_need_data_prot == FALSE) {
-      pr_trace_msg(trace_channel, 17,
-        "data connection does not require SSL/TLS, skipping handshake");
-      return 0;
+    if (nstrm->strm_type == PR_NETIO_STRM_DATA) {
+      if (tls_need_data_prot == FALSE) {
+        pr_trace_msg(trace_channel, 17,
+          "data connection does not require SSL/TLS, skipping handshake");
+        return 0;
+      }
+
+      /* This callback may be invoked by `pr_netio_postopen` for a frontend
+       * data conn, as when we already have a backend data conn using TLS
+       * already established.
+       *
+       * This happens when the frontend is NOT using TLS, and is using passive
+       * data transfers, but the backed IS using TLS, and is using active
+       * data transfers.
+       */
+      if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_HAS_DATA_TLS) {
+        pr_trace_msg(trace_channel, 27,
+          "data connection already using SSL/TLS, skipping handshake");
+        return 0;
+      }
     }
 
     proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
@@ -1825,6 +1840,9 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
 
     if (nstrm->strm_type == PR_NETIO_STRM_CTRL) {
       proxy_sess_state |= PROXY_SESS_STATE_BACKEND_HAS_CTRL_TLS;
+
+    } else if (nstrm->strm_type == PR_NETIO_STRM_DATA) {
+      proxy_sess_state |= PROXY_SESS_STATE_BACKEND_HAS_DATA_TLS;
     }
   }
 
