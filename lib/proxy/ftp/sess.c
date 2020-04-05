@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP session routines
- * Copyright (c) 2013-2017 TJ Saunders
+ * Copyright (c) 2013-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -372,8 +372,8 @@ int proxy_ftp_sess_send_auth_tls(pool *p,
   if (parse_feat(tmp_pool, auth_feat, &auth_feats) > 0) {
     register unsigned int i;
 
-    pr_trace_msg(trace_channel, 9, "parsed FEAT value '%s' into %d values",
-      auth_feat, auth_feats->nelts);
+    pr_trace_msg(trace_channel, 9, "parsed FEAT value '%s' into %d %s",
+      auth_feat, auth_feats->nelts, auth_feat->nelts != 1 ? "values" : "value");
     for (i = 0; i < auth_feats->nelts; i++) {
       char *val;
 
