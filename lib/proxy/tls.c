@@ -120,6 +120,10 @@ static int netio_install_data(void);
 #define PROXY_TLS_IDX_TICKET_KEY		2
 #define PROXY_TLS_IDX_HAD_TICKET		3
 
+#if !defined(OPENSSL_NO_TLSEXT)
+static void tls_tlsext_cb(SSL *, int, int, unsigned char *, int, void *);
+#endif /* !OPENSSL_NO_TLSEXT */
+
 static int handshake_timeout_cb(CALLBACK_FRAME) {
   handshake_timed_out = TRUE;
   return 0;
@@ -1105,143 +1109,6 @@ static void stash_stream_ssl(pr_netio_stream_t *nstrm, SSL *ssl) {
   }
 }
 
-#if !defined(OPENSSL_NO_TLSEXT)
-static void tls_tlsext_cb(SSL *ssl, int client_server, int type,
-    unsigned char *tlsext_data, int tlsext_datalen, void *data) {
-  char *extension_name = "(unknown)";
-
-  switch (type) {
-    case TLSEXT_TYPE_server_name:
-        extension_name = "server name";
-        break;
-
-    case TLSEXT_TYPE_max_fragment_length:
-        extension_name = "max fragment length";
-        break;
-
-    case TLSEXT_TYPE_client_certificate_url:
-        extension_name = "client certificate URL";
-        break;
-
-    case TLSEXT_TYPE_trusted_ca_keys:
-        extension_name = "trusted CA keys";
-        break;
-
-    case TLSEXT_TYPE_truncated_hmac:
-        extension_name = "truncated HMAC";
-        break;
-
-    case TLSEXT_TYPE_status_request:
-        extension_name = "status request";
-        break;
-
-# ifdef TLSEXT_TYPE_user_mapping
-    case TLSEXT_TYPE_user_mapping:
-        extension_name = "user mapping";
-        break;
-# endif
-
-# ifdef TLSEXT_TYPE_client_authz
-    case TLSEXT_TYPE_client_authz:
-        extension_name = "client authz";
-        break;
-# endif
-
-# ifdef TLSEXT_TYPE_server_authz
-    case TLSEXT_TYPE_server_authz:
-        extension_name = "server authz";
-        break;
-# endif
-
-# ifdef TLSEXT_TYPE_cert_type
-    case TLSEXT_TYPE_cert_type:
-        extension_name = "cert type";
-        break;
-# endif
-
-# ifdef TLSEXT_TYPE_elliptic_curves
-    case TLSEXT_TYPE_elliptic_curves:
-        extension_name = "elliptic curves";
-        break;
-# endif
-
-# ifdef TLSEXT_TYPE_ec_point_formats
-    case TLSEXT_TYPE_ec_point_formats:
-        extension_name = "EC point formats";
-        break;
-# endif
-
-# ifdef TLSEXT_TYPE_srp
-    case TLSEXT_TYPE_srp:
-        extension_name = "SRP";
-        break;
-# endif
-
-# ifdef TLSEXT_TYPE_signature_algorithms
-    case TLSEXT_TYPE_signature_algorithms:
-        extension_name = "signature algorithms";
-        break;
-# endif
-
-# ifdef TLSEXT_TYPE_use_srtp
-    case TLSEXT_TYPE_use_srtp:
-        extension_name = "use SRTP";
-        break;
-# endif
-
-# ifdef TLSEXT_TYPE_heartbeat
-    case TLSEXT_TYPE_heartbeat:
-        extension_name = "heartbeat";
-        break;
-# endif
-
-# ifdef TLSEXT_TYPE_session_ticket
-    case TLSEXT_TYPE_session_ticket:
-        extension_name = "session ticket";
-        break;
-# endif
-
-# ifdef TLSEXT_TYPE_renegotiate
-    case TLSEXT_TYPE_renegotiate:
-        extension_name = "renegotiation info";
-        break;
-# endif
-
-# ifdef TLSEXT_TYPE_opaque_prf_input
-    case TLSEXT_TYPE_opaque_prf_input:
-        extension_name = "opaque PRF input";
-        break;
-# endif
-
-# ifdef TLSEXT_TYPE_next_proto_neg
-    case TLSEXT_TYPE_next_proto_neg:
-        extension_name = "next protocol";
-        break;
-# endif
-
-# ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
-    case TLSEXT_TYPE_application_layer_protocol_negotiation:
-        extension_name = "application layer protocol";
-        break;
-# endif
-
-# ifdef TLSEXT_TYPE_padding
-    case TLSEXT_TYPE_padding:
-        extension_name = "TLS padding";
-        break;
-# endif
-
-    default:
-      break;
-  }
-
-  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-    "[tls.tlsext] TLS %s extension \"%s\" (ID %d, %d %s)",
-    client_server ? "server" : "client", extension_name, type, tlsext_datalen,
-    tlsext_datalen != 1 ? "bytes" : "byte");
-}
-#endif /* OPENSSL_NO_TLSEXT */
-
 static int tls_verify_cb(int ok, X509_STORE_CTX *ctx) {
   X509 *cert;
 
@@ -1571,7 +1438,10 @@ static int tls_connect(conn_t *conn, const char *host_name,
 
   if (res < 1) {
     const char *msg = "unable to connect using TLS";
-    int errcode = SSL_get_error(ssl, res);
+    int errcode, shutdown_ssl;
+
+    errcode = SSL_get_error(ssl, res);
+    shutdown_ssl = TRUE;
 
     pr_signals_handle();
 
@@ -1632,12 +1502,14 @@ static int tls_connect(conn_t *conn, const char *host_name,
             "%s: system call error: %s", msg, proxy_tls_get_errors());
         }
 
+        shutdown_ssl = FALSE;
         break;
       }
 
       case SSL_ERROR_SSL:
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "%s: protocol error: %s", msg, proxy_tls_get_errors());
+        shutdown_ssl = FALSE;
         break;
     }
 
@@ -1648,7 +1520,10 @@ static int tls_connect(conn_t *conn, const char *host_name,
       pr_event_generate("mod_proxy.tls-data-handshake-failed", &errcode);
     }
 
-    tls_end_sess(ssl, nstrm->strm_type, 0);
+    if (shutdown_ssl == TRUE) {
+      tls_end_sess(ssl, nstrm->strm_type, 0);
+    }
+
     return -3;
   }
 
@@ -2863,6 +2738,1133 @@ static void tls_info_cb(const SSL *ssl, int where, int ret) {
 }
 
 # if OPENSSL_VERSION_NUMBER > 0x000907000L
+
+/* Borrowed from mod_tls.  Would be nice to share this code somehow. */
+
+struct tls_label {
+  int labelno;
+  const char *label_name;
+};
+
+/* SSL record types */
+static struct tls_label tls_record_type_labels[] = {
+  { 20, "ChangeCipherSpec" },
+  { 21, "Alert" },
+  { 22, "Handshake" },
+  { 23, "ApplicationData" },
+  { 0, NULL }
+};
+
+/* SSL versions */
+static struct tls_label tls_version_labels[] = {
+  { 0x0002, "SSL 2.0" },
+  { 0x0300, "SSL 3.0" },
+  { 0x0301, "TLS 1.0" },
+  { 0x0302, "TLS 1.1" },
+  { 0x0303, "TLS 1.2" },
+  { 0x0304, "TLS 1.3" },
+
+  { 0, NULL }
+};
+
+/* Cipher suites.  These values come from:
+ *   http://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml#tls-parameters-4
+ */
+static struct tls_label tls_ciphersuite_labels[] = {
+  { 0x0000, "SSL_NULL_WITH_NULL_NULL" },
+  { 0x0001, "SSL_RSA_WITH_NULL_MD5" },
+  { 0x0002, "SSL_RSA_WITH_NULL_SHA" },
+  { 0x0003, "SSL_RSA_EXPORT_WITH_RC4_40_MD5" },
+  { 0x0004, "SSL_RSA_WITH_RC4_128_MD5" },
+  { 0x0005, "SSL_RSA_WITH_RC4_128_SHA" },
+  { 0x0006, "SSL_RSA_EXPORT_WITH_RC2_CBC_40_MD5" },
+  { 0x0007, "SSL_RSA_WITH_IDEA_CBC_SHA" },
+  { 0x0008, "SSL_RSA_EXPORT_WITH_DES40_CBC_SHA" },
+  { 0x0009, "SSL_RSA_WITH_DES_CBC_SHA" },
+  { 0x000A, "SSL_RSA_WITH_3DES_EDE_CBC_SHA" },
+  { 0x000B, "SSL_DH_DSS_EXPORT_WITH_DES40_CBC_SHA" },
+  { 0x000C, "SSL_DH_DSS_WITH_DES_CBC_SHA" },
+  { 0x000D, "SSL_DH_DSS_WITH_3DES_EDE_CBC_SHA" },
+  { 0x000E, "SSL_DH_RSA_EXPORT_WITH_DES40_CBC_SHA" },
+  { 0x000F, "SSL_DH_RSA_WITH_DES_CBC_SHA" },
+  { 0x0010, "SSL_DH_RSA_WITH_3DES_EDE_CBC_SHA" },
+  { 0x0011, "SSL_DHE_DSS_EXPORT_WITH_DES40_CBC_SHA" },
+  { 0x0012, "SSL_DHE_DSS_WITH_DES_CBC_SHA" },
+  { 0x0013, "SSL_DHE_DSS_WITH_3DES_EDE_CBC_SHA" },
+  { 0x0014, "SSL_DHE_RSA_EXPORT_WITH_DES40_CBC_SHA" },
+  { 0x0015, "SSL_DHE_RSA_WITH_DES_CBC_SHA" },
+  { 0x0016, "SSL_DHE_RSA_WITH_3DES_EDE_CBC_SHA" },
+  { 0x0017, "SSL_DH_anon_EXPORT_WITH_RC4_40_MD5" },
+  { 0x0018, "SSL_DH_anon_WITH_RC4_128_MD5" },
+  { 0x0019, "SSL_DH_anon_EXPORT_WITH_DES40_CBC_SHA" },
+  { 0x001A, "SSL_DH_anon_WITH_DES_CBC_SHA" },
+  { 0x001B, "SSL_DH_anon_WITH_3DES_EDE_CBC_SHA" },
+  { 0x001D, "SSL_FORTEZZA_KEA_WITH_FORTEZZA_CBC_SHA" },
+  { 0x001E, "SSL_FORTEZZA_KEA_WITH_RC4_128_SHA" },
+  { 0x001F, "TLS_KRB5_WITH_3DES_EDE_CBC_SHA" },
+  { 0x0020, "TLS_KRB5_WITH_RC4_128_SHA" },
+  { 0x0021, "TLS_KRB5_WITH_IDEA_CBC_SHA" },
+  { 0x0022, "TLS_KRB5_WITH_DES_CBC_MD5" },
+  { 0x0023, "TLS_KRB5_WITH_3DES_EDE_CBC_MD5" },
+  { 0x0024, "TLS_KRB5_WITH_RC4_128_MD5" },
+  { 0x0025, "TLS_KRB5_WITH_IDEA_CBC_MD5" },
+  { 0x0026, "TLS_KRB5_EXPORT_WITH_DES_CBC_40_SHA" },
+  { 0x0027, "TLS_KRB5_EXPORT_WITH_RC2_CBC_40_SHA" },
+  { 0x0028, "TLS_KRB5_EXPORT_WITH_RC4_40_SHA" },
+  { 0x0029, "TLS_KRB5_EXPORT_WITH_DES_CBC_40_MD5" },
+  { 0x002A, "TLS_KRB5_EXPORT_WITH_RC2_CBC_40_MD5" },
+  { 0x002B, "TLS_KRB5_EXPORT_WITH_RC4_40_MD5" },
+  { 0x002F, "TLS_RSA_WITH_AES_128_CBC_SHA" },
+  { 0x0030, "TLS_DH_DSS_WITH_AES_128_CBC_SHA" },
+  { 0x0031, "TLS_DH_RSA_WITH_AES_128_CBC_SHA" },
+  { 0x0032, "TLS_DHE_DSS_WITH_AES_128_CBC_SHA" },
+  { 0x0033, "TLS_DHE_RSA_WITH_AES_128_CBC_SHA" },
+  { 0x0034, "TLS_DH_anon_WITH_AES_128_CBC_SHA" },
+  { 0x0035, "TLS_RSA_WITH_AES_256_CBC_SHA" },
+  { 0x0036, "TLS_DH_DSS_WITH_AES_256_CBC_SHA" },
+  { 0x0037, "TLS_DH_RSA_WITH_AES_256_CBC_SHA" },
+  { 0x0038, "TLS_DHE_DSS_WITH_AES_256_CBC_SHA" },
+  { 0x0039, "TLS_DHE_RSA_WITH_AES_256_CBC_SHA" },
+  { 0x003A, "TLS_DH_anon_WITH_AES_256_CBC_SHA" },
+  { 0x003B, "TLS_RSA_WITH_NULL_SHA256" },
+  { 0x003C, "TLS_RSA_WITH_AES_128_CBC_SHA256" },
+  { 0x003D, "TLS_RSA_WITH_AES_256_CBC_SHA256" },
+  { 0x003E, "TLS_DH_DSS_WITH_AES_128_CBC_SHA256" },
+  { 0x003F, "TLS_DH_RSA_WITH_AES_128_CBC_SHA256" },
+  { 0x0040, "TLS_DHE_DSS_WITH_AES_128_CBC_SHA256" },
+  { 0x0041, "TLS_RSA_WITH_CAMELLIA_128_CBC_SHA" },
+  { 0x0042, "TLS_DH_DSS_WITH_CAMELLIA_128_CBC_SHA" },
+  { 0x0043, "TLS_DH_RSA_WITH_CAMELLIA_128_CBC_SHA" },
+  { 0x0044, "TLS_DHE_DSS_WITH_CAMELLIA_128_CBC_SHA" },
+  { 0x0045, "TLS_DHE_RSA_WITH_CAMELLIA_128_CBC_SHA" },
+  { 0x0046, "TLS_DH_anon_WITH_CAMELLIA_128_CBC_SHA" },
+  { 0x0067, "TLS_DHE_RSA_WITH_AES_128_CBC_SHA256" },
+  { 0x0068, "TLS_DH_DSS_WITH_AES_256_CBC_SHA256" },
+  { 0x0069, "TLS_DH_RSA_WITH_AES_256_CBC_SHA256" },
+  { 0x006A, "TLS_DHE_DSS_WITH_AES_256_CBC_SHA256" },
+  { 0x006B, "TLS_DHE_RSA_WITH_AES_256_CBC_SHA256" },
+  { 0x006C, "TLS_DH_anon_WITH_AES_128_CBC_SHA256" },
+  { 0x006D, "TLS_DH_anon_WITH_AES_256_CBC_SHA256" },
+  { 0x0084, "TLS_RSA_WITH_CAMELLIA_256_CBC_SHA" },
+  { 0x0085, "TLS_DH_DSS_WITH_CAMELLIA_256_CBC_SHA" },
+  { 0x0086, "TLS_DH_RSA_WITH_CAMELLIA_256_CBC_SHA" },
+  { 0x0087, "TLS_DHE_DSS_WITH_CAMELLIA_256_CBC_SHA" },
+  { 0x0088, "TLS_DHE_RSA_WITH_CAMELLIA_256_CBC_SHA" },
+  { 0x0089, "TLS_DH_anon_WITH_CAMELLIA_256_CBC_SHA" },
+  { 0x008A, "TLS_PSK_WITH_RC4_128_SHA" },
+  { 0x008B, "TLS_PSK_WITH_3DES_EDE_CBC_SHA" },
+  { 0x008C, "TLS_PSK_WITH_AES_128_CBC_SHA" },
+  { 0x008D, "TLS_PSK_WITH_AES_256_CBC_SHA" },
+  { 0x008E, "TLS_DHE_PSK_WITH_RC4_128_SHA" },
+  { 0x008F, "TLS_DHE_PSK_WITH_3DES_EDE_CBC_SHA" },
+  { 0x0090, "TLS_DHE_PSK_WITH_AES_128_CBC_SHA" },
+  { 0x0091, "TLS_DHE_PSK_WITH_AES_256_CBC_SHA" },
+  { 0x0092, "TLS_RSA_PSK_WITH_RC4_128_SHA" },
+  { 0x0093, "TLS_RSA_PSK_WITH_3DES_EDE_CBC_SHA" },
+  { 0x0094, "TLS_RSA_PSK_WITH_AES_128_CBC_SHA" },
+  { 0x0095, "TLS_RSA_PSK_WITH_AES_256_CBC_SHA" },
+  { 0x0096, "TLS_RSA_WITH_SEED_CBC_SHA" },
+  { 0x0097, "TLS_DH_DSS_WITH_SEED_CBC_SHA" },
+  { 0x0098, "TLS_DH_RSA_WITH_SEED_CBC_SHA" },
+  { 0x0099, "TLS_DHE_DSS_WITH_SEED_CBC_SHA" },
+  { 0x009A, "TLS_DHE_RSA_WITH_SEED_CBC_SHA" },
+  { 0x009B, "TLS_DH_anon_WITH_SEED_CBC_SHA" },
+  { 0x009C, "TLS_RSA_WITH_AES_128_GCM_SHA256" },
+  { 0x009D, "TLS_RSA_WITH_AES_256_GCM_SHA384" },
+  { 0x009E, "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256" },
+  { 0x009F, "TLS_DHE_RSA_WITH_AES_256_GCM_SHA384" },
+  { 0x00A0, "TLS_DH_RSA_WITH_AES_128_GCM_SHA256" },
+  { 0x00A1, "TLS_DH_RSA_WITH_AES_256_GCM_SHA384" },
+  { 0x00A2, "TLS_DHE_DSS_WITH_AES_128_GCM_SHA256" },
+  { 0x00A3, "TLS_DHE_DSS_WITH_AES_256_GCM_SHA384" },
+  { 0x00A4, "TLS_DH_DSS_WITH_AES_128_GCM_SHA256" },
+  { 0x00A5, "TLS_DH_DSS_WITH_AES_256_GCM_SHA384" },
+  { 0x00A6, "TLS_DH_anon_WITH_AES_128_GCM_SHA256" },
+  { 0x00A7, "TLS_DH_anon_WITH_AES_256_GCM_SHA384" },
+  { 0x00A8, "TLS_PSK_WITH_AES_128_GCM_SHA256" },
+  { 0x00A9, "TLS_PSK_WITH_AES_256_GCM_SHA384" },
+  { 0x00AA, "TLS_DHE_PSK_WITH_AES_128_GCM_SHA256" },
+  { 0x00AB, "TLS_DHE_PSK_WITH_AES_256_GCM_SHA384" },
+  { 0x00AC, "TLS_RSA_PSK_WITH_AES_128_GCM_SHA256" },
+  { 0x00AD, "TLS_RSA_PSK_WITH_AES_256_GCM_SHA384" },
+  { 0x00AE, "TLS_PSK_WITH_AES_128_CBC_SHA256" },
+  { 0x00AF, "TLS_PSK_WITH_AES_256_CBC_SHA384" },
+  { 0x00B0, "TLS_PSK_WITH_NULL_SHA256" },
+  { 0x00B1, "TLS_PSK_WITH_NULL_SHA384" },
+  { 0x00B2, "TLS_DHE_PSK_WITH_AES_128_CBC_SHA256" },
+  { 0x00B3, "TLS_DHE_PSK_WITH_AES_256_CBC_SHA384"},
+  { 0x00B4, "TLS_DHE_PSK_WITH_NULL_SHA256" },
+  { 0x00B5, "TLS_DHE_PSK_WITH_NULL_SHA384" },
+  { 0x00B6, "TLS_RSA_PSK_WITH_AES_128_CBC_SHA256" },
+  { 0x00B7, "TLS_RSA_PSK_WITH_AES_256_CBC_SHA384" },
+  { 0x00B8, "TLS_RSA_PSK_WITH_NULL_SHA256" },
+  { 0x00B9, "TLS_RSA_PSK_WITH_NULL_SHA384" },
+  { 0x00BA, "TLS_RSA_WITH_CAMELLIA_128_CBC_SHA256" },
+  { 0x00BB, "TLS_DH_DSS_WITH_CAMELLIA_128_CBC_SHA256" },
+  { 0x00BC, "TLS_DH_RSA_WITH_CAMELLIA_128_CBC_SHA256" },
+  { 0x00BD, "TLS_DHE_DSS_WITH_CAMELLIA_128_CBC_SHA256" },
+  { 0x00BE, "TLS_DHE_RSA_WITH_CAMELLIA_128_CBC_SHA256" },
+  { 0x00BF, "TLS_DH_anon_WITH_CAMELLIA_128_CBC_SHA256" },
+  { 0x00C0, "TLS_RSA_WITH_CAMELLIA_256_CBC_SHA256" },
+  { 0x00C1, "TLS_DH_DSS_WITH_CAMELLIA_256_CBC_SHA256" },
+  { 0x00C2, "TLS_DH_RSA_WITH_CAMELLIA_256_CBC_SHA256" },
+  { 0x00C3, "TLS_DHE_DSS_WITH_CAMELLIA_256_CBC_SHA256" },
+  { 0x00C4, "TLS_DHE_RSA_WITH_CAMELLIA_256_CBC_SHA256" },
+  { 0x00C5, "TLS_DH_anon_WITH_CAMELLIA_256_CBC_SHA256" },
+  { 0x00FF, "TLS_EMPTY_RENEGOTIATION_INFO_SCSV" },
+  { 0x1301, "TLS_AES_128_GCM_SHA256" },
+  { 0x1302, "TLS_AES_256_GCM_SHA384" },
+  { 0x1303, "TLS_CHACHA20_POLY1305_SHA256" },
+  { 0xC001, "TLS_ECDH_ECDSA_WITH_NULL_SHA" },
+  { 0xC002, "TLS_ECDH_ECDSA_WITH_RC4_128_SHA" },
+  { 0xC003, "TLS_ECDH_ECDSA_WITH_3DES_EDE_CBC_SHA" },
+  { 0xC004, "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA" },
+  { 0xC005, "TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA" },
+  { 0xC006, "TLS_ECDHE_ECDSA_WITH_NULL_SHA" },
+  { 0xC007, "TLS_ECDHE_ECDSA_WITH_RC4_128_SHA" },
+  { 0xC008, "TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA" },
+  { 0xC009, "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA" },
+  { 0xC00A, "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA" },
+  { 0xC00B, "TLS_ECDH_RSA_WITH_NULL_SHA" },
+  { 0xC00C, "TLS_ECDH_RSA_WITH_RC4_128_SHA" },
+  { 0xC00D, "TLS_ECDH_RSA_WITH_3DES_EDE_CBC_SHA" },
+  { 0xC00E, "TLS_ECDH_RSA_WITH_AES_128_CBC_SHA" },
+  { 0xC00F, "TLS_ECDH_RSA_WITH_AES_256_CBC_SHA" },
+  { 0xC010, "TLS_ECDHE_RSA_WITH_NULL_SHA" },
+  { 0xC011, "TLS_ECDHE_RSA_WITH_RC4_128_SHA" },
+  { 0xC012, "TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA" },
+  { 0xC013, "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA" },
+  { 0xC014, "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA" },
+  { 0xC015, "TLS_ECDH_anon_WITH_NULL_SHA" },
+  { 0xC016, "TLS_ECDH_anon_WITH_RC4_128_SHA" },
+  { 0xC017, "TLS_ECDH_anon_WITH_3DES_EDE_CBC_SHA" },
+  { 0xC018, "TLS_ECDH_anon_WITH_AES_128_CBC_SHA" },
+  { 0xC019, "TLS_ECDH_anon_WITH_AES_256_CBC_SHA" },
+  { 0xC01A, "TLS_SRP_SHA_WITH_3DES_EDE_CBC_SHA" },
+  { 0xC01B, "TLS_SRP_SHA_RSA_WITH_3DES_EDE_CBC_SHA" },
+  { 0xC01C, "TLS_SRP_SHA_DSS_WITH_3DES_EDE_CBC_SHA" },
+  { 0xC01D, "TLS_SRP_SHA_WITH_AES_128_CBC_SHA" },
+  { 0xC01E, "TLS_SRP_SHA_RSA_WITH_AES_128_CBC_SHA" },
+  { 0xC01F, "TLS_SRP_SHA_DSS_WITH_AES_128_CBC_SHA" },
+  { 0xC020, "TLS_SRP_SHA_WITH_AES_256_CBC_SHA" },
+  { 0xC021, "TLS_SRP_SHA_RSA_WITH_AES_256_CBC_SHA" },
+  { 0xC022, "TLS_SRP_SHA_DSS_WITH_AES_256_CBC_SHA" },
+  { 0xC023, "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256" },
+  { 0xC024, "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384" },
+  { 0xC025, "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256" },
+  { 0xC026, "TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA384" },
+  { 0xC027, "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256" },
+  { 0xC028, "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384" },
+  { 0xC029, "TLS_ECDH_RSA_WITH_AES_128_CBC_SHA256" },
+  { 0xC02A, "TLS_ECDH_RSA_WITH_AES_256_CBC_SHA384" },
+  { 0xC02B, "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256" },
+  { 0xC02C, "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384" },
+  { 0xC02D, "TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256" },
+  { 0xC02E, "TLS_ECDH_ECDSA_WITH_AES_256_GCM_SHA384" },
+  { 0xC02F, "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256" },
+  { 0xC030, "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384" },
+  { 0xC031, "TLS_ECDH_RSA_WITH_AES_128_GCM_SHA256" },
+  { 0xC032, "TLS_ECDH_RSA_WITH_AES_256_GCM_SHA384" },
+  { 0xC07A, "TLS_RSA_WITH_CAMELLIA_128_GCM_SHA256" },
+  { 0xC07B, "TLS_RSA_WITH_CAMELLIA_256_GCM_SHA384" },
+  { 0xC086, "TLS_ECDHE_ECDSA_WITH_CAMELLIA_128_GCM_SHA256" },
+  { 0xC087, "TLS_ECDHE_ECDSA_WITH_CAMELLIA_256_GCM_SHA384" },
+  { 0xC08A, "TLS_ECDHE_RSA_WITH_CAMELLIA_128_GCM_SHA256" },
+  { 0xC08B, "TLS_ECDHE_RSA_WITH_CAMELLIA_256_GCM_SHA384" },
+  { 0xC09C, "TLS_RSA_WITH_AES_128_CCM" },
+  { 0xC09D, "TLS_RSA_WITH_AES_256_CCM" },
+  { 0xC0AC, "TLS_ECDHE_ECDSA_WITH_AES_128_CCM" },
+  { 0xC0AD, "TLS_ECDHE_ECDSA_WITH_AES_256_CCM" },
+  { 0xC0AE, "TLS_DHE_RSA_WITH_AES_128_CCM" },
+  { 0xC0AF, "TLS_DHE_RSA_WITH_AES_256_CCM" },
+  { 0xCCA8, "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256" },
+  { 0xCCA9, "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256" },
+  { 0xCCAA, "TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256" },
+  { 0xCCAB, "TLS_PSK_WITH_CHACHA20_POLY1305_SHA256" },
+  { 0xCCAC, "TLS_ECDHE_PSK_WITH_CHACHA20_POLY1305_SHA256" },
+  { 0xCCAD, "TLS_DHE_PSK_WITH_CHACHA20_POLY1305_SHA256" },
+  { 0xCCAE, "TLS_RSA_PSK_WITH_CHACHA20_POLY1305_SHA256" },
+  { 0xFEFE, "SSL_RSA_FIPS_WITH_DES_CBC_SHA" },
+  { 0xFEFF, "SSL_RSA_FIPS_WITH_3DES_EDE_CBC_SHA" },
+
+  { 0, NULL }
+};
+
+/* Compressions */
+static struct tls_label tls_compression_labels[] = {
+  { 0x0000, "None" },
+  { 0x0001, "Zlib" },
+
+  { 0, NULL }
+};
+
+/* Extensions */
+static struct tls_label tls_extension_labels[] = {
+  { 0, "server_name" },
+  { 1, "max_fragment_length" },
+  { 2, "client_certificate_url" },
+  { 3, "trusted_ca_keys" },
+  { 4, "truncated_hmac" },
+  { 5, "status_request" },
+  { 6, "user_mapping" },
+  { 7, "client_authz" },
+  { 8, "server_authz" },
+  { 9, "cert_type" },
+  { 10, "elliptic_curves" },
+  { 11, "ec_point_formats" },
+  { 12, "srp" },
+  { 13, "signature_algorithms" },
+  { 14, "use_srtp" },
+  { 15, "heartbeat" },
+  { 16, "application_layer_protocol_negotiation" },
+  { 18, "signed_certificate_timestamp" },
+  { 21, "padding" },
+  { 22, "encrypt_then_mac" },
+  { 23, "extended_master_secret" },
+  { 35, "session_ticket" },
+  { 41, "psk" },
+  { 42, "early_data" },
+  { 43, "supported_versions" },
+  { 44, "cookie" },
+  { 45, "psk_kex_modes" },
+  { 47, "certificate_authorities" },
+  { 49, "post_handshake_auth" },
+  { 50, "signature_algorithms_cert" },
+  { 51, "key_share" },
+  { 0xFF01, "renegotiate" },
+  { 13172, "next_proto_neg" },
+
+  { 0, NULL }
+};
+
+# if defined(TLSEXT_TYPE_signature_algorithms)
+/* Signature Algorithms.  These values come from:
+ *   https://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml#tls-parameters-16
+ */
+static struct tls_label tls_sigalgo_labels[] = {
+  { 0x0201, "rsa_pkcs1_sha1" },
+  { 0x0202, "dsa_sha1" },
+  { 0x0203, "ecdsa_sha1" },
+  { 0x0301, "rsa_pkcs1_sha224" },
+  { 0x0302, "dsa_sha224" },
+  { 0x0303, "ecdsa_sha224" },
+  { 0x0401, "rsa_pkcs1_sha256" },
+  { 0x0402, "dsa_sha256" },
+  { 0x0403, "ecdsa_secp256r1_sha256" },
+  { 0x0501, "rsa_pkcs1_sha384" },
+  { 0x0502, "dsa_sha384" },
+  { 0x0503, "ecdsa_secp384r1_sha384" },
+  { 0x0601, "rsa_pkcs1_sha512" },
+  { 0x0602, "dsa_sha512" },
+  { 0x0603, "ecdsa_secp521r1_sha512" },
+  { 0x0804, "rsa_pss_rsae_sha256" },
+  { 0x0805, "rsa_pss_rsae_sha384" },
+  { 0x0806, "rsa_pss_rsae_sha512" },
+  { 0x0807, "ed25519" },
+  { 0x0808, "ed448" },
+  { 0x0809, "rsa_pss_pss_sha256" },
+  { 0x080A, "rsa_pss_pss_sha384" },
+  { 0x080B, "rsa_pss_pss_sha512" },
+
+  { 0, NULL }
+};
+# endif /* TLSEXT_TYPE_signature_algorithms */
+
+# if defined(TLSEXT_TYPE_psk_kex_modes)
+/* PSK KEX modes.  These values come from:
+ *   https://tools.ietf.org/html/rfc8446#section-4.2.9
+ */
+static struct tls_label tls_psk_kex_labels[] = {
+  { 0, "psk_ke" },
+  { 1, "psk_dhe_key" },
+
+  { 0, NULL }
+};
+# endif /* TLSEXT_TYPE_psk_kex_modes */
+
+static const char *tls_get_label(int labelno, struct tls_label *labels) {
+  register unsigned int i;
+
+  for (i = 0; labels[i].label_name != NULL; i++) {
+    if (labels[i].labelno == labelno) {
+      return labels[i].label_name;
+    }
+  }
+
+  return "[unknown/unsupported]";
+}
+
+static void tls_print_ssl_version(BIO *bio, const char *name,
+    const unsigned char **msg, size_t *msglen, int *pversion) {
+  int version;
+
+  if (*msglen < 2) {
+    return;
+  }
+
+  version = ((*msg)[0] << 8) | (*msg)[1];
+  BIO_printf(bio, "  %s = %s\n", name,
+    tls_get_label(version, tls_version_labels));
+  *msg += 2;
+  *msglen -= 2;
+
+  if (pversion != NULL) {
+    *pversion = version;
+  }
+}
+
+static void tls_print_hex(BIO *bio, const char *indent, const char *name,
+    const unsigned char *msg, size_t msglen) {
+
+  BIO_printf(bio, "%s (%lu %s)\n", name, (unsigned long) msglen,
+    msglen != 1 ? "bytes" : "byte");
+
+  if (msglen > 0) {
+    register unsigned int i;
+
+    BIO_puts(bio, indent);
+    for (i = 0; i < msglen; i++) {
+      BIO_printf(bio, "%02x", msg[i]);
+    }
+    BIO_puts(bio, "\n");
+  }
+}
+
+static void tls_print_hexbuf(BIO *bio, const char *indent, const char *name,
+    size_t namelen, const unsigned char **msg, size_t *msglen) {
+  size_t buflen;
+  const unsigned char *ptr;
+
+  if (*msglen < namelen) {
+    return;
+  }
+
+  ptr = *msg;
+  buflen = ptr[0];
+
+  if (namelen > 1) {
+    buflen = (buflen << 8) | ptr[1];
+  }
+
+  if (*msglen < namelen + buflen) {
+    return;
+  }
+
+  ptr += namelen;
+  tls_print_hex(bio, indent, name, ptr, buflen);
+  *msg += (buflen + namelen);
+  *msglen -= (buflen + namelen);
+}
+
+static void tls_print_random(BIO *bio, const unsigned char **msg,
+    size_t *msglen) {
+  time_t ts;
+  const unsigned char *ptr;
+
+  if (*msglen < 32) {
+    return;
+  }
+
+  ptr = *msg;
+
+  ts = ((ptr[0] << 24) | (ptr[1] << 16) | (ptr[2] << 8) | ptr[3]);
+  ptr += 4;
+
+  BIO_puts(bio, "  random:\n");
+  BIO_printf(bio, "    gmt_unix_time = %s (not guaranteed to be accurate)\n",
+    pr_strtime2(ts, TRUE));
+  tls_print_hex(bio, "      ", "    random_bytes", ptr, 28);
+  *msg += 32;
+  *msglen -= 32;
+}
+
+static void tls_print_session_id(BIO *bio, const unsigned char **msg,
+    size_t *msglen) {
+  tls_print_hexbuf(bio, "    ", "  session_id", 1, msg, msglen);
+}
+
+static void tls_print_ciphersuites(BIO *bio, const char *name,
+    const unsigned char **msg, size_t *msglen) {
+  size_t len;
+
+  len = ((*msg[0]) << 8) | (*msg)[1];
+  *msg += 2;
+  *msglen -= 2;
+  BIO_printf(bio, "  %s (%lu %s)\n", name, (unsigned long) len,
+    len != 1 ? "bytes" : "byte");
+  if (*msglen < len ||
+      (len & 1)) {
+    return;
+  }
+
+  while (len > 0) {
+    unsigned int suiteno;
+
+    pr_signals_handle();
+
+    suiteno = ((*msg[0]) << 8) | (*msg)[1];
+    BIO_printf(bio, "    %s (0x%x)\n",
+      tls_get_label(suiteno, tls_ciphersuite_labels), suiteno);
+
+    *msg += 2;
+    *msglen -= 2;
+    len -= 2;
+  }
+}
+
+static void tls_print_compressions(BIO *bio, const char *name,
+    const unsigned char **msg, size_t *msglen) {
+  size_t len;
+
+  len = (*msg)[0];
+  *msg += 1;
+  *msglen -= 1;
+
+  if (*msglen < len) {
+    return;
+  }
+
+  BIO_printf(bio, "  %s (%lu %s)\n", name, (unsigned long) len,
+    len != 1 ? "bytes" : "byte");
+  while (len > 0) {
+    int comp_type;
+
+    pr_signals_handle();
+
+    comp_type = (*msg)[0];
+    BIO_printf(bio, "    %s\n",
+      tls_get_label(comp_type, tls_compression_labels));
+
+    *msg += 1;
+    *msglen -= 1;
+    len -= 1;
+  }
+}
+
+static void tls_print_extension(BIO *bio, const char *indent, int server,
+    int ext_type, const unsigned char *ext, size_t extlen) {
+
+  BIO_printf(bio, "%sextension_type = %s (%lu %s)\n", indent,
+    tls_get_label(ext_type, tls_extension_labels), (unsigned long) extlen,
+    extlen != 1 ? "bytes" : "byte");
+}
+
+static void tls_print_extensions(BIO *bio, const char *name, int server,
+    const unsigned char **msg, size_t *msglen) {
+  size_t len;
+
+  if (*msglen == 0) {
+    BIO_printf(bio, "%s: None\n", name);
+    return;
+  }
+
+  len = ((*msg)[0] << 8) | (*msg)[1];
+  if (len != (*msglen - 2)) {
+    return;
+  }
+
+  *msg += 2;
+  *msglen -= 2;
+
+  BIO_printf(bio, "  %s (%lu %s)\n", name, (unsigned long) len,
+    len != 1 ? "bytes" : "byte");
+  while (len > 0) {
+    int ext_type;
+    size_t ext_len;
+
+    pr_signals_handle();
+
+    if (*msglen < 4) {
+      break;
+    }
+
+    ext_type = ((*msg)[0] << 8) | (*msg)[1];
+    ext_len = ((*msg)[2] << 8) | (*msg)[3];
+
+    if (*msglen < (ext_len + 4)) {
+      break;
+    }
+
+    *msg += 4;
+    tls_print_extension(bio, "    ", server, ext_type, *msg, ext_len);
+    *msg += ext_len;
+    *msglen -= (ext_len + 4);
+  }
+}
+
+static void tls_print_client_hello(int io_flag, int version, int content_type,
+    const unsigned char *buf, size_t buflen, SSL *ssl, void *arg) {
+  BIO *bio;
+  char *data = NULL;
+  long datalen;
+
+  bio = BIO_new(BIO_s_mem());
+
+  BIO_puts(bio, "\nClientHello:\n");
+  tls_print_ssl_version(bio, "client_version", &buf, &buflen, NULL);
+  tls_print_random(bio, &buf, &buflen);
+  tls_print_session_id(bio, &buf, &buflen);
+  if (buflen < 2) {
+    BIO_free(bio);
+    return;
+  }
+  tls_print_ciphersuites(bio, "cipher_suites", &buf, &buflen);
+  if (buflen < 1) {
+    BIO_free(bio);
+    return;
+  }
+  tls_print_compressions(bio, "compression_methods", &buf, &buflen);
+  tls_print_extensions(bio, "extensions", FALSE, &buf, &buflen);
+
+  datalen = BIO_get_mem_data(bio, &data);
+  if (data != NULL) {
+    data[datalen] = '\0';
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION, "[tls.msg] %.*s",
+      (int) datalen, data);
+  }
+
+  BIO_free(bio);
+}
+
+static void tls_print_server_hello(int io_flag, int version, int content_type,
+    const unsigned char *buf, size_t buflen, SSL *ssl, void *arg) {
+  BIO *bio;
+  char *data = NULL;
+  long datalen;
+  int print_session_id = TRUE, print_compressions = TRUE, server_version;
+  unsigned int suiteno;
+
+  bio = BIO_new(BIO_s_mem());
+
+  BIO_puts(bio, "\nServerHello:\n");
+  tls_print_ssl_version(bio, "server_version", &buf, &buflen, &server_version);
+
+#ifdef TLS1_3_VERSION
+  if (server_version == TLS1_3_VERSION) {
+    print_session_id = FALSE;
+    print_compressions = FALSE;
+  }
+#endif /* TLS1_3_VERSION */
+
+  tls_print_random(bio, &buf, &buflen);
+  if (print_session_id == TRUE) {
+    tls_print_session_id(bio, &buf, &buflen);
+  }
+  if (buflen < 2) {
+    BIO_free(bio);
+    return;
+  }
+
+  /* Print the selected ciphersuite. */
+  BIO_printf(bio, "  cipher_suites (2 bytes)\n");
+  suiteno = (buf[0] << 8) | buf[1];
+  BIO_printf(bio, "    %s (0x%x)\n",
+    tls_get_label(suiteno, tls_ciphersuite_labels), suiteno);
+  buf += 2;
+  buflen -= 2;
+
+  if (print_compressions == TRUE) {
+    int comp_type;
+
+    if (buflen < 1) {
+      BIO_free(bio);
+      return;
+    }
+
+    /* Print the selected compression. */
+    BIO_printf(bio, "  compression_methods (1 byte)\n");
+    comp_type = *buf;
+    BIO_printf(bio, "    %s\n",
+      tls_get_label(comp_type, tls_compression_labels));
+    buf += 1;
+    buflen -= 1;
+  }
+  tls_print_extensions(bio, "extensions", TRUE, &buf, &buflen);
+
+  datalen = BIO_get_mem_data(bio, &data);
+  if (data != NULL) {
+    data[datalen] = '\0';
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION, "[tls.msg] %.*s",
+      (int) datalen, data);
+  }
+
+  BIO_free(bio);
+}
+
+# if defined(SSL3_MT_NEWSESSION_TICKET)
+static void tls_print_ticket(int io_flag, int version, int content_type,
+    const unsigned char *buf, size_t buflen, SSL *ssl, void *arg) {
+  BIO *bio;
+  char *data = NULL;
+  long datalen;
+
+  bio = BIO_new(BIO_s_mem());
+
+  BIO_puts(bio, "\nNewSessionTicket:\n");
+  if (buflen != 0) {
+    unsigned int ticket_lifetime;
+    int print_ticket_age = FALSE, print_extensions = FALSE;
+
+    ticket_lifetime = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
+    buf += 4;
+    buflen -= 4;
+    BIO_printf(bio, "  ticket_lifetime_hint\n    %u (sec)\n", ticket_lifetime);
+
+#  if defined(TLS1_3_VERSION)
+    if (SSL_version(ssl) == TLS1_3_VERSION) {
+      print_ticket_age = TRUE;
+      print_extensions = TRUE;
+    }
+#  endif /* TLS1_3_VERSION */
+
+    if (print_ticket_age == TRUE) {
+      unsigned int ticket_age_add;
+
+      ticket_age_add = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
+      buf += 4;
+      buflen -= 4;
+      BIO_printf(bio, "  ticket_age_add\n    %u (sec)\n", ticket_age_add);
+      tls_print_hexbuf(bio, "    ", "  ticket_nonce", 1, &buf, &buflen);
+    }
+
+    tls_print_hexbuf(bio, "    ", "  ticket", 2, &buf, &buflen);
+
+    if (print_extensions == TRUE) {
+      tls_print_extensions(bio, "extensions", TRUE, &buf, &buflen);
+    }
+
+  } else {
+    BIO_puts(bio, "  <no ticket>\n");
+  }
+
+  datalen = BIO_get_mem_data(bio, &data);
+  if (data != NULL) {
+    data[datalen] = '\0';
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION, "[tls.msg] %.*s",
+      (int) datalen, data);
+  }
+
+  BIO_free(bio);
+}
+# endif /* SSL3_MT_NEWSESSION_TICKET */
+
+#if !defined(OPENSSL_NO_TLSEXT)
+static void tls_tlsext_cb(SSL *ssl, int server, int type,
+    unsigned char *tlsext_data, int tlsext_datalen, void *user_data) {
+  char *extension_name = "(unknown)";
+  int print_basic_info = TRUE;
+
+  /* Note: OpenSSL does not implement all possible extensions.  For the
+   * "(unknown)" extensions, see:
+   *
+   *  http://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#tls-extensiontype-values-1
+   */
+  switch (type) {
+# if defined(TLSEXT_TYPE_server_name)
+    case TLSEXT_TYPE_server_name: {
+      BIO *bio = NULL;
+      char *ext_info = "";
+      long ext_infolen = 0;
+
+      extension_name = "server name";
+
+      if (pr_trace_get_level(trace_channel) >= 21 &&
+          tlsext_datalen >= 2) {
+
+        /* We read 2 bytes for the extension length, 1 byte for the
+         * name type, and 2 bytes for the name length.  For the SNI
+         * format specification, see:
+         *   https://tools.ietf.org/html/rfc6066#section-3
+         */
+        int ext_len;
+
+        ext_len = (tlsext_data[0] << 8) | tlsext_data[1];
+        if (tlsext_datalen == ext_len + 2 &&
+            (ext_len & 1) == 0) {
+          int name_type;
+          tlsext_data += 2;
+
+          name_type = tlsext_data[0];
+          tlsext_data += 1;
+
+          if (name_type == TLSEXT_NAMETYPE_host_name) {
+            size_t name_len;
+
+            name_len = (tlsext_data[0] << 8) | tlsext_data[1];
+            tlsext_data += 2;
+
+            bio = BIO_new(BIO_s_mem());
+            BIO_printf(bio, "\n  %.*s (%lu)", (int) name_len, tlsext_data,
+              (unsigned long) name_len);
+            ext_infolen = BIO_get_mem_data(bio, &ext_info);
+            if (ext_info != NULL) {
+              ext_info[ext_infolen] = '\0';
+            }
+          }
+        }
+      }
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "[tls.tlsext] TLS %s extension \"%s\" (ID %d, %d %s)%.*s",
+        server ? "server" : "client", extension_name, type, tlsext_datalen,
+        tlsext_datalen != 1 ? "bytes" : "byte", (int) ext_infolen, ext_info);
+
+      if (bio != NULL) {
+        BIO_free(bio);
+      }
+
+      print_basic_info = FALSE;
+      break;
+    }
+# endif /* TLSEXT_TYPE_server_name */
+
+# if defined(TLSEXT_TYPE_max_fragment_length)
+    case TLSEXT_TYPE_max_fragment_length:
+      extension_name = "max fragment length";
+      break;
+# endif /* TLSEXT_TYPE_max_fragment_length */
+
+# if defined(TLSEXT_TYPE_client_certificate_url)
+    case TLSEXT_TYPE_client_certificate_url:
+      extension_name = "client certificate URL";
+      break;
+# endif /* TLSEXT_TYPE_client_certificate_url */
+
+# if defined(TLSEXT_TYPE_trusted_ca_keys)
+    case TLSEXT_TYPE_trusted_ca_keys:
+      extension_name = "trusted CA keys";
+      break;
+# endif /* TLSEXT_TYPE_trusted_ca_keys */
+
+# if defined(TLSEXT_TYPE_truncated_hmac)
+    case TLSEXT_TYPE_truncated_hmac:
+      extension_name = "truncated HMAC";
+      break;
+# endif /* TLSEXT_TYPE_truncated_hmac */
+
+# if defined(TLSEXT_TYPE_status_request)
+    case TLSEXT_TYPE_status_request:
+      extension_name = "status request";
+      break;
+# endif /* TLSEXT_TYPE_status_request */
+
+# if defined(TLSEXT_TYPE_user_mapping)
+    case TLSEXT_TYPE_user_mapping:
+      extension_name = "user mapping";
+      break;
+# endif /* TLSEXT_TYPE_user_mapping */
+
+# if defined(TLSEXT_TYPE_client_authz)
+    case TLSEXT_TYPE_client_authz:
+      extension_name = "client authz";
+      break;
+# endif /* TLSEXT_TYPE_client_authz */
+
+# if defined(TLSEXT_TYPE_server_authz)
+    case TLSEXT_TYPE_server_authz:
+      extension_name = "server authz";
+      break;
+# endif /* TLSEXT_TYPE_server_authz */
+
+# if defined(TLSEXT_TYPE_cert_type)
+    case TLSEXT_TYPE_cert_type:
+      extension_name = "cert type";
+      break;
+# endif /* TLSEXT_TYPE_cert_type */
+
+# if defined(TLSEXT_TYPE_elliptic_curves)
+    case TLSEXT_TYPE_elliptic_curves:
+      extension_name = "elliptic curves";
+      break;
+# endif /* TLSEXT_TYPE_elliptic_curves */
+
+# if defined(TLSEXT_TYPE_ec_point_formats)
+    case TLSEXT_TYPE_ec_point_formats:
+      extension_name = "EC point formats";
+      break;
+# endif /* TLSEXT_TYPE_ec_point_formats */
+
+# if defined(TLSEXT_TYPE_srp)
+    case TLSEXT_TYPE_srp:
+      extension_name = "SRP";
+      break;
+# endif /* TLSEXT_TYPE_srp */
+
+# if defined(TLSEXT_TYPE_signature_algorithms)
+    case TLSEXT_TYPE_signature_algorithms: {
+      BIO *bio = NULL;
+      char *ext_info = "";
+      long ext_infolen = 0;
+
+      extension_name = "signature algorithms";
+
+      if (pr_trace_get_level(trace_channel) >= 21 &&
+          tlsext_datalen >= 2) {
+        int len;
+
+        len = (tlsext_data[0] << 8) | tlsext_data[1];
+        if (tlsext_datalen == len + 2 &&
+            (len & 1) == 0) {
+          tlsext_data += 2;
+
+          bio = BIO_new(BIO_s_mem());
+          BIO_puts(bio, "\n");
+
+          while (len > 0) {
+            unsigned int sig_algo;
+
+            pr_signals_handle();
+
+            sig_algo = (tlsext_data[0] << 8) | tlsext_data[1];
+            BIO_printf(bio, "  %s (0x%x)\n",
+              tls_get_label(sig_algo, tls_sigalgo_labels), sig_algo);
+            len -= 2;
+            tlsext_data += 2;
+          }
+
+          ext_infolen = BIO_get_mem_data(bio, &ext_info);
+          if (ext_info != NULL) {
+            ext_info[ext_infolen] = '\0';
+          }
+        }
+      }
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "[tls.tlsext] TLS %s extension \"%s\" (ID %d, %d %s)%.*s",
+        server ? "server" : "client", extension_name, type, tlsext_datalen,
+        tlsext_datalen != 1 ? "bytes" : "byte", (int) ext_infolen, ext_info);
+
+      if (bio != NULL) {
+        BIO_free(bio);
+      }
+
+      print_basic_info = FALSE;
+      break;
+    }
+# endif /* TLSEXT_TYPE_signature_algorithms */
+
+# if defined(TLSEXT_TYPE_use_srtp)
+    case TLSEXT_TYPE_use_srtp:
+      extension_name = "use SRTP";
+      break;
+# endif /* TLSEXT_TYPE_use_srtp */
+
+# if defined(TLSEXT_TYPE_heartbeat)
+    case TLSEXT_TYPE_heartbeat:
+      extension_name = "heartbeat";
+      break;
+# endif /* TLSEXT_TYPE_heartbeat */
+
+# if defined(TLSEXT_TYPE_signed_certificate_timestamp)
+    case TLSEXT_TYPE_signed_certificate_timestamp:
+      extension_name = "signed certificate timestamp";
+      break;
+# endif /* TLSEXT_TYPE_signed_certificate_timestamp */
+
+# if defined(TLSEXT_TYPE_encrypt_then_mac)
+    case TLSEXT_TYPE_encrypt_then_mac:
+      extension_name = "encrypt then mac";
+      break;
+# endif /* TLSEXT_TYPE_encrypt_then_mac */
+
+# if defined(TLSEXT_TYPE_extended_master_secret)
+    case TLSEXT_TYPE_extended_master_secret:
+      extension_name = "extended master secret";
+      break;
+# endif /* TLSEXT_TYPE_extended_master_secret */
+
+# if defined(TLSEXT_TYPE_session_ticket)
+    case TLSEXT_TYPE_session_ticket:
+      extension_name = "session ticket";
+      break;
+# endif /* TLSEXT_TYPE_session_ticket */
+
+# if defined(TLSEXT_TYPE_psk)
+    case TLSEXT_TYPE_psk:
+      extension_name = "PSK";
+      break;
+# endif /* TLSEXT_TYPE_psk */
+
+# if defined(TLSEXT_TYPE_supported_versions)
+    case TLSEXT_TYPE_supported_versions: {
+      BIO *bio = NULL;
+      char *ext_info = NULL;
+      long ext_infolen;
+
+      /* If we are the server responding, we only indicate the selected
+       * protocol version.  Otherwise, we are a client indicating the range
+       * of versions supported.
+       */
+
+      extension_name = "supported versions";
+
+      if (pr_trace_get_level(trace_channel) >= 21) {
+        bio = BIO_new(BIO_s_mem());
+
+        if (server) {
+          if (tlsext_datalen == 2) {
+            int version;
+
+            version = (tlsext_data[0] << 8) | tlsext_data[1];
+            BIO_printf(bio, "\n  %s (0x%x)\n",
+              tls_get_label(version, tls_version_labels), version);
+          }
+
+        } else {
+          if (tlsext_datalen >= 1) {
+            int len;
+
+            len = tlsext_data[0];
+            if (tlsext_datalen == len + 1) {
+              tlsext_data += 1;
+
+              BIO_puts(bio, "\n");
+
+              while (len > 0) {
+                int version;
+
+                pr_signals_handle();
+
+                version = (tlsext_data[0] << 8) | tlsext_data[1];
+                BIO_printf(bio, "  %s (0x%x)\n",
+                  tls_get_label(version, tls_version_labels), version);
+                len -= 2;
+                tlsext_data += 2;
+              }
+            }
+          }
+        }
+
+        ext_infolen = BIO_get_mem_data(bio, &ext_info);
+        if (ext_info != NULL) {
+          ext_info[ext_infolen] = '\0';
+        }
+      }
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "[tls.tlsext] TLS %s extension \"%s\" (ID %d, %d %s)%.*s",
+        server ? "server" : "client", extension_name, type, tlsext_datalen,
+        tlsext_datalen != 1 ? "bytes" : "byte", (int) ext_infolen, ext_info);
+
+      if (bio != NULL) {
+        BIO_free(bio);
+      }
+
+      print_basic_info = FALSE;
+      break;
+    }
+# endif /* TLSEXT_TYPE_supported_versions */
+
+# if defined(TLSEXT_TYPE_psk_kex_modes)
+    case TLSEXT_TYPE_psk_kex_modes: {
+      BIO *bio = NULL;
+      char *ext_info = NULL;
+      long ext_infolen;
+
+      extension_name = "PSK KEX modes";
+
+      if (pr_trace_get_level(trace_channel) >= 19) {
+        if (tlsext_datalen >= 1) {
+          int len;
+
+          bio = BIO_new(BIO_s_mem());
+          len = tlsext_data[0];
+
+          if (tlsext_datalen == len + 1) {
+            tlsext_data += 1;
+
+            BIO_puts(bio, "\n");
+
+            while (len > 0) {
+              int kex_mode;
+
+              pr_signals_handle();
+
+              kex_mode = tlsext_data[0];
+              BIO_printf(bio, "  %s (%d)\n",
+                tls_get_label(kex_mode, tls_psk_kex_labels), kex_mode);
+              len -= 1;
+              tlsext_data += 1;
+            }
+          }
+        }
+
+        ext_infolen = BIO_get_mem_data(bio, &ext_info);
+        if (ext_info != NULL) {
+          ext_info[ext_infolen] = '\0';
+        }
+      }
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "[tls.tlsext] TLS %s extension \"%s\" (ID %d, %d %s)%.*s",
+        server ? "server" : "client", extension_name, type, tlsext_datalen,
+        tlsext_datalen != 1 ? "bytes" : "byte", (int) ext_infolen, ext_info);
+
+      if (bio != NULL) {
+        BIO_free(bio);
+      }
+
+      print_basic_info = FALSE;
+      break;
+    }
+# endif /* TLSEXT_TYPE_psk_kex_modes */
+
+# if defined(TLSEXT_TYPE_renegotiate)
+    case TLSEXT_TYPE_renegotiate:
+      extension_name = "renegotiation info";
+      break;
+# endif /* TLSEXT_TYPE_renegotiate */
+
+# if defined(TLSEXT_TYPE_opaque_prf_input)
+    case TLSEXT_TYPE_opaque_prf_input:
+      extension_name = "opaque PRF input";
+      break;
+# endif /* TLSEXT_TYPE_opaque_prf_input */
+
+# if defined(TLSEXT_TYPE_next_proto_neg)
+    case TLSEXT_TYPE_next_proto_neg:
+      extension_name = "next protocol";
+      break;
+# endif /* TLSEXT_TYPE_next_proto_neg */
+
+# if defined(TLSEXT_TYPE_application_layer_protocol_negotiation)
+    case TLSEXT_TYPE_application_layer_protocol_negotiation:
+      extension_name = "application layer protocol";
+      break;
+# endif /* TLSEXT_TYPE_application_layer_protocol_negotiation */
+
+# if defined(TLSEXT_TYPE_padding)
+    case TLSEXT_TYPE_padding:
+      extension_name = "TLS padding";
+      break;
+# endif /* TLSEXT_TYPE_padding */
+
+# if defined(TLSEXT_TYPE_early_data)
+    case TLSEXT_TYPE_early_data:
+      extension_name = "early data";
+      break;
+# endif /* TLSEXT_TYPE_early_data */
+
+# if defined(TLSEXT_TYPE_post_handshake_auth)
+    case TLSEXT_TYPE_post_handshake_auth:
+      extension_name = "post handshake auth";
+      break;
+# endif /* TLSEXT_TYPE_post_handshake_auth */
+
+    default:
+      print_basic_info = TRUE;
+      break;
+  }
+
+  if (print_basic_info == TRUE) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "[tls.tlsext] TLS %s extension \"%s\" (ID %d, %d %s)",
+      server ? "server" : "client", extension_name, type, tlsext_datalen,
+      tlsext_datalen != 1 ? "bytes" : "byte");
+  }
+}
+#endif /* OPENSSL_NO_TLSEXT */
+
 static void tls_msg_cb(int io_flag, int version, int content_type,
     const void *buf, size_t buflen, SSL *ssl, void *arg) {
   char *action_str = NULL;
@@ -2938,14 +3940,14 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
       version == TLS1_VERSION) {
 
     switch (content_type) {
-      case 20:
+      case SSL3_RT_CHANGE_CIPHER_SPEC:
         /* ChangeCipherSpec message */
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "[tls.msg] %s %s ChangeCipherSpec message (%u %s)",
           action_str, version_str, (unsigned int) buflen, bytes_str);
         break;
 
-      case 21: {
+      case SSL3_RT_ALERT: {
         /* Alert messages */
         pr_trace_msg(trace_channel, 27,
           "%s %s Alert (%u %s)", action_str, version_str,
@@ -2955,31 +3957,31 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
 
           /* Peek naughtily into the buffer. */
           switch (((const unsigned char *) buf)[0]) {
-            case 1:
+            case SSL3_AL_WARNING:
               severity_str = "warning";
               break;
 
-            case 2:
+            case SSL3_AL_FATAL:
               severity_str = "fatal";
               break;
           }
 
           switch (((const unsigned char *) buf)[1]) {
-            case 0:
+            case SSL3_AD_CLOSE_NOTIFY:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s %s 'close_notify' Alert message (%u %s)",
                 action_str, version_str, severity_str, (unsigned int) buflen,
                 bytes_str);
               break;
 
-            case 10:
+            case SSL3_AD_UNEXPECTED_MESSAGE:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s %s 'unexpected_message' Alert message "
                 "(%u %s)", action_str, version_str, severity_str,
                 (unsigned int) buflen, bytes_str);
               break;
 
-            case 20:
+            case SSL3_AD_BAD_RECORD_MAC:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s %s 'bad_record_mac' Alert message (%u %s)",
                 action_str, version_str, severity_str, (unsigned int) buflen,
@@ -3007,12 +4009,57 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
                 (unsigned int) buflen, bytes_str);
               break;
 
-            case 40:
+            case SSL3_AD_HANDSHAKE_FAILURE:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s %s 'handshake_failure' Alert message "
                 "(%u %s)", action_str, version_str, severity_str,
                 (unsigned int) buflen, bytes_str);
               break;
+
+#  if defined(SSL3_AD_BAD_CERTIFICATE)
+            case SSL3_AD_BAD_CERTIFICATE:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s %s 'bad_certificate' Alert message "
+                "(%u %s)", action_str, version_str, severity_str,
+                (unsigned int) buflen, bytes_str);
+              break;
+#  endif /* SSL3_AD_BAD_CERTIFICATE */
+
+#  if defined(SSL3_AD_CERTIFICATE_REVOKED)
+            case SSL3_AD_CERTIFICATE_REVOKED:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s %s 'certificate_revoked' Alert message "
+                "(%u %s)", action_str, version_str, severity_str,
+                (unsigned int) buflen, bytes_str);
+              break;
+#  endif /* SSL3_AD_CERTIFICATE_REVOKED */
+
+#  if defined(SSL3_AD_CERTIFICATE_EXPIRED)
+            case SSL3_AD_CERTIFICATE_EXPIRED:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s %s 'certificate_expired' Alert message "
+                "(%u %s)", action_str, version_str, severity_str,
+                (unsigned int) buflen, bytes_str);
+              break;
+#  endif /* SSL3_AD_CERTIFICATE_EXPIRED */
+
+#  if defined(SSL3_AD_CERTIFICATE_UNKNOWN)
+            case SSL3_AD_CERTIFICATE_UNKNOWN:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s %s 'certificate_unknown' Alert message "
+                "(%u %s)", action_str, version_str, severity_str,
+                (unsigned int) buflen, bytes_str);
+              break;
+#  endif /* SSL3_AD_CERTIFICATE_UNKNOWN */
+
+#  if defined(SSL3_AD_ILLEGAL_PARAMETER)
+            case SSL3_AD_ILLEGAL_PARAMETER:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s %s 'illegal_parameter' Alert message "
+                "(%u %s)", action_str, version_str, severity_str,
+                (unsigned int) buflen, bytes_str);
+              break;
+#  endif /* SSL3_AD_ILLEGAL_PARAMETER */
           }
 
         } else {
@@ -3024,7 +4071,7 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
         break;
       }
 
-      case 22: {
+      case SSL3_RT_HANDSHAKE: {
         /* Handshake messages */
         pr_trace_msg(trace_channel, 27,
           "%s %s Handshake (%u %s)", action_str, version_str,
@@ -3038,24 +4085,54 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
                 action_str, version_str, (unsigned int) buflen, bytes_str);
               break;
 
-            case SSL3_MT_CLIENT_HELLO:
+            case SSL3_MT_CLIENT_HELLO: {
+              const unsigned char *msg;
+              size_t msglen;
+
+              msg = buf;
+              msglen = buflen;
+
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'ClientHello' Handshake message (%u %s)",
                 action_str, version_str, (unsigned int) buflen, bytes_str);
-              break;
+              tls_print_client_hello(io_flag, version, content_type, msg + 4,
+                msglen - 4, ssl, arg);
 
-            case SSL3_MT_SERVER_HELLO:
+              break;
+            }
+
+            case SSL3_MT_SERVER_HELLO: {
+              const unsigned char *msg;
+              size_t msglen;
+
+              msg = buf;
+              msglen = buflen;
+
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'ServerHello' Handshake message (%u %s)",
                 action_str, version_str, (unsigned int) buflen, bytes_str);
+              tls_print_server_hello(io_flag, version, content_type, msg + 4,
+                msglen - 4, ssl, arg);
+
               break;
+            }
 
 #  if defined(SSL3_MT_NEWSESSION_TICKET)
-            case SSL3_MT_NEWSESSION_TICKET:
+            case SSL3_MT_NEWSESSION_TICKET: {
+              const unsigned char *msg;
+              size_t msglen;
+
+              msg = buf;
+              msglen = buflen;
+
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'NewSessionTicket' Handshake message (%u %s)",
                 action_str, version_str, (unsigned int) buflen, bytes_str);
+              tls_print_ticket(io_flag, version, content_type, msg + 4,
+                msglen - 4, ssl, arg);
+
               break;
+            }
 #  endif /* SSL3_MT_NEWSESSION_TICKET */
 
             case SSL3_MT_CERTIFICATE:
@@ -3113,12 +4190,38 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
 #  endif /* SSL3_MT_CERTIFICATE_STATUS */
 
 #  if defined(SSL3_MT_ENCRYPTED_EXTENSIONS)
-            case SSL3_MT_ENCRYPTED_EXTENSIONS:
+            case SSL3_MT_ENCRYPTED_EXTENSIONS: {
+              const unsigned char *msg;
+              size_t msglen;
+              BIO *bio;
+              char *data = NULL;
+              long datalen;
+
+              msg = buf;
+              msglen = buflen;
+
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'EncryptedExtensions' Handshake message "
                 "(%u %s)", action_str, version_str, (unsigned int) buflen,
                 bytes_str);
+
+              bio = BIO_new(BIO_s_mem());
+
+              msg += 4;
+              msglen -= 4;
+
+              BIO_puts(bio, "\nEncryptedExtensions:\n");
+              tls_print_extensions(bio, "extensions", TRUE, &msg, &msglen);
+              datalen = BIO_get_mem_data(bio, &data);
+              if (data != NULL) {
+                data[datalen] = '\0';
+                (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                  "[tls.msg] %.*s", (int) datalen, data);
+              }
+
+              BIO_free(bio);
               break;
+            }
 #  endif /* SSL3_MT_ENCRYPTED_EXTENSIONS */
           }
 
@@ -3138,15 +4241,15 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
              content_type == SSL3_RT_HEADER &&
              buflen == SSL3_RT_HEADER_LENGTH) {
     const unsigned char *msg;
-    int record_type;
+    const char *record_type;
     unsigned int msg_len;
 
     msg = buf;
-    record_type = msg[0];
+    record_type = tls_get_label(msg[0], tls_record_type_labels);
     msg_len = msg[buflen - 2] << 8 | msg[buflen - 1];
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "[tls.msg] %s protocol record message (content_type = %d, len = %u)",
+      "[tls.msg] %s protocol record message (content_type = %s, len = %u)",
       action_str, record_type, msg_len);
 #  endif
 
