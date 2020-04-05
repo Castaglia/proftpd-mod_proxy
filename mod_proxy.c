@@ -1547,7 +1547,8 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
           tls_protocol |= PROXY_TLS_PROTO_SSL_V3;
         }
 
-      } else if (strcasecmp(proto_name, "TLSv1") == 0) {
+      } else if (strcasecmp(proto_name, "TLSv1") == 0 ||
+                 strcasecmp(proto_name, "TLSv1.0") == 0) {
         if (disable) {
           tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1;
         } else {
@@ -1602,7 +1603,8 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
       } else if (strcasecmp(cmd->argv[i], "SSLv3") == 0) {
         tls_protocol |= PROXY_TLS_PROTO_SSL_V3;
 
-      } else if (strcasecmp(cmd->argv[i], "TLSv1") == 0) {
+      } else if (strcasecmp(cmd->argv[i], "TLSv1") == 0 ||
+                 strcasecmp(cmd->argv[i], "TLSv1.0") == 0) {
         tls_protocol |= PROXY_TLS_PROTO_TLS_V1;
 
       } else if (strcasecmp(cmd->argv[i], "TLSv1.1") == 0) {
