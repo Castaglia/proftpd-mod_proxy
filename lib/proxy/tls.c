@@ -2878,15 +2878,23 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
       version_str = "TLSv1";
       break;
 
-#  if OPENSSL_VERSION_NUMBER >= 0x10001000L
+#  if defined(TLS1_1_VERSION)
     case TLS1_1_VERSION:
       version_str = "TLSv1.1";
       break;
+#  endif /* TLS1_1_VERSION */
 
+#  if defined(TLS1_2_VERSION)
     case TLS1_2_VERSION:
       version_str = "TLSv1.2";
       break;
-#  endif
+#  endif /* TLS1_2_VERSION */
+
+#  if defined(TLS1_3_VERSION)
+    case TLS1_3_VERSION:
+      version_str = "TLSv1.3";
+      break;
+#  endif /* TLS1_3_VERSION */
 
     default:
 #  ifdef SSL3_RT_HEADER
@@ -2907,10 +2915,15 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
   }
 
   if (version == SSL3_VERSION ||
-#  if OPENSSL_VERSION_NUMBER >= 0x10001000L
+#  if defined(TLS1_1_VERSION)
       version == TLS1_1_VERSION ||
+#  endif /* TLS1_1_VERSION */
+#  if defined(TLS1_2_VERSION)
       version == TLS1_2_VERSION ||
-#  endif
+#  endif /* TLS1_2_VERSION */
+#  if defined(TLS1_3_VERSION)
+      version == TLS1_3_VERSION ||
+#  endif /* TLS1_3_VERSION */
       version == TLS1_VERSION) {
 
     switch (content_type) {
@@ -2923,6 +2936,9 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
 
       case 21: {
         /* Alert messages */
+        pr_trace_msg(trace_channel, 27,
+          "%s %s Alert (%u %s)", action_str, version_str,
+          (unsigned int) buflen, bytes_str);
         if (buflen == 2) {
           char *severity_str = NULL;
 
@@ -2999,78 +3015,100 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
 
       case 22: {
         /* Handshake messages */
+        pr_trace_msg(trace_channel, 27,
+          "%s %s Handshake (%u %s)", action_str, version_str,
+          (unsigned int) buflen, bytes_str);
         if (buflen > 0) {
           /* Peek naughtily into the buffer. */
           switch (((const unsigned char *) buf)[0]) {
-            case 0:
+            case SSL3_MT_HELLO_REQUEST:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'HelloRequest' Handshake message (%u %s)",
                 action_str, version_str, (unsigned int) buflen, bytes_str);
               break;
 
-            case 1:
+            case SSL3_MT_CLIENT_HELLO:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'ClientHello' Handshake message (%u %s)",
                 action_str, version_str, (unsigned int) buflen, bytes_str);
               break;
 
-            case 2:
+            case SSL3_MT_SERVER_HELLO:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'ServerHello' Handshake message (%u %s)",
                 action_str, version_str, (unsigned int) buflen, bytes_str);
               break;
 
-            case 4:
+#  if defined(SSL3_MT_NEWSESSION_TICKET)
+            case SSL3_MT_NEWSESSION_TICKET:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'NewSessionTicket' Handshake message (%u %s)",
                 action_str, version_str, (unsigned int) buflen, bytes_str);
               break;
+#  endif /* SSL3_MT_NEWSESSION_TICKET */
 
-            case 11:
+            case SSL3_MT_CERTIFICATE:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'Certificate' Handshake message (%u %s)",
                 action_str, version_str, (unsigned int) buflen, bytes_str);
               break;
 
-            case 12:
+            case SSL3_MT_SERVER_KEY_EXCHANGE:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'ServerKeyExchange' Handshake message "
                 "(%u %s)", action_str, version_str, (unsigned int) buflen,
                 bytes_str);
               break;
 
-            case 13:
+            case SSL3_MT_CERTIFICATE_REQUEST:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'CertificateRequest' Handshake message "
                 "(%u %s)", action_str, version_str, (unsigned int) buflen,
                 bytes_str);
               break;
 
-            case 14:
+            case SSL3_MT_SERVER_DONE:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'ServerHelloDone' Handshake message (%u %s)",
                 action_str, version_str, (unsigned int) buflen, bytes_str);
               break;
 
-            case 15:
+            case SSL3_MT_CERTIFICATE_VERIFY:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'CertificateVerify' Handshake message "
                 "(%u %s)", action_str, version_str, (unsigned int) buflen,
                 bytes_str);
               break;
 
-            case 16:
+            case SSL3_MT_CLIENT_KEY_EXCHANGE:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'ClientKeyExchange' Handshake message "
                 "(%u %s)", action_str, version_str, (unsigned int) buflen,
                 bytes_str);
               break;
 
-            case 20:
+            case SSL3_MT_FINISHED:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'Finished' Handshake message (%u %s)",
                 action_str, version_str, (unsigned int) buflen, bytes_str);
               break;
+
+#  if defined(SSL3_MT_CERTIFICATE_STATUS)
+            case SSL3_MT_CERTIFICATE_STATUS:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s 'CertificateStatus' Handshake message (%u %s)",
+                action_str, version_str, (unsigned int) buflen, bytes_str);
+              break;
+#  endif /* SSL3_MT_CERTIFICATE_STATUS */
+
+#  if defined(SSL3_MT_ENCRYPTED_EXTENSIONS)
+            case SSL3_MT_ENCRYPTED_EXTENSIONS:
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "[tls.msg] %s %s 'EncryptedExtensions' Handshake message "
+                "(%u %s)", action_str, version_str, (unsigned int) buflen,
+                bytes_str);
+              break;
+#  endif /* SSL3_MT_ENCRYPTED_EXTENSIONS */
           }
 
         } else {
@@ -3088,9 +3126,17 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
   } else if (version == 0 &&
              content_type == SSL3_RT_HEADER &&
              buflen == SSL3_RT_HEADER_LENGTH) {
+    const unsigned char *msg;
+    int record_type;
+    unsigned int msg_len;
+
+    msg = buf;
+    record_type = msg[0];
+    msg_len = msg[buflen - 2] << 8 | msg[buflen - 1];
+
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "[tls.msg] %s protocol record message (%u %s)", action_str,
-      (unsigned int) buflen, bytes_str);
+      "[tls.msg] %s protocol record message (content_type = %d, len = %u)",
+      action_str, record_type, msg_len);
 #  endif
 
   } else {

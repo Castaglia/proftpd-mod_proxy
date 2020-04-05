@@ -1546,7 +1546,7 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
         }
 
       } else if (strcasecmp(proto_name, "TLSv1.1") == 0) {
-# if OPENSSL_VERSION_NUMBER >= 0x10001000L
+# if defined(TLS1_1_VERSION)
         if (disable) {
           tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1_1;
         } else {
@@ -1557,7 +1557,7 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
 # endif /* OpenSSL 1.0.1 or later */
 
       } else if (strcasecmp(proto_name, "TLSv1.2") == 0) {
-# if OPENSSL_VERSION_NUMBER >= 0x10001000L
+# if defined(TLS1_2_VERSION)
         if (disable) {
           tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1_2;
         } else {
@@ -1566,6 +1566,17 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
 # else
         CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.2");
 # endif /* OpenSSL 1.0.1 or later */
+
+      } else if (strcasecmp(proto_name, "TLSv1.3") == 0) {
+# if defined(TLS1_3_VERSION)
+        if (disable) {
+          tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1_3;
+        } else {
+          tls_protocol |= PROXY_TLS_PROTO_TLS_V1_3;
+        }
+# else
+        CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.3");
+# endif /* OpenSSL 1.1.1 or later */
 
       } else {
         CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown protocol: '",
@@ -1586,18 +1597,25 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
         tls_protocol |= PROXY_TLS_PROTO_TLS_V1;
 
       } else if (strcasecmp(cmd->argv[i], "TLSv1.1") == 0) {
-# if OPENSSL_VERSION_NUMBER >= 0x10001000L
+# if defined(TLS1_1_VERSION)
         tls_protocol |= PROXY_TLS_PROTO_TLS_V1_1;
 # else
         CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.1");
 # endif /* OpenSSL 1.0.1 or later */
 
       } else if (strcasecmp(cmd->argv[i], "TLSv1.2") == 0) {
-# if OPENSSL_VERSION_NUMBER >= 0x10001000L
+# if defined(TLS1_2_VERSION)
         tls_protocol |= PROXY_TLS_PROTO_TLS_V1_2;
 # else
         CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.2");
 # endif /* OpenSSL 1.0.1 or later */
+
+      } else if (strcasecmp(cmd->argv[i], "TLSv1.3") == 0) {
+# if defined(TLS1_3_VERSION)
+        tls_protocol |= PROXY_TLS_PROTO_TLS_V1_3;
+# else
+        CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.3");
+# endif /* OpenSSL 1.1.1 or later */
 
       } else {
         CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown protocol: '",
