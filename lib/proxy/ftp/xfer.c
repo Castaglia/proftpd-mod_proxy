@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP data transfer routines
- * Copyright (c) 2013-2017 TJ Saunders
+ * Copyright (c) 2013-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -515,11 +515,11 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
 
   switch (pr_cmd_get_id(pasv_cmd->argv[0])) {
     case PR_CMD_PASV_ID: {
-      int local_family;
+      int remote_family;
 
-      local_family = pr_netaddr_get_family(session.c->local_addr);
+      remote_family = pr_netaddr_get_family(proxy_sess->backend_ctrl_conn->remote_addr);
       remote_addr = proxy_ftp_msg_parse_addr(cmd->tmp_pool, resp->msg,
-        local_family);
+        remote_family);
       break;
     }
 

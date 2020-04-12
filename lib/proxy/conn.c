@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy conn implementation
- * Copyright (c) 2012-2017 TJ Saunders
+ * Copyright (c) 2012-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -390,16 +390,22 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     new_local_addr = pr_netaddr_get_addr(p, local_name, NULL);
 
     if (new_local_addr != NULL) {
-      int bind_family, local_family;
+      int local_family, remote_family;
 
-      bind_family = pr_netaddr_get_family(bind_addr);
+      /* We need to make sure our local address family matches that
+       * of the remote address.
+       */
       local_family = pr_netaddr_get_family(new_local_addr);
-      if (bind_family != local_family) {
+      remote_family = pr_netaddr_get_family(remote_addr);
+      if (local_family != remote_family) {
         pr_netaddr_t *new_addr = NULL;
 
 #ifdef PR_USE_IPV6
-        if (bind_family == AF_INET6) {
+        if (local_family == AF_INET) {
           new_addr = pr_netaddr_v4tov6(p, new_local_addr);
+
+        } else {
+          new_addr = pr_netaddr_v6tov4(p, new_local_addr);
         }
 #endif /* PR_USE_IPV6 */
 
