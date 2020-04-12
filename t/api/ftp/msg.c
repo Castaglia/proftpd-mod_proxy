@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2016 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2016-2020 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -215,6 +215,17 @@ START_TEST (parse_addr_test) {
   fail_unless(ntohs(pr_netaddr_get_port(res)) == 2121,
     "Expected 2121, got %u", ntohs(pr_netaddr_get_port(res)));
 
+  msg = "(195,144,107,198,8,73)";
+  res = proxy_ftp_msg_parse_addr(p, msg, 0);
+  fail_unless(res != NULL, "Failed to parse message '%s': %s", msg,
+    strerror(errno));
+  ip_str = pr_netaddr_get_ipstr(res);
+  expected = "195.144.107.198";
+  fail_unless(strcmp(ip_str, expected) == 0, "Expected '%s', got '%s'",
+    expected, ip_str);
+  fail_unless(ntohs(pr_netaddr_get_port(res)) == 2121,
+    "Expected 2121, got %u", ntohs(pr_netaddr_get_port(res)));
+
 #ifdef PR_USE_IPV6
   msg = "(127,0,0,1,8,73)";
   res = proxy_ftp_msg_parse_addr(p, msg, AF_INET);
@@ -234,8 +245,20 @@ START_TEST (parse_addr_test) {
   fail_unless(strcmp(ip_str, expected) == 0, "Expected '%s', got '%s'",
     expected, ip_str);
 
+  msg = "(195,144,107,198,8,73)";
+  res = proxy_ftp_msg_parse_addr(p, msg, AF_INET6);
+  fail_unless(res != NULL, "Failed to parse message '%s': %s", msg,
+    strerror(errno));
+  ip_str = pr_netaddr_get_ipstr(res);
+  expected = "::ffff:195.144.107.198";
+  fail_unless(strcmp(ip_str, expected) == 0, "Expected '%s', got '%s'",
+    expected, ip_str);
+  fail_unless(ntohs(pr_netaddr_get_port(res)) == 2121,
+    "Expected 2121, got %u", ntohs(pr_netaddr_get_port(res)));
+
   pr_netaddr_disable_ipv6();
 
+  msg = "(127,0,0,1,8,73)";
   res = proxy_ftp_msg_parse_addr(p, msg, AF_INET6);
   fail_unless(res != NULL, "Failed to parse message '%s': %s", msg,
     strerror(errno));
