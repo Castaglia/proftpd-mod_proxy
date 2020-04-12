@@ -207,17 +207,17 @@ const pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *p, const char *msg,
 #ifdef PR_USE_IPV6
   if (pr_netaddr_use_ipv6()) {
     if (addr_family == AF_INET6) {
-      snprintf(addr_buf, addrlen-1, "::ffff:%u.%u.%u.%u", h1, h2, h3, h4);
+      snprintf(addr_buf, addrlen, "::ffff:%u.%u.%u.%u", h1, h2, h3, h4);
 
     } else {
-      snprintf(addr_buf, addrlen-1, "%u.%u.%u.%u", h1, h2, h3, h4);
+      snprintf(addr_buf, addrlen, "%u.%u.%u.%u", h1, h2, h3, h4);
     }
 
   } else {
-    snprintf(addr_buf, addrlen-1, "%u.%u.%u.%u", h1, h2, h3, h4);
+    snprintf(addr_buf, addrlen, "%u.%u.%u.%u", h1, h2, h3, h4);
   }
 #else
-  snprintf(addr_buf, addrlen-1, "%u.%u.%u.%u", h1, h2, h3, h4);
+  snprintf(addr_buf, addrlen, "%u.%u.%u.%u", h1, h2, h3, h4);
 #endif /* PR_USE_IPV6 */
 
   /* XXX Ideally we would NOT be using session pool here, but some other
