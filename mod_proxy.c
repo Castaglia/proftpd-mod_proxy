@@ -1919,16 +1919,23 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
       local_addr = pr_netaddr_get_addr(cmd->pool, local_name, NULL);
 
       if (local_addr != NULL) {
-        int bind_family, local_family;
+        int local_family, remote_family;
 
-        bind_family = pr_netaddr_get_family(bind_addr);
+        /* We need to make sure our local address family matches that
+         * of the remote address.
+         */
         local_family = pr_netaddr_get_family(local_addr);
-        if (bind_family != local_family) {
+        remote_family = pr_netaddr_get_family(proxy_sess->backend_ctrl_conn->remote_addr);
+
+        if (local_family != remote_family) {
           pr_netaddr_t *new_addr = NULL;
 
 #ifdef PR_USE_IPV6
-          if (bind_family == AF_INET6) {
+          if (local_family == AF_INET) {
             new_addr = pr_netaddr_v4tov6(cmd->pool, local_addr);
+
+          } else {
+            new_addr = pr_netaddr_v6tov4(cmd->pool, local_addr);
           }
 #endif /* PR_USE_IPV6 */
 
