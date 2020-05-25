@@ -2760,7 +2760,7 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     const char *rfc1918_ipstr;
 
     rfc1918_ipstr = pr_netaddr_get_ipstr(remote_addr);
-    remote_addr = pr_netaddr_dup(cmd->tmp_pool, session.c->remote_addr);
+    remote_addr = pr_netaddr_dup(session.pool, session.c->remote_addr);
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "client sent RFC1918 address '%s' in EPRT command, ignoring it and "
       "using '%s'", rfc1918_ipstr, pr_netaddr_get_ipstr(remote_addr));
@@ -3190,7 +3190,7 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     const char *rfc1918_ipstr;
 
     rfc1918_ipstr = pr_netaddr_get_ipstr(remote_addr);
-    remote_addr = pr_netaddr_dup(cmd->tmp_pool, session.c->remote_addr);
+    remote_addr = pr_netaddr_dup(session.pool, session.c->remote_addr);
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "client sent RFC1918 address '%s' in PORT command, ignoring it and "
       "using '%s'", rfc1918_ipstr, pr_netaddr_get_ipstr(remote_addr));
