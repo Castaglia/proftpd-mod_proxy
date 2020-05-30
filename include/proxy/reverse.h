@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse-proxy API
- * Copyright (c) 2012-2017 TJ Saunders
+ * Copyright (c) 2012-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -81,7 +81,7 @@ struct proxy_reverse_datastore {
     array_header *backends, unsigned long opts);
   const struct proxy_conn *(*policy_next_backend)(pool *p, void *dsh,
     int policy_id, unsigned int vhost_id, array_header *default_backends,
-    const void *policy_data);
+    const void *policy_data, int *backend_id);
   int (*policy_used_backend)(pool *p, void *dsh, int policy_id,
     unsigned int vhost_id, int backend_id);
   int (*policy_update_backend)(pool *p, void *dsh, int policy_id,
