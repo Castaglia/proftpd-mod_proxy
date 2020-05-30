@@ -723,7 +723,7 @@ static int reverse_redis_pergroup_used(pool *p, pr_redis_t *redis,
 
 static array_header *reverse_redis_perhost_get(pool *p, pr_redis_t *redis,
     unsigned int vhost_id, const pr_netaddr_t *addr) {
-  return redis_get_list_backend_uris(p, redis, "PerHoset", vhost_id,
+  return redis_get_list_backend_uris(p, redis, "PerHost", vhost_id,
     pr_netaddr_get_ipstr(addr));
 }
 
