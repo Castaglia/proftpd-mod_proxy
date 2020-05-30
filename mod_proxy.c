@@ -3352,31 +3352,40 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     return proxy_cmd(cmd, proxy_sess, NULL);
   }
 
+  /* We handle errors differently for the roles.
+   *
+   * In the forward proxy case, the client knows _a priori_ that it is
+   * connecting through a proxy.  In this case, we can relay more of the
+   * errors to the client.
+   *
+   * In the reverse proxy case, though, we want to hide such errors from
+   * the oblivious client, and not leak any more information than necessary.
+   */
   switch (proxy_role) {
     case PROXY_ROLE_REVERSE:
       res = proxy_reverse_handle_user(cmd, proxy_sess, &successful,
         block_responses);
+      xerrno = errno;
+      pr_response_add_err(R_530, _("Login incorrect."));
       break;
 
     case PROXY_ROLE_FORWARD:
       res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
         block_responses);
+      xerrno = errno;
+
+      if (xerrno != EINVAL) {
+        pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+          strerror(xerrno));
+
+      } else {
+        pr_response_add_err(R_530, _("Login incorrect."));
+      }
       break;
   }
 
-  xerrno = errno;
-
   if (res < 0) {
-    if (xerrno != EINVAL) {
-      pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
-        strerror(xerrno));
-
-    } else {
-      pr_response_add_err(R_530, _("Login incorrect."));
-    }
-
     pr_response_flush(&resp_err_list);
-
     errno = xerrno;
     return PR_ERROR(cmd);
   }
