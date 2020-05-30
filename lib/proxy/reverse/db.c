@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse datastore implementation
- * Copyright (c) 2012-2017 TJ Saunders
+ * Copyright (c) 2012-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1493,7 +1493,7 @@ static int reverse_db_policy_init(pool *p, void *dbh, int policy_id,
 
 static const struct proxy_conn *reverse_db_policy_next_backend(pool *p,
     void *dbh, int policy_id, unsigned int vhost_id,
-    array_header *default_backends, const void *policy_data) {
+    array_header *default_backends, const void *policy_data, int *backend_id) {
   const struct proxy_conn *pconn = NULL;
   struct proxy_conn **conns = NULL;
   int idx = -1, nelts = 0;
@@ -1591,6 +1591,10 @@ static const struct proxy_conn *reverse_db_policy_next_backend(pool *p,
     default:
       errno = ENOSYS;
       return NULL;
+  }
+
+  if (backend_id != NULL) {
+    *backend_id = idx;
   }
 
   return pconn;

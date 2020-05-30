@@ -680,7 +680,8 @@ static const struct proxy_conn *get_reverse_server_conn(pool *p,
   const struct proxy_conn *pconn;
 
   pconn = (reverse_ds.policy_next_backend)(p, reverse_ds.dsh,
-    reverse_connect_policy, main_server->sid, default_backends, policy_data);
+    reverse_connect_policy, main_server->sid, default_backends, policy_data,
+    backend_id);
   if (pconn == NULL) {
     int xerrno = errno;
 
@@ -693,7 +694,7 @@ static const struct proxy_conn *get_reverse_server_conn(pool *p,
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
     "selected backend server '%s'", proxy_conn_get_uri(pconn));
 
-  *backend_id = reverse_backend_id;
+  reverse_backend_id = *backend_id;
   return pconn;
 }
 
