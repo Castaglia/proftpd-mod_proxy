@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2015-2016 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2015-2020 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -78,7 +78,7 @@ START_TEST (netio_open_test) {
 
   nstrm = proxy_netio_open(p, 77, -1, PR_NETIO_IO_RD);
   fail_unless(nstrm == NULL, "Failed to handle unsupported stream type");
-  fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
