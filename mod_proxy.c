@@ -354,84 +354,6 @@ static int proxy_mkpath(pool *p, const char *path, uid_t uid, gid_t gid,
   return 0;
 }
 
-/* Currently only needed if mod_proxy is built as a DSO module. */
-#if defined(PR_SHARED_MODULE)
-static int proxy_rmpath(pool *p, const char *path) {
-  DIR *dirh;
-  struct dirent *dent;
-  int res, xerrno = 0;
-
-  if (path == NULL) {
-    errno = EINVAL;
-    return -1;
-  }
-
-  dirh = opendir(path);
-  if (dirh == NULL) {
-    xerrno = errno;
-
-    /* Change the permissions in the directory, and try again. */
-    if (chmod(path, (mode_t) 0755) == 0) {
-      dirh = opendir(path);
-    }
-
-    if (dirh == NULL) {
-      pr_trace_msg(trace_channel, 9,
-        "error opening '%s': %s", path, strerror(xerrno));
-      errno = xerrno;
-      return -1;
-    }
-  }
-
-  while ((dent = readdir(dirh)) != NULL) {
-    struct stat st;
-    char *file;
-
-    pr_signals_handle();
-
-    if (strncmp(dent->d_name, ".", 2) == 0 ||
-        strncmp(dent->d_name, "..", 3) == 0) {
-      continue;
-    }
-
-    file = pdircat(p, path, dent->d_name, NULL);
-
-    if (stat(file, &st) < 0) {
-      pr_trace_msg(trace_channel, 9,
-        "unable to stat '%s': %s", file, strerror(errno));
-      continue;
-    }
-
-    if (S_ISDIR(st.st_mode)) {
-      res = proxy_rmpath(p, file);
-      if (res < 0) {
-        pr_trace_msg(trace_channel, 9,
-          "error removing directory '%s': %s", file, strerror(errno));
-      }
-
-    } else {
-      res = unlink(file);
-      if (res < 0) {
-        pr_trace_msg(trace_channel, 9,
-          "error removing file '%s': %s", file, strerror(errno));
-      }
-    }
-  }
-
-  closedir(dirh);
-
-  res = rmdir(path);
-  if (res < 0) {
-    xerrno = errno;
-    pr_trace_msg(trace_channel, 9,
-      "error removing directory '%s': %s", path, strerror(xerrno));
-    errno = xerrno;
-  }
-
-  return res;
-}
-#endif /* PR_SHARED_MODULE */
-
 static void proxy_remove_symbols(void) {
   int res;
 
@@ -4238,20 +4160,18 @@ static void proxy_exit_ev(const void *event_data, void *user_data) {
 
 #if defined(PR_SHARED_MODULE)
 static void proxy_mod_unload_ev(const void *event_data, void *user_data) {
-  if (strncmp((const char *) event_data, "mod_proxy.c", 12) == 0) {
-    /* Unregister ourselves from all events. */
-    pr_event_unregister(&proxy_module, NULL, NULL);
-
-    PRIVS_ROOT
-    (void) proxy_rmpath(proxy_pool, proxy_tables_dir);
-    PRIVS_RELINQUISH
-
-    destroy_pool(proxy_pool);
-    proxy_pool = NULL;
-
-    (void) close(proxy_logfd);
-    proxy_logfd = -1;
+  if (strcmp((const char *) event_data, "mod_proxy.c") != 0) {
+    return;
   }
+
+  /* Unregister ourselves from all events. */
+  pr_event_unregister(&proxy_module, NULL, NULL);
+
+  destroy_pool(proxy_pool);
+  proxy_pool = NULL;
+
+  (void) close(proxy_logfd);
+  proxy_logfd = -1;
 }
 #endif
 
