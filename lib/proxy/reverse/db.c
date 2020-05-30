@@ -948,7 +948,8 @@ static const struct proxy_conn *reverse_db_peruser_next(pool *p,
   const struct proxy_conn *pconn = NULL;
 
   pconn = reverse_db_peruser_init(p, dbh, vhost_id, user);
-  if (pconn == NULL) {
+  if (pconn == NULL &&
+      errno != ENOENT) {
     results = reverse_db_peruser_get(p, dbh, vhost_id, user);
     if (results != NULL &&
         results->nelts > 0) {
@@ -1144,7 +1145,8 @@ static const struct proxy_conn *reverse_db_pergroup_next(pool *p,
   const struct proxy_conn *pconn = NULL;
 
   pconn = reverse_db_pergroup_init(p, dbh, vhost_id, group);
-  if (pconn == NULL) {
+  if (pconn == NULL &&
+      errno != ENOENT) {
     results = reverse_db_pergroup_get(p, dbh, vhost_id, group);
     if (results != NULL &&
         results->nelts > 0) {

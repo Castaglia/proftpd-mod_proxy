@@ -611,7 +611,8 @@ static const struct proxy_conn *reverse_redis_peruser_next(pool *p,
   const struct proxy_conn *pconn = NULL;
 
   pconn = reverse_redis_peruser_init(p, redis, vhost_id, user);
-  if (pconn == NULL) {
+  if (pconn == NULL &&
+      errno != ENOENT) {
     backend_uris = reverse_redis_peruser_get(p, redis, vhost_id, user);
     if (backend_uris != NULL) {
       char **vals;
@@ -692,7 +693,8 @@ static const struct proxy_conn *reverse_redis_pergroup_next(pool *p,
   const struct proxy_conn *pconn = NULL;
 
   pconn = reverse_redis_pergroup_init(p, redis, vhost_id, group);
-  if (pconn == NULL) {
+  if (pconn == NULL &&
+      errno != ENOENT) {
     backend_uris = reverse_redis_pergroup_get(p, redis, vhost_id, group);
     if (backend_uris != NULL) {
       char **vals;
