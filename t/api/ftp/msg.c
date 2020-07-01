@@ -88,6 +88,16 @@ START_TEST (fmt_addr_test) {
   expected = "127,0,0,1,8,73";
   fail_unless(strcmp(res, expected) == 0, "Expected '%s', got '%s'",
     expected, res);
+
+  addr = pr_netaddr_get_addr(p, "169.254.254.254", NULL);
+  fail_unless(addr != NULL, "Failed to get addr for 169.254.254.254: %s",
+    strerror(errno));
+  res = proxy_ftp_msg_fmt_addr(p, addr, 38550, FALSE);
+  fail_unless(res != NULL, "Failed to format addr: %s", strerror(errno));
+  expected = "169,254,254,254,150,150";
+  fail_unless(strcmp(res, expected) == 0, "Expected '%s', got '%s'",
+    expected, res);
+
 }
 END_TEST
 

@@ -70,7 +70,7 @@ const char *proxy_ftp_msg_fmt_addr(pool *p, const pr_netaddr_t *addr,
   msglen = (6 * 3) + (5 * 1) + 1;
 
   msg = pcalloc(p, msglen);
-  snprintf(msg, msglen-1, "%s,%u,%u", addr_str, (port >> 8) & 255, port & 255);
+  snprintf(msg, msglen, "%s,%u,%u", addr_str, (port >> 8) & 255, port & 255);
 
   return msg;
 }
