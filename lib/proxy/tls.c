@@ -601,11 +601,16 @@ static ssize_t tls_read(SSL *ssl, void *buf, size_t len,
 
 static ssize_t tls_write(SSL *ssl, const void *buf, size_t len,
     int nstrm_type, pr_table_t *notes) {
-  int lineno;
   ssize_t count;
+  int lineno, xerrno = 0;
+
+  /* Help ensure we have a clean/trustable errno value. */
+  errno = 0;
 
   lineno = __LINE__ + 1;
   count = SSL_write(ssl, buf, len);
+  xerrno = errno;
+
   if (count < 0) {
     long err = SSL_get_error(ssl, count);
 
@@ -616,7 +621,7 @@ static ssize_t tls_write(SSL *ssl, const void *buf, size_t len,
       case SSL_ERROR_WANT_READ:
       case SSL_ERROR_WANT_WRITE:
         /* Simulate an EINTR in case OpenSSL wants to write more. */
-        errno = EINTR;
+        xerrno = EINTR;
         break;
 
       default:
@@ -668,6 +673,7 @@ static ssize_t tls_write(SSL *ssl, const void *buf, size_t len,
     *adaptive_bytes_written_ms = now;
   }
 
+  errno = xerrno;
   return count;
 }
 
