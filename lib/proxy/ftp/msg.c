@@ -240,6 +240,10 @@ const pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *p, const char *msg,
   port = (p1 << 8) + p2;
   pr_netaddr_set_port2(addr, port);
 
+  pr_trace_msg(trace_channel, 9, "parsed '%s' into %s %s#%u", msg,
+    pr_netaddr_get_family(addr) == AF_INET ? "IPv4" : "IPv6",
+    pr_netaddr_get_ipstr(addr), ntohs(pr_netaddr_get_port(addr)));
+
   return addr;
 }
 
@@ -464,6 +468,10 @@ const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
   /* XXX Use a pool other than session.pool here, in the future. */ 
   res = pr_netaddr_dup(session.pool, &na);
   pr_netaddr_set_port(res, htons(port));
+
+  pr_trace_msg(trace_channel, 9, "parsed '%s' into %s %s#%u", msg,
+    pr_netaddr_get_family(res) == AF_INET ? "IPv4" : "IPv6",
+    pr_netaddr_get_ipstr(res), ntohs(pr_netaddr_get_port(res)));
 
   return res;
 }
