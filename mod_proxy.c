@@ -1270,20 +1270,79 @@ MODRET set_proxytlscertkeyfile(cmd_rec *cmd) {
 #endif /* PR_USE_OPENSSL */
 }
 
-/* usage: ProxyTLSCipherSuite ciphers */
+/* usage: ProxyTLSCipherSuite [protocol] ciphers */
 MODRET set_proxytlsciphersuite(cmd_rec *cmd) {
 #ifdef PR_USE_OPENSSL
   config_rec *c = NULL;
   char *ciphersuite = NULL;
+  int protocol = 0;
+  SSL_CTX *ctx;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
-  ciphersuite = cmd->argv[1];
-  c = add_config_param(cmd->argv[0], 1, NULL);
+  if (cmd->argc-1 == 1) {
+    ciphersuite = cmd->argv[1];
 
-  /* Make sure that EXPORT ciphers cannot be used, per Bug#4163. */
-  c->argv[0] = pstrcat(c->pool, "!EXPORT:", ciphersuite, NULL);
+  } else if (cmd->argc-1 == 2) {
+    char *protocol_text;
+
+    protocol_text = cmd->argv[1];
+    if (strcasecmp(protocol_text, "TLSv1.3") == 0) {
+      protocol = PROXY_TLS_PROTO_TLS_V1_3;
+
+    } else {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+        "unknown/unsupported protocol specifier: ", protocol_text, NULL));
+    }
+
+    ciphersuite = cmd->argv[2];
+  }
+
+  c = add_config_param(cmd->argv[0], 2, NULL, NULL);
+
+  if (protocol == PROXY_TLS_PROTO_TLS_V1_3) {
+    ciphersuite = pstrdup(c->pool, ciphersuite);
+
+  } else {
+    /* Make sure that EXPORT ciphers cannot be used, per Bug#4163.  Note that
+     * this breaks system profiles, so handle them specially.
+     */
+    if (strncmp(ciphersuite, "PROFILE=", 8) == 0) {
+      ciphersuite = pstrdup(c->pool, ciphersuite);
+
+    } else {
+      ciphersuite = pstrcat(c->pool, "!EXPORT:", ciphersuite, NULL);
+    }
+  }
+
+  /* Check that our construct ciphersuite is acceptable. */
+  ctx = SSL_CTX_new(SSLv23_client_method());
+  if (ctx != NULL) {
+    int res = 1;
+
+    if (protocol == PROXY_TLS_PROTO_TLS_V1_3) {
+#if OPENSSL_VERSION_NUMBER >= 0x10101000L && \
+    defined(TLS1_3_VERSION)
+      res = SSL_CTX_set_ciphersuites(ctx, ciphersuite);
+#endif /* TLS1_3_VERSION */
+
+    } else {
+      res = SSL_CTX_set_cipher_list(ctx, ciphersuite);
+    }
+
+    if (res != 1) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+        "unable to use ciphersuite '", ciphersuite, "': ",
+        proxy_tls_get_errors(), NULL));
+    }
+
+    SSL_CTX_free(ctx);
+  }
+
+  c->argv[0] = ciphersuite;
+  c->argv[1] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[1]) = protocol;
 
   return PR_HANDLED(cmd);
 #else
@@ -2687,7 +2746,7 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     /* Make sure the remote port is set on our duplicated netaddr, too
      * (Issue #158).
      */
-    pr_netaddr_set_port2(remote_addr, remote_port);
+    pr_netaddr_set_port2((pr_netaddr_t *) remote_addr, remote_port);
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "client sent RFC1918 address '%s' in EPRT command, ignoring it and "
@@ -3123,7 +3182,7 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     /* Make sure the remote port is set on our duplicated netaddr, too
      * (Issue #158).
      */
-    pr_netaddr_set_port2(remote_addr, remote_port);
+    pr_netaddr_set_port2((pr_netaddr_t *) remote_addr, remote_port);
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "client sent RFC1918 address '%s' in PORT command, ignoring it and "

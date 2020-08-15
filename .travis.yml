@@ -45,6 +45,7 @@ script:
   - ./configure LIBS='-lm -lsubunit -lrt -pthread' --enable-devel=coverage --enable-tests --with-module=mod_proxy
   - make
   # Next, a build with Redis, without mod_tls
+  - make clean
   - ./configure LIBS='-lm -lsubunit -lrt -pthread' --enable-devel=coverage --enable-redis --enable-tests --with-module=mod_proxy
   - make
   # Next, a build WITH mod_tls (as a shared module)
