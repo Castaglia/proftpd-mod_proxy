@@ -897,7 +897,7 @@ the certificate and the private key.
 <p>
 <hr>
 <h3><a name="ProxyTLSCipherSuite">ProxyTLSCipherSuite</a></h3>
-<strong>Syntax:</strong> ProxyTLSCipherSuite <em>cipher-list</em><br>
+<strong>Syntax:</strong> ProxyTLSCipherSuite <em>[protocol] cipher-list</em><br>
 <strong>Default:</strong> ProxyTLSCipherSuite DEFAULT:!ADH:!EXPORT:!DES<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
 <strong>Module:</strong> mod_proxy<br>
@@ -912,6 +912,15 @@ syntax is that of the OpenSSL <code>ciphers</code> command, <i>e.g.</i>:
 </pre>
 may be used to list all of the ciphers and the order described by a specific
 <em>&lt;cipher-list&gt;</em>.
+
+<p>
+If the SSL library supports TLSv1.3 (<i>e.g.</i> OpenSSL-1.1.1 and later), the
+<em>protocol specifier</em> "TLSv1.3" can be used to configure the cipher
+suites for that protocol:
+<pre>
+  # Configure TLSv1.3 ciphersuites
+  ProxyTLSCipherSuite TLSv1.3 TLS_CHACHA20_POLY1305_SHA256:TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256
+</pre>
 
 <p>
 <hr>

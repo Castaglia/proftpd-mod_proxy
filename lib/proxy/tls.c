@@ -89,6 +89,10 @@ static int tls_ssl_opts = SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_SINGLE_DH_USE;
 #endif
 
 static const char *tls_cipher_suite = NULL;
+#if OPENSSL_VERSION_NUMBER >= 0x10101000L && \
+    defined(TLS1_3_VERSION)
+static const char *tlsv13_cipher_suite = NULL;
+#endif /* TLS1_3_VERSION */
 
 #define PROXY_TLS_VERIFY_DEPTH		9
 
@@ -4398,14 +4402,40 @@ int proxy_tls_sess_init(pool *p, int flags) {
   SSL_CTX_set_options(ssl_ctx, disabled_proto);
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSCipherSuite", FALSE);
-  if (c != NULL) {
-    tls_cipher_suite = c->argv[0];
+  while (c != NULL) {
+    int protocol;
 
-  } else {
+    pr_signals_handle();
+
+    protocol = *((int *) c->argv[1]);
+
+#if OPENSSL_VERSION_NUMBER >= 0x10101000L && \
+    defined(TLS1_3_VERSION)
+    if (protocol == PROXY_TLS_PROTO_TLS_V1_3) {
+      tlsv13_cipher_suite = c->argv[0];
+
+    } else {
+      tls_cipher_suite = c->argv[0];
+    }
+#else
+    tls_cipher_suite = c->argv[0];
+#endif /* TLS1_3_VERSION */
+
+    c = find_config_next(c, c->next, CONF_PARAM, "ProxyTLSCipherSuite", FALSE);
+  }
+
+  if (tls_cipher_suite == NULL) {
     tls_cipher_suite = PROXY_TLS_DEFAULT_CIPHER_SUITE;
   }
 
   SSL_CTX_set_cipher_list(ssl_ctx, tls_cipher_suite);
+
+#if OPENSSL_VERSION_NUMBER >= 0x10101000L && \
+    defined(TLS1_3_VERSION)
+  if (tlsv13_cipher_suite != NULL) {
+    SSL_CTX_set_ciphersuites(ssl_ctx, tlsv13_cipher_suite);
+  }
+#endif /* TLS1_3_VERSION */
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSTimeoutHandshake",
     FALSE);
@@ -4681,6 +4711,10 @@ int proxy_tls_sess_free(pool *p) {
     tls_engine = PROXY_TLS_ENGINE_AUTO;
     tls_verify_server = TRUE;
     tls_cipher_suite = NULL;
+# if OPENSSL_VERSION_NUMBER >= 0x10101000L && \
+     defined(TLS1_3_VERSION)
+    tlsv13_cipher_suite = NULL;
+# endif /* TLS1_3_VERSION */
 
 # if defined(PSK_MAX_PSK_LEN)
     tls_psk_name = NULL;
