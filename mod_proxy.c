@@ -1036,7 +1036,7 @@ MODRET set_proxytables(cmd_rec *cmd) {
         char mode_text[32];
 
         memset(mode_text, '\0', sizeof(mode_text));
-        snprintf(mode_text, sizeof(mode_text)-1, "0%o", (int) dir_mode);
+        snprintf(mode_text, sizeof(mode_text)-1, "%04o", (int) dir_mode);
 
         CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "directory '", proxy_chroot,
           "' has incorrect permissions (", mode_text, ", not 0111 as required)",
