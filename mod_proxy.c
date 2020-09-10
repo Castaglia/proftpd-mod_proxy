@@ -947,6 +947,20 @@ MODRET set_proxysourceaddress(cmd_rec *cmd) {
   return PR_HANDLED(cmd);
 }
 
+/* Helper function to extract the just the mode/perms from st.st_mode. */
+static mode_t extract_mode(struct stat *st) {
+  mode_t mode;
+
+  mode = st->st_mode;
+  mode &= ~S_IFMT;
+#ifdef S_IFJOURNAL
+  /* AIX uses this non-standard bit, which can cause issues. */
+  mode &= ~S_IFJOURNAL;
+#endif /* S_IFJOURNAL */
+
+  return mode;
+}
+
 /* usage: ProxyTables path */
 MODRET set_proxytables(cmd_rec *cmd) {
   int res;
@@ -1028,8 +1042,7 @@ MODRET set_proxytables(cmd_rec *cmd) {
           "' is not a directory as expected", NULL));
       }
 
-      dir_mode = st.st_mode;
-      dir_mode &= ~S_IFMT;
+      dir_mode = extract_mode(&st);
       expected_mode = (S_IXUSR|S_IXGRP|S_IXOTH);
 
       if (dir_mode != expected_mode) {
