@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy API testsuite
- * Copyright (c) 2012-2016 TJ Saunders
+ * Copyright (c) 2012-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,6 +37,7 @@ static struct testsuite_info suites[] = {
   { "random", 		tests_get_random_suite },
   { "reverse", 		tests_get_reverse_suite },
   { "forward", 		tests_get_forward_suite },
+  { "str", 		tests_get_str_suite },
   { "tls", 		tests_get_tls_suite },
   { "uri", 		tests_get_uri_suite },
   { "session", 		tests_get_session_suite },
@@ -44,6 +45,8 @@ static struct testsuite_info suites[] = {
   { "ftp.conn",		tests_get_ftp_conn_suite },
   { "ftp.ctrl",		tests_get_ftp_ctrl_suite },
   { "ftp.data",		tests_get_ftp_data_suite },
+  { "ftp.dirlist",	tests_get_ftp_dirlist_suite },
+  { "ftp.facts",	tests_get_ftp_facts_suite },
   { "ftp.sess",		tests_get_ftp_sess_suite },
   { "ftp.xfer",		tests_get_ftp_xfer_suite },
 

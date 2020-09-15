@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP data conn routines
- * Copyright (c) 2012-2016 TJ Saunders
+ * Copyright (c) 2012-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -48,31 +48,51 @@ pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn,
     pbuf = pr_netio_buffer_alloc(data_conn->instrm);
   }
 
-  if (frontend_data) {
-    nread = pr_netio_read(data_conn->instrm, pbuf->buf, pbuf->buflen, 1);
-
-  } else {
-    nread = proxy_netio_read(data_conn->instrm, pbuf->buf, pbuf->buflen, 1);
-  }
-
-  if (nread < 0) {
-    return NULL;
-  }
-
-  if (nread == 0) {
-    pbuf->remaining = 0;
-    return pbuf;
-  }
-
-  pr_timer_reset(PR_TIMER_NOXFER, ANY_MODULE);
-  pr_timer_reset(PR_TIMER_STALLED, ANY_MODULE);
-  pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
-
-  pr_event_generate("mod_proxy.data-read", pbuf);
-  pr_trace_msg(trace_channel, 15, "received %d bytes of data", nread);
-
   pbuf->current = pbuf->buf;
-  pbuf->remaining = nread;
+  pbuf->remaining = pbuf->buflen;
+
+  while (TRUE) {
+    size_t avail_len;
+
+    if (frontend_data) {
+      nread = pr_netio_read(data_conn->instrm, pbuf->current,
+        pbuf->remaining, 1);
+
+    } else {
+      nread = proxy_netio_read(data_conn->instrm, pbuf->current,
+        pbuf->remaining, 1);
+    }
+
+    if (nread < 0) {
+      return NULL;
+    }
+
+    if (nread == 0) {
+      /* We might have had data left over in the buffer from a previous
+       * iteration of the loop, thus we return it as is.
+       */
+      return pbuf;
+    }
+
+    pr_timer_reset(PR_TIMER_NOXFER, ANY_MODULE);
+    pr_timer_reset(PR_TIMER_STALLED, ANY_MODULE);
+    pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
+
+    pr_trace_msg(trace_channel, 15, "received %d bytes of data", nread);
+
+    pbuf->current += nread;
+    pbuf->remaining -= nread;
+    pr_event_generate("mod_proxy.data-read", pbuf);
+
+    /* How much data is available in the buffer?  It is possible that
+     * event listeners consumed that data entirely.  If there is no available
+     * data left, we need to read more.
+     */
+    avail_len = pbuf->current - pbuf->buf;
+    if (avail_len > 0) {
+      break;
+    }
+  }
 
   return pbuf;
 }
@@ -80,6 +100,8 @@ pr_buffer_t *proxy_ftp_data_recv(pool *p, conn_t *data_conn,
 int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf,
     int frontend_data) {
   int nwrote;
+  char *buf;
+  size_t buflen;
 
   if (p == NULL ||
       data_conn == NULL ||
@@ -101,12 +123,18 @@ int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf,
    * problem.
    */
 
+  buf = pbuf->buf;
+  buflen = pbuf->current - pbuf->buf;
+
+  pr_trace_msg(trace_channel, 25, "writing %lu bytes of data to %s",
+    (unsigned long) buflen,
+    frontend_data ? "frontend client" : "backend server");
+
   if (frontend_data) {
-    nwrote = pr_netio_write(data_conn->outstrm, pbuf->current, pbuf->remaining);
+    nwrote = pr_netio_write(data_conn->outstrm, buf, buflen);
 
   } else {
-    nwrote = proxy_netio_write(data_conn->outstrm, pbuf->current,
-      pbuf->remaining);
+    nwrote = proxy_netio_write(data_conn->outstrm, buf, buflen);
   }
 
   while (nwrote < 0) {
@@ -121,12 +149,10 @@ int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf,
       pr_signals_handle();
 
       if (frontend_data) {
-        nwrote = pr_netio_write(data_conn->outstrm, pbuf->current,
-          pbuf->remaining);
+        nwrote = pr_netio_write(data_conn->outstrm, buf, buflen);
 
       } else {
-        nwrote = proxy_netio_write(data_conn->outstrm, pbuf->current,
-          pbuf->remaining);
+        nwrote = proxy_netio_write(data_conn->outstrm, buf, buflen);
       }
 
       continue;
@@ -139,15 +165,6 @@ int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf,
   pr_timer_reset(PR_TIMER_NOXFER, ANY_MODULE);
   pr_timer_reset(PR_TIMER_STALLED, ANY_MODULE);
   pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
-
-  if ((size_t) nwrote == pbuf->remaining) {
-    pbuf->current = NULL;
-    pbuf->remaining = 0;
-
-  } else {
-    pbuf->current += nwrote;
-    pbuf->remaining -= nwrote;
-  }
 
   return nwrote;
 }

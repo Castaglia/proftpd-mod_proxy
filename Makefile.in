@@ -18,6 +18,7 @@ MODULE_OBJS=mod_proxy.o \
   lib/proxy/conn.o \
   lib/proxy/netio.o \
   lib/proxy/inet.o \
+  lib/proxy/str.o \
   lib/proxy/tls.o \
   lib/proxy/tls/db.o \
   lib/proxy/tls/redis.o \
@@ -29,6 +30,8 @@ MODULE_OBJS=mod_proxy.o \
   lib/proxy/ftp/conn.o \
   lib/proxy/ftp/ctrl.o \
   lib/proxy/ftp/data.o \
+  lib/proxy/ftp/dirlist.o \
+  lib/proxy/ftp/facts.o \
   lib/proxy/ftp/msg.o \
   lib/proxy/ftp/sess.o \
   lib/proxy/ftp/xfer.o
@@ -40,6 +43,7 @@ SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/conn.lo \
   lib/proxy/netio.lo \
   lib/proxy/inet.lo \
+  lib/proxy/str.lo \
   lib/proxy/tls.lo \
   lib/proxy/tls/db.lo \
   lib/proxy/uri.lo \
@@ -50,6 +54,8 @@ SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/ftp/conn.lo \
   lib/proxy/ftp/ctrl.lo \
   lib/proxy/ftp/data.lo \
+  lib/proxy/ftp/dirlist.lo \
+  lib/proxy/ftp/facts.lo \
   lib/proxy/ftp/msg.lo \
   lib/proxy/ftp/sess.lo \
   lib/proxy/ftp/xfer.lo

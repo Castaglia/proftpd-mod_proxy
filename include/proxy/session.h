@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy sessions
- * Copyright (c) 2012-2016 TJ Saunders
+ * Copyright (c) 2012-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -62,10 +62,19 @@ struct proxy_session {
 
   /* Data transfer policy: PASV, EPSV, PORT, EPRT, or client. */
   int dataxfer_policy;
+
+  /* Directory list policy: LIST, or client. */
+  int dirlist_policy;
+  unsigned long dirlist_opts;
+  void *dirlist_ctx;
 };
 
 /* Zero indicates "do what the client does". */
+
 #define PROXY_SESS_DATA_TRANSFER_POLICY_DEFAULT		0
+
+#define PROXY_SESS_DIRECTORY_LIST_POLICY_DEFAULT	0
+#define PROXY_SESS_DIRECTORY_LIST_POLICY_LIST		1
 
 /* Default MaxLoginAttempts */
 #define PROXY_SESS_MAX_LOGIN_ATTEMPTS			3

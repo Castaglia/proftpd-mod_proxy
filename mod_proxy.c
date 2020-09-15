@@ -39,6 +39,8 @@
 #include "proxy/ftp/conn.h"
 #include "proxy/ftp/ctrl.h"
 #include "proxy/ftp/data.h"
+#include "proxy/ftp/dirlist.h"
+#include "proxy/ftp/facts.h"
 #include "proxy/ftp/msg.h"
 #include "proxy/ftp/xfer.h"
 
@@ -552,6 +554,52 @@ MODRET set_proxydatastore(cmd_rec *cmd) {
   proxy_datastore = ds;
   proxy_datastore_data = ds_data;
   proxy_datastore_datasz = ds_datasz;
+
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxyDirectoryListPolicy "client"|"LIST" [opt1 ... ]*/
+MODRET set_proxydirlistpolicy(cmd_rec *cmd) {
+  config_rec *c;
+  int policy_id;
+  unsigned long opts = 0UL;
+
+  if (cmd->argc < 2) {
+    CONF_ERROR(cmd, "wrong number of parameters");
+  }
+
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  if (strcasecmp(cmd->argv[1], "client") == 0) {
+    policy_id = PROXY_SESS_DIRECTORY_LIST_POLICY_DEFAULT;
+
+  } else if (strcasecmp(cmd->argv[1], "LIST") == 0) {
+    policy_id = PROXY_SESS_DIRECTORY_LIST_POLICY_LIST;
+
+  } else {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unsupported DirectoryListPolicy: ",
+      (char *) cmd->argv[1], NULL));
+  }
+
+  if (cmd->argc > 2) {
+    register unsigned int i;
+
+    for (i = 2; i < cmd->argc; i++) {
+      if (strcasecmp(cmd->argv[i], "UseSlink") == 0) {
+        opts |= PROXY_FTP_DIRLIST_OPT_USE_SLINK;
+
+      } else {
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+          "unknown DirectoryListPolicy option: ", (char *) cmd->argv[i], NULL));
+      }
+    }
+  }
+
+  c = add_config_param(cmd->argv[0], 2, NULL, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = policy_id;
+  c->argv[1] = palloc(c->pool, sizeof(unsigned long));
+  *((unsigned long *) c->argv[1]) = opts;
 
   return PR_HANDLED(cmd);
 }
@@ -2492,15 +2540,26 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
       if (pbuf == NULL) {
         xerrno = errno;
 
+        if (xerrno == EAGAIN) {
+          /* We have not yet received enough data from the backend to proceed;
+           * loop around to wait for more data.
+           */
+          continue;
+        }
+
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "error receiving from source data connection: %s",
           strerror(xerrno));
 
       } else {
+        size_t nread;
+
         pr_timer_reset(PR_TIMER_NOXFER, ANY_MODULE);
         pr_timer_reset(PR_TIMER_STALLED, ANY_MODULE);
 
-        if (pbuf->remaining == 0) {
+        nread = pbuf->current - pbuf->buf;
+
+        if (nread == 0) {
           /* EOF on the data connection; close BOTH of them.  In many
            * cases, closing these connections causes any buffered data to
            * be flushed out to the waiting peer.
@@ -2523,24 +2582,63 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
           data_eof = TRUE;
 
         } else {
-          size_t remaining = pbuf->remaining;
+          size_t nwrote = 0;
+          char *ptr;
 
           pr_trace_msg(trace_channel, 9,
             "received %lu bytes of data from source data connection",
-            (unsigned long) remaining);
-          session.xfer.total_bytes += remaining;
+            (unsigned long) nread);
+          session.xfer.total_bytes += nread;
 
-          bytes_transferred += remaining;
+          bytes_transferred += nread;
           pr_throttle_pause(bytes_transferred, FALSE);
 
-          res = proxy_ftp_data_send(cmd->tmp_pool, dst_data_conn, pbuf,
-            !frontend_data);
+          /* We use a loop in order to properly handle short writes.
+           *
+           * Since we are writing the pbuf from the head, we need to advance
+           * that pointer for every write.  So we store a pointer to the
+           * original buffer here, to be restored after the writes.
+           */
+          ptr = pbuf->buf;
+
+          while (nwrote != nread) {
+            int len;
+
+            len = proxy_ftp_data_send(cmd->tmp_pool, dst_data_conn, pbuf,
+              !frontend_data);
+            if (len < 0) {
+              xerrno = errno;
+
+              if (xerrno == EINTR) {
+                errno = EINTR;
+                pr_signals_handle();
+                continue;
+              }
+
+              errno = xerrno;
+              res = -1;
+              break;
+            }
+
+            nwrote += len;
+            pbuf->buf += len;
+            res = len;
+          }
+
+          /* Restore the pbuf. */
+          pbuf->buf = ptr;
+
+          if (nwrote == nread) {
+            pbuf->current = pbuf->buf;
+            pbuf->remaining = pbuf->buflen;
+          }
+
           if (res < 0) {
             xerrno = errno;
 
             (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
               "error writing %lu bytes of data to destination data "
-              "connection: %s", (unsigned long) remaining, strerror(xerrno));
+              "connection: %s", (unsigned long) nread, strerror(xerrno));
 
             /* If this happens, close our connection prematurely.
              * XXX Should we try to send an ABOR here, too?  Or SIGURG?
@@ -2697,6 +2795,106 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
   pr_response_clear(&resp_err_list);
 
   return (xfer_ok ? PR_HANDLED(cmd) : PR_ERROR(cmd));
+}
+
+static void proxy_dirlist_data_ev(const void *event_data, void *user_data) {
+  int res;
+  pr_buffer_t *pbuf;
+  char *buf, *text = NULL;
+  size_t buflen, textlen = 0;
+
+  pbuf = (pr_buffer_t *) event_data;
+
+  buf = pbuf->buf;
+  buflen = pbuf->current - pbuf->buf;
+
+  pr_trace_msg(trace_channel, 25, "received directory data (%lu bytes)",
+    (unsigned long) buflen);
+
+  res = proxy_ftp_dirlist_to_text(session.xfer.p, buf, buflen, pbuf->buflen,
+    &text, &textlen, user_data);
+  if (res < 0) {
+    pr_trace_msg(trace_channel, 3,
+      "unable to handle directory data: %s", strerror(errno));
+    return;
+  }
+
+  /* If we have no text to emit, it means we consumed the given buffer, but
+   * it was insufficient to generate output.  Thus we empty the pbuf, and
+   * let the caller read more.
+   */
+  if (text == NULL &&
+      textlen == 0) {
+    pbuf->current = pbuf->buf;
+    pbuf->remaining = pbuf->buflen;
+    return;
+  }
+
+  memcpy(pbuf->buf, text, textlen);
+  pbuf->current = pbuf->buf + textlen;
+  pbuf->remaining = pbuf->buflen - textlen;
+}
+
+MODRET proxy_directory_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
+  int xerrno;
+  char *list_opts, *list_path, *list_arg;
+  cmd_rec *list_cmd;
+  modret_t *mr;
+  unsigned long facts_opts;
+
+  /* We currently implement directory translation only for MLSD commands from
+   * frontend clients.
+   */
+  if (cmd->cmd_id != PR_CMD_MLSD_ID) {
+    return proxy_data(proxy_sess, cmd);
+  }
+
+  if (proxy_sess->dirlist_policy == PROXY_SESS_DIRECTORY_LIST_POLICY_DEFAULT) {
+    return proxy_data(proxy_sess, cmd);
+  }
+
+  if (proxy_ftp_dirlist_init(cmd->tmp_pool, proxy_sess) < 0) {
+    /* TODO: What to do if this fails? */
+  }
+
+  pr_event_register(&proxy_module, "mod_proxy.data-read",
+    proxy_dirlist_data_ev, proxy_sess);
+
+  /* Replace the given MLSD `cmd` here with an appropriately rewritten LIST
+   * cmd, copying paths, adding options, etc.
+   */
+
+  facts_opts = proxy_ftp_facts_get_opts();
+  if (facts_opts & PROXY_FTP_FACTS_OPT_SHOW_UNIX_OWNER_NAME) {
+    list_opts = list_arg = pstrdup(cmd->pool, "-al");
+
+  } else {
+    list_opts = list_arg = pstrdup(cmd->pool, "-aln");
+  }
+
+  if (cmd->argc == 1) {
+    list_path = pstrdup(cmd->pool, "");
+
+  } else {
+    list_path = pstrdup(cmd->pool, cmd->argv[1]);
+    list_arg = pstrcat(cmd->pool, list_arg, " ", list_path, NULL);
+  }
+
+  list_cmd = pr_cmd_alloc(cmd->pool, cmd->argc + 1, C_LIST, list_opts,
+    list_path);
+  list_cmd->arg = list_arg;
+  mr = proxy_data(proxy_sess, list_cmd);
+  xerrno = errno;
+
+  pr_event_unregister(&proxy_module, "mod_proxy.data-read",
+    proxy_dirlist_data_ev);
+
+  if (proxy_ftp_dirlist_finish(proxy_sess) < 0) {
+    /* TODO: What to do if this fails? */
+  }
+
+  errno = xerrno;
+  return mr;
 }
 
 MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
@@ -4012,7 +4210,7 @@ MODRET proxy_any(cmd_rec *cmd) {
           mr = proxy_data_cmd(cmd, proxy_sess);
 
         } else {
-          mr = proxy_data(proxy_sess, cmd);
+          mr = proxy_directory_data(proxy_sess, cmd);
         }
 
         pr_response_block(TRUE);
@@ -4092,6 +4290,14 @@ MODRET proxy_any(cmd_rec *cmd) {
           mr = proxy_feat(cmd, proxy_sess);
           return mr;      
         }
+      }
+      break;
+
+    case PR_CMD_OPTS_ID:
+      if (cmd->argc == 3 &&
+          strcasecmp(cmd->argv[1], C_MLST) == 0 &&
+          proxy_sess->dirlist_policy == PROXY_SESS_DIRECTORY_LIST_POLICY_LIST) {
+        (void) proxy_ftp_facts_parse_opts(pstrdup(cmd->tmp_pool, cmd->argv[2]));
       }
       break;
 
@@ -4622,6 +4828,13 @@ static int proxy_sess_init(void) {
     proxy_sess->dataxfer_policy = *((int *) c->argv[0]);
   }
 
+  c = find_config(main_server->conf, CONF_PARAM, "ProxyDirectoryListPolicy",
+    FALSE);
+  if (c != NULL) {
+    proxy_sess->dirlist_policy = *((int *) c->argv[0]);
+    proxy_sess->dirlist_opts = *((unsigned long *) c->argv[1]);
+  }
+
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTimeoutConnect", FALSE);
   if (c != NULL) {
     proxy_sess->connect_timeout = *((int *) c->argv[0]);
@@ -4712,6 +4925,7 @@ static int proxy_sess_init(void) {
 static conftable proxy_conftab[] = {
   { "ProxyDataTransferPolicy",	set_proxydataxferpolicy,	NULL },
   { "ProxyDatastore",		set_proxydatastore,		NULL },
+  { "ProxyDirectoryListPolicy",	set_proxydirlistpolicy,		NULL },
   { "ProxyEngine",		set_proxyengine,		NULL },
   { "ProxyForwardEnabled",	set_proxyforwardenabled,	NULL },
   { "ProxyForwardMethod",	set_proxyforwardmethod,		NULL },

@@ -6,8 +6,8 @@ autom4te.cache
 mod_proxy.h
 tests.log
 .libs
-*.sw?
 *.a
+*.sw?
 *.la
 *.lo
 *Tests*.log
