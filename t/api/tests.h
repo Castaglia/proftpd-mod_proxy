@@ -34,6 +34,7 @@
 #include "proxy/conn.h"
 #include "proxy/netio.h"
 #include "proxy/inet.h"
+#include "proxy/str.h"
 #include "proxy/uri.h"
 #include "proxy/tls.h"
 #include "proxy/tls/db.h"
@@ -47,6 +48,8 @@
 #include "proxy/ftp/conn.h"
 #include "proxy/ftp/ctrl.h"
 #include "proxy/ftp/data.h"
+#include "proxy/ftp/dirlist.h"
+#include "proxy/ftp/facts.h"
 #include "proxy/ftp/sess.h"
 #include "proxy/ftp/xfer.h"
 
@@ -66,6 +69,7 @@ Suite *tests_get_netio_suite(void);
 Suite *tests_get_random_suite(void);
 Suite *tests_get_reverse_suite(void);
 Suite *tests_get_forward_suite(void);
+Suite *tests_get_str_suite(void);
 Suite *tests_get_tls_suite(void);
 Suite *tests_get_uri_suite(void);
 Suite *tests_get_session_suite(void);
@@ -74,6 +78,8 @@ Suite *tests_get_ftp_msg_suite(void);
 Suite *tests_get_ftp_conn_suite(void);
 Suite *tests_get_ftp_ctrl_suite(void);
 Suite *tests_get_ftp_data_suite(void);
+Suite *tests_get_ftp_dirlist_suite(void);
+Suite *tests_get_ftp_facts_suite(void);
 Suite *tests_get_ftp_sess_suite(void);
 Suite *tests_get_ftp_xfer_suite(void);
 

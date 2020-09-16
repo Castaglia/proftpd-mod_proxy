@@ -1,6 +1,6 @@
 /*
- * ProFTPD - mod_proxy Reverse Redis API
- * Copyright (c) 2017-2020 TJ Saunders
+ * ProFTPD - mod_proxy String implementation
+ * Copyright (c) 2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,14 +22,49 @@
  * source distribution.
  */
 
-#ifndef MOD_PROXY_REVERSE_REDIS_H
-#define MOD_PROXY_REVERSE_REDIS_H
-
 #include "mod_proxy.h"
-#include "proxy/reverse.h"
-#include "proxy/reverse/redis.h"
+#include "proxy/str.h"
 
-int proxy_reverse_redis_as_datastore(struct proxy_reverse_datastore *ds,
-  void *ds_data, size_t ds_datasz);
+char *proxy_strnstr(const char *s1, const char *s2, size_t len) {
+#if defined(HAVE_STRNSTR)
+  if (s1 == NULL ||
+      s2 == NULL ||
+      len == 0) {
+    return NULL;
+  }
 
-#endif /* MOD_PROXY_REVERSE_REDIS_H */
+  /* strnstr(3) does not check this, but it should. */
+  if (s2[0] == '\0') {
+    return NULL;
+  }
+
+  return strnstr(s1, s2, len);
+
+#else
+  register unsigned int i;
+  size_t s2_len;
+
+  if (s1 == NULL ||
+      s2 == NULL ||
+      len == 0) {
+    return NULL;
+  }
+
+  s2_len = strlen(s2);
+  if (s2_len == 0 ||
+      s2_len > len) {
+    return NULL;
+  }
+
+  for (i = 0; i <= (unsigned int) (len - s2_len); i++) {
+    if (s1[0] == s2[0] &&
+        strncmp(s1, s2, s2_len) == 0) {
+      return (char *) s1;
+    }
+
+    s1++;
+  }
+
+  return NULL;
+#endif /* HAVE_STRNSTR */
+}

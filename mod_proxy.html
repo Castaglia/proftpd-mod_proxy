@@ -50,6 +50,7 @@ servers.
 <ul>
   <li><a href="#ProxyDataTransferPolicy">ProxyDataTransferPolicy</a>
   <li><a href="#ProxyDatastore">ProxyDatastore</a>
+  <li><a href="#ProxyDirectoryListPolicy">ProxyDirectoryListPolicy</a>
   <li><a href="#ProxyEngine">ProxyEngine</a>
   <li><a href="#ProxyForwardEnabled">ProxyForwardEnabled</a>
   <li><a href="#ProxyForwardMethod">ProxyForwardMethod</a>
@@ -192,6 +193,66 @@ that Redis server/cluster; the prefix is used to keep all of the data
     &lt;/IfModule&gt;
   &lt;/IfModule&gt;
 </pre>
+
+<p>
+<hr>
+<h3><a name="ProxyDirectoryListPolicy">ProxyDirectoryListPolicy</a></h3>
+<strong>Syntax:</strong> ProxyDirectoryListPolicy <em>client|"LIST" [opt1 ...]</em><br>
+<strong>Default:</strong> ProxyDirectoryListPolicy client<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.6rc1 and later
+
+<p>
+The <code>ProxyDirectoryListPolicy</code> directive configures the directory
+list <em>policy</em> that <code>mod_proxy</code> uses when performing
+directory lists with the backend/destination server.
+
+<p>
+The currently supported policies are:
+<ul>
+  <li><code>client</code>
+    <p>
+    This policy indicates that <code>mod_proxy</code> will use whatever
+    the connected client uses.  Thus if the client sends <code>MLSD</code>,
+    <code>mod_proxy</code> will send <code>MLSD</code> to the
+    backend/destination server.
+
+    <p>
+    This is the <em>recommended policy</em> in most cases.
+  </li>
+
+  <p>
+  <li><code>LIST</code>
+    <p>
+    This policy instructs <code>mod_proxy</code> to use the <code>LIST</code>
+    command with the backend/destination server, regardless of the command
+    used by the client.  The <code>mod_proxy</code> module then handles any
+    reformatting of the <code>LIST</code> response into the response needed
+    by the client.  For example, if the client sends <code>MLSD</code> but the
+    backend/destination server does not support this command,
+    <code>mod_proxy</code> will send <code>LIST</code> instead, and translate
+    the backend format into the client-requested format.
+
+    <p>
+    The current implementation of this policy handles <code>LIST-&lt;MLSD</code>
+    translations only.
+  </li>
+</ul>
+
+You may also provide <em>options</em>; the currently implemented
+<em>options</em> are:
+<ul>
+  <li><code>UseSlink</code><br>
+    <p>
+    Use this option to have <code>mod_proxy</code> use the <i>broken</i>
+    "OS.unix=slink" syntax, preferred by FTP clients such as FileZilla, for
+    indicating symlinks, rather than the more correct "OS.unix=symlink"
+    syntax.  See
+    <a href="http://bugs.proftpd.org/show_bug.cgi?id=3318">Bug#3318</a> for
+    a more detailed discussion.
+  </li>
+</ul>
 
 <p>
 <hr>
@@ -1488,6 +1549,7 @@ purposes, the module also uses <a href="http://www.proftpd.org/docs/howto/Tracin
   <li>proxy.ftp.conn
   <li>proxy.ftp.ctrl
   <li>proxy.ftp.data
+  <li>proxy.ftp.dirlist
   <li>proxy.ftp.msg
   <li>proxy.ftp.sess
   <li>proxy.ftp.xfer

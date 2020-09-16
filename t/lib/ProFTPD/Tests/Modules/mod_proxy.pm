@@ -5,6 +5,7 @@ use base qw(ProFTPD::TestSuite::Child);
 use strict;
 
 use Carp;
+use Cwd;
 use File::Copy;
 use File::Path qw(mkpath);
 use File::Spec;
@@ -368,6 +369,41 @@ my $TESTS = {
   },
 
   proxy_reverse_config_datatransferpolicy_client => {
+    order => ++$order,
+    test_class => [qw(forking reverse)],
+  },
+
+  proxy_reverse_config_directorylistpolicy_client => {
+    order => ++$order,
+    test_class => [qw(forking reverse)],
+  },
+
+  proxy_reverse_config_directorylistpolicy_list_unix => {
+    order => ++$order,
+    test_class => [qw(forking reverse)],
+  },
+
+  proxy_reverse_config_directorylistpolicy_list_unix_use_slink => {
+    order => ++$order,
+    test_class => [qw(forking reverse)],
+  },
+
+  proxy_reverse_config_directorylistpolicy_list_unix_wide_dir => {
+    order => ++$order,
+    test_class => [qw(forking reverse)],
+  },
+
+  proxy_reverse_config_directorylistpolicy_list_windows => {
+    order => ++$order,
+    test_class => [qw(forking reverse)],
+  },
+
+  proxy_reverse_config_directorylistpolicy_list_backend_error => {
+    order => ++$order,
+    test_class => [qw(forking reverse)],
+  },
+
+  proxy_reverse_config_directorylistpolicy_list_opts_mlst => {
     order => ++$order,
     test_class => [qw(forking reverse)],
   },
@@ -863,6 +899,10 @@ my $TESTS = {
   # proxy_forward_extlog_stor_var_F_f
   # proxy_forward_extlog_list_var_D_d
 
+  # XXX TODO Issue #21
+  # proxy_forward_config_directorylistpolicy_client
+  # proxy_forward_config_directorylistpolicy_list_unix
+  # proxy_forward_config_directorylistpolicy_list_windows
 };
 
 sub new {
@@ -12440,6 +12480,1498 @@ EOC
   }
 
   unlink($log_file);
+}
+
+sub proxy_reverse_config_directorylistpolicy_client {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyDirectoryListPolicy} = 'client';
+
+  my $timeout_idle = 10;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+
+  <IfModule mod_facts.c>
+    FactsAdvertise off
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      sleep(1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      my $conn = $client->mlsd_raw();
+      unless ($conn) {
+        die("Failed to MLSD: " . $client->response_code() . ' ' .
+          $client->response_msg());
+      }
+
+      my $buf;
+      $conn->read($buf, 8192, 10);
+      eval { $conn->close() };
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "# Response:\n$buf\n";
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      my $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      # We have to be careful of the fact that readdir returns directory
+      # entries in an unordered fashion.
+      my $res = {};
+      my $lines = [split(/(\r)?\n/, $buf)];
+      $self->assert(scalar(@$lines) > 1,
+        test_msg("Expected several MLSD lines, got " . scalar(@$lines)));
+
+      foreach my $line (@$lines) {
+        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;unique=\S+;UNIX\.group=\d+;UNIX\.groupname=\S+;UNIX\.mode=\d+;UNIX\.owner=\d+;UNIX\.ownername=\S+; (.*?)$/) {
+          $res->{$1} = 1;
+        }
+      }
+
+      if (scalar(keys(%$res)) == 0) {
+        die("Failed to parse MLSD data");
+      }
+
+      my $expected = {
+        '.' => 1,
+        '..' => 1,
+        'var' => 1,
+        'proxy.conf' => 1,
+        'proxy.group' => 1,
+        'proxy.passwd' => 1,
+        'proxy.pid' => 1,
+        'proxy.scoreboard' => 1,
+        'proxy.scoreboard.lck' => 1,
+      };
+
+      my $ok = 1;
+      my $mismatch;
+      foreach my $name (keys(%$res)) {
+        unless (defined($expected->{$name})) {
+          $mismatch = $name;
+          $ok = 0;
+          last;
+        }
+      }
+
+      unless ($ok) {
+        die("Unexpected name '$mismatch' appeared in MLSD data")
+      }
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_config_directorylistpolicy_list_unix {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  # Explicitly provide these IDs, so that the generated AuthUserFile,
+  # AuthGroupFile entries match our effective IDs, and thus can match up
+  # IDs to names.  This means that "LIST -al" provides textual owner names,
+  # rather than IDs.
+  my $uid = $<;
+  my $gid = (split(/\s+/, $)))[0];
+  my $setup = test_setup($tmpdir, 'proxy', undef, undef, undef, $uid, $gid);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyDirectoryListPolicy} = 'LIST';
+
+  my $timeout_idle = 10;
+
+  my $test_file = File::Spec->rel2abs("$tmpdir/test.dat");
+  if (open(my $fh, "> $test_file")) {
+    print $fh "Hello, World!\n";
+    unless (close($fh)) {
+      die("Can't write $test_file: $!");
+    }
+
+  } else {
+    die("Can't open $test_file: $!");
+  }
+
+  # Make the timestamps on our file older than 6 months, for the year/HH:MM
+  # code path.
+  my $ts = time() - (9 * 30 * 24 * 60 * 60);
+  unless (utime($ts, $ts, $test_file)) {
+    die("Can't change times on $test_file: $!");
+  }
+
+  my $sub_dir = File::Spec->rel2abs("$tmpdir/sub.d");
+  mkpath($sub_dir);
+
+  my $cwd = getcwd();
+  unless (chdir($tmpdir)) {
+    die("Can't chdir to $tmpdir: $!");
+  }
+
+  unless (symlink('./test.dat', 'test.lnk')) {
+    die("Can't symlink './test.dat' to 'test.lnk': $!");
+  }
+
+  unless (symlink('./sub.d', 'subd.lnk')) {
+    die("Can't symlink './sub.d' to 'subd.lnk': $!");
+  }
+
+  unless (chdir($cwd)) {
+    die("Can't chdir to $cwd: $!");
+  }
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:30 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.dirlist:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+
+  <IfModule mod_facts.c>
+    FactsAdvertise off
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      sleep(1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      my $conn = $client->mlsd_raw();
+      unless ($conn) {
+        die("Failed to MLSD: " . $client->response_code() . ' ' .
+          $client->response_msg());
+      }
+
+      my $buf;
+      $conn->read($buf, 8192, 10);
+      eval { $conn->close() };
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "# Response:\n$buf\n";
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      my $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      # We have to be careful of the fact that readdir returns directory
+      # entries in an unordered fashion.
+      my $res = {};
+      my $lines = [split(/(\r)?\n/, $buf)];
+      $self->assert(scalar(@$lines) > 1,
+        test_msg("Expected several MLSD lines, got " . scalar(@$lines)));
+
+      foreach my $line (@$lines) {
+        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;UNIX\.groupname=\S+;UNIX\.mode=\d+;UNIX\.ownername=\S+; (.*?)$/) {
+          $res->{$1} = 1;
+        }
+      }
+
+      if (scalar(keys(%$res)) == 0) {
+        die("Failed to parse MLSD data");
+      }
+
+      my $expected = {
+        '.' => 1,
+        '..' => 1,
+        'sub.d' => 1,
+        'subd.lnk' => 1,
+        'test.dat' => 1,
+        'test.lnk' => 1,
+        'var' => 1,
+        'proxy.conf' => 1,
+        'proxy.group' => 1,
+        'proxy.passwd' => 1,
+        'proxy.pid' => 1,
+        'proxy.scoreboard' => 1,
+        'proxy.scoreboard.lck' => 1,
+      };
+
+      my $ok = 1;
+      my $mismatch;
+      foreach my $name (keys(%$res)) {
+        unless (defined($expected->{$name})) {
+          $mismatch = $name;
+          $ok = 0;
+          last;
+        }
+      }
+
+      unless ($ok) {
+        die("Unexpected name '$mismatch' appeared in MLSD data")
+      }
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_config_directorylistpolicy_list_unix_use_slink {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  # Explicitly provide these IDs, so that the generated AuthUserFile,
+  # AuthGroupFile entries match our effective IDs, and thus can match up
+  # IDs to names.  This means that "LIST -al" provides textual owner names,
+  # rather than IDs.
+  my $uid = $<;
+  my $gid = (split(/\s+/, $)))[0];
+  my $setup = test_setup($tmpdir, 'proxy', undef, undef, undef, $uid, $gid);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+
+  # Use the UseSlink option as well.
+  $proxy_config->{ProxyDirectoryListPolicy} = 'LIST UseSlink';
+
+  my $timeout_idle = 10;
+
+  my $test_file = File::Spec->rel2abs("$tmpdir/test.dat");
+  if (open(my $fh, "> $test_file")) {
+    print $fh "Hello, World!\n";
+    unless (close($fh)) {
+      die("Can't write $test_file: $!");
+    }
+
+  } else {
+    die("Can't open $test_file: $!");
+  }
+
+  # Make the timestamps on our file older than 6 months, for the year/HH:MM
+  # code path.
+  my $ts = time() - (9 * 30 * 24 * 60 * 60);
+  unless (utime($ts, $ts, $test_file)) {
+    die("Can't change times on $test_file: $!");
+  }
+
+  my $sub_dir = File::Spec->rel2abs("$tmpdir/sub.d");
+  mkpath($sub_dir);
+
+  my $cwd = getcwd();
+  unless (chdir($tmpdir)) {
+    die("Can't chdir to $tmpdir: $!");
+  }
+
+  unless (symlink('./test.dat', 'test.lnk')) {
+    die("Can't symlink './test.dat' to 'test.lnk': $!");
+  }
+
+  unless (symlink('./sub.d', 'subd.lnk')) {
+    die("Can't symlink './sub.d' to 'subd.lnk': $!");
+  }
+
+  unless (chdir($cwd)) {
+    die("Can't chdir to $cwd: $!");
+  }
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:30 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.dirlist:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+
+  <IfModule mod_facts.c>
+    FactsAdvertise off
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      sleep(1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      my $conn = $client->mlsd_raw();
+      unless ($conn) {
+        die("Failed to MLSD: " . $client->response_code() . ' ' .
+          $client->response_msg());
+      }
+
+      my $buf;
+      $conn->read($buf, 8192, 10);
+      eval { $conn->close() };
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "# Response:\n$buf\n";
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      my $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      my $saw_slink = 0;
+
+      # We have to be careful of the fact that readdir returns directory
+      # entries in an unordered fashion.
+      my $res = {};
+      my $lines = [split(/(\r)?\n/, $buf)];
+      $self->assert(scalar(@$lines) > 1,
+        test_msg("Expected several MLSD lines, got " . scalar(@$lines)));
+
+      foreach my $line (@$lines) {
+        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;UNIX\.groupname=\S+;UNIX\.mode=\d+;UNIX\.ownername=\S+; (.*?)$/) {
+          $res->{$1} = 1;
+        }
+
+        if ($line =~ /type=OS.unix=slink:/) {
+          $saw_slink = 1;
+        }
+      }
+
+      if (scalar(keys(%$res)) == 0) {
+        die("Failed to parse MLSD data");
+      }
+
+      $self->assert($saw_slink,
+        test_msg("Did not see 'OS.unix=slink' as expected"));
+
+      my $expected = {
+        '.' => 1,
+        '..' => 1,
+        'sub.d' => 1,
+        'subd.lnk' => 1,
+        'test.dat' => 1,
+        'test.lnk' => 1,
+        'var' => 1,
+        'proxy.conf' => 1,
+        'proxy.group' => 1,
+        'proxy.passwd' => 1,
+        'proxy.pid' => 1,
+        'proxy.scoreboard' => 1,
+        'proxy.scoreboard.lck' => 1,
+      };
+
+      my $ok = 1;
+      my $mismatch;
+      foreach my $name (keys(%$res)) {
+        unless (defined($expected->{$name})) {
+          $mismatch = $name;
+          $ok = 0;
+          last;
+        }
+      }
+
+      unless ($ok) {
+        die("Unexpected name '$mismatch' appeared in MLSD data")
+      }
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_config_directorylistpolicy_list_unix_wide_dir {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  # Explicitly provide these IDs, so that the generated AuthUserFile,
+  # AuthGroupFile entries match our effective IDs, and thus can match up
+  # IDs to names.  This means that "LIST -al" provides textual owner names,
+  # rather than IDs.
+  my $uid = $<;
+  my $gid = (split(/\s+/, $)))[0];
+  my $setup = test_setup($tmpdir, 'proxy', undef, undef, undef, $uid, $gid);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyDirectoryListPolicy} = 'LIST';
+
+  # For this test, we need to create many files to be listed.
+  my $test_file_prefix = File::Spec->rel2abs($tmpdir);
+
+  my $count = 1000;
+  print STDOUT "# Creating $count files in $tmpdir\n";
+  for (my $i = 1; $i <= $count; $i++) {
+    my $test_file = 'test_' . sprintf("%07s", $i);
+    my $test_path = "$test_file_prefix/$test_file";
+
+    if (open(my $fh, "> $test_path")) {
+      close($fh);
+
+    } else {
+      die("Can't open $test_path: $!");
+    }
+
+    if ($i % 1000 == 0) {
+      print STDOUT "# Created file $test_file\n";
+    }
+  }
+
+  my $timeout_idle = 30;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:30 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:30 proxy.ftp.dirlist:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+
+  <IfModule mod_facts.c>
+    FactsAdvertise off
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      sleep(1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      my $conn = $client->mlsd_raw();
+      unless ($conn) {
+        die("Failed to MLSD: " . $client->response_code() . ' ' .
+          $client->response_msg());
+      }
+
+      my $buf = '';
+      my $tmp;
+      while ($conn->read($tmp, 8192, 30)) {
+        $buf .= $tmp;
+      }
+      eval { $conn->close() };
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "# Response:\n$buf\n";
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      my $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      my $saw_slink = 0;
+
+      # We have to be careful of the fact that readdir returns directory
+      # entries in an unordered fashion.
+      my $res = {};
+      my $lines = [split(/(\r)?\n/, $buf)];
+      $self->assert(scalar(@$lines) > 1,
+        test_msg("Expected several MLSD lines, got " . scalar(@$lines)));
+
+      foreach my $line (@$lines) {
+        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;UNIX\.groupname=\S+;UNIX\.mode=\d+;UNIX\.ownername=\S+; (.*?)$/) {
+          $res->{$1} = 1;
+        }
+
+        if ($line =~ /type=OS.unix=slink:/) {
+          $saw_slink = 1;
+        }
+      }
+
+      if (scalar(keys(%$res)) == 0) {
+        die("Failed to parse MLSD data");
+      }
+
+      my $expected = {
+        '.' => 1,
+        '..' => 1,
+        'sub.d' => 1,
+        'subd.lnk' => 1,
+        'test.dat' => 1,
+        'test.lnk' => 1,
+        'var' => 1,
+        'proxy.conf' => 1,
+        'proxy.group' => 1,
+        'proxy.passwd' => 1,
+        'proxy.pid' => 1,
+        'proxy.scoreboard' => 1,
+        'proxy.scoreboard.lck' => 1,
+      };
+
+      my $ok = 1;
+      my $mismatch;
+      foreach my $name (keys(%$res)) {
+        next if $name =~ /^test_/;
+
+        unless (defined($expected->{$name})) {
+          $mismatch = $name;
+          $ok = 0;
+          last;
+        }
+      }
+
+      unless ($ok) {
+        die("Unexpected name '$mismatch' appeared in MLSD data")
+      }
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_config_directorylistpolicy_list_windows {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  # Explicitly provide these IDs, so that the generated AuthUserFile,
+  # AuthGroupFile entries match our effective IDs, and thus can match up
+  # IDs to names.  This means that "LIST -al" provides textual owner names,
+  # rather than IDs.
+  my $uid = $<;
+  my $gid = (split(/\s+/, $)))[0];
+  my $setup = test_setup($tmpdir, 'proxy', undef, undef, undef, $uid, $gid);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyDirectoryListPolicy} = 'LIST';
+
+  my $timeout_idle = 10;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.dirlist:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+
+  <IfModule mod_facts.c>
+    FactsAdvertise off
+  </IfModule>
+
+  # Emit Windows-style directory listing data
+  ListStyle Windows
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      sleep(1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      my $conn = $client->mlsd_raw();
+      unless ($conn) {
+        die("Failed to MLSD: " . $client->response_code() . ' ' .
+          $client->response_msg());
+      }
+
+      my $buf;
+      $conn->read($buf, 8192, 10);
+      eval { $conn->close() };
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "# Response:\n$buf\n";
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      my $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      # We have to be careful of the fact that readdir returns directory
+      # entries in an unordered fashion.
+      my $res = {};
+      my $lines = [split(/(\r)?\n/, $buf)];
+      $self->assert(scalar(@$lines) > 1,
+        test_msg("Expected several MLSD lines, got " . scalar(@$lines)));
+
+      foreach my $line (@$lines) {
+        if ($line =~ /^modify=\S+;(size=\d+;)?type=\S+; (.*?)$/) {
+          $res->{$2} = 1;
+        }
+      }
+
+      if (scalar(keys(%$res)) == 0) {
+        die("Failed to parse MLSD data");
+      }
+
+      my $expected = {
+        '.' => 1,
+        '..' => 1,
+        'var' => 1,
+        'proxy.conf' => 1,
+        'proxy.group' => 1,
+        'proxy.passwd' => 1,
+        'proxy.pid' => 1,
+        'proxy.scoreboard' => 1,
+        'proxy.scoreboard.lck' => 1,
+      };
+
+      my $ok = 1;
+      my $mismatch;
+      foreach my $name (keys(%$res)) {
+        unless (defined($expected->{$name})) {
+          $mismatch = $name;
+          $ok = 0;
+          last;
+        }
+      }
+
+      unless ($ok) {
+        die("Unexpected name '$mismatch' appeared in MLSD data")
+      }
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_config_directorylistpolicy_list_backend_error {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyDirectoryListPolicy} = 'LIST';
+
+  my $timeout_idle = 10;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.dirlist:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+
+  <IfModule mod_facts.c>
+    FactsAdvertise off
+  </IfModule>
+
+  # Block the LIST command, to test mod_proxy error handling
+  <Limit DIRS>
+    DenyAll
+  </Limit>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      sleep(1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      my $conn = $client->mlsd_raw();
+      unless ($conn) {
+        die("Failed to MLSD: " . $client->response_code() . ' ' .
+          $client->response_msg());
+      }
+
+      my $buf;
+      $conn->read($buf, 8192, 10);
+      eval { $conn->close() };
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "# Response:\n$buf\n";
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      my $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      $self->assert($buf eq '',
+        test_msg("Expected empty directory listing, got '$buf'"));
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_config_directorylistpolicy_list_opts_mlst {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  # Explicitly provide these IDs, so that the generated AuthUserFile,
+  # AuthGroupFile entries match our effective IDs, and thus can match up
+  # IDs to names.  This means that "LIST -al" provides textual owner names,
+  # rather than IDs.
+  my $uid = $<;
+  my $gid = (split(/\s+/, $)))[0];
+  my $setup = test_setup($tmpdir, 'proxy', undef, undef, undef, $uid, $gid);
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyDirectoryListPolicy} = 'LIST';
+
+  my $timeout_idle = 10;
+
+  my $test_file = File::Spec->rel2abs("$tmpdir/test.dat");
+  if (open(my $fh, "> $test_file")) {
+    print $fh "Hello, World!\n";
+    unless (close($fh)) {
+      die("Can't write $test_file: $!");
+    }
+
+  } else {
+    die("Can't open $test_file: $!");
+  }
+
+  # Make the timestamps on our file older than 6 months, for the year/HH:MM
+  # code path.
+  my $ts = time() - (9 * 30 * 24 * 60 * 60);
+  unless (utime($ts, $ts, $test_file)) {
+    die("Can't change times on $test_file: $!");
+  }
+
+  my $sub_dir = File::Spec->rel2abs("$tmpdir/sub.d");
+  mkpath($sub_dir);
+
+  my $cwd = getcwd();
+  unless (chdir($tmpdir)) {
+    die("Can't chdir to $tmpdir: $!");
+  }
+
+  unless (symlink('./test.dat', 'test.lnk')) {
+    die("Can't symlink './test.dat' to 'test.lnk': $!");
+  }
+
+  unless (symlink('./sub.d', 'subd.lnk')) {
+    die("Can't symlink './sub.d' to 'subd.lnk': $!");
+  }
+
+  unless (chdir($cwd)) {
+    die("Can't chdir to $cwd: $!");
+  }
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:30 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.dirlist:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      sleep(1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      my $opts_args = 'MLST modify;size;type;';
+      my ($resp_code, $resp_msg) = $client->opts($opts_args);
+
+      my $expected = 200;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'MLST OPTS modify;size;type;';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      my $conn = $client->mlsd_raw();
+      unless ($conn) {
+        die("Failed to MLSD: " . $client->response_code() . ' ' .
+          $client->response_msg());
+      }
+
+      my $buf;
+      $conn->read($buf, 8192, 10);
+      eval { $conn->close() };
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "# Response:\n$buf\n";
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      my $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      # We have to be careful of the fact that readdir returns directory
+      # entries in an unordered fashion.
+      my $res = {};
+      my $lines = [split(/(\r)?\n/, $buf)];
+      $self->assert(scalar(@$lines) > 1,
+        test_msg("Expected several MLSD lines, got " . scalar(@$lines)));
+
+      foreach my $line (@$lines) {
+        if ($line =~ /^modify=\S+;size=\d+;type=\S+; (.*?)$/) {
+          $res->{$1} = 1;
+        }
+      }
+
+      if (scalar(keys(%$res)) == 0) {
+        die("Failed to parse MLSD data");
+      }
+
+      my $expected = {
+        '.' => 1,
+        '..' => 1,
+        'sub.d' => 1,
+        'subd.lnk' => 1,
+        'test.dat' => 1,
+        'test.lnk' => 1,
+        'var' => 1,
+        'proxy.conf' => 1,
+        'proxy.group' => 1,
+        'proxy.passwd' => 1,
+        'proxy.pid' => 1,
+        'proxy.scoreboard' => 1,
+        'proxy.scoreboard.lck' => 1,
+      };
+
+      my $ok = 1;
+      my $mismatch;
+      foreach my $name (keys(%$res)) {
+        unless (defined($expected->{$name})) {
+          $mismatch = $name;
+          $ok = 0;
+          last;
+        }
+      }
+
+      unless ($ok) {
+        die("Unexpected name '$mismatch' appeared in MLSD data")
+      }
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_reverse_config_connect_policy_random {

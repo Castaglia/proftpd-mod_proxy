@@ -55,6 +55,9 @@
 /* Define if you have the srandom(3) function.  */
 #undef HAVE_SRANDOM
 
+/* Define if you have the strnstr(3) function.  */
+#undef HAVE_STRNSTR
+
 #define MOD_PROXY_VERSION	"mod_proxy/0.6"
 
 /* Make sure the version of proftpd is as necessary. */

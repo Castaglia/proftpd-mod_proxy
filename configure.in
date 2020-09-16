@@ -65,7 +65,7 @@ AC_ARG_WITH(libraries,
 
 AC_HEADER_STDC
 AC_CHECK_HEADERS(sqlite3.h stdlib.h unistd.h limits.h fcntl.h sys/sysctl.h sys/sysinfo.h)
-AC_CHECK_FUNCS(random srandom sysctl sysinfo)
+AC_CHECK_FUNCS(random srandom strnstr sysctl sysinfo)
 
 # Check for SQLite-isms
 AC_MSG_CHECKING([for sqlite3_stmt_readonly])

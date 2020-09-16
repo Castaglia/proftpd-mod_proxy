@@ -146,8 +146,8 @@ START_TEST (send_test) {
 
   pbuf = pcalloc(p, sizeof(pr_buffer_t));
   pbuf->buflen = 1024;
-  pbuf->remaining = pbuf->buflen;
-  pbuf->current = pbuf->buf = palloc(p, pbuf->buflen);
+  pbuf->buf = palloc(p, pbuf->buflen);
+  pbuf->current = pbuf->buf + 2;
 
   mark_point();
   res = proxy_ftp_data_send(p, conn, pbuf, FALSE);

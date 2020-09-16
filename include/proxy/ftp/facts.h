@@ -1,6 +1,6 @@
 /*
- * ProFTPD - mod_proxy Reverse Redis API
- * Copyright (c) 2017-2020 TJ Saunders
+ * ProFTPD - mod_proxy FTP Facts API
+ * Copyright (c) 2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,14 +22,24 @@
  * source distribution.
  */
 
-#ifndef MOD_PROXY_REVERSE_REDIS_H
-#define MOD_PROXY_REVERSE_REDIS_H
+#ifndef MOD_PROXY_FTP_FACTS_H
+#define MOD_PROXY_FTP_FACTS_H
 
 #include "mod_proxy.h"
-#include "proxy/reverse.h"
-#include "proxy/reverse/redis.h"
 
-int proxy_reverse_redis_as_datastore(struct proxy_reverse_datastore *ds,
-  void *ds_data, size_t ds_datasz);
+/* RFC 3659 Facts */
+#define PROXY_FTP_FACTS_OPT_SHOW_MODIFY			0x00001
+#define PROXY_FTP_FACTS_OPT_SHOW_PERM			0x00002
+#define PROXY_FTP_FACTS_OPT_SHOW_SIZE			0x00004
+#define PROXY_FTP_FACTS_OPT_SHOW_TYPE			0x00008
+#define PROXY_FTP_FACTS_OPT_SHOW_UNIQUE			0x00010
+#define PROXY_FTP_FACTS_OPT_SHOW_UNIX_GROUP		0x00020
+#define PROXY_FTP_FACTS_OPT_SHOW_UNIX_MODE		0x00040
+#define PROXY_FTP_FACTS_OPT_SHOW_UNIX_OWNER		0x00080
+#define PROXY_FTP_FACTS_OPT_SHOW_UNIX_OWNER_NAME	0x00100
+#define PROXY_FTP_FACTS_OPT_SHOW_UNIX_GROUP_NAME	0x00200
 
-#endif /* MOD_PROXY_REVERSE_REDIS_H */
+unsigned long proxy_ftp_facts_get_opts(void);
+void proxy_ftp_facts_parse_opts(char *facts);
+
+#endif /* MOD_PROXY_FTP_FACTS_H */

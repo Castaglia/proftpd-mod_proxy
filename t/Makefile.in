@@ -48,6 +48,7 @@ TEST_API_DEPS=\
   $(module_srcdir)/lib/proxy/conn.o \
   $(module_srcdir)/lib/proxy/netio.o \
   $(module_srcdir)/lib/proxy/inet.o \
+  $(module_srcdir)/lib/proxy/str.o \
   $(module_srcdir)/lib/proxy/tls.o \
   $(module_srcdir)/lib/proxy/tls/db.o \
   $(module_srcdir)/lib/proxy/tls/redis.o \
@@ -59,6 +60,8 @@ TEST_API_DEPS=\
   $(module_srcdir)/lib/proxy/ftp/conn.o \
   $(module_srcdir)/lib/proxy/ftp/ctrl.o \
   $(module_srcdir)/lib/proxy/ftp/data.o \
+  $(module_srcdir)/lib/proxy/ftp/dirlist.o \
+  $(module_srcdir)/lib/proxy/ftp/facts.o \
   $(module_srcdir)/lib/proxy/ftp/msg.o \
   $(module_srcdir)/lib/proxy/ftp/sess.o \
   $(module_srcdir)/lib/proxy/ftp/xfer.o
@@ -72,6 +75,7 @@ TEST_API_OBJS=\
   api/conn.o \
   api/netio.o \
   api/inet.o \
+  api/str.o \
   api/tls.o \
   api/reverse.o \
   api/forward.o \
@@ -80,6 +84,8 @@ TEST_API_OBJS=\
   api/ftp/conn.o \
   api/ftp/ctrl.o \
   api/ftp/data.o \
+  api/ftp/dirlist.o \
+  api/ftp/facts.o \
   api/ftp/sess.o \
   api/ftp/xfer.o \
   api/stubs.o \

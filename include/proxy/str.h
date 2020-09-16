@@ -1,6 +1,6 @@
 /*
- * ProFTPD - mod_proxy Reverse Redis API
- * Copyright (c) 2017-2020 TJ Saunders
+ * ProFTPD - mod_proxy String API
+ * Copyright (c) 2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,14 +22,11 @@
  * source distribution.
  */
 
-#ifndef MOD_PROXY_REVERSE_REDIS_H
-#define MOD_PROXY_REVERSE_REDIS_H
+#ifndef MOD_PROXY_STR_H
+#define MOD_PROXY_STR_H
 
 #include "mod_proxy.h"
-#include "proxy/reverse.h"
-#include "proxy/reverse/redis.h"
 
-int proxy_reverse_redis_as_datastore(struct proxy_reverse_datastore *ds,
-  void *ds_data, size_t ds_datasz);
+char *proxy_strnstr(const char *s1, const char *s2, size_t len);
 
-#endif /* MOD_PROXY_REVERSE_REDIS_H */
+#endif /* MOD_PROXY_STR_H */
