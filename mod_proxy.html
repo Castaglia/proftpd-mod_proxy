@@ -455,7 +455,7 @@ unless <code>AllowLogSymlinks</code> is explicitly set to <em>on</em>
 The <code>ProxyOptions</code> directive is used to configure various optional
 behavior of <code>mod_proxy</code>.  For example:
 <pre>
-  ProxyOptions UseProxyProtocol
+  ProxyOptions UseProxyProtocolV1
 </pre>
 
 <p>
@@ -488,10 +488,10 @@ The currently implemented options are:
   </li>
 
   <p>
-  <li><code>UseProxyProtocol</code><br>
+  <li><code>UseProxyProtocolV1</code><br>
     <p>
     When <code>mod_proxy</code> connects to the backend/destination server,
-    use the <a href="http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt"><code>PROXY</code></a> protocol, sending the human-readable <code>PROXY</code>
+    use the <a href="http://www.haproxy.org/download/1.8/doc/proxy-protocol.txt"><code>PROXY</code></a> V1 protocol, sending the human-readable <code>PROXY</code>
     command to the destination server.  This allows backend servers to implement
     access controls/logging, based on the IP address of the connecting client.
     The <a href="https://github.com/Castaglia/proftpd-mod_proxy_protocol"><code>mod_proxy_protocol</code></a>
@@ -501,9 +501,28 @@ The currently implemented options are:
 
     <p>
     <b>Note</b>: do <b>not</b> use this option unless the backend server
-    <em>does</em> support the <code>PROXY</code> protocol.  Otherwise, the
+    <em>does</em> support the <code>PROXY</code> V1 protocol.  Otherwise, the
     <code>PROXY</code> protocol message will only confuse the backend server,
     possibly leading to connection/login failures.
+  </li>
+
+  <p>
+  <li><code>UseProxyProtocolV2</code><br>
+    <p>
+    When <code>mod_proxy</code> connects to the backend/destination server,
+    use the <a href="http://www.haproxy.org/download/1.8/doc/proxy-protocol.txt"><code>PROXY</code></a> V2 protocol, sending a binary-encoded "PROXY" command
+    to the destination server.  This allows backend servers to implement
+    access controls/logging, based on the IP address of the connecting client.
+    The <a href="https://github.com/Castaglia/proftpd-mod_proxy_protocol"><code>mod_proxy_protocol</code></a>
+    ProFTPD module can be used to handle the "PROXY" command on the receiving
+    side, <i>i.e.</i> when using <code>proftpd</code> as the
+    backend/destination server.
+
+    <p>
+    <b>Note</b>: do <b>not</b> use this option unless the backend server
+    <em>does</em> support the <code>PROXY</code> V2 protocol.  Otherwise, the
+    "PROXY" protocol message will only confuse the backend server, possibly
+    leading to connection/login failures.
   </li>
 
   <p>

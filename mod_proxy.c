@@ -763,8 +763,12 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
   c = add_config_param(cmd->argv[0], 1, NULL);
 
   for (i = 1; i < cmd->argc; i++) {
-    if (strcmp(cmd->argv[i], "UseProxyProtocol") == 0) {
-      opts |= PROXY_OPT_USE_PROXY_PROTOCOL;
+    if (strcmp(cmd->argv[i], "UseProxyProtocol") == 0 ||
+        strcmp(cmd->argv[i], "UseProxyProtocolV1") == 0) {
+      opts |= PROXY_OPT_USE_PROXY_PROTOCOL_V1;
+
+    } else if (strcmp(cmd->argv[i], "UseProxyProtocolV2") == 0) {
+      opts |= PROXY_OPT_USE_PROXY_PROTOCOL_V2;
 
     } else if (strcmp(cmd->argv[i], "ShowFeatures") == 0) {
       opts |= PROXY_OPT_SHOW_FEATURES;

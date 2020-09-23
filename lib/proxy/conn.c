@@ -24,6 +24,10 @@
 
 #include "mod_proxy.h"
 
+#ifdef HAVE_SYS_UIO_H
+# include <sys/uio.h>
+#endif /* HAVE_SYS_UIO_H */
+
 #include "proxy/conn.h"
 #include "proxy/netio.h"
 #include "proxy/inet.h"
@@ -59,6 +63,16 @@ static const char *supported_protocols[] = {
 
   NULL
 };
+
+/* PROXY protocol V2 */
+#define PROXY_PROTOCOL_V2_SIGLEN		12
+#define PROXY_PROTOCOL_V2_HDRLEN		16
+#define PROXY_PROTOCOL_V2_TRANSPORT_STREAM	0x01
+#define PROXY_PROTOCOL_V2_FAMILY_INET		0x10
+#define PROXY_PROTOCOL_V2_FAMILY_INET6		0x20
+#define PROXY_PROTOCOL_V2_ADDRLEN_INET		(4 + 4 + 2 + 2)
+#define PROXY_PROTOCOL_V2_ADDRLEN_INET6		(16 + 16 + 2 + 2)
+static uint8_t proxy_protocol_v2_sig[PROXY_PROTOCOL_V2_SIGLEN] = "\x0D\x0A\x0D\x0A\x00\x0D\x0A\x51\x55\x49\x54\x0A";
 
 static const char *trace_channel = "proxy.conn";
 
@@ -457,7 +471,8 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     pr_netio_stream_t *nstrm;
     int connected = FALSE, nstrm_mode = PR_NETIO_IO_RD;
 
-    if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL) {
+    if ((proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL_V1) ||
+        (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL_V2)) {
       /* Rather than waiting for the stream to be readable (because the
        * other end sent us something), wait for the stream to be writable
        * so that we can send something to the other end).
@@ -595,7 +610,7 @@ const char *proxy_conn_get_uri(const struct proxy_conn *pconn) {
   return pconn->pconn_uri;
 }
 
-int proxy_conn_send_proxy(pool *p, conn_t *conn) {
+int proxy_conn_send_proxy_v1(pool *p, conn_t *conn) {
   int res, src_port, dst_port;
   const char *proto, *src_ipstr, *dst_ipstr;
   pool *sub_pool = NULL;
@@ -664,7 +679,7 @@ int proxy_conn_send_proxy(pool *p, conn_t *conn) {
   }
 
   pr_trace_msg(trace_channel, 9,
-    "sending proxy protocol message: 'PROXY %s %s %s %d %d' to backend",
+    "sending PROXY protocol V1 message: 'PROXY %s %s %s %d %d' to backend",
     proto, src_ipstr, dst_ipstr, src_port, dst_port);
 
   res = proxy_netio_printf(conn->outstrm, "PROXY %s %s %s %d %d\r\n",
@@ -674,5 +689,153 @@ int proxy_conn_send_proxy(pool *p, conn_t *conn) {
     destroy_pool(sub_pool);
   }
 
+  return res;
+}
+
+static int writev_conn(conn_t *conn, const struct iovec *iov, int iov_count) {
+  int res, xerrno;
+
+  if (pr_netio_poll(conn->outstrm) < 0) {
+    return -1;
+  }
+
+  res = writev(conn->wfd, iov, iov_count);
+  xerrno = errno;
+
+  while (res <= 0) {
+    if (res < 0) {
+      if (xerrno == EINTR) {
+        pr_signals_handle();
+
+        if (pr_netio_poll(conn->outstrm) < 0) {
+          return -1;
+        }
+
+        res = writev(conn->wfd, iov, iov_count);
+        xerrno = errno;
+
+        continue;
+      }
+
+      pr_trace_msg(trace_channel, 16,
+        "error writing to client (fd %d): %s", conn->wfd, strerror(xerrno));
+      errno = errno;
+      return -1;
+    }
+  }
+
+  session.total_raw_out += res;
+  return res;
+}
+
+int proxy_conn_send_proxy_v2(pool *p, conn_t *conn) {
+  int res, xerrno;
+  uint8_t ver_cmd, trans_fam, src_ipv6[16], dst_ipv6[16];
+  uint16_t v2_len, src_port, dst_port;
+  uint32_t src_ipv4, dst_ipv4;
+  struct iovec v2_hdr[8];
+  pool *sub_pool = NULL;
+  char *proto;
+  const pr_netaddr_t *src_addr = NULL, *dst_addr = NULL;
+
+  if (p == NULL ||
+      conn == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  v2_hdr[0].iov_base = (void *) proxy_protocol_v2_sig;
+  v2_hdr[0].iov_len = PROXY_PROTOCOL_V2_SIGLEN;
+
+  /* PROXY protocol v2 + PROXY command */
+  ver_cmd = (0x20|0x01);
+  v2_hdr[1].iov_base = (void *) &ver_cmd;
+  v2_hdr[1].iov_len = sizeof(ver_cmd);
+
+  src_addr = session.c->remote_addr;
+  dst_addr = session.c->local_addr;
+
+  if (pr_netaddr_get_family(src_addr) == AF_INET &&
+      pr_netaddr_get_family(dst_addr) == AF_INET) {
+    struct sockaddr_in *saddr;
+
+    proto = "TCP/IPv4";
+    trans_fam = (PROXY_PROTOCOL_V2_TRANSPORT_STREAM|PROXY_PROTOCOL_V2_FAMILY_INET);
+    v2_len = PROXY_PROTOCOL_V2_ADDRLEN_INET;
+
+    saddr = (struct sockaddr_in *) pr_netaddr_get_sockaddr(src_addr);
+    src_ipv4 = saddr->sin_addr.s_addr;
+    v2_hdr[4].iov_base = (void *) &src_ipv4;
+    v2_hdr[4].iov_len = sizeof(src_ipv4);
+
+    saddr = (struct sockaddr_in *) pr_netaddr_get_sockaddr(dst_addr);
+    dst_ipv4 = saddr->sin_addr.s_addr;
+    v2_hdr[5].iov_base = (void *) &dst_ipv4;
+    v2_hdr[5].iov_len = sizeof(dst_ipv4);
+
+    /* Quell compiler warnings about unused variables. */
+    (void) src_ipv6;
+    (void) dst_ipv6;
+
+  } else {
+    struct sockaddr_in6 *saddr;
+
+    proto = "TCP/IPv6";
+    trans_fam = (PROXY_PROTOCOL_V2_TRANSPORT_STREAM|PROXY_PROTOCOL_V2_FAMILY_INET6);
+    v2_len = PROXY_PROTOCOL_V2_ADDRLEN_INET6;
+
+    sub_pool = make_sub_pool(p);
+
+    if (pr_netaddr_get_family(src_addr) == AF_INET) {
+      src_addr = pr_netaddr_v4tov6(sub_pool, src_addr);
+    }
+
+    saddr = (struct sockaddr_in6 *) pr_netaddr_get_sockaddr(src_addr);
+    memcpy(&src_ipv6, &(saddr->sin6_addr), sizeof(src_ipv6));
+    v2_hdr[4].iov_base = (void *) &src_ipv6;
+    v2_hdr[4].iov_len = sizeof(src_ipv6);
+
+    if (pr_netaddr_get_family(dst_addr) == AF_INET) {
+      dst_addr = pr_netaddr_v4tov6(sub_pool, dst_addr);
+    }
+
+    saddr = (struct sockaddr_in6 *) pr_netaddr_get_sockaddr(dst_addr);
+    memcpy(&dst_ipv6, &(saddr->sin6_addr), sizeof(dst_ipv6));
+    v2_hdr[5].iov_base = (void *) &dst_ipv6;
+    v2_hdr[5].iov_len = sizeof(dst_ipv6);
+
+    /* Quell compiler warnings about unused variables. */
+    (void) src_ipv4;
+    (void) dst_ipv4;
+  }
+
+  v2_hdr[2].iov_base = (void *) &trans_fam;
+  v2_hdr[2].iov_len = sizeof(trans_fam);
+
+  v2_len = htons(v2_len);
+  v2_hdr[3].iov_base = (void *) &v2_len;
+  v2_hdr[3].iov_len = sizeof(v2_len);
+
+  src_port = htons(session.c->remote_port);
+  v2_hdr[6].iov_base = (void *) &src_port;
+  v2_hdr[6].iov_len = sizeof(src_port);
+
+  dst_port = htons(session.c->local_port);
+  v2_hdr[7].iov_base = (void *) &dst_port;
+  v2_hdr[7].iov_len = sizeof(dst_port);
+
+  pr_trace_msg(trace_channel, 9,
+    "sending PROXY protocol V2 message for %s %s#%u %s#%u to backend",
+    proto, pr_netaddr_get_ipstr(src_addr), (unsigned int) ntohs(src_port),
+    pr_netaddr_get_ipstr(dst_addr), (unsigned int) ntohs(dst_port));
+
+  res = writev_conn(conn, v2_hdr, 8);
+  xerrno = errno;
+
+  if (sub_pool != NULL) {
+    destroy_pool(sub_pool);
+  }
+
+  errno = xerrno;
   return res;
 }
