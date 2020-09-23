@@ -765,15 +765,29 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
     return -1;
   }
 
-  if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL) {
+  if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL_V1) {
     pr_trace_msg(trace_channel, 17,
-      "sending PROXY protocol message to %s#%u",
+      "sending PROXY V1 protocol message to %s#%u",
       pr_netaddr_get_ipstr(server_conn->remote_addr),
       ntohs(pr_netaddr_get_port(server_conn->remote_addr)));
 
-    if (proxy_conn_send_proxy(p, server_conn) < 0) {
+    if (proxy_conn_send_proxy_v1(p, server_conn) < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error sending PROXY message to %s#%u: %s",
+        "error sending PROXY V1 message to %s#%u: %s",
+        pr_netaddr_get_ipstr(server_conn->remote_addr),
+        ntohs(pr_netaddr_get_port(server_conn->remote_addr)),
+        strerror(errno));
+    }
+
+  } else if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL_V2) {
+    pr_trace_msg(trace_channel, 17,
+      "sending PROXY V2 protocol message to %s#%u",
+      pr_netaddr_get_ipstr(server_conn->remote_addr),
+      ntohs(pr_netaddr_get_port(server_conn->remote_addr)));
+
+    if (proxy_conn_send_proxy_v2(p, server_conn) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error sending PROXY V2 message to %s#%u: %s",
         pr_netaddr_get_ipstr(server_conn->remote_addr),
         ntohs(pr_netaddr_get_port(server_conn->remote_addr)),
         strerror(errno));

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2013-2016 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2013-2020 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -453,16 +453,16 @@ START_TEST (conn_timeout_cb_test) {
 }
 END_TEST
 
-START_TEST (conn_send_proxy_test) {
+START_TEST (conn_send_proxy_v1_test) {
   int res;
   conn_t *conn;
 
-  res = proxy_conn_send_proxy(NULL, NULL);
+  res = proxy_conn_send_proxy_v1(NULL, NULL);
   fail_unless(res < 0, "Failed to handle null pool");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
-  res = proxy_conn_send_proxy(p, NULL);
+  res = proxy_conn_send_proxy_v1(p, NULL);
   fail_unless(res < 0, "Failed to handle null conn");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
@@ -474,7 +474,7 @@ START_TEST (conn_send_proxy_test) {
     "127.0.0.1", FALSE);
 
   mark_point();
-  res = proxy_conn_send_proxy(p, conn);
+  res = proxy_conn_send_proxy_v1(p, conn);
   fail_unless(res < 0, "Failed to handle invalid conn");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
@@ -483,7 +483,7 @@ START_TEST (conn_send_proxy_test) {
     "::1", FALSE);
 
   mark_point();
-  res = proxy_conn_send_proxy(p, conn);
+  res = proxy_conn_send_proxy_v1(p, conn);
   fail_unless(res < 0, "Failed to handle invalid conn");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
@@ -492,7 +492,7 @@ START_TEST (conn_send_proxy_test) {
   session.c->remote_addr = pr_netaddr_get_addr(p, "127.0.0.1", FALSE);
 
   mark_point();
-  res = proxy_conn_send_proxy(p, conn);
+  res = proxy_conn_send_proxy_v1(p, conn);
   fail_unless(res < 0, "Failed to handle invalid conn");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
@@ -501,7 +501,7 @@ START_TEST (conn_send_proxy_test) {
   session.c->local_addr = pr_netaddr_get_addr(p, "127.0.0.1", FALSE);
 
   mark_point();
-  res = proxy_conn_send_proxy(p, conn);
+  res = proxy_conn_send_proxy_v1(p, conn);
   fail_unless(res < 0, "Failed to handle invalid conn");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
@@ -509,7 +509,74 @@ START_TEST (conn_send_proxy_test) {
   conn->remote_addr = pr_netaddr_get_addr(p, "127.0.0.1", FALSE);
 
   mark_point();
-  res = proxy_conn_send_proxy(p, conn);
+  res = proxy_conn_send_proxy_v1(p, conn);
+  fail_unless(res < 0, "Failed to handle invalid conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  pr_inet_close(p, conn);
+  pr_inet_close(p, session.c);
+  session.c = NULL;
+}
+END_TEST
+
+START_TEST (conn_send_proxy_v2_test) {
+  int res;
+  conn_t *conn;
+
+  res = proxy_conn_send_proxy_v2(NULL, NULL);
+  fail_unless(res < 0, "Failed to handle null pool");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  res = proxy_conn_send_proxy_v2(p, NULL);
+  fail_unless(res < 0, "Failed to handle null conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+
+  session.c = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
+  session.c->local_addr = session.c->remote_addr = pr_netaddr_get_addr(p,
+    "127.0.0.1", FALSE);
+
+  mark_point();
+  res = proxy_conn_send_proxy_v2(p, conn);
+  fail_unless(res < 0, "Failed to handle invalid conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  session.c->local_addr = session.c->remote_addr = pr_netaddr_get_addr(p,
+    "::1", FALSE);
+
+  mark_point();
+  res = proxy_conn_send_proxy_v2(p, conn);
+  fail_unless(res < 0, "Failed to handle invalid conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  session.c->local_addr = pr_netaddr_get_addr(p, "::1", FALSE);
+  session.c->remote_addr = pr_netaddr_get_addr(p, "127.0.0.1", FALSE);
+
+  mark_point();
+  res = proxy_conn_send_proxy_v2(p, conn);
+  fail_unless(res < 0, "Failed to handle invalid conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  session.c->remote_addr = pr_netaddr_get_addr(p, "::1", FALSE);
+  session.c->local_addr = pr_netaddr_get_addr(p, "127.0.0.1", FALSE);
+
+  mark_point();
+  res = proxy_conn_send_proxy_v2(p, conn);
+  fail_unless(res < 0, "Failed to handle invalid conn");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  conn->remote_addr = pr_netaddr_get_addr(p, "127.0.0.1", FALSE);
+
+  mark_point();
+  res = proxy_conn_send_proxy_v2(p, conn);
   fail_unless(res < 0, "Failed to handle invalid conn");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
@@ -542,7 +609,8 @@ Suite *tests_get_conn_suite(void) {
   tcase_add_test(testcase, conn_clear_username_test);
   tcase_add_test(testcase, conn_clear_password_test);
   tcase_add_test(testcase, conn_timeout_cb_test);
-  tcase_add_test(testcase, conn_send_proxy_test);
+  tcase_add_test(testcase, conn_send_proxy_v1_test);
+  tcase_add_test(testcase, conn_send_proxy_v2_test);
 
   suite_add_tcase(suite, testcase);
   return suite;

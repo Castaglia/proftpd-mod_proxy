@@ -619,18 +619,30 @@ my $TESTS = {
   # HiddenStore? (should have no effect)
   # TransferPriority?
 
-  proxy_reverse_proxy_protocol_ipv4 => {
+  proxy_reverse_proxy_protocol_v1_ipv4 => {
     order => ++$order,
     test_class => [qw(forking mod_proxy_protocol reverse)],
   },
 
-  proxy_reverse_proxy_protocol_ipv6 => {
+  proxy_reverse_proxy_protocol_v1_ipv6 => {
     order => ++$order,
     test_class => [qw(feature_ipv6 forking mod_proxy_protocol reverse)],
   },
 
-  # proxy_reverse_proxy_protocol_ipv6_useipv6_off
-  # proxy_reverse_proxy_protocol_unknown
+  proxy_reverse_proxy_protocol_v2_ipv4 => {
+    order => ++$order,
+    test_class => [qw(forking mod_proxy_protocol reverse)],
+  },
+
+  proxy_reverse_proxy_protocol_v2_ipv6 => {
+    order => ++$order,
+    test_class => [qw(feature_ipv6 forking mod_proxy_protocol reverse)],
+  },
+
+  # proxy_reverse_proxy_protocol_v1_ipv6_useipv6_off
+  # proxy_reverse_proxy_protocol_v1_unknown
+  # proxy_reverse_proxy_protocol_v2_ipv6_useipv6_off
+  # proxy_reverse_proxy_protocol_v2_unknown
 
   proxy_forward_connect => {
     order => ++$order,
@@ -20607,7 +20619,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_reverse_proxy_protocol_ipv4 {
+sub proxy_reverse_proxy_protocol_v1_ipv4 {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -20683,7 +20695,6 @@ sub proxy_reverse_proxy_protocol_ipv4 {
   AuthOrder mod_auth_file.c
 
   AllowOverride off
-  IdentLookups off
   TransferLog none
   WtmpLog off
 
@@ -20753,7 +20764,7 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_reverse_proxy_protocol_ipv6 {
+sub proxy_reverse_proxy_protocol_v1_ipv6 {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
@@ -20794,7 +20805,7 @@ sub proxy_reverse_proxy_protocol_ipv6 {
 
   my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyReverseServers} = "ftp://[::1]:$vhost_port";
-  $proxy_config->{ProxyOptions} = 'UseProxyProtocol';
+  $proxy_config->{ProxyOptions} = 'UseProxyProtocolV1';
 
   my $config = {
     PidFile => $pid_file,
@@ -20831,7 +20842,6 @@ sub proxy_reverse_proxy_protocol_ipv6 {
   AuthOrder mod_auth_file.c
 
   AllowOverride off
-  IdentLookups off
   TransferLog none
   WtmpLog off
 
@@ -20899,6 +20909,223 @@ EOC
   }
 
   unlink($log_file);
+}
+
+sub proxy_reverse_proxy_protocol_v2_ipv4 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyOptions} = 'UseProxyProtocolV2';
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:10 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy_protocol:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TransferLog none
+  WtmpLog off
+
+  <IfModule mod_proxy_protocol.c>
+    ProxyProtocolEngine on
+    ProxyProtocolVersion haproxyV2
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      sleep(1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($setup->{user}, $setup->{passwd});
+      $client->quit();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_proxy_protocol_v2_ipv6 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyReverseServers} = "ftp://[::1]:$vhost_port";
+  $proxy_config->{ProxyOptions} = 'UseProxyProtocolV2';
+  $proxy_config->{ProxySourceAddress} = '::1';
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:10 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy_protocol:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    SocketBindTight => 'on',
+    UseIPv6 => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost ::1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TransferLog none
+  WtmpLog off
+
+  <IfModule mod_proxy_protocol.c>
+    ProxyProtocolEngine on
+    ProxyProtocolVersion haproxyV2
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      sleep(1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($setup->{user}, $setup->{passwd});
+      $client->quit();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_reverse_config_reverseservers_json {

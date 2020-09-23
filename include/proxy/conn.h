@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy conn API
- * Copyright (c) 2012-2016 TJ Saunders
+ * Copyright (c) 2012-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -45,7 +45,8 @@ const char *proxy_conn_get_uri(const struct proxy_conn *pconn);
 const char *proxy_conn_get_username(const struct proxy_conn *pconn);
 const char *proxy_conn_get_password(const struct proxy_conn *pconn);
 int proxy_conn_get_tls(const struct proxy_conn *pconn);
-int proxy_conn_send_proxy(pool *p, conn_t *conn);
+int proxy_conn_send_proxy_v1(pool *p, conn_t *conn);
+int proxy_conn_send_proxy_v2(pool *p, conn_t *conn);
 void proxy_conn_free(const struct proxy_conn *pconn);
 
 #endif /* MOD_PROXY_CONN_H */
