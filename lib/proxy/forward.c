@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy forward proxy implementation
- * Copyright (c) 2012-2016 TJ Saunders
+ * Copyright (c) 2012-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -158,6 +158,7 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
   int banner_ok = TRUE, use_tls, xerrno = 0;
   const pr_netaddr_t *dst_addr;
   array_header *other_addrs = NULL;
+  char port_text[32];
 
   dst_addr = proxy_sess->dst_addr;
   other_addrs = proxy_sess->other_addrs;
@@ -305,6 +306,18 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
   }
 
   (void) proxy_ftp_sess_send_host(p, proxy_sess);
+
+  /* Populate the session notes about this connection. */
+  memset(port_text, '\0', sizeof(port_text));
+  pr_snprintf(port_text, sizeof(port_text)-1, "%d",
+    proxy_conn_get_port(proxy_sess->dst_pconn));
+  (void) pr_table_add_dup(session.notes, "mod_proxy.backend-ip",
+    pr_netaddr_get_ipstr(dst_addr), 0);
+  (void) pr_table_remove(session.notes, "mod_proxy.backend-port", NULL);
+  (void) pr_table_add_dup(session.notes, "mod_proxy.backend-port",
+    port_text, 0);
+  (void) pr_table_add_dup(session.notes, "mod_proxy.backend-url",
+    proxy_conn_get_uri(proxy_sess->dst_pconn), 0);
 
   proxy_sess_state |= PROXY_SESS_STATE_CONNECTED;
   return 0;

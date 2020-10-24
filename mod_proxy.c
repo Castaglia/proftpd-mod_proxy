@@ -2311,12 +2311,22 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     xfer_direction = PR_NETIO_IO_WR;
 
     session.xfer.path = pr_table_get(cmd->notes, "mod_xfer.store-path", NULL);
+    if (session.xfer.path == NULL) {
+      /* Add this note for the Jot API, and resolving %F/%f variables. */
+      (void) pr_table_add_dup(cmd->notes, "mod_xfer.store-path", cmd->arg, 0);
+      session.xfer.path = cmd->arg;
+    }
 
   } else {
     /* Downloading, i.e. reading from backend data conn.*/
     xfer_direction = PR_NETIO_IO_RD;
 
     session.xfer.path = pr_table_get(cmd->notes, "mod_xfer.retr-path", NULL);
+    if (session.xfer.path == NULL) {
+      /* Add this note for the Jot API, and resolving %F/%f variables. */
+      (void) pr_table_add_dup(cmd->notes, "mod_xfer.retr-path", cmd->arg, 0);
+      session.xfer.path = cmd->arg;
+    }
   }
 
   res = proxy_data_prepare_conns(proxy_sess, cmd, &frontend_conn,
@@ -4820,6 +4830,9 @@ static int proxy_sess_init(void) {
     errno = EPERM;
     return -1;
   }
+
+  /* Provide default note values. */
+  (void) pr_table_add_dup(session.notes, "mod_proxy.backend-port", "0", 0);
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxySourceAddress", FALSE);
   if (c != NULL) {
