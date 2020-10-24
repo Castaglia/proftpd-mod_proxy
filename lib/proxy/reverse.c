@@ -708,6 +708,7 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
   const pr_netaddr_t *dst_addr;
   array_header *other_addrs = NULL;
   uint64_t connecting_ms, connected_ms;
+  char port_text[32];
 
   pconn = get_reverse_server_conn(p, proxy_sess, &backend_id, connect_data);
   if (pconn == NULL) {
@@ -936,6 +937,18 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
   }
 
   (void) proxy_ftp_sess_send_host(p, proxy_sess);
+
+  /* Populate the session notes about this connection. */
+  memset(port_text, '\0', sizeof(port_text));
+  pr_snprintf(port_text, sizeof(port_text)-1, "%d",
+    proxy_conn_get_port(proxy_sess->dst_pconn));
+  (void) pr_table_add_dup(session.notes, "mod_proxy.backend-ip",
+    pr_netaddr_get_ipstr(dst_addr), 0);
+  (void) pr_table_remove(session.notes, "mod_proxy.backend-port", NULL);
+  (void) pr_table_add_dup(session.notes, "mod_proxy.backend-port",
+    port_text, 0);
+  (void) pr_table_add_dup(session.notes, "mod_proxy.backend-url",
+    proxy_conn_get_uri(proxy_sess->dst_pconn), 0);
 
   proxy_sess_state |= PROXY_SESS_STATE_CONNECTED;
   return 0;
