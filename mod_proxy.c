@@ -4432,8 +4432,11 @@ static void proxy_exit_ev(const void *event_data, void *user_data) {
   proxy_sess = (struct proxy_session *) pr_table_get(session.notes,
     "mod_proxy.proxy-session", NULL);
   if (proxy_sess != NULL) {
+    /* proxy_sess->frontend_ctrl_conn is session.c; let the core engine
+     * close that connection.  If we try to close it here via pr_inet_close(),
+     * we risk segfaults due to double-free of the memory, stale pointers, etc.
+     */
     if (proxy_sess->frontend_ctrl_conn != NULL) {
-      pr_inet_close(proxy_sess->pool, proxy_sess->frontend_ctrl_conn);
       proxy_sess->frontend_ctrl_conn = NULL;
     }
 
