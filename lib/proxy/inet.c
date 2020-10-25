@@ -72,14 +72,21 @@ void proxy_inet_close(pool *p, conn_t *conn) {
      * functions for closing, too.
      */
 
+    /* Shutdowns first, then closes. */
     if (conn->instrm != NULL) {
       proxy_netio_shutdown(conn->instrm, 0);
+    }
+
+    if (conn->outstrm != NULL) {
+      proxy_netio_shutdown(conn->outstrm, 1);
+    }
+
+    if (conn->instrm != NULL) {
       proxy_netio_close(conn->instrm);
       conn->instrm = NULL;
     }
 
     if (conn->outstrm != NULL) {
-      proxy_netio_shutdown(conn->outstrm, 1);
       proxy_netio_close(conn->outstrm);
       conn->outstrm = NULL;
     }

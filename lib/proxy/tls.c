@@ -2504,6 +2504,9 @@ static int get_disabled_protocols(unsigned int supported_protocols) {
 # ifdef SSL_OP_NO_TLSv1_2
   disabled_protocols |= SSL_OP_NO_TLSv1_2;
 # endif
+# ifdef SSL_OP_NO_TLSv1_3
+  disabled_protocols |= SSL_OP_NO_TLSv1_3;
+# endif
 
   /* Now, based on the given bitset of supported protocols, clear the
    * necessary bits.
@@ -3749,7 +3752,7 @@ static void tls_tlsext_cb(SSL *ssl, int server, int type,
     case TLSEXT_TYPE_supported_versions: {
       BIO *bio = NULL;
       char *ext_info = NULL;
-      long ext_infolen;
+      long ext_infolen = 0;
 
       /* If we are the server responding, we only indicate the selected
        * protocol version.  Otherwise, we are a client indicating the range
@@ -3819,7 +3822,7 @@ static void tls_tlsext_cb(SSL *ssl, int server, int type,
     case TLSEXT_TYPE_psk_kex_modes: {
       BIO *bio = NULL;
       char *ext_info = NULL;
-      long ext_infolen;
+      long ext_infolen = 0;
 
       extension_name = "PSK KEX modes";
 
