@@ -2387,7 +2387,8 @@ int proxy_tls_set_tls(int engine) {
 #ifdef PR_USE_OPENSSL
   if (engine != PROXY_TLS_ENGINE_ON &&
       engine != PROXY_TLS_ENGINE_OFF &&
-      engine != PROXY_TLS_ENGINE_AUTO) {
+      engine != PROXY_TLS_ENGINE_AUTO &&
+      engine != PROXY_TLS_ENGINE_IMPLICIT) {
     errno = EINVAL;
     return -1;
   }

@@ -45,6 +45,11 @@ my $TESTS = {
     test_class => [qw(forking mod_tls reverse)],
   },
 
+  proxy_reverse_backend_tls_implicit_login => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls reverse)],
+  },
+
   proxy_reverse_backend_tls_login_cached_session => {
     order => ++$order,
     test_class => [qw(forking mod_tls mod_tls_shmcache reverse)],
@@ -151,6 +156,11 @@ my $TESTS = {
   },
 
   proxy_forward_backend_tls_login => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_backend_tls_implicit_login => {
     order => ++$order,
     test_class => [qw(forking mod_tls forward)],
   },
@@ -1195,6 +1205,100 @@ EOC
   }
 
   unlink($log_file);
+}
+
+sub proxy_reverse_backend_tls_implicit_login {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
+  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file}, 990);
+  $proxy_config->{ProxyReverseServers} = 'ftps://demo:password@test.rebex.net:990';
+  $proxy_config->{ProxyTimeoutConnect} = '10s';
+  $proxy_config->{ProxyTLSEngine} = 'auto';
+  $proxy_config->{ProxyTLSCACertificateFile} = $ca_file;
+  $proxy_config->{ProxyTLSVerifyServer} = 'off';
+
+  if ($ENV{TEST_VERBOSE}) {
+    $proxy_config->{ProxyTLSOptions} = 'EnableDiags';
+  }
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.db:20 proxy.netio:20 proxy.tls:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.ftp.sess:20 proxy.netio:20 proxy.tls:20 netio:20 tls:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Give the server a chance to start up
+      sleep(2);
+
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($setup->{user}, $setup->{passwd});
+      $client->quit();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 # TODO: Note that this test is used for manually reviewing the generated logs;
@@ -5400,6 +5504,96 @@ EOC
   }
 
   unlink($log_file);
+}
+
+sub proxy_forward_backend_tls_implicit_login {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
+  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+
+  my $proxy_config = get_forward_proxy_config($tmpdir, $setup->{log_file}, 990);
+  $proxy_config->{ProxyForwardMethod} = 'user@host';
+  $proxy_config->{ProxyTLSEngine} = 'on';
+  $proxy_config->{ProxyTLSCACertificateFile} = $ca_file;
+  $proxy_config->{ProxyTLSVerifyServer} = 'off';
+  $proxy_config->{ProxyRetryCount} = 1;
+
+  if ($ENV{TEST_VERBOSE}) {
+    $proxy_config->{ProxyTLSOptions} = 'EnableDiags';
+  }
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.forward:20 proxy.netio:20 proxy.tls:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 netio:20 tls:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  require Net::FTPSSL;
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Give the server a chance to start up
+      sleep(2);
+
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login('demo@test.rebex.net:990', 'password');
+      $client->quit();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_forward_backend_tls_login_failed_unknown_ca {

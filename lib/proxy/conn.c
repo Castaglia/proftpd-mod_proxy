@@ -143,13 +143,18 @@ const struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
     return NULL;
   }
 
-  if (strncmp(proto, "ftps", 5) == 0) {
+  if (strcmp(proto, "ftps") == 0) {
     /* If the 'ftps' scheme is used, then FTPS is REQUIRED for connections
      * to this server.
      */
     use_tls = PROXY_TLS_ENGINE_ON;
 
-  } else if (strncmp(proto, "sftp", 5) == 0) {
+    /* We automatically (and only) use implicit FTPS for port 990. */
+    if (remote_port == PROXY_TLS_IMPLICIT_FTPS_PORT) {
+      use_tls = PROXY_TLS_ENGINE_IMPLICIT;
+    }
+
+  } else if (strcmp(proto, "sftp") == 0) {
     /* As might be obvious, do not try to use TLS against an SSH2/SFTP
      * server.
      */
@@ -469,13 +474,21 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
 
   if (res == 0) {
     pr_netio_stream_t *nstrm;
-    int connected = FALSE, nstrm_mode = PR_NETIO_IO_RD;
+    int connected = FALSE, nstrm_mode = PR_NETIO_IO_RD, use_tls;
 
     if ((proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL_V1) ||
         (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL_V2)) {
       /* Rather than waiting for the stream to be readable (because the
        * other end sent us something), wait for the stream to be writable
        * so that we can send something to the other end).
+       */
+      nstrm_mode = PR_NETIO_IO_WR;
+    }
+
+    use_tls = proxy_tls_using_tls();
+    if (use_tls == PROXY_TLS_ENGINE_IMPLICIT) {
+      /* For implicit FTPS connections, we will be initiating the TLS
+       * handshake, and thus we need to wait for the stream to be writable.
        */
       nstrm_mode = PR_NETIO_IO_WR;
     }
@@ -499,7 +512,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
 
     proxy_netio_set_poll_interval(nstrm, 1);
 
-    while (!connected) {
+    while (connected == FALSE) {
       int polled;
 
       pr_signals_handle();

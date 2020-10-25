@@ -648,18 +648,20 @@ The <code>ProxyReverseServers</code> directive configures the list of servers
 to be used as the backend servers for reverse proxying.
 
 <p>
-Each server <b>must</b> be configured as a <i>URL</i>.  Only the "ftp" scheme
-is currently supported.  If not specified, the port will be 21.  IPv6 addresses
-<b>must</b> be enclosed within square brackets.  Thus, for example, the
-following are all valid URLs:
+Each server <b>must</b> be configured as a <i>URL</i>.  Only the "ftp" and
+"ftps" schemes are currently supported.  If not specified, the port will be
+21.  IPv6 addresses <b>must</b> be enclosed within square brackets.  Thus, for
+example, the following are all valid URLs:
 <pre>
   ftp://<em>ftp1.example.com:2121</em>
   ftp://<em>1.2.3.4</em>
   ftp://<em>[::ffff:6.7.8.9]:2121</em>
+  ftps://<em>ftp2.example.com</em>
+  ftps://<em>ftp3.example.com:990</em>
 </pre>
 And using them all in the configuration would look like:
 <pre>
-  ProxyReverseServers ftp://ftp1.example.com:2121 ftp://1.2.3.4 ftp://[::ffff:6.7.8.9]:2121
+  ProxyReverseServers ftp://ftp1.example.com:2121 ftps://1.2.3.4 ftp://[::ffff:6.7.8.9]:2121
 </pre>
 
 <p>
@@ -1550,6 +1552,27 @@ The <em>sticky</em> policies are:
 </ul>
 
 <p>
+<b>Implicit FTPS Support</b><br>
+The <code>mod_proxy</code> module includes support for using <a href="https://en.wikipedia.org/wiki/FTPS#Implicit">implicit FTPS</a> with backend servers,
+both when forward and reverse proxying.
+
+<p>
+In order to use implicit FTPS for a reverse proxy server, the URI syntax
+must be used in a <code>ProxyReverseServers</code> directive; the scheme
+<b>must</b> be "ftps" <i>and</b> the port must be explicitly specified as 990,
+thus:
+<code>
+  ProxyReverseServers ftps://ftp.example.com:990
+</code>
+
+<p>
+When forward proxying, the client must request the destination server <i>and</i>
+specify a port of 990, <i>e.g.</i>:
+<code>
+  USER user@ftp.example.com:990
+</code>
+
+<p>
 <b>SFTP/SCP Support</b><br>
 The <code>mod_proxy</code> module only works for FTP/FTPS sessions; it does
 <b>not</b> currently support/handle SFTP/SCP sessions.
@@ -1601,7 +1624,6 @@ The following lists the features I hope to add to <code>mod_proxy</code>,
 according to need, demand, inclination, and time:
 <ul>
   <li><code>MODE Z</code> support
-  <li>Directory format translation (<i>e.g.</i> <code>LIST</code> to <code>MLSD</code>)
   <li>SFTP/SCP support
 </ul>
 
