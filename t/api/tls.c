@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2015-2017 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2015-2020 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -249,6 +249,10 @@ START_TEST (tls_using_tls_test) {
   res = proxy_tls_set_tls(PROXY_TLS_ENGINE_AUTO);
   tls = proxy_tls_using_tls();
   fail_unless(tls == PROXY_TLS_ENGINE_AUTO, "Expected TLS auto, got %d", tls);
+
+  res = proxy_tls_set_tls(PROXY_TLS_ENGINE_IMPLICIT);
+  tls = proxy_tls_using_tls();
+  fail_unless(tls == PROXY_TLS_ENGINE_IMPLICIT, "Expected TLS implicit, got %d", tls);
 #endif /* PR_USE_OPENSSL */
 }
 END_TEST

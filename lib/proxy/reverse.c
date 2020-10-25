@@ -698,9 +698,52 @@ static const struct proxy_conn *get_reverse_server_conn(pool *p,
   return pconn;
 }
 
+static int reverse_tls_postopen(pool *p, struct proxy_session *proxy_sess,
+    conn_t *server_conn) {
+  int xerrno;
+
+  if (proxy_netio_postopen(server_conn->instrm) < 0) {
+    xerrno = errno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "postopen error for backend control connection input stream: %s",
+      strerror(xerrno));
+    proxy_inet_close(session.pool, server_conn);
+    proxy_sess->backend_ctrl_conn = NULL;
+
+    pr_response_block(FALSE);
+
+    /* Note that we explicitly return EINVAL here, to indicate to the calling
+     * code in mod_proxy that it should return e.g. "Login incorrect."
+     */
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (proxy_netio_postopen(server_conn->outstrm) < 0) {
+    xerrno = errno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "postopen error for backend control connection output stream: %s",
+      strerror(xerrno));
+    proxy_inet_close(session.pool, server_conn);
+    proxy_sess->backend_ctrl_conn = NULL;
+
+    pr_response_block(FALSE);
+
+    /* Note that we explicitly return EINVAL here, to indicate to the calling
+     * code in mod_proxy that it should return e.g. "Login incorrect."
+     */
+    errno = EINVAL;
+    return -1;
+  }
+
+  return 0;
+}
+
 static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
     const void *connect_data) {
-  int backend_id = -1, use_tls, xerrno = 0;
+  int backend_id = -1, uri_tls, use_tls, xerrno = 0;
   conn_t *server_conn = NULL;
   pr_response_t *resp = NULL;
   unsigned int resp_nlines = 0;
@@ -719,6 +762,14 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
   proxy_sess->dst_addr = dst_addr;
   proxy_sess->dst_pconn = pconn;
   proxy_sess->other_addrs = other_addrs;
+
+  uri_tls = proxy_conn_get_tls(pconn);
+  if (uri_tls == PROXY_TLS_ENGINE_IMPLICIT) {
+    pr_trace_msg(trace_channel, 9, "%s#%u requesting, using implicit FTPS",
+      pr_netaddr_get_ipstr(dst_addr),
+      (unsigned int) ntohs(pr_netaddr_get_port(dst_addr)));
+    proxy_tls_set_tls(uri_tls);
+  }
 
   pr_gettimeofday_millis(&connecting_ms);
   server_conn = proxy_conn_get_server_conn(p, proxy_sess, dst_addr);
@@ -795,14 +846,21 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
     }
   }
 
-  /* XXX Support/send a CLNT command of our own?  Configurable via e.g.
-   * "UserAgent" string?
-   */
-
   proxy_sess->frontend_ctrl_conn = session.c;
   proxy_sess->backend_ctrl_conn = server_conn;
 
   use_tls = proxy_tls_using_tls();
+
+  /* Handle implicit FTPS connects. */
+  if (use_tls == PROXY_TLS_ENGINE_IMPLICIT) {
+    if (reverse_tls_postopen(p, proxy_sess, server_conn) < 0) {
+      return -1;
+    }
+  }
+
+  /* XXX Support/send a CLNT command of our own?  Configurable via e.g.
+   * "UserAgent" string?
+   */
 
   resp = proxy_ftp_ctrl_recv_resp(p, server_conn, &resp_nlines, 0);
   if (resp == NULL) {
@@ -861,7 +919,8 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
 
   pr_response_block(TRUE);
 
-  if (use_tls != PROXY_TLS_ENGINE_OFF) {
+  if (use_tls != PROXY_TLS_ENGINE_OFF &&
+      use_tls != PROXY_TLS_ENGINE_IMPLICIT) {
     if (proxy_ftp_sess_send_auth_tls(p, proxy_sess) < 0 &&
         errno != ENOSYS) {
       xerrno = errno;
@@ -880,40 +939,11 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
     use_tls = proxy_tls_using_tls();
   }
 
-  if (proxy_netio_postopen(server_conn->instrm) < 0) {
-    xerrno = errno;
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "postopen error for backend control connection input stream: %s",
-      strerror(xerrno));
-    proxy_inet_close(session.pool, server_conn);
-    proxy_sess->backend_ctrl_conn = NULL;
-
-    pr_response_block(FALSE);
-
-    /* Note that we explicitly return EINVAL here, to indicate to the calling
-     * code in mod_proxy that it should return e.g. "Login incorrect."
-     */
-    errno = EINVAL;
-    return -1;
-  }
-
-  if (proxy_netio_postopen(server_conn->outstrm) < 0) {
-    xerrno = errno;
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "postopen error for backend control connection output stream: %s",
-      strerror(xerrno));
-    proxy_inet_close(session.pool, server_conn);
-    proxy_sess->backend_ctrl_conn = NULL;
-
-    pr_response_block(FALSE);
-
-    /* Note that we explicitly return EINVAL here, to indicate to the calling
-     * code in mod_proxy that it should return e.g. "Login incorrect."
-     */
-    errno = EINVAL;
-    return -1;
+  if (use_tls != PROXY_TLS_ENGINE_OFF &&
+      use_tls != PROXY_TLS_ENGINE_IMPLICIT) {
+    if (reverse_tls_postopen(p, proxy_sess, server_conn) < 0) {
+      return -1;
+    }
   }
 
   if (use_tls != PROXY_TLS_ENGINE_OFF) {

@@ -307,7 +307,13 @@ int proxy_ftp_sess_send_auth_tls(pool *p,
   use_tls = proxy_tls_using_tls();
   if (use_tls == PROXY_TLS_ENGINE_OFF) {
     pr_trace_msg(trace_channel, 19,
-      "TLS support not enabled/desired, skipping");
+      "TLS support not enabled/desired, skipping 'AUTH TLS' command");
+    return 0;
+  }
+
+  if (use_tls == PROXY_TLS_ENGINE_IMPLICIT) {
+    pr_trace_msg(trace_channel, 19,
+      "implicit FTPS support requested, skipping 'AUTH TLS' command");
     return 0;
   }
 

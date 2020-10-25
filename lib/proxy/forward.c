@@ -152,6 +152,41 @@ int proxy_forward_have_authenticated(cmd_rec *cmd) {
   return authd;
 }
 
+static int forward_tls_postopen(pool *p, struct proxy_session *proxy_sess,
+    conn_t *server_conn, pr_response_t **resp) {
+  int xerrno;
+
+  if (proxy_netio_postopen(server_conn->instrm) < 0) {
+    xerrno = errno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "postopen error for backend control connection input stream: %s",
+      strerror(xerrno));
+    proxy_inet_close(session.pool, server_conn);
+    proxy_sess->backend_ctrl_conn = NULL;
+
+    *resp = NULL;
+    errno = xerrno;
+    return -1;
+  }
+
+  if (proxy_netio_postopen(server_conn->outstrm) < 0) {
+    xerrno = errno;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "postopen error for backend control connection output stream: %s",
+      strerror(xerrno));
+    proxy_inet_close(session.pool, server_conn);
+    proxy_sess->backend_ctrl_conn = NULL;
+
+    *resp = NULL;
+    errno = xerrno;
+    return -1;
+  }
+
+  return 0;
+}
+
 static int forward_connect(pool *p, struct proxy_session *proxy_sess,
     pr_response_t **resp, unsigned int *resp_nlines) {
   conn_t *server_conn = NULL;
@@ -162,6 +197,14 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
 
   dst_addr = proxy_sess->dst_addr;
   other_addrs = proxy_sess->other_addrs;
+
+  /* If the destination port is 990, assume implicit FTPS. */
+  if (ntohs(pr_netaddr_get_port(dst_addr)) == PROXY_TLS_IMPLICIT_FTPS_PORT) {
+    pr_trace_msg(trace_channel, 9, "%s#%u requesting, using implicit FTPS",
+      pr_netaddr_get_ipstr(dst_addr),
+      (unsigned int) ntohs(pr_netaddr_get_port(dst_addr)));
+    proxy_tls_set_tls(PROXY_TLS_ENGINE_IMPLICIT);
+  }
 
   server_conn = proxy_conn_get_server_conn(p, proxy_sess, dst_addr);
   if (server_conn == NULL) {
@@ -201,12 +244,21 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
     return -1;
   }
 
+  proxy_sess->frontend_ctrl_conn = session.c;
+  proxy_sess->backend_ctrl_conn = server_conn;
+
+  use_tls = proxy_tls_using_tls();
+
+  /* Handle implicit FTPS connects. */
+  if (use_tls == PROXY_TLS_ENGINE_IMPLICIT) {
+    if (forward_tls_postopen(p, proxy_sess, server_conn, resp) < 0) {
+      return -1;
+    }
+  }
+
   /* XXX Support/send a CLNT command of our own?  Configurable via e.g.
    * "UserAgent" string?
    */
-
-  proxy_sess->frontend_ctrl_conn = session.c;
-  proxy_sess->backend_ctrl_conn = server_conn;
 
   /* Read the response from the backend server. */
   *resp = proxy_ftp_ctrl_recv_resp(p, proxy_sess->backend_ctrl_conn,
@@ -251,7 +303,8 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
   }
 
   use_tls = proxy_tls_using_tls();
-  if (use_tls != PROXY_TLS_ENGINE_OFF) {
+  if (use_tls != PROXY_TLS_ENGINE_OFF &&
+      use_tls != PROXY_TLS_ENGINE_IMPLICIT) {
     if (proxy_ftp_sess_send_auth_tls(p, proxy_sess) < 0 &&
         errno != ENOSYS) {
       xerrno = errno;
@@ -270,32 +323,11 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
     use_tls = proxy_tls_using_tls();
   }
 
-  if (proxy_netio_postopen(server_conn->instrm) < 0) {
-    xerrno = errno;
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "postopen error for backend control connection input stream: %s",
-      strerror(xerrno));
-    proxy_inet_close(session.pool, server_conn);
-    proxy_sess->backend_ctrl_conn = NULL;
-
-    *resp = NULL;
-    errno = xerrno;
-    return -1;
-  }
-
-  if (proxy_netio_postopen(server_conn->outstrm) < 0) {
-    xerrno = errno;
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "postopen error for backend control connection output stream: %s",
-      strerror(xerrno));
-    proxy_inet_close(session.pool, server_conn);
-    proxy_sess->backend_ctrl_conn = NULL;
-
-    *resp = NULL;
-    errno = xerrno;
-    return -1;
+  if (use_tls != PROXY_TLS_ENGINE_OFF &&
+      use_tls != PROXY_TLS_ENGINE_IMPLICIT) {
+    if (forward_tls_postopen(p, proxy_sess, server_conn, resp) < 0) {
+      return -1;
+    }
   }
 
   if (use_tls != PROXY_TLS_ENGINE_OFF) {

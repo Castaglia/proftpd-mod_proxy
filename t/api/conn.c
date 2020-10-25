@@ -311,6 +311,7 @@ START_TEST (conn_get_tls_test) {
   const char *url;
   const struct proxy_conn *pconn;
 
+  mark_point();
   tls = proxy_conn_get_tls(NULL);
   fail_unless(tls < 0, "Got TLS from null pconn unexpectedly");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
@@ -321,10 +322,12 @@ START_TEST (conn_get_tls_test) {
   fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
     url);
 
+  mark_point();
   tls = proxy_conn_get_tls(pconn);
   fail_unless(tls == PROXY_TLS_ENGINE_AUTO, "Expected TLS auto, got %d", tls);
   proxy_conn_free(pconn);
 
+  mark_point();
   url = "ftps://127.0.0.1:21";
   pconn = proxy_conn_create(p, url);
   fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
@@ -332,7 +335,17 @@ START_TEST (conn_get_tls_test) {
 
   tls = proxy_conn_get_tls(pconn);
   fail_unless(tls == PROXY_TLS_ENGINE_ON, "Expected TLS on, got %d", tls);
+  proxy_conn_free(pconn);
 
+  mark_point();
+  url = "ftps://127.0.0.1:990";
+  pconn = proxy_conn_create(p, url);
+  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
+    url);
+
+  tls = proxy_conn_get_tls(pconn);
+  fail_unless(tls == PROXY_TLS_ENGINE_IMPLICIT,
+    "Expected TLS implicit, got %d", tls);
   proxy_conn_free(pconn);
 }
 END_TEST

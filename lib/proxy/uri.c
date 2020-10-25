@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy URI implementation
- * Copyright (c) 2012-2016 TJ Saunders
+ * Copyright (c) 2012-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -286,11 +286,11 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
   if (ptr2 == NULL) {
     *host = uri_parse_host(p, uri, ptr, NULL);
 
-    if (strncmp(*scheme, "ftp", 4) == 0 ||
-        strncmp(*scheme, "ftps", 5) == 0) {
+    if (strcmp(*scheme, "ftp") == 0 ||
+        strcmp(*scheme, "ftps") == 0) {
       *port = 21;
 
-    } else if (strncmp(*scheme, "sftp", 5) == 0) {
+    } else if (strcmp(*scheme, "sftp") == 0) {
       *port = 22;
 
     } else {
@@ -312,11 +312,11 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
   if (ptr2 == NULL) {
     /* XXX How to configure "implicit" FTPS, if at all? */
 
-    if (strncmp(*scheme, "ftp", 4) == 0 ||
-        strncmp(*scheme, "ftps", 5) == 0) {
+    if (strcmp(*scheme, "ftp") == 0 ||
+        strcmp(*scheme, "ftps") == 0) {
       *port = 21;
 
-    } else if (strncmp(*scheme, "sftp", 5) == 0) {
+    } else if (strcmp(*scheme, "sftp") == 0) {
       *port = 22;
 
     } else {
