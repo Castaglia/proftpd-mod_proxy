@@ -1393,8 +1393,13 @@ for supporting forward proxying:
 
     ProxyRole forward
     ProxyForwardMethod user@host
-    ProxyForwardTo ^ftp\.example\.com [NC]
+    ProxyForwardTo ^ftp\.example\.com\:21$ [NC]
   &lt;/IfModule&gt;
+</pre>
+If the configured <code>ProxyForwardTo</code> pattern is <em>not</em> met,
+the following will be logged in the <code>ProxyLog</code>:
+<pre>
+mod_proxy/0.7[16151]: host/port 'server.example.org:2121' did not match ProxyForwardTo ^ftp\.example\.com\:21$, rejecting
 </pre>
 
 <p>
