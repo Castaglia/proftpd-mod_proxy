@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP control conn routines
- * Copyright (c) 2012-2016 TJ Saunders
+ * Copyright (c) 2012-2020 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,6 +26,7 @@
 
 #include "proxy/netio.h"
 #include "proxy/ftp/ctrl.h"
+#include "proxy/tls.h"
 
 static const char *trace_channel = "proxy.ftp.ctrl";
 
@@ -364,6 +365,84 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
     "received '%s%s%s' response from backend to frontend",
     resp->num, multiline ? "" : " ", resp->msg);
   return resp;
+}
+
+#ifndef TELNET_DM
+# define TELNET_DM	242
+#endif /* TELNET_DM */
+
+#ifndef TELNET_IAC
+# define TELNET_IAC	255
+#endif /* TELNET_IAC */
+
+#ifndef TELNET_IP
+# define TELNET_IP	244
+#endif /* TELNET_IP */
+
+int proxy_ftp_ctrl_send_abort(pool *p, conn_t *ctrl_conn, cmd_rec *cmd) {
+  int fd, res, use_tls, xerrno;
+  unsigned char buf[7];
+
+  if (p == NULL ||
+      ctrl_conn == NULL ||
+      cmd == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  /* If we are proxying the ABOR command, preface it with the Telnet "Sync"
+   * mechanism, using OOB data.  If the receiving server supports this, it can
+   * generate a signal to interrupt any IO occurring on the backend server
+   * (such as when sendfile(2) is used).
+   *
+   * Note that such Telnet codes can only be used if we are NOT using TLS
+   * on the backend control connection.
+   */
+  use_tls = proxy_tls_using_tls();
+  if (use_tls != PROXY_TLS_ENGINE_OFF) {
+    return proxy_ftp_ctrl_send_cmd(p, ctrl_conn, cmd);
+  }
+
+  fd = PR_NETIO_FD(ctrl_conn->outstrm);
+
+  buf[0] = TELNET_IAC;
+  buf[1] = TELNET_IP;
+  buf[2] = TELNET_IAC;
+
+  pr_trace_msg(trace_channel, 9,
+    "sending Telnet abort code out-of-band to backend");
+  res = send(fd, &buf, 3, MSG_OOB);
+  xerrno = errno;
+
+  if (res < 0) {
+    pr_trace_msg(trace_channel, 1,
+      "error sending Telnet abort code out-of-band to backend: %s",
+      strerror(xerrno));
+    errno = xerrno;
+    return -1;
+  }
+
+  buf[0] = TELNET_DM;
+  buf[1] = 'A';
+  buf[2] = 'B';
+  buf[3] = 'O';
+  buf[4] = 'R';
+  buf[5] = '\r';
+  buf[6] = '\n';
+
+  pr_trace_msg(trace_channel, 9,
+    "proxied %s command from frontend to backend", (char *) cmd->argv[0]);
+  res = send(fd, &buf, 7, 0);
+  xerrno = errno;
+
+  if (res < 0) {
+    pr_trace_msg(trace_channel, 1,
+      "error sending Telnet DM code to backend: %s", strerror(xerrno));
+    errno = xerrno;
+    return -1;
+  }
+
+  return 0;
 }
 
 int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *ctrl_conn, cmd_rec *cmd) {
