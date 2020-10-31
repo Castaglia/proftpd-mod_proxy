@@ -84,27 +84,11 @@ static void proxy_timeoutidle_ev(const void *, void *);
 static void proxy_timeoutnoxfer_ev(const void *, void *);
 static void proxy_timeoutstalled_ev(const void *, void *);
 
-MODRET proxy_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess,
+static int recv_resp(cmd_rec *cmd, struct proxy_session *proxy_sess,
     pr_response_t **rp) {
   int res, xerrno = 0;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
-
-  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    cmd);
-  if (res < 0) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", (char *) cmd->argv[0],
-      strerror(xerrno));
-
-    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
-      strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return PR_ERROR(cmd);
-  }
 
   resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
     &resp_nlines, 0);
@@ -133,7 +117,7 @@ MODRET proxy_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess,
     pr_response_flush(&resp_err_list);
 
     errno = xerrno;
-    return PR_ERROR(cmd);
+    return -1;
   }
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
@@ -143,15 +127,90 @@ MODRET proxy_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess,
 
     pr_response_block(TRUE);
     errno = xerrno;
-    return PR_ERROR(cmd);
+    return -1;
   }
-
-  pr_response_block(TRUE);
 
   if (rp != NULL) {
     *rp = resp;
   }
 
+  return 0;
+}
+
+MODRET proxy_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess,
+    pr_response_t **rp) {
+  int res, xerrno = 0;
+
+  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    cmd);
+  xerrno = errno;
+
+  if (res < 0) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error sending %s to backend: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
+
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  if (recv_resp(cmd, proxy_sess, rp) < 0) {
+    return PR_ERROR(cmd);
+  }
+
+  pr_response_block(TRUE);
+  return PR_HANDLED(cmd);
+}
+
+MODRET proxy_abort(cmd_rec *cmd, struct proxy_session *proxy_sess,
+    pr_response_t **rp) {
+  int res, xerrno = 0;
+
+  res = proxy_ftp_ctrl_send_abort(cmd->tmp_pool,
+    proxy_sess->backend_ctrl_conn, cmd);
+  xerrno = errno;
+
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error sending %s to backend: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
+
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return PR_ERROR(cmd);
+  }
+
+  if (proxy_sess->backend_data_conn != NULL) {
+    pr_trace_msg(trace_channel, 19, "received ABOR on frontend connection, "
+      "closing backend data connection");
+    proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_sess->backend_data_conn = NULL;
+  }
+
+  if (recv_resp(cmd, proxy_sess, rp) < 0) {
+    return PR_ERROR(cmd);
+  }
+
+  /* The ABOR command might have two responses, as when there is a data
+   * transfer in progress: one response for the data transfer, and one for
+   * handling the ABOR command itself.
+   */
+  if ((proxy_sess->frontend_sess_flags & SF_XFER) ||
+      (proxy_sess->backend_sess_flags & SF_XFER)) {
+    if (recv_resp(cmd, proxy_sess, rp) < 0) {
+      return PR_ERROR(cmd);
+    }
+  }
+
+  pr_response_block(TRUE);
   return PR_HANDLED(cmd);
 }
 
@@ -2525,19 +2584,28 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
       continue;
     }
 
-#if 0
     /* Any commands from the frontend client take priority */
-
-    /* NOTE: This is temporarily disabled, until I can better handle an
-     * ABOR command on the frontend control connection whilst in the middle
-     * of a data transfer.
-     */
     if (frontend_ctrlfd >= 0 &&
         FD_ISSET(frontend_ctrlfd, &rfds)) {
       proxy_process_cmd();
       pr_response_block(FALSE);
+
+      /* Check for closed frontend/backend data connections, as from an ABOR
+       * command.
+       */
+      if (session.d == NULL ||
+          proxy_sess->backend_data_conn == NULL) {
+        if (pr_data_get_timeout(PR_DATA_TIMEOUT_STALLED) > 0) {
+          pr_timer_remove(PR_TIMER_STALLED, ANY_MODULE);
+        }
+
+        pr_throttle_pause(bytes_transferred, TRUE);
+        pr_response_clear(&resp_list);
+        pr_response_clear(&resp_err_list);
+
+        return PR_HANDLED(cmd);
+      }
     }
-#endif
 
     if (src_data_conn != NULL &&
         datafd >= 0 &&
@@ -4357,6 +4425,23 @@ MODRET proxy_any(cmd_rec *cmd) {
         return PR_DECLINED(cmd);
       }
       break;
+
+    case PR_CMD_ABOR_ID:
+      mr = proxy_abort(cmd, proxy_sess, NULL);
+      if ((proxy_sess->frontend_sess_flags & SF_XFER) ||
+          (proxy_sess->backend_sess_flags & SF_XFER)) {
+        pr_trace_msg(trace_channel, 19, "received ABOR on frontend connection, "
+          "closing frontend data connection");
+
+        if (session.d != NULL) {
+          pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+          proxy_sess->frontend_data_conn = session.d = NULL;
+        }
+
+        proxy_sess->frontend_sess_flags &= ~SF_XFER;
+        proxy_sess->backend_sess_flags &= ~SF_XFER;
+      }
+      return mr;
   }
 
   /* If we are not connected to a backend server, then don't try to proxy
