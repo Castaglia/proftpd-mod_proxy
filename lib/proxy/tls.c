@@ -987,7 +987,7 @@ static int cert_match_cn(pool *p, X509 *cert, const char *name,
   if (idx < 0) {
     pr_trace_msg(trace_channel, 12,
       "unable to check certificate CommonName against '%s': "
-      "no CommoName atribute found", name);
+      "no CommonName atribute found", name);
     return 0;
   }
 
@@ -995,7 +995,7 @@ static int cert_match_cn(pool *p, X509 *cert, const char *name,
   if (cn_entry == NULL) {
     pr_trace_msg(trace_channel, 12,
       "unable to check certificate CommonName against '%s': "
-      "error obtaining CommoName atribute found: %s", name,
+      "error obtaining CommonName atribute found: %s", name,
       proxy_tls_get_errors());
     return 0;
   }
@@ -1005,7 +1005,7 @@ static int cert_match_cn(pool *p, X509 *cert, const char *name,
   if (cn_asn1 == NULL) {
     pr_trace_msg(trace_channel, 12,
       "unable to check certificate CommonName against '%s': "
-      "error converting CommoName atribute to ASN.1: %s", name,
+      "error converting CommonName atribute to ASN.1: %s", name,
       proxy_tls_get_errors());
     return 0;
   }
