@@ -228,7 +228,7 @@ MODRET proxy_data_cmd(cmd_rec *cmd, struct proxy_session *proxy_sess) {
 
   if (resp->num[0] != '1') {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "recieved non-1xx response from backend for %s: %s %s",
+      "received non-1xx response from backend for %s: %s %s",
       (char *) cmd->argv[0], resp->num, resp->msg);
 
     pr_response_block(FALSE);
