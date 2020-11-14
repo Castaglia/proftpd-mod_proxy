@@ -679,6 +679,25 @@ You then only need to configure the path to that JSON file:
 </pre>
 
 <p>
+<b>Note</b> that <code>mod_proxy</code> has strict requirements for the
+permissions on <code>ProxyReverseServers<code> files.  The configured file
+<em>must not be world-writable</em>, since that would allow <i>any user</i>
+on the system to modify the file, directing proxied connections anywhere else.
+If a world-writable <code>ProxyReverseServers</code> file is found, you will
+see the following error message logged:
+<pre>
+  unable to use world-writable ProxyReverseServers '/opt/proxy/reverse.json' (perms 0666): Operation not permitted
+</pre>
+In addition, the <i>directory</i> containing the
+<code>ProxyReverseServers</code> file cannot be world-writable, either.  Even
+if the file itself is not world-writable, being in a world-writable directory
+means that <i>any user</i> on the system can delete that file, and write a new
+file.  When a world-writable directory is found, the following error is logged:
+<pre>
+  unable to use ProxyReverseServers '/opt/proxy/reverse.json' from world-writable directory '/opt/proxy' (perms 0777): Operation not permitted
+</pre>
+
+<p>
 The backend servers can <i>also</i> be provided from an external SQL database,
 queried by <code>mod_proxy</code> via <a href="http://www.proftpd.org/docs/contrib/mod_sql.html#SQLNamedQuery"><code>SQLNamedQuery</code></a>.  For example,
 <i>assuming</i> a schema such as this:
