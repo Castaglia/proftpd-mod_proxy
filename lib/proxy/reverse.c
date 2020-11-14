@@ -109,8 +109,11 @@ static int check_parent_dir_perms(pool *p, const char *path) {
   if (res < 0) {
     int xerrno = errno;
 
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to check ProxyReverseServers %s directory '%s': %s",
+      path, dir_path, strerror(xerrno));
     pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-      ": unable to stat ProxyReverseServers %s directory '%s': %s",
+      ": unable to check ProxyReverseServers %s directory '%s': %s",
       path, dir_path, strerror(xerrno));
 
     errno = xerrno;
@@ -121,8 +124,12 @@ static int check_parent_dir_perms(pool *p, const char *path) {
       (st.st_mode & S_IWOTH)) {
     int xerrno = EPERM;
 
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to use ProxyReverseServers '%s' from world-writable "
+      "directory '%s' (perms %04o): %s", path, dir_path,
+      st.st_mode & ~S_IFMT, strerror(xerrno));
     pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-      ": unable to use ProxyReverseServers %s from world-writable "
+      ": unable to use ProxyReverseServers '%s' from world-writable "
       "directory '%s' (perms %04o): %s", path, dir_path,
       st.st_mode & ~S_IFMT, strerror(xerrno));
 
@@ -144,8 +151,10 @@ static int check_file_perms(pool *p, const char *path) {
   if (res < 0) {
     int xerrno = errno;
 
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to check ProxyReverseServers '%s': %s", path, strerror(xerrno));
     pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-      ": unable to lstat ProxyReverseServers '%s': %s", path, strerror(xerrno));
+      ": unable to check ProxyReverseServers '%s': %s", path, strerror(xerrno));
 
     errno = xerrno;
     return -1;
@@ -175,8 +184,11 @@ static int check_file_perms(pool *p, const char *path) {
     if (res < 0) {
       int xerrno = errno;
 
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to check ProxyReverseServers '%s': %s", orig_path,
+        strerror(xerrno));
       pr_log_debug(DEBUG0, MOD_PROXY_VERSION
-        ": unable to stat ProxyReverseServers '%s': %s", orig_path,
+        ": unable to check ProxyReverseServers '%s': %s", orig_path,
         strerror(xerrno));
 
       errno = xerrno;
@@ -187,6 +199,9 @@ static int check_file_perms(pool *p, const char *path) {
   if (S_ISDIR(st.st_mode)) {
     int xerrno = EISDIR;
 
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to use ProxyReverseServers '%s': %s", orig_path,
+      strerror(xerrno));
     pr_log_debug(DEBUG0, MOD_PROXY_VERSION
       ": unable to use ProxyReverseServers '%s': %s", orig_path,
       strerror(xerrno));
@@ -199,6 +214,9 @@ static int check_file_perms(pool *p, const char *path) {
   if (st.st_mode & S_IWOTH) {
     int xerrno = EPERM;
 
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to use world-writable ProxyReverseServers '%s' "
+      "(perms %04o): %s", orig_path, st.st_mode & ~S_IFMT, strerror(xerrno));
     pr_log_debug(DEBUG0, MOD_PROXY_VERSION
       ": unable to use world-writable ProxyReverseServers '%s' "
       "(perms %04o): %s", orig_path, st.st_mode & ~S_IFMT, strerror(xerrno));

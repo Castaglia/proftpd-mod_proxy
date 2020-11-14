@@ -23,6 +23,8 @@ install:
   - gem install coveralls-lcov
   # For reference
   - sqlite3 --version
+  # For HTML validation
+  - sudo apt-get install -y tidy
 
 before_script:
   - cd ${TRAVIS_BUILD_DIR}
@@ -57,7 +59,6 @@ script:
   - ./configure LIBS='-lm -lsubunit -lrt -pthread' --enable-devel=coverage --enable-redis --enable-tests --with-modules=mod_tls:mod_proxy
   - make
   - cd contrib/mod_proxy && make TEST_VERBOSE=1 check && cd ../../
-  # Run `tidy -e -q mod_proxy.html` for doc validation
 
 after_success:
   - cd ${TRAVIS_BUILD_DIR}
@@ -69,3 +70,5 @@ after_success:
   - lcov --list coverage.info
   # upload coverage info to coveralls
   - coveralls-lcov coverage.info
+  # Run some validation on the HTML docs
+  - tidy -errors -omit -q mod_proxy.html
