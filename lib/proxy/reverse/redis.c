@@ -60,7 +60,7 @@ static char *make_key(pool *p, const char *policy, unsigned int vhost_id,
 
   key = pcalloc(p, keysz + 1);
 
-  if (name != NULL) {
+  if (name == NULL) {
     snprintf(key, keysz, "proxy_reverse:%s:vhost#%u", policy, vhost_id);
 
   } else {
@@ -383,7 +383,8 @@ static const struct proxy_conn *reverse_redis_roundrobin_next(pool *p,
     return NULL;
   }
 
-  pconn = proxy_conn_create(p, pstrndup(tmp_pool, backend_uri, backend_urisz));
+  pconn = proxy_conn_create(p, pstrndup(tmp_pool, backend_uri, backend_urisz),
+    0);
   xerrno = errno;
 
   if (pconn == NULL) {
@@ -431,7 +432,7 @@ static const struct proxy_conn *reverse_redis_leastconns_next(pool *p,
     char *backend_uri;
 
     backend_uri = ((char **) vals->elts)[0];
-    pconn = proxy_conn_create(p, backend_uri);
+    pconn = proxy_conn_create(p, backend_uri, 0);
   }
 
   destroy_pool(tmp_pool);
@@ -511,7 +512,7 @@ static const struct proxy_conn *reverse_redis_leastresponsetime_next(pool *p,
     char *backend_uri;
 
     backend_uri = ((char **) vals->elts)[0];
-    pconn = proxy_conn_create(p, backend_uri);
+    pconn = proxy_conn_create(p, backend_uri, 0);
   }
 
   destroy_pool(tmp_pool);
@@ -618,7 +619,7 @@ static const struct proxy_conn *reverse_redis_peruser_next(pool *p,
       char **vals;
 
       vals = backend_uris->elts;
-      pconn = proxy_conn_create(p, vals[0]);
+      pconn = proxy_conn_create(p, vals[0], 0);
     }
   }
 
@@ -700,7 +701,7 @@ static const struct proxy_conn *reverse_redis_pergroup_next(pool *p,
       char **vals;
 
       vals = backend_uris->elts;
-      pconn = proxy_conn_create(p, vals[0]);
+      pconn = proxy_conn_create(p, vals[0], 0);
     }
   }
 
@@ -791,7 +792,7 @@ static const struct proxy_conn *reverse_redis_perhost_next(pool *p,
     char **vals;
 
     vals = backend_uris->elts;
-    pconn = proxy_conn_create(p, vals[0]);
+    pconn = proxy_conn_create(p, vals[0], 0);
   }
 
   return pconn;

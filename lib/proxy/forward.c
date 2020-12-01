@@ -466,7 +466,7 @@ static int forward_cmd_parse_dst(pool *p, const char *arg, char **name,
    * so that the created structure (especially the pr_netaddr_t) are
    * longer-lived.
    */
-  *pconn = proxy_conn_create(proxy_pool, uri);
+  *pconn = proxy_conn_create(proxy_pool, uri, 0);
   if (*pconn == NULL) {
     int xerrno = errno;
 

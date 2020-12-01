@@ -31,6 +31,7 @@ struct testsuite_info {
 
 static struct testsuite_info suites[] = {
   { "db",		tests_get_db_suite },
+  { "dns",		tests_get_dns_suite },
   { "conn", 		tests_get_conn_suite },
   { "netio",		tests_get_netio_suite },
   { "inet",		tests_get_inet_suite },

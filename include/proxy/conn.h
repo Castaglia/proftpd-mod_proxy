@@ -33,9 +33,14 @@ struct proxy_conn;
 void proxy_conn_clear_username(const struct proxy_conn *pconn);
 void proxy_conn_clear_password(const struct proxy_conn *pconn);
 int proxy_conn_connect_timeout_cb(CALLBACK_FRAME);
-const struct proxy_conn *proxy_conn_create(pool *p, const char *uri);
+
+const struct proxy_conn *proxy_conn_create(pool *p, const char *uri,
+  unsigned int flags);
+#define PROXY_CONN_CREATE_FL_USE_DNS_TTL	0x0001
+
 const pr_netaddr_t *proxy_conn_get_addr(const struct proxy_conn *,
   array_header **);
+int proxy_conn_get_dns_ttl(const struct proxy_conn *pconn);
 const char *proxy_conn_get_host(const struct proxy_conn *pconn);
 const char *proxy_conn_get_hostport(const struct proxy_conn *pconn);
 int proxy_conn_get_port(const struct proxy_conn *pconn);
@@ -45,6 +50,8 @@ const char *proxy_conn_get_uri(const struct proxy_conn *pconn);
 const char *proxy_conn_get_username(const struct proxy_conn *pconn);
 const char *proxy_conn_get_password(const struct proxy_conn *pconn);
 int proxy_conn_get_tls(const struct proxy_conn *pconn);
+int proxy_conn_use_dns_srv(const struct proxy_conn *pconn);
+int proxy_conn_use_dns_txt(const struct proxy_conn *pconn);
 int proxy_conn_send_proxy_v1(pool *p, conn_t *conn);
 int proxy_conn_send_proxy_v2(pool *p, conn_t *conn);
 void proxy_conn_free(const struct proxy_conn *pconn);

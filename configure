@@ -621,6 +621,7 @@ ac_includes_default="\
 
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+MODULE_LIBS
 LIBDIRS
 INCLUDES
 SET_MAKE
@@ -3760,6 +3761,174 @@ fi
 done
 
 
+
+ac_dns_libs=""
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for resolver symbols in libc" >&5
+$as_echo_n "checking for resolver symbols in libc... " >&6; }
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+ #include <stdlib.h>
+    #include <sys/types.h>
+    #include <arpa/nameser.h>
+    #include <resolv.h>
+
+int
+main ()
+{
+
+    int res;
+    res = res_query(NULL, ns_c_in, ns_t_txt, NULL, 0);
+    res = ns_initparse(NULL, 0, NULL);
+    res = ns_parserr(NULL, ns_s_an, 0, NULL);
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+
+else
+
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for resolver symbols in libresolv" >&5
+$as_echo_n "checking for resolver symbols in libresolv... " >&6; }
+    saved_libs="$LIBS"
+    LIBS="$LIBS -lresolv"
+
+    cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+ #include <stdlib.h>
+        #include <sys/types.h>
+        #include <arpa/nameser.h>
+        #include <resolv.h>
+
+int
+main ()
+{
+
+        int res;
+        res = res_query(NULL, ns_c_in, ns_t_txt, NULL, 0);
+        res = ns_initparse(NULL, 0, NULL);
+        res = ns_parserr(NULL, ns_s_an, 0, NULL);
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+
+        { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+        LIBS="$saved_libs"
+        ac_dns_libs="-lresolv"
+
+else
+
+        { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+        LIBS="$saved_libs"
+
+        { $as_echo "$as_me:${as_lineno-$LINENO}: checking for resolver symbols in /usr/lib64/libresolv.a" >&5
+$as_echo_n "checking for resolver symbols in /usr/lib64/libresolv.a... " >&6; }
+        saved_libs="$LIBS"
+        LIBS="$LIBS /usr/lib64/libresolv.a"
+
+        cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+ #include <stdlib.h>
+            #include <sys/types.h>
+            #include <arpa/nameser.h>
+            #include <resolv.h>
+
+int
+main ()
+{
+
+            int res;
+            res = res_query(NULL, ns_c_in, ns_t_txt, NULL, 0);
+            res = ns_initparse(NULL, 0, NULL);
+            res = ns_parserr(NULL, ns_s_an, 0, NULL);
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+
+            { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+            LIBS="$saved_libs"
+            ac_dns_libs="/usr/lib64/libresolv.a"
+
+else
+
+             { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+             LIBS="$saved_libs"
+
+            { $as_echo "$as_me:${as_lineno-$LINENO}: checking for resolver symbols in /usr/lib/libresolv.a" >&5
+$as_echo_n "checking for resolver symbols in /usr/lib/libresolv.a... " >&6; }
+            saved_libs="$LIBS"
+            LIBS="$LIBS /usr/lib/libresolv.a"
+
+            cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+ #include <stdlib.h>
+                #include <sys/types.h>
+                #include <arpa/nameser.h>
+                #include <resolv.h>
+
+int
+main ()
+{
+
+                int res;
+                res = res_query(NULL, ns_c_in, ns_t_txt, NULL, 0);
+                res = ns_initparse(NULL, 0, NULL);
+                res = ns_parserr(NULL, ns_s_an, 0, NULL);
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+
+                { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+                LIBS="$saved_libs"
+                ac_dns_libs="/usr/lib/libresolv.a"
+
+else
+
+                { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+                LIBS="$saved_libs"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+
 # Check for SQLite-isms
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for sqlite3_stmt_readonly" >&5
 $as_echo_n "checking for sqlite3_stmt_readonly... " >&6; }
@@ -3889,6 +4058,9 @@ LIBS="$saved_libs"
 
 INCLUDES="$ac_build_addl_includes"
 LIBDIRS="$ac_build_addl_libdirs"
+MODULE_LIBS="$ac_dns_libs"
+
+
 
 
 

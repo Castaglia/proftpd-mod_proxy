@@ -67,6 +67,119 @@ AC_HEADER_STDC
 AC_CHECK_HEADERS(sqlite3.h stdlib.h unistd.h limits.h fcntl.h sys/sysctl.h sys/sysinfo.h)
 AC_CHECK_FUNCS(random srandom strnstr sysctl sysinfo)
 
+dnl Check whether libc provides the DNS resolver symbols (e.g. *BSD/Mac OSX)
+dnl or not.  And if not, check whether we need to link directly with
+dnl /usr/lib/libresolv.a (32-bit) or /usr/lib64/libresolv.a (64-bit).
+dnl
+dnl Ideally we would link with libresolv using -lresolv.  However, it seems
+dnl that many Linux distributions shipped a broken version of libresolv.so
+dnl which did not export the necessary ns_initparse/ns_parserr symbols.  The
+dnl static version of libresolv shipped DOES provide those symbols (probably
+dnl for use by libc).  For these cases, we link againt the static library.
+
+ac_dns_libs=""
+AC_MSG_CHECKING([for resolver symbols in libc])
+AC_TRY_LINK(
+  [ #include <stdlib.h>
+    #include <sys/types.h>
+    #include <arpa/nameser.h>
+    #include <resolv.h>
+  ],
+  [
+    int res;
+    res = res_query(NULL, ns_c_in, ns_t_txt, NULL, 0);
+    res = ns_initparse(NULL, 0, NULL);
+    res = ns_parserr(NULL, ns_s_an, 0, NULL);
+  ],
+  [
+    AC_MSG_RESULT(yes)
+  ],
+  [
+    AC_MSG_RESULT(no)
+
+    AC_MSG_CHECKING([for resolver symbols in libresolv])
+    saved_libs="$LIBS"
+    LIBS="$LIBS -lresolv"
+
+    AC_TRY_LINK(
+      [ #include <stdlib.h>
+        #include <sys/types.h>
+        #include <arpa/nameser.h>
+        #include <resolv.h>
+      ],
+      [
+        int res;
+        res = res_query(NULL, ns_c_in, ns_t_txt, NULL, 0);
+        res = ns_initparse(NULL, 0, NULL);
+        res = ns_parserr(NULL, ns_s_an, 0, NULL);
+      ],
+      [
+        AC_MSG_RESULT(yes)
+        LIBS="$saved_libs"
+        ac_dns_libs="-lresolv"
+      ],
+      [
+        AC_MSG_RESULT(no)
+        LIBS="$saved_libs"
+
+        AC_MSG_CHECKING([for resolver symbols in /usr/lib64/libresolv.a])
+        saved_libs="$LIBS"
+        LIBS="$LIBS /usr/lib64/libresolv.a"
+
+        AC_TRY_LINK(
+          [ #include <stdlib.h>
+            #include <sys/types.h>
+            #include <arpa/nameser.h>
+            #include <resolv.h>
+          ],
+          [
+            int res;
+            res = res_query(NULL, ns_c_in, ns_t_txt, NULL, 0);
+            res = ns_initparse(NULL, 0, NULL);
+            res = ns_parserr(NULL, ns_s_an, 0, NULL);
+          ],
+          [
+            AC_MSG_RESULT(yes)
+            LIBS="$saved_libs"
+            ac_dns_libs="/usr/lib64/libresolv.a"
+          ],
+          [
+             AC_MSG_RESULT(no)
+             LIBS="$saved_libs"
+
+            AC_MSG_CHECKING([for resolver symbols in /usr/lib/libresolv.a])
+            saved_libs="$LIBS"
+            LIBS="$LIBS /usr/lib/libresolv.a"
+
+            AC_TRY_LINK(
+              [ #include <stdlib.h>
+                #include <sys/types.h>
+                #include <arpa/nameser.h>
+                #include <resolv.h>
+              ],
+              [
+                int res;
+                res = res_query(NULL, ns_c_in, ns_t_txt, NULL, 0);
+                res = ns_initparse(NULL, 0, NULL);
+                res = ns_parserr(NULL, ns_s_an, 0, NULL);
+              ],
+              [
+                AC_MSG_RESULT(yes)
+                LIBS="$saved_libs"
+                ac_dns_libs="/usr/lib/libresolv.a"
+              ],
+              [
+                AC_MSG_RESULT(no)
+                LIBS="$saved_libs"
+              ]
+            )
+          ]
+        )
+      ]
+    )
+  ]
+)
+
 # Check for SQLite-isms
 AC_MSG_CHECKING([for sqlite3_stmt_readonly])
 saved_libs="$LIBS"
@@ -130,9 +243,12 @@ LIBS="$saved_libs"
 
 INCLUDES="$ac_build_addl_includes"
 LIBDIRS="$ac_build_addl_libdirs"
+MODULE_LIBS="$ac_dns_libs"
 
 AC_SUBST(INCLUDES)
+AC_SUBST(LDFLAGS)
 AC_SUBST(LIBDIRS)
+AC_SUBST(MODULE_LIBS)
 
 AC_CONFIG_HEADER(mod_proxy.h)
 AC_OUTPUT(

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2013-2017 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2013-2020 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -216,14 +216,14 @@ START_TEST (reverse_sess_init_test) {
   c = add_config_param("ProxyReverseServers", 2, NULL, NULL);
   backends = make_array(c->pool, 1, sizeof(struct proxy_conn *));
   uri = "ftp://127.0.0.1:21";
-  pconn = proxy_conn_create(c->pool, uri);
+  pconn = proxy_conn_create(c->pool, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
   c->argv[0] = backends;
 
   c = add_config_param("ProxyReverseServers", 2, NULL, NULL);
   backends = make_array(c->pool, 1, sizeof(struct proxy_conn *));
   uri = "ftp://127.0.0.1:2121";
-  pconn = proxy_conn_create(c->pool, uri);
+  pconn = proxy_conn_create(c->pool, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
   c->argv[0] = backends;
 
@@ -271,7 +271,7 @@ static int test_connect_policy(int policy_id, array_header *src_backends) {
     const struct proxy_conn *pconn;
 
     uri = "ftp://127.0.0.1:21";
-    pconn = proxy_conn_create(c->pool, uri);
+    pconn = proxy_conn_create(c->pool, uri, 0);
     *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   } else {
@@ -529,11 +529,11 @@ START_TEST (reverse_handle_user_pass_random_test) {
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
   uri = "ftp://127.0.0.1:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   uri = "ftp://ftp.microsoft.com:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_RANDOM, backends);
@@ -554,11 +554,11 @@ START_TEST (reverse_handle_user_pass_roundrobin_test) {
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
   uri = "ftp://127.0.0.1:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   uri = "ftp://ftp.microsoft.com:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN, backends);
@@ -579,11 +579,11 @@ START_TEST (reverse_handle_user_pass_leastconns_test) {
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
   uri = "ftp://127.0.0.1:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   uri = "ftp://ftp.microsoft.com:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS, backends);
@@ -604,11 +604,11 @@ START_TEST (reverse_handle_user_pass_leastresponsetime_test) {
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
   uri = "ftp://127.0.0.1:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   uri = "ftp://ftp.microsoft.com:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME,
@@ -631,11 +631,11 @@ START_TEST (reverse_handle_user_pass_shuffle_test) {
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
   uri = "ftp://127.0.0.1:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   uri = "ftp://ftp.microsoft.com:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_SHUFFLE, backends);
@@ -656,11 +656,11 @@ START_TEST (reverse_handle_user_pass_peruser_test) {
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
   uri = "ftp://127.0.0.1:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   uri = "ftp://ftp.microsoft.com:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_PER_USER, backends);
@@ -681,11 +681,11 @@ START_TEST (reverse_handle_user_pass_pergroup_test) {
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
   uri = "ftp://127.0.0.1:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   uri = "ftp://ftp.microsoft.com:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_PER_GROUP, backends);
@@ -706,11 +706,11 @@ START_TEST (reverse_handle_user_pass_perhost_test) {
   backends = make_array(p, 1, sizeof(struct proxy_conn *));
 
   uri = "ftp://127.0.0.1:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   uri = "ftp://ftp.microsoft.com:21";
-  pconn = proxy_conn_create(p, uri);
+  pconn = proxy_conn_create(p, uri, 0);
   *((const struct proxy_conn **) push_array(backends)) = pconn;
 
   test_handle_user_pass(PROXY_REVERSE_CONNECT_POLICY_PER_HOST, backends);
@@ -722,16 +722,16 @@ START_TEST (reverse_json_parse_uris_args_test) {
   array_header *uris;
   const char *path;
 
-  uris = proxy_reverse_json_parse_uris(NULL, NULL);
+  uris = proxy_reverse_json_parse_uris(NULL, NULL, 0);
   fail_unless(uris == NULL, "Failed to handle null arguments");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
 
-  uris = proxy_reverse_json_parse_uris(p, NULL);
+  uris = proxy_reverse_json_parse_uris(p, NULL, 0);
   fail_unless(uris == NULL, "Failed to handle null path argument");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
 
   path = "/tmp/test.dat";
-  uris = proxy_reverse_json_parse_uris(NULL, path);
+  uris = proxy_reverse_json_parse_uris(NULL, path, 0);
   fail_unless(uris == NULL, "Failed to handle null pool argument");
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
 }
@@ -745,19 +745,19 @@ START_TEST (reverse_json_parse_uris_isreg_test) {
   test_cleanup(p);
 
   path = "servers.json";
-  uris = proxy_reverse_json_parse_uris(p, path);
+  uris = proxy_reverse_json_parse_uris(p, path, 0);
   fail_unless(uris == NULL, "Failed to handle relative path '%s'", path);
   fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
 
   path = test_file;
-  uris = proxy_reverse_json_parse_uris(p, path);
+  uris = proxy_reverse_json_parse_uris(p, path, 0);
   fail_unless(uris == NULL, "Failed to handle nonexistent file '%s'", path);
   fail_unless(errno == ENOENT, "Failed to set errno to ENOENT");
 
   res = mkdir(test_dir, 0777);
   fail_unless(res == 0, "Failed to create tmp directory '%s': %s", test_dir,
     strerror(errno));
-  uris = proxy_reverse_json_parse_uris(p, test_dir);
+  uris = proxy_reverse_json_parse_uris(p, test_dir, 0);
   fail_unless(uris == NULL, "Failed to handle directory path '%s'", test_dir);
   fail_unless(errno == EISDIR, "Failed to set errno to EISDIR");
 
@@ -795,7 +795,7 @@ START_TEST (reverse_json_parse_uris_perms_test) {
     perms, test_file, strerror(errno));
 
   path = test_file;
-  uris = proxy_reverse_json_parse_uris(p, path);
+  uris = proxy_reverse_json_parse_uris(p, path, 0);
   fail_unless(uris == NULL, "Failed to handle world-writable file '%s'",
     path);
   fail_unless(errno == EPERM, "Failed to set errno to EPERM, got %d (%s)",
@@ -810,7 +810,7 @@ START_TEST (reverse_json_parse_uris_perms_test) {
   fail_unless(res == 0, "Failed to set perms %04o on file '%s': %s",
     perms, test_file, strerror(errno));
 
-  uris = proxy_reverse_json_parse_uris(p, path);
+  uris = proxy_reverse_json_parse_uris(p, path, 0);
   fail_unless(uris == NULL, "Failed to handle world-writable directory '%s'",
     test_file);
   fail_unless(errno == EPERM, "Failed to set errno to EPERM, got %d (%s)",
@@ -836,7 +836,7 @@ START_TEST (reverse_json_parse_uris_empty_test) {
 
   mark_point();
 
-  uris = proxy_reverse_json_parse_uris(p, test_file);
+  uris = proxy_reverse_json_parse_uris(p, test_file, 0);
   fail_unless(uris != NULL, "Did not receive parsed list as expected");
   fail_unless(uris->nelts == 0, "Expected zero elements, found %d",
     uris->nelts);
@@ -863,7 +863,7 @@ START_TEST (reverse_json_parse_uris_malformed_test) {
 
   mark_point();
 
-  uris = proxy_reverse_json_parse_uris(p, test_file);
+  uris = proxy_reverse_json_parse_uris(p, test_file, 0);
   fail_unless(uris != NULL, "Did not receive parsed list as expected");
   fail_unless(uris->nelts == 0, "Expected zero elements, found %d",
     uris->nelts);
@@ -892,7 +892,7 @@ START_TEST (reverse_json_parse_uris_usable_test) {
 
   mark_point();
 
-  uris = proxy_reverse_json_parse_uris(p, test_file);
+  uris = proxy_reverse_json_parse_uris(p, test_file, 0);
   fail_unless(uris != NULL, "Did not receive parsed list as expected");
 
   expected = 3;

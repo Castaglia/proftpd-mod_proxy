@@ -665,6 +665,17 @@ And using them all in the configuration would look like:
 </pre>
 
 <p>
+The backend servers can also be discovered via DNS <code>SRV</code> or <code>TXT</code> records, using <code>SRV/TXT</code> URL scheme variants, <i>e.g.</i>:
+<pre>
+  # Discover backend addresses via DNS SRV records
+  ftp+srv://_ftp._tcp.castaglia.org
+
+  # Discover backend addresses via DNS TXT records (which must be an FTP URL)
+  ftp+txt://castaglia.org
+</pre>
+These <code>SRV/TXT</code> URL scheme variations also apply to FTPS URLs.
+
+<p>
 The backend servers can <i>also</i> be contained in a list in a JSON file,
 <i>e.g.</i>:
 <pre>

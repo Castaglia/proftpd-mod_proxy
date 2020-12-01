@@ -44,6 +44,7 @@ TEST_API_DEPS=\
   $(top_srcdir)/src/error.o \
   $(module_srcdir)/lib/proxy/random.o \
   $(module_srcdir)/lib/proxy/db.o \
+  $(module_srcdir)/lib/proxy/dns.o \
   $(module_srcdir)/lib/proxy/uri.o \
   $(module_srcdir)/lib/proxy/conn.o \
   $(module_srcdir)/lib/proxy/netio.o \
@@ -66,11 +67,12 @@ TEST_API_DEPS=\
   $(module_srcdir)/lib/proxy/ftp/sess.o \
   $(module_srcdir)/lib/proxy/ftp/xfer.o
 
-TEST_API_LIBS=-lcheck -lm
+TEST_API_LIBS="-lcheck -lm @MODULE_LIBS@"
 
 TEST_API_OBJS=\
   api/random.o \
   api/db.o \
+  api/dns.o \
   api/uri.o \
   api/conn.o \
   api/netio.o \
@@ -101,4 +103,4 @@ api-tests$(EXEEXT): $(TEST_API_OBJS) $(TEST_API_DEPS)
 	./$@
 
 clean:
-	$(LIBTOOL) --mode=clean $(RM) *.o api/*.o api-tests$(EXEEXT) api-tests.log
+	$(LIBTOOL) --mode=clean $(RM) *.o api/*.o api/*/*.o api-tests$(EXEEXT) api-tests.log

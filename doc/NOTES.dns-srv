@@ -1,0 +1,397 @@
+
+Use Docker Compose and:
+
+  proftpd+mod_proxy
+  proftpd/pure-ftpd
+  dnsmasq
+
+Implementation:
+
+  ProxyDNSOptions
+    UseSRV (or +SRV)
+    UseTXT (or +TXT)
+
+  * allows room for later -A, -AAA
+
+  OR, even better:
+
+    ftp+srv://server.example.com
+    ftps+srv://server.example.com
+
+  DNS SRV query:
+
+    _ftp._tcp.server.example.com
+
+  Same for TXT records?
+
+    ftp+txt://server.example.com
+    ftps+txt://server.example.com
+
+  See:
+    https://docs.mongodb.com/manual/reference/connection-string/#connections-dns-seedlist
+
+  These would require changes to the URI parsing, Conn API, for "hints"?
+
+  NOTE: Port numbers are NOT allowed in the URL if the SRV scheme is used!
+    Why not?  Because port numbers are returned in the SRV records themselves;
+    avoid any possible collisions/conflicts.  Besides, mutiple SRV records
+    for the same service name might have different ports.
+
+    Similarly for TXT scheme; the port will be part of the URLs found in
+    the TXT records.
+
+    If ports ARE found in such URLs, they will be (logged and) ignored.
+
+  NOTE:
+    TXT records found to have URLs must NOT use the +txt, +srv schemes.
+
+  lib/proxy/dns.c
+
+    typedef enum {
+      PROXY_DNS_SRV,
+      PROXY_DNS_TXT
+    } proxy_dns_typ_e;
+
+    int proxy_dns_resolve(pool *p, const char *name, proxy_dns_type_e dns_type,
+      array_header **addrs);
+
+  NOTE:
+    Check that the A, AAAA records for SRV targets MATCH the initial name's
+    domain.  If there is a domain mismatch, do we reject/skip that target?
+      Answer: For now, no.  Accept the given target names.
+
+  NOTE: Watch/honor the TTLs on the retrieved records.  A given SRV record
+    will have its own TTL; the target resource records (included, or
+    retrieved separately) will have their own TTLs (often shorter).  Even
+    if we go with the shortest TTL, and set a timer, that timer will be
+    specific to that pconn object.
+
+  In order to honor the TTLs, we'd need to schedule timers -- but only in
+  the daemon/master process, NOT session/child processes.  (Thus we'd need
+  to remove these re-resolve timers on sess_init.)  We would need to
+  track the timer ID in the pconn struct; the timer callback would take
+  that pconn as an argument, to update the addr, port, other addrs.  And
+  what about the memory pool to use for re-resolves, considering a long-lived
+  daemon process?
+
+    If resolution fails in timer, leave existing pconn (and timer) as is.
+
+  These TTL timers ONLY need to be there for URLs parsed at start-up time,
+  by the daemon/master process.  This means we don't need it for URLs
+  obtained from SQL databases, Redis servers, per-user/group, etc.
+
+
+Test:
+
+  SRV records:
+    one
+    none
+      per RFC 2782, if none, fallback to A record.
+    multiple
+    multiple weighted/prioritized
+
+    * when to query/look at RRs in "additional data" section?  ns_s_ar (vs ns_s_an)?
+
+Answer:
+
+   Target
+        The domain name of the target host.  There MUST be one or more
+        address records for this name, the name MUST NOT be an alias (in
+        the sense of RFC 1034 or RFC 2181).  Implementors are urged, but
+        not required, to return the address record(s) in the Additional
+        Data section.  Unless and until permitted by future standards
+        action, name compression is not to be used for this field.
+
+        A Target of "." means that the service is decidedly not
+        available at this domain.
+
+Need an example for testing?
+
+$ dig _imaps._tcp.gmail.com SRV
+
+  ; <<>> DiG 9.8.3-P1 <<>> _imaps._tcp.gmail.com SRV
+  ;; global options: +cmd
+  ;; Got answer:
+  ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 17898
+  ;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 4
+
+  ;; QUESTION SECTION:
+  ;_imaps._tcp.gmail.com.		IN	SRV
+
+  ;; ANSWER SECTION:
+  _imaps._tcp.gmail.com.	86400	IN	SRV	5 0 993 imap.gmail.com.
+
+  ;; ADDITIONAL SECTION:
+  imap.gmail.com.		96	IN	A	74.125.20.108
+  imap.gmail.com.		96	IN	A	74.125.20.109
+  imap.gmail.com.		96	IN	AAAA	2607:f8b0:400e:c08::6d
+  imap.gmail.com.		96	IN	AAAA	2607:f8b0:400e:c08::6c
+
+Note that `dig gmail.com ANY` does NOT return the SRV records; you have to
+query for them specifically.  This also means that the name to be resolved
+must be specifically constructed for SRV lookup!
+
+  ftp+srv://example.com  -> _ftp._tcp.example.com
+  ftps+srv://example.com -> _ftp._tcp.example.com
+
+Fun -- watch what happens for different nameservers:
+
+# Here, we get the add'l records...
+$ dig _imaps._tcp.gmail.com SRV @75.75.75.75
+
+; <<>> DiG 9.8.3-P1 <<>> _imaps._tcp.gmail.com SRV @75.75.75.75
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 9937
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 4
+
+;; QUESTION SECTION:
+;_imaps._tcp.gmail.com.		IN	SRV
+
+;; ANSWER SECTION:
+_imaps._tcp.gmail.com.	86400	IN	SRV	5 0 993 imap.gmail.com.
+
+;; ADDITIONAL SECTION:
+imap.gmail.com.		79	IN	A	74.125.195.108
+imap.gmail.com.		79	IN	A	74.125.195.109
+imap.gmail.com.		79	IN	AAAA	2607:f8b0:400e:c04::6d
+imap.gmail.com.		79	IN	AAAA	2607:f8b0:400e:c04::6c
+
+;; Query time: 32 msec
+;; SERVER: 75.75.75.75#53(75.75.75.75)
+;; WHEN: Sat Nov 14 20:13:05 2020
+;; MSG SIZE  rcvd: 161
+
+# Here, we do NOT get the add'l records.  Something to handle.
+$ dig _imaps._tcp.gmail.com SRV @8.8.8.8
+
+; <<>> DiG 9.8.3-P1 <<>> _imaps._tcp.gmail.com SRV @8.8.8.8
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 24242
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;_imaps._tcp.gmail.com.		IN	SRV
+
+;; ANSWER SECTION:
+_imaps._tcp.gmail.com.	21599	IN	SRV	5 0 993 imap.gmail.com.
+
+;; Query time: 30 msec
+;; SERVER: 8.8.8.8#53(8.8.8.8)
+;; WHEN: Sat Nov 14 20:13:59 2020
+;; MSG SIZE  rcvd: 73
+
+Means that some resolvers might helpfully fill in the add'l records.
+
+Need to find (or configure) multiple SRV records, pointing at different targets;
+what would the add'l section look like for that?
+
+Here's an example where the target does NOT match the domain:
+
+$ dig _sipfederationtls._tcp.outlook.com SRV
+
+; <<>> DiG 9.8.3-P1 <<>> _sipfederationtls._tcp.outlook.com SRV
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 7910
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;_sipfederationtls._tcp.outlook.com. IN	SRV
+
+;; ANSWER SECTION:
+_sipfederationtls._tcp.outlook.com. 300	IN SRV	10 2 5061 federation.messenger.msn.com.
+
+;; Query time: 38 msec
+;; SERVER: 75.75.75.75#53(75.75.75.75)
+;; WHEN: Sat Nov 14 20:20:46 2020
+;; MSG SIZE  rcvd: 100
+
+Another fun one -- note the LACK of add'l data this time!
+ * found here: https://stackoverflow.com/questions/10138844/java-dns-lookup-for-srv-records
+
+$ dig _nicname._tcp.uk SRV
+
+; <<>> DiG 9.8.3-P1 <<>> _nicname._tcp.uk SRV
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 49671
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;_nicname._tcp.uk.		IN	SRV
+
+;; ANSWER SECTION:
+_nicname._tcp.uk.	172800	IN	SRV	0 0 43 whois.nic.uk.
+
+;; Query time: 42 msec
+;; SERVER: 75.75.75.75#53(75.75.75.75)
+;; WHEN: Sat Nov 14 20:41:50 2020
+;; MSG SIZE  rcvd: 66
+
+And here:
+
+$ dig _ldap._tcp.ru.ac.za SRV
+
+; <<>> DiG 9.8.3-P1 <<>> _ldap._tcp.ru.ac.za SRV
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 56234
+;; flags: qr rd ra; QUERY: 1, ANSWER: 3, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;_ldap._tcp.ru.ac.za.		IN	SRV
+
+;; ANSWER SECTION:
+_ldap._tcp.ru.ac.za.	21600	IN	SRV	1 0 389 bushbaby.ru.ac.za.
+_ldap._tcp.ru.ac.za.	21600	IN	SRV	2 0 389 jackal.ru.ac.za.
+_ldap._tcp.ru.ac.za.	21600	IN	SRV	2 0 389 gecko.ru.ac.za.
+
+;; Query time: 167 msec
+;; SERVER: 75.75.75.75#53(75.75.75.75)
+;; WHEN: Sun Nov 15 09:25:27 2020
+;; MSG SIZE  rcvd: 143
+
+What about sftp?  What will the published service name be for that?  ssh,
+or sftp?
+  https://github.com/Crosse/sshsrv
+
+  TXT records:
+    one
+    none
+    multiple
+    non-FTP URLs
+
+CLI:
+
+  # For host, dig commands
+  $ apt-get install -y bind9-host dnsutils
+
+  $ dig _ftp._tcp.castaglia.local SRV
+  ...
+  ;; ANSWER SECTION:
+  _ftp._tcp.castaglia.local. 0	IN	SRV	3 0 2121 proxy.castaglia.org.
+
+  $ dig castaglia.local TXT
+  ...
+  ;; ANSWER SECTION:
+  castaglia.local.	0	IN	TXT	"foo bar baz"
+
+
+References:
+  https://gist.github.com/ajdavis/e5f5ddbf50b5aecdc5e1d686d72a8a7a
+  https://stackoverflow.com/questions/58845991/make-the-dns-server-of-docker-container-another-docker-container-running-dnsmasq
+  https://alejandrocelaya.blog/2017/04/21/set-specific-ip-addresses-to-docker-containers-created-with-docker-compose/
+  https://oliver-kaestner.de/english-c-query-srv-dns-record-with-example/
+  https://tools.ietf.org/html/rfc2782 (DNS SRV)
+  https://people.samba.org/bzr/jerry/slag/unix/query-srv.c
+  https://docs.mongodb.com/manual/reference/connection-string/
+
+  https://jdebp.eu/FGA/dns-srv-record-use-by-clients.html
+    http://dns.vanrein.org/srv/tools/
+
+  https://github.com/lavv17/lftp/blob/master/src/Resolver.cc
+  https://github.com/systemmonkey42/libsrv/blob/master/src/libsrv.c
+
+  https://tools.ietf.org/html/draft-andrews-http-srv-01
+  https://tools.ietf.org/html/draft-jennings-http-srv-05
+
+Future:
+
+  For A records:
+    https://github.com/haproxy/haproxy/blob/master/src/dns.c#L971
+
+  For AAAA records:
+    https://github.com/haproxy/haproxy/blob/master/src/dns.c#L1032
+
+  For CNAME records:
+    https://github.com/haproxy/haproxy/blob/master/src/dns.c#L981
+
+Tidbits:
+
+This is already handled automagically by res_query(3), but for reference:
+
+static int dns_check_response(ns_msg *msgh, const char *query_type) {
+  int flag, res;
+
+  flag = ns_msg_getflag(*msgh, ns_f_rcode);
+  switch (flag) {
+    case ns_r_noerror:
+      res = 0;
+      break;
+
+    case ns_r_formerr:
+      pr_trace_msg(trace_channel, 7,
+        "received 'Format error' response code (%d) in %s answer", flag,
+        query_type);
+      errno = EINVAL;
+      res = -1;
+      break;
+
+    case ns_r_servfail:
+      pr_trace_msg(trace_channel, 7,
+        "received 'Server failure' response code (%d) in %s answer", flag,
+        query_type);
+      errno = EPERM;
+      res = -1;
+      break;
+
+    case ns_r_nxdomain:
+      pr_trace_msg(trace_channel, 7,
+        "received 'No such domain' response code (%d) in %s answer", flag,
+        query_type);
+      errno = ENOENT;
+      res = -1;
+      break;
+
+    case ns_r_notimpl:
+      pr_trace_msg(trace_channel, 7,
+        "received 'Unimplemented' response code (%d) in %s answer", flag,
+        query_type);
+      errno = EPERM;
+      res = -1;
+      break;
+
+    case ns_r_refused:
+      pr_trace_msg(trace_channel, 7,
+        "received 'Operation refused' response code (%d) in %s answer", flag,
+        query_type);
+      errno = EPERM;
+      res = -1;
+      break;
+
+    default:
+      pr_trace_msg(trace_channel, 7,
+        "received unknown response code (%d) in %s answer", flag, query_type);
+      errno = EPERM;
+      res = -1;
+  }
+
+  if (res < 0) {
+    return -1;
+  }
+
+  if (pr_trace_get_level(trace_channel) <= 7) {
+    return res;
+  }
+
+  /* Log any other flags of interest.
+   *
+   * If the response was truncated, the libc resolver's default behavior is
+   * to retry the query over TCP.  Given that, the main flag of interest is
+   * whether this answer was authoritative (from the authoritative nameserver)
+   * or from some cache along the way.
+   */
+  flag = ns_msg_getflag(*msgh, ns_f_aa);
+  if (flag) {
+    pr_trace_msg(trace_channel, 9,
+      "received AUTHORITATIVE answer for %s query", query_type);
+
+  } else {
+    pr_trace_msg(trace_channel, 19,
+      "received cached answer for %s query", query_type);
+  }
+
+  return res;
+}
