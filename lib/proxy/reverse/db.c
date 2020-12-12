@@ -956,7 +956,7 @@ static const struct proxy_conn *reverse_db_peruser_next(pool *p,
       char **vals;
 
       vals = results->elts;
-      pconn = proxy_conn_create(p, vals[0]);
+      pconn = proxy_conn_create(p, vals[0], 0);
     }
   }
 
@@ -1153,7 +1153,7 @@ static const struct proxy_conn *reverse_db_pergroup_next(pool *p,
       char **vals;
 
       vals = results->elts;
-      pconn = proxy_conn_create(p, vals[0]);
+      pconn = proxy_conn_create(p, vals[0], 0);
     }
   }
 
@@ -1356,7 +1356,7 @@ static const struct proxy_conn *reverse_db_perhost_next(pool *p,
     char **vals;
 
     vals = results->elts;
-    pconn = proxy_conn_create(p, vals[0]);
+    pconn = proxy_conn_create(p, vals[0], 0);
   }
 
   return pconn;

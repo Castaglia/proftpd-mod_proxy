@@ -29,6 +29,7 @@
 #endif /* HAVE_SYS_UIO_H */
 
 #include "proxy/conn.h"
+#include "proxy/dns.h"
 #include "proxy/netio.h"
 #include "proxy/inet.h"
 #include "proxy/session.h"
@@ -45,6 +46,13 @@ struct proxy_conn {
   int pconn_port;
   int pconn_tls;
 
+  int pconn_use_dns_srv;
+  int pconn_use_dns_txt;
+
+  /* These are only used for DNS SRV, DNS TXT URLs. */
+  int pconn_dns_ttl;
+  int pconn_dns_timer_id;
+
   /* Note that these are deliberately NOT 'const', so that they can be
    * scrubbed in the per-session memory space, once backend authentication
    * has occurred.
@@ -58,8 +66,14 @@ struct proxy_conn {
 
 static const char *supported_protocols[] = {
   "ftp",
+  "ftp+srv",
+  "ftp+txt",
   "ftps",
+  "ftps+srv",
+  "ftps+txt",
   "sftp",
+  "sftp+srv",
+  "sftp+txt",
 
   NULL
 };
@@ -116,13 +130,177 @@ int proxy_conn_connect_timeout_cb(CALLBACK_FRAME) {
   return 0;
 }
 
-const struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
-  int res, use_tls = PROXY_TLS_ENGINE_AUTO;
+static struct proxy_conn *proxy_conn_get_addrs(pool *p, const char *uri,
+    struct proxy_conn *pconn) {
+  pr_netaddr_t *pconn_addr;
+
+  pconn_addr = (pr_netaddr_t *) pr_netaddr_get_addr(pconn->pconn_pool,
+    pconn->pconn_host, &(pconn->pconn_addrs));
+  if (pconn_addr == NULL) {
+    pr_trace_msg(trace_channel, 2, "unable to resolve '%s' from URI '%s': %s",
+      pconn->pconn_host, uri, strerror(errno));
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to resolve '%s' from URI '%s'", pconn->pconn_host, uri);
+    errno = EINVAL;
+    return NULL;
+  }
+
+  if (pr_netaddr_set_port2(pconn_addr, pconn->pconn_port) < 0) {
+    int xerrno = errno;
+
+    pr_trace_msg(trace_channel, 3,
+      "unable to set port %d from URI '%s': %s", pconn->pconn_port, uri,
+      strerror(xerrno));
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to set port %d from URI '%s': %s", pconn->pconn_port, uri,
+      strerror(xerrno));
+    errno = EINVAL;
+    return NULL;
+  }
+
+  pconn->pconn_addr = pconn_addr;
+
+  if (pconn->pconn_addrs != NULL) {
+    register unsigned int i;
+    pr_netaddr_t **elts;
+
+    elts = pconn->pconn_addrs->elts;
+    for (i = 0; i < pconn->pconn_addrs->nelts; i++) {
+      pr_netaddr_t *elt;
+
+      elt = elts[i];
+
+      if (pr_netaddr_set_port2(elt, pconn->pconn_port) < 0) {
+        pr_trace_msg(trace_channel, 3,
+          "unable to set port %d from URI '%s': %s", pconn->pconn_port, uri,
+          strerror(errno));
+      }
+    }
+  }
+
+  return pconn;
+}
+
+static struct proxy_conn *proxy_conn_use_dns_srv_addrs(pool *p, const char *uri,
+    struct proxy_conn *pconn, unsigned int flags) {
+  int res;
+  const char *name;
+  proxy_dns_type_e dns_type = PROXY_DNS_SRV;
+  array_header *resp = NULL;
+  uint32_t srv_ttl = 0;
+
+  name = pconn->pconn_host;
+
+  res = proxy_dns_resolve(pconn->pconn_pool, name, dns_type, &resp, &srv_ttl);
+  if (res > 0) {
+    pr_netaddr_t **elts, *first_addr;
+
+    elts = resp->elts;
+
+    /* Slightly naughty way to pop the first address of the array. */
+    first_addr = elts[0];
+    resp->elts = &(elts[1]);
+    resp->nelts--;
+
+    pconn->pconn_addr = first_addr;
+    pconn->pconn_port = ntohs(pr_netaddr_get_port(first_addr));
+    pconn->pconn_addrs = resp;
+
+    pconn->pconn_dns_ttl = (int) srv_ttl;
+
+    if (flags & PROXY_CONN_CREATE_FL_USE_DNS_TTL) {
+      /* XXX TODO: Schedule timer for re-resolving URL on TTL.
+       *
+       * The existing Timer API does not provide room for custom "user data"
+       * pointers; need to fix that.  In the mean time, we'll just need to track
+       * things ourselves with a lookup table: timer ID -> pconn.
+       *
+       * This has the advantage of providing a way to iterate through the table,
+       * removing all timer IDs (then destroying the table) in a session
+       * process.
+       *
+       * What memory pool should be used for this table, that would be available
+       * at startup time?  proxy_pool?
+       *
+       * pconn->pconn_dns_timer_id = pr_timer_add(pconn->pconn_dns_ttl, -1,
+       *   &proxy_module, proxy_conn_resolve_cb, ...);
+       */
+    }
+
+    return pconn;
+  }
+
+  /* Always fall back to normal name resolution. */
+  return proxy_conn_get_addrs(p, uri, pconn);
+}
+
+static struct proxy_conn *proxy_conn_use_dns_txt_addrs(pool *p, const char *uri,
+    struct proxy_conn *pconn, unsigned int flags) {
+  int res;
+  const char *name;
+  proxy_dns_type_e dns_type = PROXY_DNS_TXT;
+  array_header *resp = NULL;
+
+  name = pconn->pconn_host;
+
+  res = proxy_dns_resolve(p, name, dns_type, &resp, NULL);
+  if (res > 0) {
+    register unsigned int i;
+    const char **elts;
+
+    elts = resp->elts;
+    for (i = 0; i < resp->nelts; i++) {
+      const char *elt;
+      char *scheme, *host;
+      unsigned int port;
+      int str_flags = PR_STR_FL_IGNORE_CASE;
+      struct proxy_conn *elt_pconn;
+
+      elt = elts[i];
+
+      /* Many domains have multiple TXT records, for SPF, domain validation,
+       * etc.  So we are only interested in any TXT records are that valid
+       * (to us) URLs.
+       */
+
+      res = proxy_uri_parse(p, elt, &scheme, &host, &port, NULL, NULL);
+      if (res < 0) {
+        pr_trace_msg(trace_channel, 19,
+          "skipping non-URL TXT record '%s' discovered for '%s'", elt, uri);
+        continue;
+      }
+
+      /* If the URL found in a TXT record itself uses a DNS SRV or TXT
+       * variant, skip it.  That way lies circular madness.
+       */
+      if (pr_strnrstr(scheme, 0, "+srv", 0, str_flags) == TRUE ||
+          pr_strnrstr(scheme, 0, "+txt", 0, str_flags) == TRUE) {
+        pr_trace_msg(trace_channel, 19,
+          "skipping URL TXT record '%s' discovered for '%s'", elt, uri);
+        continue;
+      }
+
+      elt_pconn = (struct proxy_conn *) proxy_conn_create(p, elt, 0);
+      if (elt_pconn != NULL) {
+        destroy_pool(pconn->pconn_pool);
+        return elt_pconn;
+      }
+    }
+  }
+
+  /* Always fall back to normal name resolution. */
+  return proxy_conn_get_addrs(p, uri, pconn);
+}
+
+const struct proxy_conn *proxy_conn_create(pool *p, const char *uri,
+    unsigned int flags) {
+  int res, xerrno;
+  int use_dns_srv = FALSE, use_dns_txt = FALSE, use_tls = PROXY_TLS_ENGINE_AUTO;
+  char *ptr = NULL;
   char hostport[512], *proto, *remote_host, *username = NULL, *password = NULL;
   unsigned int remote_port;
-  struct proxy_conn *pconn;
+  struct proxy_conn *pconn, *pconn2;
   pool *pconn_pool;
-  pr_netaddr_t *pconn_addr;
 
   if (p == NULL ||
       uri == NULL) {
@@ -143,22 +321,35 @@ const struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
     return NULL;
   }
 
-  if (strcmp(proto, "ftps") == 0) {
+  if (strcmp(proto, "ftps") == 0 ||
+      strncmp(proto, "ftps+", 5) == 0) {
     /* If the 'ftps' scheme is used, then FTPS is REQUIRED for connections
      * to this server.
      */
     use_tls = PROXY_TLS_ENGINE_ON;
 
-    /* We automatically (and only) use implicit FTPS for port 990. */
-    if (remote_port == PROXY_TLS_IMPLICIT_FTPS_PORT) {
+    /* We automatically (and only) use implicit FTPS for port 990.  Note that
+     * we do NOT support implicit FTPS for URLs using DNS SRV, TXT.
+     */
+    if (strcmp(proto, "ftps") == 0 &&
+        remote_port == PROXY_TLS_IMPLICIT_FTPS_PORT) {
       use_tls = PROXY_TLS_ENGINE_IMPLICIT;
     }
 
-  } else if (strcmp(proto, "sftp") == 0) {
+  } else if (strcmp(proto, "sftp") == 0 ||
+             strncmp(proto, "sftp+", 5) == 0) {
     /* As might be obvious, do not try to use TLS against an SSH2/SFTP
      * server.
      */
     use_tls = PROXY_TLS_ENGINE_OFF;
+  }
+
+  if (pr_strnrstr(proto, 0, "+srv", 0, PR_STR_FL_IGNORE_CASE) == TRUE) {
+    use_dns_srv = TRUE;
+  }
+
+  if (pr_strnrstr(proto, 0, "+txt", 0, PR_STR_FL_IGNORE_CASE) == TRUE) {
+    use_dns_txt = TRUE;
   }
 
   memset(hostport, '\0', sizeof(hostport));
@@ -173,8 +364,21 @@ const struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
   pconn->pconn_port = remote_port;
   pconn->pconn_hostport = pstrdup(pconn_pool, hostport);
   pconn->pconn_uri = pstrdup(pconn_pool, uri);
-  pconn->pconn_proto = pstrdup(pconn_pool, proto);
   pconn->pconn_tls = use_tls;
+  pconn->pconn_use_dns_srv = use_dns_srv;
+  pconn->pconn_use_dns_txt = use_dns_txt;
+
+  /* Adjust the proto (scheme, actually) to account for possible DNS SRV,
+   * TXT usage.
+   */
+  ptr = strchr(proto, '+');
+  if (ptr != NULL) {
+    pconn->pconn_proto = pstrndup(pconn_pool, proto, ptr - proto);
+
+  } else {
+    pconn->pconn_proto = pstrdup(pconn_pool, proto);
+  }
+
   if (username != NULL) {
     pconn->pconn_username = pstrdup(pconn_pool, username);
   }
@@ -182,34 +386,30 @@ const struct proxy_conn *proxy_conn_create(pool *p, const char *uri) {
     pconn->pconn_password = pstrdup(pconn_pool, password);
   }
 
-  pconn_addr = (pr_netaddr_t *) pr_netaddr_get_addr(pconn_pool, remote_host,
-    &(pconn->pconn_addrs));
-  if (pconn_addr == NULL) {
-    pr_trace_msg(trace_channel, 2, "unable to resolve '%s' from URI '%s': %s",
-      remote_host, uri, strerror(errno));
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to resolve '%s' from URI '%s'", remote_host, uri);
-    destroy_pool(pconn_pool);
-    errno = EINVAL;
+  /* Here is where we discover the addresses for this URI.  We might use
+   * DNS SRV, DNS TXT, or normal DNS A/AAAA records.
+   */
+
+  if (use_dns_srv == TRUE) {
+    pconn2 = proxy_conn_use_dns_srv_addrs(p, uri, pconn, flags);
+    xerrno = errno;
+
+  } else if (use_dns_txt == TRUE) {
+    pconn2 = proxy_conn_use_dns_txt_addrs(p, uri, pconn, flags);
+    xerrno = errno;
+
+  } else {
+    pconn2 = proxy_conn_get_addrs(p, uri, pconn);
+    xerrno = errno;
+  }
+
+  if (pconn2 == NULL) {
+    destroy_pool(pconn->pconn_pool);
+    errno = xerrno;
     return NULL;
   }
 
-  if (pr_netaddr_set_port2(pconn_addr, remote_port) < 0) {
-    int xerrno = errno;
-
-    pr_trace_msg(trace_channel, 3,
-      "unable to set port %d from URI '%s': %s", remote_port, uri,
-      strerror(xerrno));
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to set port %d from URI '%s': %s", remote_port, uri,
-      strerror(xerrno));
-    destroy_pool(pconn_pool);
-    errno = EINVAL;
-    return NULL;
-  }
-
-  pconn->pconn_addr = pconn_addr;
-  return pconn;
+  return pconn2;
 }
 
 void proxy_conn_free(const struct proxy_conn *pconn) {
@@ -232,6 +432,26 @@ const pr_netaddr_t *proxy_conn_get_addr(const struct proxy_conn *pconn,
   }
 
   return pconn->pconn_addr;
+}
+
+int proxy_conn_get_dns_ttl(const struct proxy_conn *pconn) {
+  if (pconn == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  /* We really only care about/honor DNS TTLs for the DNS SRV. */
+  if (pconn->pconn_use_dns_srv == FALSE) {
+    errno = EPERM;
+    return -1;
+  }
+
+  if (pconn->pconn_dns_ttl <= 0) {
+    errno = ENOENT;
+    return -1;
+  }
+
+  return pconn->pconn_dns_ttl;
 }
 
 const char *proxy_conn_get_host(const struct proxy_conn *pconn) {
@@ -324,6 +544,24 @@ int proxy_conn_get_tls(const struct proxy_conn *pconn) {
   }
 
   return pconn->pconn_tls;
+}
+
+int proxy_conn_use_dns_srv(const struct proxy_conn *pconn) {
+  if (pconn == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  return pconn->pconn_use_dns_srv;
+}
+
+int proxy_conn_use_dns_txt(const struct proxy_conn *pconn) {
+  if (pconn == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  return pconn->pconn_use_dns_txt;
 }
 
 conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,

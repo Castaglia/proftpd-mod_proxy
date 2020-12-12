@@ -31,6 +31,7 @@
 
 #include "proxy/random.h"
 #include "proxy/db.h"
+#include "proxy/dns.h"
 #include "proxy/conn.h"
 #include "proxy/netio.h"
 #include "proxy/inet.h"
@@ -64,6 +65,7 @@ int tests_stubs_set_next_cmd(cmd_rec *cmd);
 
 Suite *tests_get_conn_suite(void);
 Suite *tests_get_db_suite(void);
+Suite *tests_get_dns_suite(void);
 Suite *tests_get_inet_suite(void);
 Suite *tests_get_netio_suite(void);
 Suite *tests_get_random_suite(void);

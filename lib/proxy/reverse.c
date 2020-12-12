@@ -264,7 +264,7 @@ static array_header *reverse_db_parse_uris(pool *p, array_header *uris) {
       continue;
     }
 
-    pconn = proxy_conn_create(p, uri);
+    pconn = proxy_conn_create(p, uri, 0);
     if (pconn == NULL) {
       pr_trace_msg(trace_channel, 9, "skipping malformed URL '%s'", uri);
       continue;
@@ -518,7 +518,7 @@ static array_header *reverse_db_pername_backends_by_json(pool *p,
       per_user ? "user" : "group", path);
 
     PRIVS_ROOT
-    backends = proxy_reverse_json_parse_uris(p, path);
+    backends = proxy_reverse_json_parse_uris(p, path, 0);
     xerrno = errno;
     PRIVS_RELINQUISH
 
@@ -1391,7 +1391,8 @@ static pr_json_array_t *read_json_array(pool *p, pr_fh_t *fh, off_t filesz) {
   return json;
 }
 
-array_header *proxy_reverse_json_parse_uris(pool *p, const char *path) {
+array_header *proxy_reverse_json_parse_uris(pool *p, const char *path,
+    unsigned int flags) {
   register unsigned int i, nelts;
   int count = 0, reached_eol = TRUE, res, xerrno = 0;
   pr_fh_t *fh;
@@ -1505,7 +1506,7 @@ array_header *proxy_reverse_json_parse_uris(pool *p, const char *path) {
     pr_signals_handle();
 
     if (pr_json_array_get_string(p, json, i, &uri) == 0) {
-      pconn = proxy_conn_create(p, uri);
+      pconn = proxy_conn_create(p, uri, flags);
       if (pconn == NULL) {
         pr_trace_msg(trace_channel, 9,
           "skipping malformed URL '%s' found in file '%s'", uri, path);

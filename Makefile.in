@@ -10,10 +10,12 @@ SHARED_CFLAGS=-DPR_SHARED_MODULE
 SHARED_LDFLAGS=-avoid-version -export-dynamic -module
 VPATH=@srcdir@
 
+MODULE_LIBS=@MODULE_LIBS@
 MODULE_NAME=mod_proxy
 MODULE_OBJS=mod_proxy.o \
   lib/proxy/random.o \
   lib/proxy/db.o \
+  lib/proxy/dns.o \
   lib/proxy/session.o \
   lib/proxy/conn.o \
   lib/proxy/netio.o \
@@ -39,6 +41,7 @@ MODULE_OBJS=mod_proxy.o \
 SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/random.lo \
   lib/proxy/db.lo \
+  lib/proxy/dns.lo \
   lib/proxy/session.lo \
   lib/proxy/conn.lo \
   lib/proxy/netio.lo \
@@ -75,6 +78,7 @@ shared: $(SHARED_MODULE_OBJS)
 	$(LIBTOOL) --mode=link --tag=CC $(CC) -o $(MODULE_NAME).la $(SHARED_MODULE_OBJS) -rpath $(LIBEXECDIR) $(LDFLAGS) $(SHARED_LDFLAGS) $(SHARED_MODULE_LIBS) `cat $(MODULE_NAME).c | grep '$$Libraries:' | sed -e 's/^.*\$$Libraries: \(.*\)\\$$/\1/'`
 
 static: $(MODULE_OBJS)
+	test -z "$(MODULE_LIBS)" || echo "$(MODULE_LIBS)" >> $(MODULE_LIBS_FILE)
 	$(AR) rc $(MODULE_NAME).a $(MODULE_OBJS)
 	$(RANLIB) $(MODULE_NAME).a
 
@@ -87,7 +91,8 @@ install-misc:
 	$(INSTALL) -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0644 cacerts.pem $(DESTDIR)$(sysconfdir)/cacerts.pem
 
 clean:
-	$(LIBTOOL) --mode=clean $(RM) $(MODULE_NAME).a $(MODULE_NAME).la *.o *.lo .libs/*.o lib/proxy/*.o lib/proxy/*.lo lib/proxy/ftp/*.o lib/proxy/ftp/*.lo lib/proxy/reverse/*.lo lib/proxy/tls/*.lo
+	$(LIBTOOL) --mode=clean $(RM) $(MODULE_NAME).a $(MODULE_NAME).la *.o *.lo .libs/*.o lib/proxy/*.o lib/proxy/*.lo lib/proxy/ftp/*.o lib/proxy/ftp/*.lo lib/proxy/reverse/*.o lib/proxy/reverse/*.lo lib/proxy/tls/*.o lib/proxy/tls/*.lo
+	cd t/ && $(MAKE) clean
 
 # Run the API tests
 check:

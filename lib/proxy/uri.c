@@ -294,11 +294,14 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
       *port = 22;
 
     } else {
-      pr_trace_msg(trace_channel, 4,
-        "unable to determine port for scheme '%.100s'", *scheme);
-      errno = EINVAL;
-      return -1;
-    } 
+      if (pr_strnrstr(*scheme, 0, "+srv", 0, PR_STR_FL_IGNORE_CASE) != TRUE &&
+          pr_strnrstr(*scheme, 0, "+txt", 0, PR_STR_FL_IGNORE_CASE) != TRUE) {
+        pr_trace_msg(trace_channel, 4,
+          "unable to determine port for scheme '%.100s'", *scheme);
+        errno = EINVAL;
+        return -1;
+      }
+    }
 
   } else {
     *host = uri_parse_host(p, uri, ptr, &ptr2);
@@ -320,10 +323,13 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
       *port = 22;
 
     } else {
-      pr_trace_msg(trace_channel, 4,
-        "unable to determine port for scheme '%.100s'", *scheme);
-      errno = EINVAL;
-      return -1;
+      if (pr_strnrstr(*scheme, 0, "+srv", 0, PR_STR_FL_IGNORE_CASE) != TRUE &&
+          pr_strnrstr(*scheme, 0, "+txt", 0, PR_STR_FL_IGNORE_CASE) != TRUE) {
+        pr_trace_msg(trace_channel, 4,
+          "unable to determine port for scheme '%.100s'", *scheme);
+        errno = EINVAL;
+        return -1;
+      }
     }
 
   } else {
@@ -366,6 +372,15 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
       errno = EINVAL;
       return -1;
     }
+  }
+
+  /* We deliberately ignore any configured for SRV, TXT scheme variants.
+   * The ports to use will be obtained from the DNS records for such
+   * schemes.
+   */
+  if (pr_strnrstr(*scheme, 0, "+srv", 0, PR_STR_FL_IGNORE_CASE) == TRUE ||
+      pr_strnrstr(*scheme, 0, "+txt", 0, PR_STR_FL_IGNORE_CASE) == TRUE) {
+    *port = 0;
   }
 
   return 0;

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2012-2016 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2012-2020 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -45,7 +45,7 @@ static void tear_down(void) {
     pr_trace_set_levels("proxy.uri", 0, 0);
   }
 
-  if (p) {
+  if (p != NULL) {
     destroy_pool(p);
     p = permanent_pool = NULL;
     session.c = NULL;
@@ -59,40 +59,44 @@ START_TEST (uri_parse_test) {
   unsigned int port;
   int res;
 
+  mark_point();
   res = proxy_uri_parse(NULL, NULL, NULL, NULL, NULL, NULL, NULL);
   fail_unless(res < 0, "Failed to handle null pool");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
+  mark_point();
   res = proxy_uri_parse(p, NULL, NULL, NULL, NULL, NULL, NULL);
   fail_unless(res < 0, "Failed to handle null URI");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
+  mark_point();
   uri = "foo";
-
   res = proxy_uri_parse(p, uri, NULL, NULL, NULL, NULL, NULL);
   fail_unless(res < 0, "Failed to handle null scheme");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
+  mark_point();
   res = proxy_uri_parse(p, uri, &scheme, NULL, NULL, NULL, NULL);
   fail_unless(res < 0, "Failed to handle null host");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
+  mark_point();
   res = proxy_uri_parse(p, uri, &scheme, &host, NULL, NULL, NULL);
   fail_unless(res < 0, "Failed to handle null port");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
+  mark_point();
   res = proxy_uri_parse(p, uri, &scheme, &host, &port, NULL, NULL);
   fail_unless(res < 0, "Failed to handle URI missing a colon");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "foo:";
@@ -102,7 +106,6 @@ START_TEST (uri_parse_test) {
     strerror(errno), errno);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "foo@:";
@@ -112,7 +115,6 @@ START_TEST (uri_parse_test) {
     strerror(errno), errno);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp:";
@@ -122,7 +124,6 @@ START_TEST (uri_parse_test) {
     strerror(errno), errno);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp:/";
@@ -132,7 +133,6 @@ START_TEST (uri_parse_test) {
     strerror(errno), errno);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp:/a";
@@ -142,7 +142,6 @@ START_TEST (uri_parse_test) {
     strerror(errno), errno);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://";
@@ -152,7 +151,6 @@ START_TEST (uri_parse_test) {
     strerror(errno), errno);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://%2f";
@@ -162,7 +160,6 @@ START_TEST (uri_parse_test) {
     strerror(errno), errno);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://foo";
@@ -179,7 +176,6 @@ START_TEST (uri_parse_test) {
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftps://foo";
@@ -196,7 +192,6 @@ START_TEST (uri_parse_test) {
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "sftp://foo";
@@ -213,7 +208,6 @@ START_TEST (uri_parse_test) {
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://foo:2121";
@@ -230,7 +224,6 @@ START_TEST (uri_parse_test) {
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://127.0.0.1:2121";
@@ -247,7 +240,6 @@ START_TEST (uri_parse_test) {
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://[::1]:2121";
@@ -264,7 +256,6 @@ START_TEST (uri_parse_test) {
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://[::1:2121";
@@ -274,7 +265,6 @@ START_TEST (uri_parse_test) {
     strerror(errno), errno);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftps://foo:2121";
@@ -291,7 +281,6 @@ START_TEST (uri_parse_test) {
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "sftp://foo:2222";
@@ -308,7 +297,6 @@ START_TEST (uri_parse_test) {
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://user:password@host:21";
@@ -329,7 +317,6 @@ START_TEST (uri_parse_test) {
     "Expected password '%s', got '%s'", "password", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://user:@host:21";
@@ -350,7 +337,6 @@ START_TEST (uri_parse_test) {
     "Expected password '%s', got '%s'", "", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://user@host:21";
@@ -367,7 +353,6 @@ START_TEST (uri_parse_test) {
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://anonymous:email@example.com@host:21";
@@ -388,7 +373,6 @@ START_TEST (uri_parse_test) {
     "Expected password '%s', got '%s'", "email@example.com", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://user@domain:email@example.com@host:21";
@@ -409,7 +393,6 @@ START_TEST (uri_parse_test) {
     "Expected password '%s', got '%s'", "email@example.com", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://host:65555";
@@ -419,7 +402,6 @@ START_TEST (uri_parse_test) {
     strerror(errno), errno);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://foo:2121/home";
@@ -436,7 +418,6 @@ START_TEST (uri_parse_test) {
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftps://foo:2121/home";
@@ -453,7 +434,6 @@ START_TEST (uri_parse_test) {
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "sftp://foo:2222/home";
@@ -470,7 +450,6 @@ START_TEST (uri_parse_test) {
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://host:65555:foo";
@@ -480,7 +459,6 @@ START_TEST (uri_parse_test) {
     strerror(errno), errno);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "ftp://host:70000";
@@ -490,7 +468,6 @@ START_TEST (uri_parse_test) {
     strerror(errno), errno);
 
   mark_point();
-
   scheme = host = username = password = NULL;
   port = 0;
   uri = "http://host";
@@ -498,6 +475,74 @@ START_TEST (uri_parse_test) {
   fail_unless(res < 0, "Failed to reject URI with unsupported scheme");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
+
+  /* SRV scheme variants */
+
+  mark_point();
+  scheme = host = username = password = NULL;
+  port = 0;
+  uri = "ftp+srv://foo:2121/home";
+  res = proxy_uri_parse(p, uri, &scheme, &host, &port, &username, &password);
+  fail_unless(res == 0, "Expected successful parsing of URI '%s', got %s", uri,
+    strerror(errno));
+  fail_unless(strcmp(scheme, "ftp+srv") == 0,
+    "Expected scheme '%s', got '%s'", "ftp+srv", scheme);
+  fail_unless(strcmp(host, "foo") == 0,
+    "Expected host '%s', got '%s'", "foo", host);
+  fail_unless(port == 0,
+    "Expected port '%u', got '%u'", 0, port);
+  fail_unless(username == NULL, "Expected null username, got '%s'", username);
+  fail_unless(password == NULL, "Expected null password, got '%s'", password);
+
+  mark_point();
+  scheme = host = username = password = NULL;
+  port = 0;
+  uri = "ftps+srv://foo.bar";
+  res = proxy_uri_parse(p, uri, &scheme, &host, &port, &username, &password);
+  fail_unless(res == 0, "Expected successful parsing of URI '%s', got %s", uri,
+    strerror(errno));
+  fail_unless(strcmp(scheme, "ftps+srv") == 0,
+    "Expected scheme '%s', got '%s'", "ftps+srv", scheme);
+  fail_unless(strcmp(host, "foo.bar") == 0,
+    "Expected host '%s', got '%s'", "foo.bar", host);
+  fail_unless(port == 0,
+    "Expected port '%u', got '%u'", 0, port);
+  fail_unless(username == NULL, "Expected null username, got '%s'", username);
+  fail_unless(password == NULL, "Expected null password, got '%s'", password);
+
+  /* TXT scheme variants */
+
+  mark_point();
+  scheme = host = username = password = NULL;
+  port = 0;
+  uri = "ftp+txt://foo:2121/home";
+  res = proxy_uri_parse(p, uri, &scheme, &host, &port, &username, &password);
+  fail_unless(res == 0, "Expected successful parsing of URI '%s', got %s", uri,
+    strerror(errno));
+  fail_unless(strcmp(scheme, "ftp+txt") == 0,
+    "Expected scheme '%s', got '%s'", "ftp+txt", scheme);
+  fail_unless(strcmp(host, "foo") == 0,
+    "Expected host '%s', got '%s'", "foo", host);
+  fail_unless(port == 0,
+    "Expected port '%u', got '%u'", 0, port);
+  fail_unless(username == NULL, "Expected null username, got '%s'", username);
+  fail_unless(password == NULL, "Expected null password, got '%s'", password);
+
+  mark_point();
+  scheme = host = username = password = NULL;
+  port = 0;
+  uri = "ftps+txt://foo.bar";
+  res = proxy_uri_parse(p, uri, &scheme, &host, &port, &username, &password);
+  fail_unless(res == 0, "Expected successful parsing of URI '%s', got %s", uri,
+    strerror(errno));
+  fail_unless(strcmp(scheme, "ftps+txt") == 0,
+    "Expected scheme '%s', got '%s'", "ftps+txt", scheme);
+  fail_unless(strcmp(host, "foo.bar") == 0,
+    "Expected host '%s', got '%s'", "foo.bar", host);
+  fail_unless(port == 0,
+    "Expected port '%u', got '%u'", 0, port);
+  fail_unless(username == NULL, "Expected null username, got '%s'", username);
+  fail_unless(password == NULL, "Expected null password, got '%s'", password);
 }
 END_TEST
 

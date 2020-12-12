@@ -902,6 +902,7 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
   config_rec *c;
   array_header *backend_servers;
   char *uri = NULL;
+  unsigned int flags = PROXY_CONN_CREATE_FL_USE_DNS_TTL;
 
   if (cmd->argc-1 < 1) {
     CONF_ERROR(cmd, "wrong number of parameters");
@@ -940,7 +941,7 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
 
         PRIVS_ROOT
         backend_servers = proxy_reverse_json_parse_uris(cmd->server->pool,
-          path);
+          path, flags);
         xerrno = errno;
         PRIVS_RELINQUISH
 
@@ -952,7 +953,7 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
 
         if (backend_servers->nelts == 0) {
           CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
-            "no usable URLs found in file '", path, NULL));
+            "no usable URLs found in file '", path, "'", NULL));
         }
 
       } else {
@@ -975,7 +976,7 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
       /* Treat it as a server-spec (i.e. a URI) */
       const struct proxy_conn *pconn;
 
-      pconn = proxy_conn_create(c->pool, cmd->argv[1]);
+      pconn = proxy_conn_create(c->pool, cmd->argv[1], flags);
       if (pconn == NULL) {
         CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing '",
           (char *) cmd->argv[1], "': ", strerror(errno), NULL));
@@ -992,7 +993,7 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
     for (i = 1; i < cmd->argc; i++) {
       const struct proxy_conn *pconn;
 
-      pconn = proxy_conn_create(c->pool, cmd->argv[i]);
+      pconn = proxy_conn_create(c->pool, cmd->argv[i], flags);
       if (pconn == NULL) {
         CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error parsing '",
           (char *) cmd->argv[i], "': ", strerror(errno), NULL));
