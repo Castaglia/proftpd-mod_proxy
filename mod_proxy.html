@@ -674,6 +674,10 @@ The backend servers can also be discovered via DNS <code>SRV</code> or <code>TXT
   ftp+txt://castaglia.org
 </pre>
 These <code>SRV/TXT</code> URL scheme variations also apply to FTPS URLs.
+<b>Note</b> that any explicit port numbers provided in URLs using these
+<code>SRV/TXT</code> scheme variants <i>will be ignored</i>; the actual port
+numbers to use will be discovered from the <code>SRV</code> and <code>TXT</code>
+DNS records.
 
 <p>
 The backend servers can <i>also</i> be contained in a list in a JSON file,

@@ -390,6 +390,16 @@ const struct proxy_conn *proxy_conn_create(pool *p, const char *uri,
    * DNS SRV, DNS TXT, or normal DNS A/AAAA records.
    */
 
+  if (use_dns_srv == TRUE ||
+      use_dns_txt == TRUE) {
+    pr_trace_msg(trace_channel, 5,
+      "ignoring port %u from URI '%.100s' since port will be discovered "
+      "from %s DNS records", remote_port, uri, use_dns_srv ? "SRV" : "TXT");
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "ignoring port %u from URI '%.100s' since port will be discovered "
+      "from %s DNS records", remote_port, uri, use_dns_srv ? "SRV" : "TXT");
+  }
+
   if (use_dns_srv == TRUE) {
     pconn2 = proxy_conn_use_dns_srv_addrs(p, uri, pconn, flags);
     xerrno = errno;
