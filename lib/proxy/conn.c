@@ -694,7 +694,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
 
   pr_trace_msg(trace_channel, 12,
     "connecting to backend address %s#%u from %s#%u", remote_ipstr, remote_port,
-    pr_netaddr_get_ipstr(bind_addr), ntohs(pr_netaddr_get_port(bind_addr)));
+    pr_netaddr_get_ipstr(server_conn->local_addr), server_conn->local_port);
 
   res = pr_inet_connect_nowait(p, server_conn, remote_addr,
     ntohs(pr_netaddr_get_port(remote_addr)));
