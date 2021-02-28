@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy conn implementation
- * Copyright (c) 2012-2020 TJ Saunders
+ * Copyright (c) 2012-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -859,6 +859,12 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     return NULL;
   }
 
+  /* Remember that pr_inet_openrw() makes a copy of the input connection;
+   * we thus do not need server_conn now.
+   */
+  pr_inet_close(p, server_conn);
+
+  pr_pool_tag(ctrl_conn->pool, "proxy backend ctrl conn pool");
   return ctrl_conn;
 }
 

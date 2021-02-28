@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2016-2020 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2016-2021 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,7 +31,7 @@ static unsigned char use_ipv6 = FALSE;
 
 static void set_up(void) {
   if (p == NULL) {
-    p = permanent_pool = session.pool = make_sub_pool(NULL);
+    p = permanent_pool = session.pool = proxy_pool = make_sub_pool(NULL);
     session.c = NULL;
     session.notes = NULL;
   }
@@ -55,7 +55,7 @@ static void tear_down(void) {
 
   if (p) {
     destroy_pool(p);
-    p = permanent_pool = session.pool = NULL;
+    p = permanent_pool = session.pool = proxy_pool = NULL;
     session.c = NULL;
     session.notes = NULL;
   } 

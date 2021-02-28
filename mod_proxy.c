@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy
- * Copyright (c) 2012-2020 TJ Saunders
+ * Copyright (c) 2012-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -192,6 +192,7 @@ MODRET proxy_abort(cmd_rec *cmd, struct proxy_session *proxy_sess,
     pr_trace_msg(trace_channel, 19, "received ABOR on frontend connection, "
       "closing backend data connection");
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
   }
 
@@ -1928,6 +1929,7 @@ static int proxy_data_handle_resp(pool *p, struct proxy_session *proxy_sess,
 
     if (proxy_sess->backend_data_conn != NULL) {
       proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+      pr_inet_close(session.pool, proxy_sess->backend_data_conn);
       proxy_sess->backend_data_conn = NULL;
     }
 
@@ -1950,6 +1952,7 @@ static int proxy_data_handle_resp(pool *p, struct proxy_session *proxy_sess,
 
     if (proxy_sess->backend_data_conn != NULL) {
       proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+      pr_inet_close(session.pool, proxy_sess->backend_data_conn);
       proxy_sess->backend_data_conn = NULL;
     }
 
@@ -1969,6 +1972,7 @@ static int proxy_data_handle_resp(pool *p, struct proxy_session *proxy_sess,
 
     if (proxy_sess->backend_data_conn != NULL) {
       proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+      pr_inet_close(session.pool, proxy_sess->backend_data_conn);
       proxy_sess->backend_data_conn = NULL;
     }
 
@@ -2090,6 +2094,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
         "postopen error for backend data connection input stream: %s",
         strerror(xerrno));
       proxy_inet_close(session.pool, backend_conn);
+      pr_inet_close(session.pool, backend_conn);
       proxy_sess->backend_data_conn = NULL;
 
       errno = xerrno;
@@ -2103,6 +2108,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
         "postopen error for backend data connection output stream: %s",
         strerror(xerrno));
       proxy_inet_close(session.pool, backend_conn);
+      pr_inet_close(session.pool, backend_conn);
       proxy_sess->backend_data_conn = NULL;
 
       errno = xerrno;
@@ -2139,6 +2145,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
 
       if (proxy_sess->backend_data_conn != NULL) {
         proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+        pr_inet_close(session.pool, proxy_sess->backend_data_conn);
         proxy_sess->backend_data_conn = NULL;
       }
 
@@ -2152,6 +2159,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
 
     /* We can close our listening socket now. */
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = backend_conn; 
 
     if (proxy_netio_postopen(backend_conn->instrm) < 0) {
@@ -2161,6 +2169,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
         "postopen error for backend data connection input stream: %s",
         strerror(xerrno));
       proxy_inet_close(session.pool, backend_conn);
+      pr_inet_close(session.pool, backend_conn);
       proxy_sess->backend_data_conn = NULL;
 
       errno = xerrno;
@@ -2174,6 +2183,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
         "postopen error for backend data connection output stream: %s",
         strerror(xerrno));
       proxy_inet_close(session.pool, backend_conn);
+      pr_inet_close(session.pool, backend_conn);
       proxy_sess->backend_data_conn = NULL;
 
       errno = xerrno;
@@ -2528,13 +2538,14 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
         "error calling select(2) while transferring data: %s",
         strerror(xerrno));
 
-      if (session.d != NULL) {
+      if (proxy_sess->frontend_data_conn != NULL) {
         pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
         proxy_sess->frontend_data_conn = session.d = NULL;
       }
 
       if (proxy_sess->backend_data_conn != NULL) {
         proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+        pr_inet_close(session.pool, proxy_sess->backend_data_conn);
         proxy_sess->backend_data_conn = NULL;
       }
 
@@ -2594,7 +2605,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
       /* Check for closed frontend/backend data connections, as from an ABOR
        * command.
        */
-      if (session.d == NULL ||
+      if (proxy_sess->frontend_data_conn == NULL ||
           proxy_sess->backend_data_conn == NULL) {
         if (pr_data_get_timeout(PR_DATA_TIMEOUT_STALLED) > 0) {
           pr_timer_remove(PR_TIMER_STALLED, ANY_MODULE);
@@ -2653,9 +2664,10 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
             "connections");
 
           proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+          pr_inet_close(session.pool, proxy_sess->backend_data_conn);
           proxy_sess->backend_data_conn = NULL;
 
-          if (session.d != NULL) {
+          if (proxy_sess->frontend_data_conn != NULL) {
             pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
             proxy_sess->frontend_data_conn = session.d = NULL;
           }
@@ -2732,9 +2744,10 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
               "closing data connections");
 
             proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+            pr_inet_close(session.pool, proxy_sess->backend_data_conn);
             proxy_sess->backend_data_conn = NULL;
 
-            if (session.d != NULL) {
+            if (proxy_sess->frontend_data_conn != NULL) {
               pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
               proxy_sess->frontend_data_conn = session.d = NULL;
             }
@@ -2774,13 +2787,14 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
           "error receiving response from backend control connection: %s",
           strerror(xerrno));
 
-        if (session.d != NULL) {
+        if (proxy_sess->frontend_data_conn != NULL) {
           pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
           proxy_sess->frontend_data_conn = session.d = NULL;
         }
 
         if (proxy_sess->backend_data_conn != NULL) {
           proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+          pr_inet_close(session.pool, proxy_sess->backend_data_conn);
           proxy_sess->backend_data_conn = NULL;
         }
 
@@ -2822,6 +2836,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
             case PR_NETIO_IO_WR:
               if (proxy_sess->backend_data_conn != NULL) {
                 proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+                pr_inet_close(session.pool, proxy_sess->backend_data_conn);
                 proxy_sess->backend_data_conn = NULL;
               }
               break;
@@ -3235,6 +3250,7 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     xerrno = errno;
 
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
     pr_response_add_err(R_425,
@@ -3275,9 +3291,11 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     xerrno = errno;
 
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
     proxy_inet_close(session.pool, data_conn);
+    pr_inet_close(session.pool, data_conn);
     pr_response_block(TRUE);
 
     pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
@@ -3375,6 +3393,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     xerrno = errno;
 
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
     pr_response_add_err(R_425,
@@ -3415,6 +3434,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     xerrno = errno;
 
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
     pr_inet_close(session.pool, data_conn);
@@ -4282,6 +4302,7 @@ MODRET proxy_any(cmd_rec *cmd) {
 
         memset(&session.xfer, 0, sizeof(session.xfer));
         session.xfer.p = make_sub_pool(session.pool);
+        pr_pool_tag(session.xfer.p, "proxy session xfer pool");
         session.xfer.direction = PR_NETIO_IO_WR;
 
         if (proxy_opts & PROXY_OPT_USE_DIRECT_DATA_TRANSFERS) {
@@ -4326,6 +4347,7 @@ MODRET proxy_any(cmd_rec *cmd) {
         }
 
         session.xfer.p = make_sub_pool(session.pool);
+        pr_pool_tag(session.xfer.p, "proxy session xfer pool");
         gettimeofday(&session.xfer.start_time, NULL);
 
         if (proxy_opts & PROXY_OPT_USE_DIRECT_DATA_TRANSFERS) {
@@ -4540,11 +4562,13 @@ static void proxy_exit_ev(const void *event_data, void *user_data) {
 
     if (proxy_sess->backend_ctrl_conn != NULL) {
       proxy_inet_close(proxy_sess->pool, proxy_sess->backend_ctrl_conn);
+      pr_inet_close(proxy_sess->pool, proxy_sess->backend_ctrl_conn);
       proxy_sess->backend_ctrl_conn = NULL;
     }
 
     if (proxy_sess->backend_data_conn != NULL) {
       proxy_inet_close(proxy_sess->pool, proxy_sess->backend_data_conn);
+      pr_inet_close(proxy_sess->pool, proxy_sess->backend_data_conn);
       proxy_sess->backend_data_conn = NULL;
     }
 
@@ -4881,7 +4905,7 @@ static int proxy_sess_init(void) {
   }
 
   proxy_pool = make_sub_pool(session.pool);
-  pr_pool_tag(proxy_pool, MOD_PROXY_VERSION);
+  pr_pool_tag(proxy_pool, MOD_PROXY_VERSION " Session Pool");
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyOptions", FALSE);
   while (c != NULL) {

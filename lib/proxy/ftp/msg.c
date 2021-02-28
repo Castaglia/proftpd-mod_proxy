@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP message routines
- * Copyright (c) 2013-2020 TJ Saunders
+ * Copyright (c) 2013-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +24,8 @@
 
 #include "mod_proxy.h"
 #include "include/proxy/ftp/msg.h"
+
+static pool *ftp_msg_pool = NULL;
 
 static const char *trace_channel = "proxy.ftp.msg";
 
@@ -220,12 +222,18 @@ const pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *p, const char *msg,
   snprintf(addr_buf, addrlen, "%u.%u.%u.%u", h1, h2, h3, h4);
 #endif /* PR_USE_IPV6 */
 
-  /* XXX Ideally we would NOT be using session pool here, but some other
-   * pool.  These objects can't be destroyed (they have no pools of their own),
-   * so they will just clutter up the session pool.  Perhaps we could have
-   * a pool of addrs in this API, for reusing.
+  /* Use a specific memory pool for these objects, since they cannot be
+   * destroyed (they have no pools of their own), so they will just clutter up
+   * the session pool.
    */
-  addr = (pr_netaddr_t *) pr_netaddr_get_addr(session.pool, addr_buf, NULL);
+  if (ftp_msg_pool != NULL) {
+    destroy_pool(ftp_msg_pool);
+  }
+
+  ftp_msg_pool = make_sub_pool(proxy_pool);
+  pr_pool_tag(ftp_msg_pool, "Proxy FTP Message Pool");
+
+  addr = (pr_netaddr_t *) pr_netaddr_get_addr(ftp_msg_pool, addr_buf, NULL);
   if (addr == NULL) {
     int xerrno = errno;
 
@@ -465,8 +473,17 @@ const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
     return NULL;
   }
 
-  /* XXX Use a pool other than session.pool here, in the future. */ 
-  res = pr_netaddr_dup(session.pool, &na);
+  /* Use a specific memory pool for these objects, since they cannot be
+   * destroyed (they have no pools of their own), so they will just clutter up   * the session pool.
+   */
+  if (ftp_msg_pool != NULL) {
+    destroy_pool(ftp_msg_pool);
+  }
+
+  ftp_msg_pool = make_sub_pool(proxy_pool);
+  pr_pool_tag(ftp_msg_pool, "Proxy FTP Message Pool");
+
+  res = pr_netaddr_dup(ftp_msg_pool, &na);
   pr_netaddr_set_port(res, htons(port));
 
   pr_trace_msg(trace_channel, 9, "parsed '%s' into %s %s#%u", msg,
