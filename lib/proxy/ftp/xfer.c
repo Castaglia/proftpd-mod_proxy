@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP data transfer routines
- * Copyright (c) 2013-2020 TJ Saunders
+ * Copyright (c) 2013-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -213,6 +213,7 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
   if (proxy_sess->backend_data_conn != NULL) {
     /* Make sure that we only have one backend data connection. */
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
   }
 
@@ -256,6 +257,7 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
       strerror(xerrno));
 
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
     pr_response_add_err(error_code, "%s: %s", (char *) cmd->argv[0],
@@ -275,6 +277,7 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
       (char *) actv_cmd->argv[0], strerror(xerrno));
 
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
     pr_response_add_err(error_code, "%s: %s", (char *) cmd->argv[0],
@@ -291,6 +294,7 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
       (char *) actv_cmd->argv[0], resp->num, resp->msg);
 
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
     proxy_sess->backend_data_conn = NULL;
 
     if (policy_id == PR_CMD_EPRT_ID) {
