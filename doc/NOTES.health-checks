@@ -60,3 +60,48 @@ Notes:
    weights into the system to deal with heterogenous capacity of the
    servers.  (This is harder, since the "weight" factor is admin-assigned,
    and how exactly is it computed?  2x CPU?  4x memory?  6x network?)
+
+Implementation
+
+Initially, we will want a simple implementation.  Passive health checks,
+not active.  Observe errors on existing traffic, mark unhealthy backends and
+skip them, for some period of time.  This will only apply to reverse proxying,
+not forward proxying.
+
+What types of errors should we watch for?  How many errors before a backend
+is unhealthy?  How long to skip over unhealthy backends?  What happens when
+all backends are unhealthy?
+
+  Types of errors:
+    TCP connect errors
+    TLS handshake errors
+    FTP connect/login errors (ignoring bad credentials!)
+
+Specifically, we want to track errors that indicate that that server is
+unavailable for service.  Thus probably NOT TLS handshake errors, or
+FTP data transfer errors.  That leaves TCP connect errors, and FTP non-200
+responses on connect.
+
+Consider also the case where a configured backend server is a DNS name/URL,
+which resolves to multiple IP addresses/ports.  These resolved addresses/ports
+are not currently tracked in the SQLite database -- thus we currently have
+no state for them persisted/shareable outside of that session process.  If
+we did persist these addresses in the db, how to clean them up?  Consider
+dynamic backends whose IPs change a lot over time; the cruft would build up
+in the db.  Hmm.
+
+  https://www.haproxy.com/blog/using-haproxy-as-an-api-gateway-part-3-health-checks/
+  https://docs.nginx.com/nginx/admin-guide/load-balancer/http-health-check/#passive-health-checks
+
+   > Note that if there is only a single server in a group, the fail_timeout
+   > and max_fails parameters are ignored and the server is never marked
+   > unavailable.
+
+  https://docs.nginx.com/nginx/admin-guide/load-balancer/tcp-health-check/#passive-tcp-health-checks
+
+   > If several health checks are configured for an upstream group, the failure
+   > of any check is enough to consider the corresponding server unhealthy.
+
+  https://docs.nginx.com/nginx/admin-guide/load-balancer/tcp-health-check/#fine-tuning-tcp-health-checks
+
+    Defaults: interval=5s, passes=1, fails=1
