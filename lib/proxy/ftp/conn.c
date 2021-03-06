@@ -30,6 +30,39 @@
 
 static const char *trace_channel = "proxy.ftp.conn";
 
+static int set_conn_socket_opts(pool *p, conn_t *conn, int rcvbufsz,
+    int sndbufsz, struct tcp_keepalive *keepalive, int reuse_port) {
+  int res;
+
+#if PROFTPD_VERSION_NUMBER >= 0x0001030801
+  res = pr_inet_set_socket_opts2(p, conn, rcvbufsz, sndbufsz, keepalive,
+    reuse_port);
+#else
+  res = pr_inet_set_socket_opts(p, conn, rcvbufsz, sndbufsz, keepalive);
+
+  /* Earlier versions of ProFTPD did not support setting the SO_REUSEPORT
+   * socket option via pr_inet_set_socket_opts(), so we do it ourselves.
+   *
+   * For active data transfers, enabling SO_REUSEPORT can be very useful,
+   * since the number/range of available source ports may be small.
+   */
+# if defined(SO_REUSEPORT)
+  if (setsockopt(conn->listen_fd, SOL_SOCKET, SO_REUSEPORT,
+      (void *) &reuse_port, sizeof(reuse_port)) < 0) {
+    pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error setting SO_REUSEPORT on fd %d: %s", conn->listen_fd,
+      strerror(errno));
+
+  } else {
+    pr_trace_msg(trace_channel, 8,
+      "set socket fd %d reuseport = %d", conn->listen_fd, reuse_port);
+  }
+# endif /* SO_REUSEPORT */
+#endif /* ProFTPD 1.3.8rc1 or later */
+
+  return res;
+}
+
 conn_t *proxy_ftp_conn_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn,
     int frontend_data) {
   conn_t *conn;
@@ -45,14 +78,14 @@ conn_t *proxy_ftp_conn_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn,
   reverse_dns = pr_netaddr_set_reverse_dns(ServerUseReverseDNS);
 
   if (session.xfer.direction == PR_NETIO_IO_RD) {
-    pr_inet_set_socket_opts(data_conn->pool, data_conn,
+    set_conn_socket_opts(data_conn->pool, data_conn,
       (main_server->tcp_rcvbuf_override ? main_server->tcp_rcvbuf_len : 0), 0,
-      main_server->tcp_keepalive);
+      main_server->tcp_keepalive, 0);
 
   } else {
-    pr_inet_set_socket_opts(data_conn->pool, data_conn,
+    set_conn_socket_opts(data_conn->pool, data_conn,
       0, (main_server->tcp_sndbuf_override ? main_server->tcp_sndbuf_len : 0),
-      main_server->tcp_keepalive);
+      main_server->tcp_keepalive, 0);
   }
 
   if (frontend_data) {
@@ -114,14 +147,14 @@ conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
   reverse_dns = pr_netaddr_set_reverse_dns(ServerUseReverseDNS);
 
   if (session.xfer.direction == PR_NETIO_IO_RD) {
-    pr_inet_set_socket_opts(conn->pool, conn,
+    set_conn_socket_opts(conn->pool, conn,
       (main_server->tcp_rcvbuf_override ? main_server->tcp_rcvbuf_len : 0), 0,
-      main_server->tcp_keepalive);
+      main_server->tcp_keepalive, 1);
 
   } else {
-    pr_inet_set_socket_opts(conn->pool, conn,
+    set_conn_socket_opts(conn->pool, conn,
       0, (main_server->tcp_sndbuf_override ? main_server->tcp_sndbuf_len : 0),
-      main_server->tcp_keepalive);
+      main_server->tcp_keepalive, 1);
   }
 
   pr_inet_set_proto_opts(session.pool, conn,
