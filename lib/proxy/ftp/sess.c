@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP session routines
- * Copyright (c) 2013-2020 TJ Saunders
+ * Copyright (c) 2013-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -437,6 +437,21 @@ int proxy_ftp_sess_send_auth_tls(pool *p,
     "ProxyTLSTransferProtectionPolicy", FALSE);
   if (c != NULL) {
     tls_xfer_prot_policy = *((int *) c->argv[0]);
+
+    switch (tls_xfer_prot_policy) {
+      case PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_CLIENT:
+      case PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_REQUIRED:
+        proxy_tls_set_data_prot(TRUE);
+        break;
+
+      case PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_CLEAR:
+        proxy_tls_set_data_prot(FALSE);
+        break;
+
+      default:
+        /* ignore */
+        break;
+    }
   }
 
   destroy_pool(tmp_pool);
@@ -445,7 +460,12 @@ int proxy_ftp_sess_send_auth_tls(pool *p,
 
 int proxy_ftp_sess_send_pbsz_prot(pool *p,
     const struct proxy_session *proxy_sess) {
-  int use_tls;
+  int have_feat_pbsz = FALSE, have_feat_prot = FALSE, res, send_prot, use_tls,
+    xerrno;
+  pool *tmp_pool;
+  cmd_rec *cmd;
+  pr_response_t *resp;
+  unsigned int resp_nlines = 0;
 
   if (p == NULL ||
       proxy_sess == NULL) {
@@ -460,56 +480,88 @@ int proxy_ftp_sess_send_pbsz_prot(pool *p,
     return 0;
   }
 
+  /* Some FTPS servers don't properly list PBSZ, PROT in their FEAT
+   * responses.  If we are to use TLS, though, we will need to send PBSZ,
+   * PROT commands in order to comply with RFC 4217.
+   *
+   * Thus we will opportunistically send PBSZ, PROT commands anyway.
+   * If these are listed in the server's FEAT response, and the commands
+   * fail, then we will return an error; otherwise, we log the response
+   * and move on.
+   */
+
+  /* PBSZ */
   if (pr_table_get(proxy_sess->backend_features, C_PBSZ, NULL) != NULL) {
-    int xerrno;
-    pool *tmp_pool;
-    cmd_rec *cmd;
-    pr_response_t *resp;
-    unsigned int resp_nlines = 0;
+    have_feat_pbsz = TRUE;
+  }
 
-    tmp_pool = make_sub_pool(p);
+  tmp_pool = make_sub_pool(p);
+  cmd = pr_cmd_alloc(tmp_pool, 2, C_PBSZ, "0");
+  cmd->arg = pstrdup(tmp_pool, "0");
 
-    cmd = pr_cmd_alloc(tmp_pool, 2, C_PBSZ, "0");
-    cmd->arg = pstrdup(tmp_pool, "0");
+  res = 0;
+  resp = send_recv(tmp_pool, proxy_sess->backend_ctrl_conn, cmd, &resp_nlines);
+  if (resp == NULL) {
+    xerrno = errno;
+    res = -1;
 
-    resp = send_recv(tmp_pool, proxy_sess->backend_ctrl_conn, cmd,
-      &resp_nlines);
-    if (resp == NULL) {
-      xerrno = errno;
-      destroy_pool(tmp_pool);
-      errno = xerrno;
-      return -1;
-    }
-
+  } else {
     if (resp->num[0] != '2') {
       pr_trace_msg(trace_channel, 4,
         "received unexpected %s response code %s from backend",
         (char *) cmd->argv[0], resp->num);
-      destroy_pool(tmp_pool);
-      errno = EPERM;
-      return -1;
+      xerrno = EPERM;
+      res = -1;
     }
-
-    destroy_pool(tmp_pool);
   }
 
-  if (tls_xfer_prot_policy != 0 &&
-      pr_table_get(proxy_sess->backend_features, C_PROT, NULL) != NULL) {
-    int xerrno;
-    pool *tmp_pool;
-    cmd_rec *cmd;
-    const char *prot;
-    pr_response_t *resp;
-    unsigned int resp_nlines = 0;
+  destroy_pool(tmp_pool);
+  if (have_feat_pbsz == TRUE &&
+      res < 0) {
+    errno = xerrno;
+    return -1;
+  }
 
+  /* PROT */
+  if (pr_table_get(proxy_sess->backend_features, C_PROT, NULL) != NULL) {
+    have_feat_prot = TRUE;
+  }
+
+  /* If our protection policy overrides that of the client, then we will
+   * send our own PROT command.  Otherwise, we don't send PROT, because the
+   * frontend client will.
+   *
+   * However, what if the frontend client is NOT using FTPS?  In that case,
+   * we should send PROT, even for the "client" policy.
+   */
+  switch (tls_xfer_prot_policy) {
+    case PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_CLEAR:
+    case PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_REQUIRED:
+      send_prot = TRUE;
+      break;
+
+    case PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_CLIENT:
+      send_prot = FALSE;
+
+      if (session.rfc2228_mech == NULL) {
+        send_prot = TRUE;
+      }
+      break;
+  }
+
+  if (send_prot == TRUE) {
+    const char *prot;
+
+    resp_nlines = 0;
     tmp_pool = make_sub_pool(p);
 
     switch (tls_xfer_prot_policy) {
-      case -1:
+      case PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_CLEAR:
         prot = "C";
         break;
 
-      case 1:
+      case PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_CLIENT:
+      case PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_REQUIRED:
       default:
         prot = "P";
         break;
@@ -518,25 +570,29 @@ int proxy_ftp_sess_send_pbsz_prot(pool *p,
     cmd = pr_cmd_alloc(tmp_pool, 2, C_PROT, prot);
     cmd->arg = pstrdup(tmp_pool, prot);
 
+    res = 0;
     resp = send_recv(tmp_pool, proxy_sess->backend_ctrl_conn, cmd,
       &resp_nlines);
     if (resp == NULL) {
       xerrno = errno;
-      destroy_pool(tmp_pool);
-      errno = xerrno;
-      return -1;
-    }
+      res = -1;
 
-    if (resp->num[0] != '2') {
-      pr_trace_msg(trace_channel, 4,
-        "received unexpected %s response code %s from backend",
-        (char *) cmd->argv[0], resp->num);
-      destroy_pool(tmp_pool);
-      errno = EPERM;
-      return -1;
+    } else {
+      if (resp->num[0] != '2') {
+        pr_trace_msg(trace_channel, 4,
+          "received unexpected %s response code %s from backend",
+          (char *) cmd->argv[0], resp->num);
+        xerrno = EPERM;
+        res = -1;
+      }
     }
 
     destroy_pool(tmp_pool);
+    if (have_feat_prot == TRUE &&
+        res < 0) {
+      errno = xerrno;
+      return -1;
+    }
   }
 
   return 0;

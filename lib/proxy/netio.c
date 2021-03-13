@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy NetIO implementation
- * Copyright (c) 2015-2016 TJ Saunders
+ * Copyright (c) 2015-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -211,7 +211,7 @@ int proxy_netio_close(pr_netio_stream_t *nstrm) {
   res = pr_netio_close(nstrm);
   xerrno = errno;
 
-  if (nstrm != NULL) {
+  if (strm_type != -1) {
     proxy_netio_set(strm_type, curr_netio);
   }
 

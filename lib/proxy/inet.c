@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy Inet implementation
- * Copyright (c) 2015-2020 TJ Saunders
+ * Copyright (c) 2015-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -46,26 +46,6 @@ conn_t *proxy_inet_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn,
 void proxy_inet_close(pool *p, conn_t *conn) {
 
   if (conn != NULL) {
-    pr_netio_t *in_netio = NULL, *out_netio = NULL;
-    int instrm_type = -1, outstrm_type = -1;
-
-    if (conn->instrm != NULL) {
-      instrm_type = conn->instrm->strm_type; 
-      in_netio = proxy_netio_unset(instrm_type, "inet_close");
-    }
-
-    if (conn->outstrm != NULL) {
-      outstrm_type = conn->outstrm->strm_type; 
-
-      /* Note: it is IMPORTANT that we only call proxy_netio_unset() IFF
-       * the stream types are different.  Otherwise, we risk popping too
-       * many NetIOs off the stack, as it were.
-       */
-      if (outstrm_type != instrm_type) {
-        out_netio = proxy_netio_unset(outstrm_type, "inet_close");
-      }
-    }
-
     /* Note that we do our own close here, rather than relying on the
      * core Inet's close, as that one simply relies on the connection
      * cleanup callback -- and we want to use our own Proxy Netio API
@@ -104,14 +84,6 @@ void proxy_inet_close(pool *p, conn_t *conn) {
     if (conn->wfd != -1) {
       (void) close(conn->wfd);
       conn->wfd = -1;
-    }
-
-    if (in_netio != NULL) {
-      proxy_netio_set(instrm_type, in_netio);
-    }
-
-    if (out_netio != NULL) {
-      proxy_netio_set(outstrm_type, out_netio);
     }
   }
 }
