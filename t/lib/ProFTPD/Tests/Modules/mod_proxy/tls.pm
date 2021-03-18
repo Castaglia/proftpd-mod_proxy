@@ -190,7 +190,158 @@ my $TESTS = {
     test_class => [qw(forking mod_tls forward)],
   },
 
-  proxy_forward_frontend_backend_tls_list_pasv_prot_c => {
+  # ProxyTLSTransferProtection Required
+  #
+  #  frontend FTP, backend FTPS, passive transfer, LIST
+  #  frontend FTP, backend FTPS, active transfer, LIST
+  #  frontend FTP, backend FTPS, passive transfer, STOR
+  #  frontend FTP, backend FTPS, active transfer, STOR
+  #
+  #  frontend FTPS, backend FTPS, passive transfer, LIST
+  #  frontend FTPS, backend FTPS, active transfer, LIST
+  #  frontend FTPS, backend FTPS, passive transfer, STOR
+  #  frontend FTPS, backend FTPS, active transfer, STOR
+
+  proxy_forward_frontend_plain_backend_tls_list_pasv_tls_xfer_policy_required => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_plain_backend_tls_list_port_tls_xfer_policy_required => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_plain_backend_tls_stor_pasv_tls_xfer_policy_required => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_plain_backend_tls_stor_port_tls_xfer_policy_required => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_backend_tls_list_pasv_tls_xfer_policy_required => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_backend_tls_list_port_tls_xfer_policy_required => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_backend_tls_stor_pasv_tls_xfer_policy_required => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_backend_tls_stor_port_tls_xfer_policy_required => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  # ProxyTLSTransferProtection Clear
+  #
+  #  frontend FTP, backend FTPS, passive transfer, LIST
+  #  frontend FTP, backend FTPS, active transfer, LIST
+  #  frontend FTP, backend FTPS, passive transfer, STOR
+  #  frontend FTP, backend FTPS, active transfer, STOR
+  #
+  #  frontend FTPS, backend FTPS, passive transfer, LIST
+  #  frontend FTPS, backend FTPS, active transfer, LIST
+  #  frontend FTPS, backend FTPS, passive transfer, STOR
+  #  frontend FTPS, backend FTPS, active transfer, STOR
+
+  proxy_forward_frontend_plain_backend_tls_list_pasv_tls_xfer_policy_clear => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_plain_backend_tls_list_port_tls_xfer_policy_clear => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_plain_backend_tls_stor_pasv_tls_xfer_policy_clear => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_plain_backend_tls_stor_port_tls_xfer_policy_clear => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_backend_tls_list_pasv_tls_xfer_policy_clear => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_backend_tls_list_port_tls_xfer_policy_clear => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_backend_tls_stor_pasv_tls_xfer_policy_clear => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_backend_tls_stor_port_tls_xfer_policy_clear => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  # ProxyTLSTransferProtection Client
+  #
+  #  frontend FTP, backend FTPS, passive transfer, LIST
+  #  frontend FTP, backend FTPS, active transfer, LIST
+  #  frontend FTP, backend FTPS, passive transfer, STOR
+  #  frontend FTP, backend FTPS, active transfer, STOR
+  #
+  #  frontend FTPS, backend FTPS, passive transfer, LIST
+  #  frontend FTPS, backend FTPS, active transfer, LIST
+  #  frontend FTPS, backend FTPS, passive transfer, STOR
+  #  frontend FTPS, backend FTPS, active transfer, STOR
+
+  proxy_forward_frontend_plain_backend_tls_list_pasv_tls_xfer_policy_client => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_plain_backend_tls_list_port_tls_xfer_policy_client => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_plain_backend_tls_stor_pasv_tls_xfer_policy_client => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_plain_backend_tls_stor_port_tls_xfer_policy_client => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_backend_tls_list_pasv_tls_xfer_policy_client => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_backend_tls_list_port_tls_xfer_policy_client => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_backend_tls_stor_pasv_tls_xfer_policy_client => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls forward)],
+  },
+
+  proxy_forward_frontend_backend_tls_stor_port_tls_xfer_policy_client => {
     order => ++$order,
     test_class => [qw(forking mod_tls forward)],
   },
@@ -239,6 +390,8 @@ sub get_reverse_proxy_config {
     ProxyReverseServers => "ftp://127.0.0.1:$vhost_port",
     ProxyRole => 'reverse',
     ProxyTables => $table_dir,
+
+    ProxyTLSVerifyServer => 'off',
   };
 
   return $config;
@@ -256,6 +409,7 @@ sub get_forward_proxy_config {
     ProxyLog => $log_file,
     ProxyRole => 'forward',
     ProxyTables => $table_dir,
+    ProxyTLSVerifyServer => 'off',
 
     Class => {
       'forward-proxy' => {
@@ -303,6 +457,28 @@ sub ftp_list {
     $self->assert($expected eq $resp_msg,
       test_msg("Expected response message '$expected', got '$resp_msg'"));
   }
+
+  1;
+}
+
+sub ftp_upload {
+  my $self = shift;
+  my $client = shift;
+  my $path = shift;
+
+  my $conn = $client->stor_raw($path);
+  unless ($conn) {
+    die("Failed to STOR $path: " . $client->response_code() . ' ' .
+      $client->response_msg());
+  }
+
+  my $buf = 'AbCdEfGh' x 81920;
+  $conn->write($buf, length($buf), 10);
+  eval { $conn->close() };
+
+  my $resp_code = $client->response_code();
+  my $resp_msg = $client->response_msg();
+  $self->assert_transfer_ok($resp_code, $resp_msg);
 
   1;
 }
@@ -2046,6 +2222,7 @@ sub proxy_reverse_backend_tls_login_failed_unknown_ca {
 
   my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
   $proxy_config->{ProxyTLSEngine} = 'auto';
+  $proxy_config->{ProxyTLSVerifyServer} = 'on';
 
   if ($ENV{TEST_VERBOSE}) {
     $proxy_config->{ProxyTLSOptions} = 'EnableDiags';
@@ -2582,7 +2759,7 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
-        TLSOptions => 'NoCertRequest NoSessionReuseRequired EnableDiags',
+        TLSOptions => 'NoSessionReuseRequired EnableDiags',
         TLSTimeoutHandshake => 5,
         TLSVerifyClient => 'off',
         TLSVerifyServer => 'off',
@@ -2632,6 +2809,7 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
     ProxyTLSEngine auto
     ProxyTLSCACertificateFile $ca_file
     ProxyTLSOptions EnableDiags
+    ProxyTLSVerifyServer off
   </IfModule>
 
   <IfModule mod_tls.c>
@@ -2644,7 +2822,7 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
 
     TLSVerifyClient off
     TLSVerifyServer off
-    TLSOptions EnableDiags NoCertRequest NoSessionReuseRequired
+    TLSOptions EnableDiags NoSessionReuseRequired
   </IfModule>
 </VirtualHost>
 
@@ -2670,7 +2848,7 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
 
     TLSVerifyClient off
     TLSVerifyServer off
-    TLSOptions EnableDiags NoCertRequest NoSessionReuseRequired
+    TLSOptions EnableDiags NoSessionReuseRequired
   </IfModule>
 </VirtualHost>
 EOC
@@ -2857,7 +3035,7 @@ sub proxy_reverse_frontend_backend_tls_peruser_login_after_host {
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
-        TLSOptions => 'NoCertRequest NoSessionReuseRequired EnableDiags',
+        TLSOptions => 'NoSessionReuseRequired EnableDiags',
         TLSTimeoutHandshake => 5,
         TLSVerifyClient => 'off',
         TLSVerifyServer => 'off',
@@ -2909,6 +3087,7 @@ sub proxy_reverse_frontend_backend_tls_peruser_login_after_host {
     ProxyTLSEngine auto
     ProxyTLSCACertificateFile $ca_file
     ProxyTLSOptions EnableDiags
+    ProxyTLSVerifyServer off
   </IfModule>
 
   <IfModule mod_tls.c>
@@ -2921,7 +3100,7 @@ sub proxy_reverse_frontend_backend_tls_peruser_login_after_host {
 
     TLSVerifyClient off
     TLSVerifyServer off
-    TLSOptions EnableDiags NoCertRequest NoSessionReuseRequired
+    TLSOptions EnableDiags NoSessionReuseRequired
   </IfModule>
 </VirtualHost>
 
@@ -2947,7 +3126,7 @@ sub proxy_reverse_frontend_backend_tls_peruser_login_after_host {
 
     TLSVerifyClient off
     TLSVerifyServer off
-    TLSOptions EnableDiags NoCertRequest NoSessionReuseRequired
+    TLSOptions EnableDiags NoSessionReuseRequired
   </IfModule>
 </VirtualHost>
 
@@ -2973,7 +3152,7 @@ sub proxy_reverse_frontend_backend_tls_peruser_login_after_host {
 
     TLSVerifyClient off
     TLSVerifyServer off
-    TLSOptions EnableDiags NoCertRequest NoSessionReuseRequired
+    TLSOptions EnableDiags NoSessionReuseRequired
   </IfModule>
 </VirtualHost>
 EOC
@@ -3166,7 +3345,7 @@ sub proxy_reverse_frontend_backend_tls_list_pasv {
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
-        TLSOptions => 'NoCertRequest NoSessionReuseRequired EnableDiags',
+        TLSOptions => 'NoSessionReuseRequired EnableDiags',
         TLSTimeoutHandshake => 5,
         TLSVerifyClient => 'off',
         TLSVerifyServer => 'off',
@@ -3210,7 +3389,7 @@ sub proxy_reverse_frontend_backend_tls_list_pasv {
 
     TLSVerifyClient off
     TLSVerifyServer off
-    TLSOptions EnableDiags NoCertRequest NoSessionReuseRequired
+    TLSOptions EnableDiags NoSessionReuseRequired
   </IfModule>
 </VirtualHost>
 EOC
@@ -4476,6 +4655,7 @@ sub proxy_reverse_config_backend_tls_connect_policy_per_user_failed_unknown_ca {
   $proxy_config->{ProxyTimeoutConnect} = '2sec';
   $proxy_config->{ProxyReverseConnectPolicy} = 'PerUser';
   $proxy_config->{ProxyReverseServers} = "ftp://127.0.0.1:$vhost_port ftp://127.0.0.1:$vhost_port2";
+  $proxy_config->{ProxyTLSVerifyServer} = 'on';
 
   if ($ENV{TEST_VERBOSE}) {
     $proxy_config->{ProxyTLSOptions} = 'EnableDiags';
@@ -5827,6 +6007,7 @@ sub proxy_forward_backend_tls_login_failed_unknown_ca {
   $proxy_config->{ProxyForwardMethod} = 'user@host';
   $proxy_config->{ProxyTLSEngine} = 'on';
   $proxy_config->{ProxyRetryCount} = 1;
+  $proxy_config->{ProxyTLSVerifyServer} = 'on';
 
   if ($ENV{TEST_VERBOSE}) {
     $proxy_config->{ProxyTLSOptions} = 'EnableDiags';
@@ -6229,6 +6410,16 @@ sub proxy_forward_frontend_backend_tls_login_after_host {
     ProxyTLSEngine on
     ProxyTLSCACertificateFile $ca_file
     ProxyTLSOptions EnableDiags
+    ProxyTLSVerifyServer off
+  </IfModule>
+
+  <IfModule mod_tls.c>
+    TLSEngine on
+    TLSLog $log_file
+    TLSRequired on
+    TLSRSACertificateFile $cert_file
+    TLSCACertificateFile $ca_file
+    TLSOptions NoSessionReuseRequired
   </IfModule>
 </VirtualHost>
 
@@ -6250,6 +6441,7 @@ sub proxy_forward_frontend_backend_tls_login_after_host {
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
+    TLSOptions NoSessionReuseRequired
   </IfModule>
 </VirtualHost>
 EOC
@@ -6577,41 +6769,15 @@ EOC
   unlink($log_file);
 }
 
-sub proxy_forward_frontend_backend_tls_list_pasv_prot_c {
+sub forward_frontend_plain_backend_tls_tls_xfer_policy {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
 
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $use_port = shift;
+  $use_port = 0 unless defined($use_port);
+  my $tls_xfer_policy = shift;
+  my $use_upload = shift;
 
   my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
   my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
@@ -6619,26 +6785,195 @@ sub proxy_forward_frontend_backend_tls_list_pasv_prot_c {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
 
-  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_forward_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
   $proxy_config->{ProxyForwardMethod} = 'user@host';
   $proxy_config->{ProxyTLSEngine} = 'on';
   $proxy_config->{ProxyTLSCACertificateFile} = $ca_file;
-  $proxy_config->{ProxyTLSTransferProtectionPolicy} = 'Client';
+  $proxy_config->{ProxyTLSTransferProtectionPolicy} = $tls_xfer_policy;
+  $proxy_config->{ProxyTLSVerifyServer} = 'off';
   $proxy_config->{ProxyRetryCount} = 1;
 
   if ($ENV{TEST_VERBOSE}) {
     $proxy_config->{ProxyTLSOptions} = 'EnableDiags';
   }
 
+  my $backend_tls_required = 'ctrl';
+  if ($tls_xfer_policy =~ /required/i) {
+    $backend_tls_required = 'on';
+  }
+
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.forward:20 proxy.tls:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 tls:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  AllowOverwrite on
+  WtmpLog off
+  TransferLog none
+
+  <IfModule mod_tls.c>
+    TLSEngine on
+    TLSLog $setup->{log_file}
+    TLSRequired $backend_tls_required
+    TLSRSACertificateFile $cert_file
+    TLSCACertificateFile $ca_file
+    TLSOptions EnableDiags
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  require Net::FTPSSL;
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Give the server a chance to start up
+      sleep(2);
+
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, $use_port, 1);
+      $client->login("$setup->{user}\@127.0.0.1:$vhost_port", $setup->{passwd});
+
+      for (my $i = 0; $i < 3; $i++) {
+        if ($use_upload) {
+          ftp_upload($self, $client, 1);
+
+        } else {
+          ftp_list($self, $client, 1);
+        }
+      }
+
+      $client->quit();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub forward_frontend_backend_tls_tls_xfer_policy {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $use_port = shift;
+  $use_port = 0 unless defined($use_port);
+  my $tls_xfer_policy = shift;
+  my $use_upload = shift;
+
+  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
+  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 17;
+
+  my $proxy_config = get_forward_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  if ($use_port) {
+    $proxy_config->{ProxyDataTransferPolicy} = 'PORT';
+  }
+  $proxy_config->{ProxyForwardMethod} = 'user@host';
+  $proxy_config->{ProxyTLSEngine} = 'on';
+  $proxy_config->{ProxyTLSCACertificateFile} = $ca_file;
+  $proxy_config->{ProxyTLSTransferProtectionPolicy} = $tls_xfer_policy;
+  $proxy_config->{ProxyTLSVerifyServer} = 'off';
+  $proxy_config->{ProxyRetryCount} = 1;
+
+  if ($ENV{TEST_VERBOSE}) {
+    $proxy_config->{ProxyTLSOptions} = 'EnableDiags';
+  }
+
+  my $backend_tls_required = 'ctrl';
+  if ($tls_xfer_policy =~ /required/i) {
+    $backend_tls_required = 'on';
+  }
+
+  my $test_file = File::Spec->rel2abs("$tmpdir/test.dat");
+  if (open(my $fh, "> $test_file")) {
+    print $fh 'AbCdEfGh' x 81920;
+    unless (close($fh)) {
+      die("Can't write $test_file: $!");
+    }
+
+  } else {
+    die("Can't open $test_file: $!");
+  }
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.forward:20 proxy.tls:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 tls:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     SocketBindTight => 'on',
 
     IfModules => {
@@ -6646,10 +6981,11 @@ sub proxy_forward_frontend_backend_tls_list_pasv_prot_c {
 
       'mod_tls.c' => {
         TLSEngine => 'on',
-        TLSLog => $log_file,
+        TLSLog => $setup->{log_file},
         TLSRequired => 'ctrl',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
+        TLSCipherSuite => 'RSA',
         TLSOptions => 'NoSessionReuseRequired EnableDiags',
       },
 
@@ -6659,37 +6995,40 @@ sub proxy_forward_frontend_backend_tls_list_pasv_prot_c {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
   ServerName "Real Server"
 
-  AuthUserFile $auth_user_file
-  AuthGroupFile $auth_group_file
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
   AuthOrder mod_auth_file.c
 
   AllowOverride off
+  AllowOverwrite on
   WtmpLog off
   TransferLog none
 
   <IfModule mod_tls.c>
     TLSEngine on
-    TLSLog $log_file
-    TLSRequired ctrl
+    TLSLog $setup->{log_file}
+    TLSRequired $backend_tls_required
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
+    TLSOptions EnableDiags NoSessionReuseRequired
   </IfModule>
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   require Net::FTPSSL;
@@ -6735,14 +7074,26 @@ EOC
         die("Can't connect to FTPS server: " . IO::Socket::SSL::errstr());
       }
 
-      unless ($client->login("$user\@127.0.0.1:$vhost_port", $passwd)) {
+      unless ($client->login("$setup->{user}\@127.0.0.1:$vhost_port",
+          $setup->{passwd})) {
         die("Can't login: " . $client->last_message());
       }
 
-      my $res = $client->list();
-      unless ($res) {
-        die("LIST failed unexpectedly: " . $client->last_message() .
-          "(" . IO::Socket::SSL::errstr() . ")");
+      my $res;
+
+      if ($use_upload) {
+        $res = $client->put($test_file, '/dev/null');
+        unless ($res) {
+          die("STOR failed unexpectedly: " . $client->last_message() .
+            "(" . IO::Socket::SSL::errstr() . ")");
+        }
+
+      } else {
+        $res = $client->list();
+        unless ($res) {
+          die("LIST failed unexpectedly: " . $client->last_message() .
+            "(" . IO::Socket::SSL::errstr() . ")");
+        }
       }
 
       my $resp_msg = $client->last_message();
@@ -6750,13 +7101,22 @@ EOC
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response '$expected', got '$resp_msg'"));
 
-      # Do the LIST again; there are some reports that a first transfer
+      # Do the data transfer again; there are some reports that a first transfer
       # might succeed, but subsequent ones will fail.
       for (my $i = 0; $i < 3; $i++) {
-        $res = $client->list();
-        unless ($res) {
-          die("LIST failed unexpectedly: " . $client->last_message() .
-            "(" . IO::Socket::SSL::errstr() . ")");
+        if ($use_upload) {
+          $res = $client->put($test_file, '/dev/null');
+          unless ($res) {
+            die("STOR failed unexpectedly: " . $client->last_message() .
+              "(" . IO::Socket::SSL::errstr() . ")");
+          }
+
+        } else {
+          $res = $client->list();
+          unless ($res) {
+            die("LIST failed unexpectedly: " . $client->last_message() .
+              "(" . IO::Socket::SSL::errstr() . ")");
+          }
         }
 
         $resp_msg = $client->last_message();
@@ -6767,7 +7127,6 @@ EOC
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -6776,7 +7135,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -6786,18 +7145,130 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
+}
 
-    die($ex);
-  }
+sub proxy_forward_frontend_plain_backend_tls_list_pasv_tls_xfer_policy_required {
+  my $self = shift;
+  return forward_frontend_plain_backend_tls_tls_xfer_policy($self, 0, 'Required', 0);
+}
 
-  unlink($log_file);
+sub proxy_forward_frontend_plain_backend_tls_list_port_tls_xfer_policy_required {
+  my $self = shift;
+  return forward_frontend_plain_backend_tls_tls_xfer_policy($self, 1, 'Required', 0);
+}
+
+sub proxy_forward_frontend_plain_backend_tls_stor_pasv_tls_xfer_policy_required {
+  my $self = shift;
+  return forward_frontend_plain_backend_tls_tls_xfer_policy($self, 0, 'Required', 1);
+}
+
+sub proxy_forward_frontend_plain_backend_tls_stor_port_tls_xfer_policy_required {
+  my $self = shift;
+  return forward_frontend_plain_backend_tls_tls_xfer_policy($self, 1, 'Required', 1);
+}
+
+sub proxy_forward_frontend_backend_tls_list_pasv_tls_xfer_policy_required {
+  my $self = shift;
+  return forward_frontend_backend_tls_tls_xfer_policy($self, 0, 'Required', 0);
+}
+
+sub proxy_forward_frontend_backend_tls_list_port_tls_xfer_policy_required {
+  my $self = shift;
+  return forward_frontend_backend_tls_tls_xfer_policy($self, 1, 'Required', 0);
+}
+
+sub proxy_forward_frontend_backend_tls_stor_pasv_tls_xfer_policy_required {
+  my $self = shift;
+  return forward_frontend_backend_tls_tls_xfer_policy($self, 0, 'Required', 1);
+}
+
+sub proxy_forward_frontend_backend_tls_stor_port_tls_xfer_policy_required {
+  my $self = shift;
+  return forward_frontend_backend_tls_tls_xfer_policy($self, 1, 'Required', 1);
+}
+
+sub proxy_forward_frontend_plain_backend_tls_list_pasv_tls_xfer_policy_clear {
+  my $self = shift;
+  return forward_frontend_plain_backend_tls_tls_xfer_policy($self, 0, 'Clear', 0);
+}
+
+sub proxy_forward_frontend_plain_backend_tls_list_port_tls_xfer_policy_clear {
+  my $self = shift;
+  return forward_frontend_plain_backend_tls_tls_xfer_policy($self, 1, 'Clear', 0);
+}
+
+sub proxy_forward_frontend_plain_backend_tls_stor_pasv_tls_xfer_policy_clear {
+  my $self = shift;
+  return forward_frontend_plain_backend_tls_tls_xfer_policy($self, 0, 'Clear', 1);
+}
+
+sub proxy_forward_frontend_plain_backend_tls_stor_port_tls_xfer_policy_clear {
+  my $self = shift;
+  return forward_frontend_plain_backend_tls_tls_xfer_policy($self, 1, 'Clear', 1);
+}
+
+sub proxy_forward_frontend_backend_tls_list_pasv_tls_xfer_policy_clear {
+  my $self = shift;
+  return forward_frontend_backend_tls_tls_xfer_policy($self, 0, 'Clear', 0);
+}
+
+sub proxy_forward_frontend_backend_tls_list_port_tls_xfer_policy_clear {
+  my $self = shift;
+  return forward_frontend_backend_tls_tls_xfer_policy($self, 1, 'Clear', 0);
+}
+
+sub proxy_forward_frontend_backend_tls_stor_pasv_tls_xfer_policy_clear {
+  my $self = shift;
+  return forward_frontend_backend_tls_tls_xfer_policy($self, 0, 'Clear', 1);
+}
+
+sub proxy_forward_frontend_backend_tls_stor_port_tls_xfer_policy_clear {
+  my $self = shift;
+  return forward_frontend_backend_tls_tls_xfer_policy($self, 1, 'Clear', 1);
+}
+
+sub proxy_forward_frontend_plain_backend_tls_list_pasv_tls_xfer_policy_client {
+  my $self = shift;
+  return forward_frontend_plain_backend_tls_tls_xfer_policy($self, 0, 'Client', 0);
+}
+
+sub proxy_forward_frontend_plain_backend_tls_list_port_tls_xfer_policy_client {
+  my $self = shift;
+  return forward_frontend_plain_backend_tls_tls_xfer_policy($self, 1, 'Client', 0);
+}
+
+sub proxy_forward_frontend_plain_backend_tls_stor_pasv_tls_xfer_policy_client {
+  my $self = shift;
+  return forward_frontend_plain_backend_tls_tls_xfer_policy($self, 0, 'Client', 1);
+}
+
+sub proxy_forward_frontend_plain_backend_tls_stor_port_tls_xfer_policy_client {
+  my $self = shift;
+  return forward_frontend_plain_backend_tls_tls_xfer_policy($self, 1, 'Client', 1);
+}
+
+sub proxy_forward_frontend_backend_tls_list_pasv_tls_xfer_policy_client {
+  my $self = shift;
+  return forward_frontend_backend_tls_tls_xfer_policy($self, 0, 'Client', 0);
+}
+
+sub proxy_forward_frontend_backend_tls_list_port_tls_xfer_policy_client {
+  my $self = shift;
+  return forward_frontend_backend_tls_tls_xfer_policy($self, 1, 'Client', 0);
+}
+
+sub proxy_forward_frontend_backend_tls_stor_pasv_tls_xfer_policy_client {
+  my $self = shift;
+  return forward_frontend_backend_tls_tls_xfer_policy($self, 0, 'Client', 1);
+}
+
+sub proxy_forward_frontend_backend_tls_stor_port_tls_xfer_policy_client {
+  my $self = shift;
+  return forward_frontend_backend_tls_tls_xfer_policy($self, 1, 'Client', 1);
 }
 
 sub proxy_forward_config_backend_tls_ctrl_use_direct_data_transfers_pasv {

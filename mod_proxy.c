@@ -42,6 +42,7 @@
 #include "proxy/ftp/dirlist.h"
 #include "proxy/ftp/facts.h"
 #include "proxy/ftp/msg.h"
+#include "proxy/ftp/sess.h"
 #include "proxy/ftp/xfer.h"
 
 /* Proxy role */
@@ -74,7 +75,7 @@ static int proxy_engine = FALSE;
 static unsigned int proxy_login_attempts = 0;
 static int proxy_role = PROXY_ROLE_REVERSE;
 static const char *proxy_tables_dir = NULL;
-static int proxy_tls_xfer_prot_policy = 1;
+static int proxy_tls_xfer_prot_policy = PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_REQUIRED;
 
 static const char *trace_channel = "proxy";
 
@@ -1794,17 +1795,17 @@ MODRET set_proxytlsxferprotpolicy(cmd_rec *cmd) {
 
   policy = cmd->argv[1];
   if (strcasecmp(policy, "required") == 0) {
-    require_prot = 1;
+    require_prot = PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_REQUIRED;
 
   } else if (strcasecmp(policy, "client") == 0) {
-    require_prot = 0;
+    require_prot = PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_CLIENT;
 
   } else if (strcasecmp(policy, "clear") == 0) {
-    require_prot = -1;
+    require_prot = PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_CLEAR;
 
   } else {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
-      "unsupported TLSTransferProtectionPolicy: ", policy, NULL));
+      "unsupported ProxyTLSTransferProtectionPolicy: ", policy, NULL));
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
@@ -4444,7 +4445,13 @@ MODRET proxy_any(cmd_rec *cmd) {
       return PR_DECLINED(cmd);
 
     case PR_CMD_PROT_ID:
-      if (proxy_tls_xfer_prot_policy != 0) {
+      /* For a TLS transfer protection policy of "client" (0), we handle the
+       * PROT command by proxying it to the backend server.  For any other
+       * policy, though, we decline to handle the command from the client
+       * (and let it dispatch to mod_tls); mod_proxy will send a different
+       * PROT command to the backend, based on the policy.
+       */
+      if (proxy_tls_xfer_prot_policy != PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_CLIENT) {
         return PR_DECLINED(cmd);
       }
       break;
@@ -4494,20 +4501,28 @@ MODRET proxy_any(cmd_rec *cmd) {
   return proxy_cmd(cmd, proxy_sess, NULL);
 }
 
-MODRET proxy_prot(cmd_rec *cmd) {
+MODRET proxy_post_prot(cmd_rec *cmd) {
   if (proxy_engine == FALSE) {
     return PR_DECLINED(cmd);
   }
 
-  if (proxy_tls_xfer_prot_policy != 0) {
-    return PR_DECLINED(cmd);
-  }
+  switch (proxy_tls_xfer_prot_policy) {
+    case PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_CLEAR:
+      proxy_tls_set_data_prot(FALSE);
+      break;
 
-  if (strcasecmp(cmd->arg, "P") == 0) {
-    proxy_tls_set_data_prot(TRUE);
+    case PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_REQUIRED:
+      proxy_tls_set_data_prot(TRUE);
+      break;
 
-  } else if (strcasecmp(cmd->arg, "C") == 0) {
-    proxy_tls_set_data_prot(FALSE);
+    case PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_CLIENT:
+      if (strcasecmp(cmd->arg, "P") == 0) {
+        proxy_tls_set_data_prot(TRUE);
+
+      } else if (strcasecmp(cmd->arg, "C") == 0) {
+        proxy_tls_set_data_prot(FALSE);
+      }
+      break;
   }
 
   return PR_DECLINED(cmd);
@@ -4725,7 +4740,7 @@ static void proxy_sess_reinit_ev(const void *event_data, void *user_data) {
   proxy_opts = 0UL;
   proxy_login_attempts = 0;
   proxy_role = PROXY_ROLE_REVERSE;
-  proxy_tls_xfer_prot_policy = 1;
+  proxy_tls_xfer_prot_policy = PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_REQUIRED;
 
   res = proxy_sess_init();
   if (res < 0) {
@@ -4985,6 +5000,21 @@ static int proxy_sess_init(void) {
     "ProxyTLSTransferProtectionPolicy", FALSE);
   if (c != NULL) {
     proxy_tls_xfer_prot_policy = *((int *) c->argv[0]);
+
+    switch (proxy_tls_xfer_prot_policy) {
+      case PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_CLIENT:
+      case PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_REQUIRED:
+        proxy_tls_set_data_prot(TRUE);
+        break;
+
+      case PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_CLEAR:
+        proxy_tls_set_data_prot(FALSE);
+        break;
+
+      default:
+        /* ignore */
+        break;
+    }
   }
 
   /* Every proxy session starts off in the ProxyTables/empty/ directory. */
@@ -5096,8 +5126,8 @@ static conftable proxy_conftab[] = {
 
 static cmdtable proxy_cmdtab[] = {
   /* XXX Should this be marked with a CL_ value, for logging? */
-  { CMD,	C_ANY,	G_NONE,	proxy_any,	FALSE, FALSE },
-  { POST_CMD,	C_PROT,	G_NONE,	proxy_prot,	FALSE, FALSE },
+  { CMD,	C_ANY,	G_NONE,	proxy_any,		FALSE, FALSE },
+  { POST_CMD,	C_PROT,	G_NONE,	proxy_post_prot,	FALSE, FALSE },
 
   { 0, NULL }
 };
