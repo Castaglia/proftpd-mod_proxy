@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy
- * Copyright (c) 2012-2020 TJ Saunders
+ * Copyright (c) 2012-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -58,7 +58,7 @@
 /* Define if you have the strnstr(3) function.  */
 #undef HAVE_STRNSTR
 
-#define MOD_PROXY_VERSION	"mod_proxy/0.8"
+#define MOD_PROXY_VERSION	"mod_proxy/0.9"
 
 /* Make sure the version of proftpd is as necessary. */
 #if PROFTPD_VERSION_NUMBER < 0x0001030706
