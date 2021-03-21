@@ -306,53 +306,6 @@ static int proxy_stalled_timeout_cb(CALLBACK_FRAME) {
   return 0;
 }
 
-static void proxy_log_xfer(cmd_rec *cmd, char abort_flag) {
-  struct timeval end_time;
-  char direction, *path = NULL;
-
-  switch (cmd->cmd_id) {
-    case PR_CMD_APPE_ID:
-    case PR_CMD_STOR_ID:
-    case PR_CMD_STOU_ID:
-      direction = 'i';
-      break;
-
-    case PR_CMD_RETR_ID:
-      direction = 'o';
-      break;
-
-    default:
-      pr_trace_msg(trace_channel, 3,
-        "unable to write TransferLog for non-transfer command '%s'",
-        (char *) cmd->argv[0]);
-      return;
-  }
-
-  memset(&end_time, '\0', sizeof(end_time));
-
-  if (session.xfer.start_time.tv_sec != 0) {
-    gettimeofday(&end_time, NULL);
-    end_time.tv_sec -= session.xfer.start_time.tv_sec;
-
-    if (end_time.tv_usec >= session.xfer.start_time.tv_usec) {
-      end_time.tv_usec -= session.xfer.start_time.tv_usec;
-
-    } else {
-      end_time.tv_usec = 1000000L - (session.xfer.start_time.tv_usec -
-        end_time.tv_usec);
-      end_time.tv_sec--;
-    }
-  }
-
-  path = cmd->arg;
-
-  /* XXX Are mod_proxy and mod_xfer both writing this TransferLog entry? */
-  xferlog_write(end_time.tv_sec, pr_netaddr_get_sess_remote_name(),
-    session.xfer.total_bytes, path,
-    (session.sf_flags & SF_ASCII ? 'a' : 'b'), direction,
-    'r', session.user, abort_flag, "_");
-}
-
 static int proxy_mkdir(const char *dir, uid_t uid, gid_t gid, mode_t mode) {
   mode_t prev_mask;
   struct stat st;
@@ -4365,10 +4318,6 @@ MODRET proxy_any(cmd_rec *cmd) {
 
         } else {
           mr = proxy_data(proxy_sess, cmd);
-        }
-
-        if (MODRET_ISHANDLED(mr)) {
-          proxy_log_xfer(cmd, 'c');
         }
 
         pr_response_block(TRUE);
