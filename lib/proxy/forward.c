@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy forward proxy implementation
- * Copyright (c) 2012-2020 TJ Saunders
+ * Copyright (c) 2012-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -513,7 +513,7 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
         pr_netaddr_get_ipstr(session.c->local_addr),
         ntohs(pr_netaddr_get_port(session.c->local_addr)));
       pr_response_send(R_530, _("Unable to connect to %s: %s"),
-        proxy_conn_get_host(pconn), strerror(EPERM));
+        proxy_conn_get_hostport(pconn), strerror(EPERM));
       return 1;
     }
 
@@ -551,7 +551,7 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
 
       } else {
         resp->msg = pstrcat(cmd->tmp_pool, "Unable to connect to ",
-          proxy_conn_get_host(proxy_sess->dst_pconn), ": ",
+          proxy_conn_get_hostport(proxy_sess->dst_pconn), ": ",
           strerror(xerrno), NULL);
         resp_nlines = 1;
       }
