@@ -25,8 +25,6 @@
 #include "mod_proxy.h"
 #include "include/proxy/ftp/msg.h"
 
-static pool *ftp_msg_pool = NULL;
-
 static const char *trace_channel = "proxy.ftp.msg";
 
 const char *proxy_ftp_msg_fmt_addr(pool *p, const pr_netaddr_t *addr,
@@ -222,18 +220,7 @@ const pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *p, const char *msg,
   snprintf(addr_buf, addrlen, "%u.%u.%u.%u", h1, h2, h3, h4);
 #endif /* PR_USE_IPV6 */
 
-  /* Use a specific memory pool for these objects, since they cannot be
-   * destroyed (they have no pools of their own), so they will just clutter up
-   * the session pool.
-   */
-  if (ftp_msg_pool != NULL) {
-    destroy_pool(ftp_msg_pool);
-  }
-
-  ftp_msg_pool = make_sub_pool(proxy_pool);
-  pr_pool_tag(ftp_msg_pool, "Proxy FTP Message Pool");
-
-  addr = (pr_netaddr_t *) pr_netaddr_get_addr(ftp_msg_pool, addr_buf, NULL);
+  addr = (pr_netaddr_t *) pr_netaddr_get_addr(p, addr_buf, NULL);
   if (addr == NULL) {
     int xerrno = errno;
 
@@ -473,17 +460,7 @@ const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
     return NULL;
   }
 
-  /* Use a specific memory pool for these objects, since they cannot be
-   * destroyed (they have no pools of their own), so they will just clutter up   * the session pool.
-   */
-  if (ftp_msg_pool != NULL) {
-    destroy_pool(ftp_msg_pool);
-  }
-
-  ftp_msg_pool = make_sub_pool(proxy_pool);
-  pr_pool_tag(ftp_msg_pool, "Proxy FTP Message Pool");
-
-  res = pr_netaddr_dup(ftp_msg_pool, &na);
+  res = pr_netaddr_dup(p, &na);
   pr_netaddr_set_port(res, htons(port));
 
   pr_trace_msg(trace_channel, 9, "parsed '%s' into %s %s#%u", msg,

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2016-2017 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2016-2021 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -131,6 +131,28 @@ START_TEST (session_alloc_test) {
 }
 END_TEST
 
+START_TEST (session_reset_dataxfer_test) {
+  struct proxy_session *proxy_sess;
+  int res;
+
+  res = proxy_session_reset_dataxfer(NULL);
+  fail_unless(res < 0, "Failed to handle null proxy_sess");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  proxy_sess = (struct proxy_session *) proxy_session_alloc(p);
+  fail_unless(proxy_sess != NULL, "Failed to allocate proxy session: %s",
+    strerror(errno));
+
+  res = proxy_session_reset_dataxfer(proxy_sess);
+  fail_unless(res == 0, "Failed to reset proxy session dataxfer: %s",
+    strerror(errno));
+
+  mark_point();
+  proxy_session_free(p, proxy_sess);
+}
+END_TEST
+
 START_TEST (session_check_password_test) {
   int res;
   const char *user, *passwd;
@@ -221,6 +243,7 @@ Suite *tests_get_session_suite(void) {
 
   tcase_add_test(testcase, session_free_test);
   tcase_add_test(testcase, session_alloc_test);
+  tcase_add_test(testcase, session_reset_dataxfer_test);
   tcase_add_test(testcase, session_check_password_test);
   tcase_add_test(testcase, session_setup_env_test);
 

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy sessions
- * Copyright (c) 2012-2020 TJ Saunders
+ * Copyright (c) 2012-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -60,6 +60,11 @@ struct proxy_session {
   /* Features supported by backend server */
   pr_table_t *backend_features;
 
+  /* Data transfer pool, for things like the frontend/backend address
+   * objects.
+   */
+  pool *dataxfer_pool;
+
   /* Data transfer policy: PASV, EPSV, PORT, EPRT, or client. */
   int dataxfer_policy;
 
@@ -81,6 +86,7 @@ struct proxy_session {
 
 const struct proxy_session *proxy_session_alloc(pool *p);
 int proxy_session_free(pool *p, const struct proxy_session *proxy_sess);
+int proxy_session_reset_dataxfer(struct proxy_session *proxy_sess);
 
 int proxy_session_check_password(pool *p, const char *user, const char *passwd);
 int proxy_session_setup_env(pool *p, const char *user, int flags);

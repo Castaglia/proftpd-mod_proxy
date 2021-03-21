@@ -3013,8 +3013,8 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    * e.g. source ports below 1024?
    */
 
-  remote_addr = proxy_ftp_msg_parse_ext_addr(cmd->tmp_pool, cmd->argv[1],
-    session.c->remote_addr, cmd->cmd_id, NULL);
+  remote_addr = proxy_ftp_msg_parse_ext_addr(proxy_sess->dataxfer_pool,
+    cmd->argv[1], session.c->remote_addr, cmd->cmd_id, NULL);
   if (remote_addr == NULL) {
     xerrno = errno;
 
@@ -3471,8 +3471,8 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    * e.g. source ports below 1024?
    */
 
-  remote_addr = proxy_ftp_msg_parse_addr(cmd->tmp_pool, cmd->argv[1],
-    pr_netaddr_get_family(session.c->remote_addr));
+  remote_addr = proxy_ftp_msg_parse_addr(proxy_sess->dataxfer_pool,
+    cmd->argv[1], pr_netaddr_get_family(session.c->remote_addr));
   if (remote_addr == NULL) {
     xerrno = errno;
 
@@ -4215,6 +4215,7 @@ MODRET proxy_any(cmd_rec *cmd) {
           break;
         }
 
+        proxy_session_reset_dataxfer(proxy_sess);
         mr = proxy_eprt(cmd, proxy_sess);
         pr_response_block(TRUE);
         return mr;
@@ -4234,6 +4235,7 @@ MODRET proxy_any(cmd_rec *cmd) {
           break;
         }
 
+        proxy_session_reset_dataxfer(proxy_sess);
         mr = proxy_epsv(cmd, proxy_sess);
         pr_response_block(TRUE);
         return mr;
@@ -4253,6 +4255,7 @@ MODRET proxy_any(cmd_rec *cmd) {
           break;
         }
 
+        proxy_session_reset_dataxfer(proxy_sess);
         mr = proxy_pasv(cmd, proxy_sess);
         pr_response_block(TRUE);
         return mr;
@@ -4272,6 +4275,7 @@ MODRET proxy_any(cmd_rec *cmd) {
           break;
         }
 
+        proxy_session_reset_dataxfer(proxy_sess);
         mr = proxy_port(cmd, proxy_sess);
         pr_response_block(TRUE);
         return mr;

@@ -522,14 +522,14 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
       int remote_family;
 
       remote_family = pr_netaddr_get_family(proxy_sess->backend_ctrl_conn->remote_addr);
-      remote_addr = proxy_ftp_msg_parse_addr(cmd->tmp_pool, resp->msg,
-        remote_family);
+      remote_addr = proxy_ftp_msg_parse_addr(proxy_sess->dataxfer_pool,
+        resp->msg, remote_family);
       break;
     }
 
     case PR_CMD_EPSV_ID:
-      remote_addr = proxy_ftp_msg_parse_ext_addr(cmd->tmp_pool, resp->msg,
-        backend_addr, PR_CMD_EPSV_ID, NULL);
+      remote_addr = proxy_ftp_msg_parse_ext_addr(proxy_sess->dataxfer_pool,
+        resp->msg, backend_addr, PR_CMD_EPSV_ID, NULL);
       break;
   }
 

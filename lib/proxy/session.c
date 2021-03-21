@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy session routines
- * Copyright (c) 2012-2020 TJ Saunders
+ * Copyright (c) 2012-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -44,6 +44,8 @@ const struct proxy_session *proxy_session_alloc(pool *p) {
 
   /* This will be configured by the ProxySourceAddress directive, if present. */
   proxy_sess->src_addr = NULL;
+
+  proxy_session_reset_dataxfer(proxy_sess);
 
   /* This will be configured by the ProxyDataTransferPolicy directive, if
    * present.
@@ -90,6 +92,22 @@ int proxy_session_free(pool *p, const struct proxy_session *proxy_sess) {
   }
 
   destroy_pool(proxy_sess->pool);
+  return 0;
+}
+
+int proxy_session_reset_dataxfer(struct proxy_session *proxy_sess) {
+  if (proxy_sess == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (proxy_sess->dataxfer_pool != NULL) {
+    destroy_pool(proxy_sess->dataxfer_pool);
+  }
+
+  proxy_sess->dataxfer_pool = make_sub_pool(proxy_sess->pool);
+  pr_pool_tag(proxy_sess->dataxfer_pool, "Proxy Session Data Transfer pool");
+
   return 0;
 }
 
