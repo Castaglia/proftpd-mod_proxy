@@ -1926,7 +1926,7 @@ EOC
       # that the backend server is selected at connect time.  By sending HOST,
       # we change that selected backend server, and thus we should get the
       # "real" backend server banner.
-      $expected = 'Real Server';
+      $expected = 'Namebased Server';
       $self->assert(qr/$expected/, $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
@@ -2771,7 +2771,7 @@ sub proxy_reverse_login_no_backend_proxy_protocol {
     ScoreboardFile => $setup->{scoreboard_file},
     SystemLog => $setup->{log_file},
     TraceLog => $setup->{log_file},
-    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.ftp.sess:20 proxy.reverse:20',
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
@@ -19081,7 +19081,7 @@ EOC
       chomp($line);
 
       if ($ENV{TEST_VERBOSE}) {
-        print STDOUT "$line\n";
+        print STDOUT "# $line\n";
       }
 
       my $expected = '^\S+\s+\S+\s+\d+\s+\d+:\d+:\d+\s+\d+\s+\d+\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+_\s+o\s+r\s+(\S+)\s+ftp\s+0\s+\*\s+c$';
@@ -19124,6 +19124,10 @@ EOC
       chomp($next_line);
 
       if (length($next_line) > 0) {
+        if ($ENV{TEST_VERBOSE}) {
+          print STDOUT "# $next_line\n";
+        }
+
         die("Expected only one TransferLog entry, got more than one");
       }
 
@@ -21694,7 +21698,7 @@ EOC
       );
 
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       my $start = [gettimeofday()];
       eval { $client->login("$setup->{user}\@127.0.0.1:$dst_port", $setup->{passwd}) };
       my $elapsed = tv_interval($start);
@@ -21704,7 +21708,7 @@ EOC
 
       eval { $listening->close() };
 
-      $self->assert($elapsed < 2,
+      $self->assert($elapsed < 3,
         test_msg("ProxyTimeoutConnect 1 not honored (elapsed $elapsed)"));
     };
 
@@ -22688,7 +22692,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 2);
 
       my $bad_addr = '1.2.3.4:5678';
       eval { $client->user("$setup->{user}\@$bad_addr") };
@@ -24978,19 +24982,17 @@ EOC
       $client->login($proxy_user, $proxy_passwd);
       $client->login("$user\@127.0.0.1:$vhost_port", $passwd);
 
-      eval { $client->user($user) };
-      unless ($@) {
-        die("Extra USER succeeded unexpectedly");
-      }
-
+      # Due to changes for Bug#4217, a subsequent USER command -- for the
+      # same username -- will succeed.
+      $client->user($user);
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
 
-      my $expected = 500;
+      my $expected = 230;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = 'Bad sequence of commands';
+      $expected = "User $user logged in";
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
@@ -25840,7 +25842,7 @@ EOC
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "Unable to connect to 127.0.0.1: Operation not permitted";
+      $expected = "Unable to connect to 127.0.0.1:$vhost_port: Operation not permitted";
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
@@ -26931,19 +26933,17 @@ EOC
       $client->login("$proxy_user\@127.0.0.1:$vhost_port", $proxy_passwd);
       $client->login($user, $passwd);
 
-      eval { $client->user($user) };
-      unless ($@) {
-        die("Extra USER succeeded unexpectedly");
-      }
-
+      # Due to changes for Bug#4217, a subsequent USER command -- for the
+      # same username -- will succeed.
+      $client->user($user);
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
 
-      my $expected = 500;
+      my $expected = 230;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = 'Bad sequence of commands';
+      $expected = "User $user logged in";
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
@@ -27794,7 +27794,7 @@ EOC
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "Unable to connect to 127.0.0.1: Operation not permitted";
+      $expected = "Unable to connect to 127.0.0.1:$vhost_port: Operation not permitted";
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
