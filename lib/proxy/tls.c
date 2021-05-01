@@ -2519,6 +2519,12 @@ static int get_disabled_protocols(unsigned int supported_protocols) {
   }
 # endif /* OpenSSL-1.0.1 or later */
 
+#ifdef SSL_OP_NO_TLSv1_3
+  if (supported_protocols & PROXY_TLS_PROTO_TLS_V1_3) {
+    disabled_protocols &= ~SSL_OP_NO_TLSv1_3;
+  }
+#endif /* OpenSSL 1.1.1 or later */
+
   return disabled_protocols;
 }
 
