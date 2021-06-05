@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy database implementation
- * Copyright (c) 2015-2020 TJ Saunders
+ * Copyright (c) 2015-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -140,11 +140,11 @@ static int db_trace2(unsigned int trace_type, void *user_data, void *ptr,
     case SQLITE_TRACE_PROFILE: {
       sqlite3_stmt *pstmt;
       int64_t ns = 0;
-      const char *expanded_sql = NULL;
+      char *expanded_sql = NULL, *orig_sql = NULL;
 
       pstmt = ptr;
       ns = *((int64_t *) ptr_data);
-      expanded_sql = sqlite3_expanded_sql(pstmt);
+      orig_sql = expanded_sql = sqlite3_expanded_sql(pstmt);
 
       /* There are some SQL statements whose values we do NOT want to log.
        * Thus we have a hacky way to look for them.  Sigh.
@@ -165,15 +165,16 @@ static int db_trace2(unsigned int trace_type, void *user_data, void *ptr,
           expanded_sql, (unsigned long) ns);
       }
 
+      sqlite3_free(orig_sql);
       break;
     }
 
     case SQLITE_TRACE_ROW: {
       sqlite3_stmt *pstmt;
-      const char *expanded_sql = NULL;
+      char *expanded_sql = NULL, *orig_sql = NULL;
 
       pstmt = ptr;
-      expanded_sql = sqlite3_expanded_sql(pstmt);
+      orig_sql = expanded_sql = sqlite3_expanded_sql(pstmt);
 
       /* There are some SQL statements whose values we do NOT want to log.
        * Thus we have a hacky way to look for them.  Sigh.
@@ -193,6 +194,7 @@ static int db_trace2(unsigned int trace_type, void *user_data, void *ptr,
           schema_name, expanded_sql);
       }
 
+      sqlite3_free(orig_sql);
       break;
     }
 
@@ -306,11 +308,9 @@ int proxy_db_exec_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt,
     return -1;
   }
 
-  if (ptr != NULL) {
-    sqlite3_free(ptr);
-  }
-
   current_schema = NULL;
+  sqlite3_free(ptr);
+
   pr_trace_msg(trace_channel, 13, "successfully executed '%s'", stmt);
   return 0;
 }

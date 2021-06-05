@@ -12,6 +12,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    environment: CI
+
     strategy:
       matrix:
         compiler:
@@ -64,6 +66,7 @@ jobs:
           # for debugging
           clang --version
           gcc --version
+          openssl version -a
 
       - name: Prepare code coverage
         run: |
@@ -129,6 +132,29 @@ jobs:
         run: |
           cd proftpd
           sudo make install
+
+      # https://github.com/google/sanitizers/wiki/AddressSanitizer
+      # https://github.com/google/sanitizers/wiki/AddressSanitizerLeakSanitizer
+      # https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html
+      #
+      # NOTE: Using MemorySanitizer is desirable, but currently unusable since
+      # libcheck is not instrumented, resulting in unsuppressible false
+      # positives.
+      - name: Run unit tests under asan+lsan+ubsan
+        env:
+          ASAN_OPTIONS: abort_on_error=1,check_initialization_order=true,debug=true,detect_invalid_pointer_pairs=2,detect_leaks=1,detect_stack_use_after_return=true,strict_string_checks=true,verbosity=0
+          CC: ${{ matrix.compiler }}
+          CFLAGS: -fsanitize=address,undefined
+          LDFLAGS: -fsanitize=address,undefined
+        if: ${{ matrix.compiler == 'clang' }}
+        run: |
+          cd proftpd
+          make clean
+          ./configure LIBS="-lm -lsubunit -lrt -pthread" --enable-devel --enable-redis --enable-tests --with-modules=mod_tls:mod_proxy
+          make
+          cd contrib/mod_proxy
+          export ASAN_SYMBOLIZER_PATH=$(readlink -f $(which llvm-symbolizer-10))
+          make TEST_VERBOSE=1 check
 
       - name: Check HTML docs
         run: |
