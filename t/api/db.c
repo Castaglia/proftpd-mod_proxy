@@ -110,6 +110,7 @@ START_TEST (db_open_test) {
   res = proxy_db_close(p, dbh);
   fail_unless(res == 0, "Failed to close table '%s': %s", table_path,
     strerror(errno));
+
   (void) unlink(db_test_table);
 }
 END_TEST
