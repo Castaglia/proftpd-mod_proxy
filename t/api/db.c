@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2015-2017 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2015-2021 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -152,7 +152,8 @@ START_TEST (db_open_with_version_test) {
   res = proxy_db_close(p, dbh);
   fail_unless(res == 0, "Failed to close database: %s", strerror(errno));
 
-  if (getenv("TRAVIS") == NULL) {
+  if (getenv("CI") == NULL &&
+      getenv("TRAVIS") == NULL) {
     /* Enable the vacuuming for these tests. */
     flags |= PROXY_DB_OPEN_FL_VACUUM;
 

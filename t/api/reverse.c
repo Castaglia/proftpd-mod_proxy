@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2013-2020 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2013-2021 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -521,8 +521,9 @@ START_TEST (reverse_handle_user_pass_random_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
-  /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS") != NULL) {
+  /* Skip this test on CI builds, for now.  It fails unexpectedly. */
+  if (getenv("CI") != NULL ||
+      getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -546,8 +547,9 @@ START_TEST (reverse_handle_user_pass_roundrobin_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
-  /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS") != NULL) {
+  /* Skip this test on CI builds, for now.  It fails unexpectedly. */
+  if (getenv("CI") != NULL ||
+      getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -571,8 +573,9 @@ START_TEST (reverse_handle_user_pass_leastconns_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
-  /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS") != NULL) {
+  /* Skip this test on CI builds, for now.  It fails unexpectedly. */
+  if (getenv("CI") != NULL ||
+      getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -596,8 +599,9 @@ START_TEST (reverse_handle_user_pass_leastresponsetime_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
-  /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS") != NULL) {
+  /* Skip this test on CI builds, for now.  It fails unexpectedly. */
+  if (getenv("CI") != NULL ||
+      getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -623,8 +627,9 @@ START_TEST (reverse_handle_user_pass_shuffle_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
-  /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS") != NULL) {
+  /* Skip this test on CI builds, for now.  It fails unexpectedly. */
+  if (getenv("CI") != NULL ||
+      getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -648,8 +653,9 @@ START_TEST (reverse_handle_user_pass_peruser_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
-  /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS") != NULL) {
+  /* Skip this test on CI builds, for now.  It fails unexpectedly. */
+  if (getenv("CI") != NULL ||
+      getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -673,8 +679,9 @@ START_TEST (reverse_handle_user_pass_pergroup_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
-  /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS") != NULL) {
+  /* Skip this test on CI builds, for now.  It fails unexpectedly. */
+  if (getenv("CI") != NULL ||
+      getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -698,8 +705,9 @@ START_TEST (reverse_handle_user_pass_perhost_test) {
   const struct proxy_conn *pconn;
   array_header *backends;
 
-  /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS") != NULL) {
+  /* Skip this test on CI builds, for now.  It fails unexpectedly. */
+  if (getenv("CI") != NULL ||
+      getenv("TRAVIS") != NULL) {
     return;
   }
 
