@@ -104,8 +104,8 @@ int proxy_ftp_sess_get_feat(pool *p, const struct proxy_session *proxy_sess) {
   cmd_rec *cmd;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
-  char *feats, *token;
-  size_t token_len = 0;
+  char *feats, *feats_start, *token;
+  size_t feats_len = 0, token_len = 0;
 
   if (p == NULL ||
       proxy_sess == NULL) {
@@ -167,7 +167,9 @@ int proxy_ftp_sess_get_feat(pool *p, const struct proxy_session *proxy_sess) {
 
   ((struct proxy_session *) proxy_sess)->backend_features = pr_table_nalloc(p, 0, 4);
 
-  feats = (char *) resp->msg;
+  feats_start = feats = (char *) resp->msg;
+  feats_len = strlen(feats);
+
   token = pr_str_get_token2(&feats, (char *) feat_crlf, &token_len);
   while (token != NULL) {
     pr_signals_handle();
@@ -195,6 +197,12 @@ int proxy_ftp_sess_get_feat(pool *p, const struct proxy_session *proxy_sess) {
     }
 
     feats = token + token_len + 1;
+
+    /* Don't advance past the end of our FEAT response. */
+    if (feats > feats_starts + feats_len) {
+      break;
+    }
+
     token = pr_str_get_token2(&feats, (char *) feat_crlf, &token_len);
   }
 
