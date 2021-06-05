@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        compiler:
+          - gcc
+          - clang
+
+    steps:
+      - name: Checkout ProFTPD
+        run: |
+          git clone --depth 1 https://github.com/proftpd/proftpd.git proftpd
+
+      - name: Checkout module source code
+        uses: actions/checkout@v2
+        with:
+          path: proftpd/contrib/mod_proxy
+
+      - name: Whitespace check
+        run: |
+          cd proftpd/contrib/mod_proxy
+          if [[ -n $(git diff --check HEAD^) ]]; then
+            echo "You must remove whitespace before submitting a pull request"
+            echo ""
+            git diff --check HEAD^
+            exit 1
+          fi
+
+      - name: Install packages
+        run: |
+          # Need to add other repos for e.g. libsodium
+          sudo apt-get update -qq
+          # for unit tests
+          sudo apt-get install -y check
+          sudo apt-get install -y libsubunit-dev
+
+          # for Redis support 
+          sudo apt-get install -y libhiredis-dev
+          # for OpenSSL support
+          sudo apt-get install -y libssl-dev
+          # for SQLite support
+          sudo apt-get install -y libsqlite3-dev sqlite3
+
+          # for integration/regression test
+          # for test code coverage
+          sudo apt-get install -y lcov
+          sudo gem install coveralls-lcov
+          # for HTML validation
+          sudo apt-get install -y tidy
+          # for clang
+          sudo apt-get install -y clang
+          # for debugging
+          clang --version
+          gcc --version
+
+      - name: Prepare code coverage
+        run: |
+          lcov --directory proftpd --zerocounters
+
+      - name: Build without Redis, SSL support
+        env:
+          CC: ${{ matrix.compiler }}
+        run: |
+          cd proftpd
+          ./configure LIBS="-lm -lsubunit -lrt -pthread" --enable-devel=coverage --enable-tests --with-modules=mod_proxy
+          make
+
+      - name: Build with Redis, without SSL support
+        env:
+          CC: ${{ matrix.compiler }}
+        run: |
+          cd proftpd
+          make clean
+          ./configure LIBS="-lm -lsubunit -lrt -pthread" --enable-devel=coverage --enable-redis --enable-tests --with-modules=mod_proxy
+          make
+
+      - name: Build with Redis, SSL support as shared module
+        env:
+          CC: ${{ matrix.compiler }}
+        run: |
+          cd proftpd
+          make clean
+          ./configure LIBS="-lm -lsubunit -lrt -pthread" --enable-devel=coverage --enable-dso --enable-redis --enable-tests --with-shared=mod_tls:mod_proxy
+          make
+
+      - name: Build with Redis, SSL support as static module
+        env:
+          CC: ${{ matrix.compiler }}
+        run: |
+          cd proftpd
+          make clean
+          ./configure LIBS="-lm -lsubunit -lrt -pthread" --enable-devel=coverage --enable-redis --enable-tests --with-modules=mod_tls:mod_proxy
+          make
+
+      - name: Run unit tests
+        env:
+          CC: ${{ matrix.compiler }}
+        run: |
+          cd proftpd/contrib/mod_proxy
+          make TEST_VERBOSE=1 check
+
+      - name: Install with static modules
+        run: |
+          cd proftpd
+          sudo make install
+
+      - name: Build with shared modules
+        env:
+          CC: ${{ matrix.compiler }}
+        run: |
+          cd proftpd
+          make clean
+          ./configure LIBS="-lm -lsubunit -lrt -pthread" --enable-devel --enable-dso --with-shared=mod_proxy
+          make
+
+      - name: Install with shared modules
+        run: |
+          cd proftpd
+          sudo make install
+
+      - name: Check HTML docs
+        run: |
+          cd proftpd/contrib/mod_proxy
+          for f in $(/bin/ls *.html); do echo "Processing $f"; tidy -errors -omit -q $f; done || exit 0

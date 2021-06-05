@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2016-2017 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2016-2021 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -459,8 +459,9 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
 #endif /* PR_USE_OPENSSL */
   struct proxy_session *proxy_sess;
 
-  /* Skip this test on travis, for now.  It fails unexpectedly. */
-  if (getenv("TRAVIS_CI") != NULL) {
+  /* Skip this test for CI builds, for now.  It fails unexpectedly. */
+  if (getenv("CI") != NULL ||
+      getenv("TRAVIS") != NULL) {
     return;
   }
 
@@ -494,7 +495,8 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
-  if (getenv("TRAVIS") == NULL) {
+  if (getenv("CI") == NULL &&
+      getenv("TRAVIS") == NULL) {
     cmd = pr_cmd_alloc(p, 2, "PASS", "ftp@nospam.org");
     cmd->arg = pstrdup(p, "ftp@nospam.org");
 
@@ -541,7 +543,8 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
   cmd = pr_cmd_alloc(p, 2, "USER", "anonymous@ftp.cisco.com:990");
   cmd->arg = pstrdup(p, "anonymous@ftp.cisco.com:990");
 
-  if (getenv("TRAVIS") == NULL) {
+  if (getenv("CI") == NULL &&
+      getenv("TRAVIS") == NULL) {
     mark_point();
     res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
       &block_responses);
