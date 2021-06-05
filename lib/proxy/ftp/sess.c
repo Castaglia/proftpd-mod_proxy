@@ -199,7 +199,7 @@ int proxy_ftp_sess_get_feat(pool *p, const struct proxy_session *proxy_sess) {
     feats = token + token_len + 1;
 
     /* Don't advance past the end of our FEAT response. */
-    if (feats > feats_starts + feats_len) {
+    if (feats > feats_start + feats_len) {
       break;
     }
 
