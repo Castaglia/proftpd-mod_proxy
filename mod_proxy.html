@@ -526,6 +526,27 @@ The currently implemented options are:
   </li>
 
   <p>
+  <li><code>UseProxyProtocolV2TLVs</code><br>
+    <p>
+    When <code>mod_proxy</code> is configured to use the PROXY protocol V2,
+    via the <code>UseProxyProtocolV2</code> option, this option tells
+    <code>mod_proxy</code> to send additional data as Type/Length/Value (TLV).
+    These TLVs include:
+    <ul>
+      <li>ALPN (Application Layer Protocol Negotiation)
+      <li>Authority (Hostname provided by client)
+      <li>SSL/TLS (whether SSL/TLS is in use at the time of the PROXY protocol)
+      <li>SSL/TLS protocol version
+      <li>SSL/TLS cipher
+      <li>Unique ID (when <a href="http://www.proftpd.org/docs/contrib/mod_unique_id.html"><code>mod_unique_id</code></a> is present/used)
+    </ul>
+
+    <p>
+    <b>Note</b>: use of the <code>UseProxyProtocolV2</code> option is also
+    required for the TLVs to be sent.
+  </li>
+
+  <p>
   <li><code>UseReverseProxyAuth</code><br>
     <p>
     When reverse proxying, <code>mod_proxy</code> delegates user authentication

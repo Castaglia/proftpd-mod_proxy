@@ -784,6 +784,9 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
     } else if (strcmp(cmd->argv[i], "UseProxyProtocolV2") == 0) {
       opts |= PROXY_OPT_USE_PROXY_PROTOCOL_V2;
 
+    } else if (strcmp(cmd->argv[i], "UseProxyProtocolV2TLVs") == 0) {
+      opts |= PROXY_OPT_USE_PROXY_PROTOCOL_V2_TLVS;
+
     } else if (strcmp(cmd->argv[i], "ShowFeatures") == 0) {
       opts |= PROXY_OPT_SHOW_FEATURES;
 

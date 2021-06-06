@@ -160,6 +160,11 @@ my $TESTS = {
     test_class => [qw(forking mod_tls reverse)],
   },
 
+  proxy_reverse_proxy_protocol_v2_tlv_ssl => {
+    order => ++$order,
+    test_class => [qw(forking mod_proxy_protocol mod_tls reverse)],
+  },
+
   proxy_forward_frontend_tls_noproxyauth_login => {
     order => ++$order,
     test_class => [qw(forking mod_tls forward)],
@@ -5624,6 +5629,192 @@ EOC
   server_stop($setup->{pid_file});
 
   $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_proxy_protocol_v2_tlv_ssl {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
+  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyOptions} = 'UseProxyProtocolV2 UseProxyProtocolV2TLVs';
+  $proxy_config->{ProxyReverseConnectPolicy} = 'PerUser';
+
+  my $hostname = 'castaglia';
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:10 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy_protocol:20 tls:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    SocketBindTight => 'on',
+
+    # Include the ALPN, Authority, SSL TLVs in an ExtendedLog
+    LogFormat => 'session "ALPN=%{note:mod_proxy_protocol.alpn} AUTHORITY=%{note:mod_proxy_protocol.authority} TLS_VERSION=%{note:mod_proxy_protocol.tls.version} TLS_CIPHER=%{note:mod_proxy_protocol.tls.cipher}"',
+
+    ServerAlias => $hostname,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_tls.c' => {
+        TLSEngine => 'on',
+        TLSLog => $setup->{log_file},
+        TLSProtocol => 'SSLv3 TLSv1',
+        TLSRequired => 'on',
+        TLSRSACertificateFile => $cert_file,
+        TLSCACertificateFile => $ca_file,
+        TLSOptions => 'EnableDiags',
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TransferLog none
+  WtmpLog off
+
+  <IfModule mod_proxy_protocol.c>
+    ProxyProtocolEngine on
+    ProxyProtocolVersion haproxyV2
+    ExtendedLog $setup->{log_file} ALL session
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  require Net::FTPSSL;
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Give the server a chance to start up
+      sleep(2);
+
+      my $ssl_opts = {
+        SSL_hostname => $hostname,
+
+        # Yes, this is a deliberate choice.  Sigh.
+        SSL_verifycn_scheme => 'none',
+      };
+
+      my $client_opts = {
+        Encryption => 'E',
+        Port => $port,
+        SSL_Client_Certificate => $ssl_opts,
+      };
+
+      if ($ENV{TEST_VERBOSE}) {
+        $client_opts->{Debug} = 1;
+      }
+
+      my $client = Net::FTPSSL->new('127.0.0.1', %$client_opts);
+      unless ($client) {
+        die("Can't connect to FTPS server: " . IO::Socket::SSL::errstr());
+      }
+
+      unless ($client->login($setup->{user}, $setup->{passwd})) {
+        die("Can't login: " . $client->last_message());
+      }
+
+      $client->quit();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  eval {
+    if (open(my $fh, "< $setup->{log_file}")) {
+      my $ok = 0;
+
+      while (my $line = <$fh>) {
+        chomp($line);
+
+        if ($ENV{TEST_VERBOSE}) {
+          print STDERR "# $line\n";
+        }
+
+        if ($line =~ /^ALPN=ftps AUTHORITY=$hostname TLS_VERSION=.+ TLS_CIPHER=.+/) {
+          $ok = 1;
+          last;
+        }
+      }
+
+      close($fh);
+
+      $self->assert($ok, test_msg("Did not see expected ALPN, Authority, SSL TLVs log message"));
+
+    } else {
+      die("Can't read $setup->{log_file}: $!");
+    }
+  };
+  if ($@) {
+    $ex = $@;
+  }
 
   test_cleanup($setup->{log_file}, $ex);
 }
