@@ -88,6 +88,13 @@ static const char *supported_protocols[] = {
 #define PROXY_PROTOCOL_V2_ADDRLEN_INET6		(16 + 16 + 2 + 2)
 static uint8_t proxy_protocol_v2_sig[PROXY_PROTOCOL_V2_SIGLEN] = "\x0D\x0A\x0D\x0A\x00\x0D\x0A\x51\x55\x49\x54\x0A";
 
+#define PROXY_PROTOCOL_V2_TLV_ALPN		0x01
+#define PROXY_PROTOCOL_V2_TLV_AUTHORITY		0x02
+#define PROXY_PROTOCOL_V2_TLV_UNIQUE_ID		0x05
+#define PROXY_PROTOCOL_V2_TLV_SSL		0x20
+#define PROXY_PROTOCOL_V2_TLV_SSL_VERSION	0x21
+#define PROXY_PROTOCOL_V2_TLV_SSL_CIPHER	0x23
+
 static const char *trace_channel = "proxy.conn";
 
 static int supported_protocol(const char *proto) {
@@ -995,13 +1002,254 @@ static int writev_conn(conn_t *conn, const struct iovec *iov, int iov_count) {
   return res;
 }
 
+static uint16_t add_v2_tlv_alpn(pool *p, struct iovec *v2_iov,
+    unsigned int *v2_niov) {
+  uint8_t *tlv_type;
+  uint16_t *tlv_len, total_len;
+  const char *tlv_val;
+  size_t tlv_valsz = 0;
+  unsigned int niov;
+
+  tlv_type = pcalloc(p, sizeof(uint8_t));
+  *tlv_type = PROXY_PROTOCOL_V2_TLV_ALPN;
+
+  tlv_val = pstrdup(p, pr_session_get_protocol(0));
+  tlv_valsz = strlen(tlv_val);
+
+  tlv_len = pcalloc(p, sizeof(uint16_t));
+  *tlv_len = htons(tlv_valsz);
+
+  niov = *v2_niov;
+
+  v2_iov[niov].iov_base = (void *) tlv_type;
+  v2_iov[niov].iov_len = sizeof(uint8_t);
+
+  niov++;
+  v2_iov[niov].iov_base = (void *) tlv_len;
+  v2_iov[niov].iov_len = sizeof(uint16_t);
+
+  niov++;
+  v2_iov[niov].iov_base = (void *) tlv_val;
+  v2_iov[niov].iov_len = tlv_valsz;
+
+  /* Make sure to increment niov one more, for the next TLV. */
+  *v2_niov = niov + 1;
+
+  total_len = sizeof(uint8_t) + sizeof(uint16_t) + tlv_valsz;
+  return total_len;
+}
+
+static uint16_t add_v2_tlv_authority(pool *p, struct iovec *v2_iov,
+    unsigned int *v2_niov) {
+  uint8_t *tlv_type;
+  uint16_t *tlv_len, total_len;
+  const char *tlv_val;
+  size_t tlv_valsz = 0;
+  unsigned int niov;
+  const void *val = NULL;
+
+  /* Only add the Authority TLV if the client sent an FTP HOST command, or
+   * used TLS SNI.
+   */
+
+  val = pr_table_get(session.notes, "mod_core.host", NULL);
+  if (val == NULL) {
+    val = pr_table_get(session.notes, "mod_tls.sni", NULL);
+  }
+
+  if (val == NULL) {
+    return 0;
+  }
+
+  tlv_type = pcalloc(p, sizeof(uint8_t));
+  *tlv_type = PROXY_PROTOCOL_V2_TLV_AUTHORITY;
+
+  tlv_val = pstrdup(p, val);
+  tlv_valsz = strlen(tlv_val);
+
+  tlv_len = pcalloc(p, sizeof(uint16_t));
+  *tlv_len = htons(tlv_valsz);
+
+  niov = *v2_niov;
+
+  v2_iov[niov].iov_base = (void *) tlv_type;
+  v2_iov[niov].iov_len = sizeof(uint8_t);
+
+  niov++;
+  v2_iov[niov].iov_base = (void *) tlv_len;
+  v2_iov[niov].iov_len = sizeof(uint16_t);
+
+  niov++;
+  v2_iov[niov].iov_base = (void *) tlv_val;
+  v2_iov[niov].iov_len = tlv_valsz;
+
+  /* Make sure to increment niov one more, for the next TLV. */
+  *v2_niov = niov + 1;
+
+  total_len = sizeof(uint8_t) + sizeof(uint16_t) + tlv_valsz;
+  return total_len;
+}
+
+static uint16_t add_v2_tlv_ssl(pool *p, struct iovec *v2_iov,
+    unsigned int *v2_niov) {
+  uint8_t *tlv_type, client;
+  uint16_t *tlv_len, total_len;
+  uint32_t verify;
+  void *tlv_val, *tlv_ptr;
+  size_t tlv_valsz = 0, valsz = 0;
+  unsigned int niov;
+  const char *proto, *tls_version, *tls_cipher;
+
+  /* Only add the SSL TLV if FTPS is in use. */
+  proto = pr_session_get_protocol(0);
+  if (strcmp(proto, "ftps") != 0) {
+    return 0;
+  }
+
+  tlv_type = pcalloc(p, sizeof(uint8_t));
+  *tlv_type = PROXY_PROTOCOL_V2_TLV_SSL;
+
+  /* This is more complicated, due to the nested nature of SSL sub-TLVs. */
+
+  tls_version = pr_table_get(session.notes, "TLS_PROTOCOL", NULL);
+  tls_cipher = pr_table_get(session.notes, "TLS_CIPHER", NULL);
+
+  valsz = sizeof(client) + sizeof(verify);
+
+  if (tls_version != NULL) {
+    valsz += (sizeof(uint8_t) + sizeof(uint16_t) + strlen(tls_version));
+  }
+
+  if (tls_cipher != NULL) {
+    valsz += (sizeof(uint8_t) + sizeof(uint16_t) + strlen(tls_cipher));
+  }
+
+  tlv_ptr = tlv_val = pcalloc(p, valsz);
+  tlv_valsz = valsz;
+
+  /* Client field: always 0x01, until we support client certs. */
+  client = 0x01;
+  memcpy(tlv_ptr, &client, sizeof(client));
+  tlv_ptr += sizeof(client);
+
+  /* Verify field: always non-zero, until we support client certs. */
+  verify = htonl(1);
+  memcpy(tlv_ptr, &verify, sizeof(verify));
+  tlv_ptr += sizeof(verify);
+
+  if (tls_version != NULL) {
+    uint8_t tlv_subtype;
+    uint16_t tlv_sublen;
+    size_t tlv_subvalsz;
+
+    tlv_subtype = PROXY_PROTOCOL_V2_TLV_SSL_VERSION;
+    tlv_subvalsz = strlen(tls_version);
+    tlv_sublen = htons(tlv_subvalsz);
+
+    memcpy(tlv_ptr, &tlv_subtype, sizeof(tlv_subtype));
+    tlv_ptr += sizeof(tlv_subtype);
+
+    memcpy(tlv_ptr, &tlv_sublen, sizeof(tlv_sublen));
+    tlv_ptr += sizeof(tlv_sublen);
+
+    memcpy(tlv_ptr, tls_version, tlv_subvalsz);
+    tlv_ptr += tlv_subvalsz;
+  }
+
+  if (tls_cipher != NULL) {
+    uint8_t tlv_subtype;
+    uint16_t tlv_sublen;
+    size_t tlv_subvalsz;
+
+    tlv_subtype = PROXY_PROTOCOL_V2_TLV_SSL_CIPHER;
+    tlv_subvalsz = strlen(tls_cipher);
+    tlv_sublen = htons(tlv_subvalsz);
+
+    memcpy(tlv_ptr, &tlv_subtype, sizeof(tlv_subtype));
+    tlv_ptr += sizeof(tlv_subtype);
+
+    memcpy(tlv_ptr, &tlv_sublen, sizeof(tlv_sublen));
+    tlv_ptr += sizeof(tlv_sublen);
+
+    memcpy(tlv_ptr, tls_cipher, tlv_subvalsz);
+    tlv_ptr += tlv_subvalsz;
+  }
+
+  tlv_len = pcalloc(p, sizeof(uint16_t));
+  *tlv_len = htons(tlv_valsz);
+
+  niov = *v2_niov;
+
+  v2_iov[niov].iov_base = (void *) tlv_type;
+  v2_iov[niov].iov_len = sizeof(uint8_t);
+
+  niov++;
+  v2_iov[niov].iov_base = (void *) tlv_len;
+  v2_iov[niov].iov_len = sizeof(uint16_t);
+
+  niov++;
+  v2_iov[niov].iov_base = (void *) tlv_val;
+  v2_iov[niov].iov_len = tlv_valsz;
+
+  /* Make sure to increment niov one more, for the next TLV. */
+  *v2_niov = niov + 1;
+
+  total_len = sizeof(uint8_t) + sizeof(uint16_t) + tlv_valsz;
+  return total_len;
+}
+
+static uint16_t add_v2_tlv_unique_id(pool *p, struct iovec *v2_iov,
+    unsigned int *v2_niov) {
+  uint8_t *tlv_type;
+  uint16_t *tlv_len, total_len;
+  const char *tlv_val;
+  size_t tlv_valsz = 0;
+  unsigned int niov;
+  const void *val = NULL;
+
+  /* Only add the Unique ID TLV if mod_unique_id generated one. */
+  val = pr_table_get(session.notes, "UNIQUE_ID", NULL);
+  if (val == NULL) {
+    return 0;
+  }
+
+  tlv_type = pcalloc(p, sizeof(uint8_t));
+  *tlv_type = PROXY_PROTOCOL_V2_TLV_UNIQUE_ID;
+
+  tlv_val = pstrdup(p, val);
+  tlv_valsz = strlen(tlv_val);
+
+  tlv_len = pcalloc(p, sizeof(uint16_t));
+  *tlv_len = htons(tlv_valsz);
+
+  niov = *v2_niov;
+
+  v2_iov[niov].iov_base = (void *) tlv_type;
+  v2_iov[niov].iov_len = sizeof(uint8_t);
+
+  niov++;
+  v2_iov[niov].iov_base = (void *) tlv_len;
+  v2_iov[niov].iov_len = sizeof(uint16_t);
+
+  niov++;
+  v2_iov[niov].iov_base = (void *) tlv_val;
+  v2_iov[niov].iov_len = tlv_valsz;
+
+  /* Make sure to increment niov one more, for the next TLV. */
+  *v2_niov = niov + 1;
+
+  total_len = sizeof(uint8_t) + sizeof(uint16_t) + tlv_valsz;
+  return total_len;
+}
+
 int proxy_conn_send_proxy_v2(pool *p, conn_t *conn) {
   int res, xerrno;
   uint8_t ver_cmd, trans_fam, src_ipv6[16], dst_ipv6[16];
   uint16_t v2_len, src_port, dst_port;
   uint32_t src_ipv4, dst_ipv4;
-  struct iovec v2_hdr[8];
-  pool *sub_pool = NULL;
+  struct iovec v2_iov[20];
+  unsigned int v2_niov = 8;
+  pool *sub_pool = NULL, *tlv_pool = NULL;
   char *proto;
   const pr_netaddr_t *src_addr = NULL, *dst_addr = NULL;
 
@@ -1011,13 +1259,13 @@ int proxy_conn_send_proxy_v2(pool *p, conn_t *conn) {
     return -1;
   }
 
-  v2_hdr[0].iov_base = (void *) proxy_protocol_v2_sig;
-  v2_hdr[0].iov_len = PROXY_PROTOCOL_V2_SIGLEN;
+  v2_iov[0].iov_base = (void *) proxy_protocol_v2_sig;
+  v2_iov[0].iov_len = PROXY_PROTOCOL_V2_SIGLEN;
 
   /* PROXY protocol v2 + PROXY command */
   ver_cmd = (0x20|0x01);
-  v2_hdr[1].iov_base = (void *) &ver_cmd;
-  v2_hdr[1].iov_len = sizeof(ver_cmd);
+  v2_iov[1].iov_base = (void *) &ver_cmd;
+  v2_iov[1].iov_len = sizeof(ver_cmd);
 
   src_addr = session.c->remote_addr;
   dst_addr = session.c->local_addr;
@@ -1032,13 +1280,13 @@ int proxy_conn_send_proxy_v2(pool *p, conn_t *conn) {
 
     saddr = (struct sockaddr_in *) pr_netaddr_get_sockaddr(src_addr);
     src_ipv4 = saddr->sin_addr.s_addr;
-    v2_hdr[4].iov_base = (void *) &src_ipv4;
-    v2_hdr[4].iov_len = sizeof(src_ipv4);
+    v2_iov[4].iov_base = (void *) &src_ipv4;
+    v2_iov[4].iov_len = sizeof(src_ipv4);
 
     saddr = (struct sockaddr_in *) pr_netaddr_get_sockaddr(dst_addr);
     dst_ipv4 = saddr->sin_addr.s_addr;
-    v2_hdr[5].iov_base = (void *) &dst_ipv4;
-    v2_hdr[5].iov_len = sizeof(dst_ipv4);
+    v2_iov[5].iov_base = (void *) &dst_ipv4;
+    v2_iov[5].iov_len = sizeof(dst_ipv4);
 
     /* Quell compiler warnings about unused variables. */
     (void) src_ipv6;
@@ -1059,8 +1307,8 @@ int proxy_conn_send_proxy_v2(pool *p, conn_t *conn) {
 
     saddr = (struct sockaddr_in6 *) pr_netaddr_get_sockaddr(src_addr);
     memcpy(&src_ipv6, &(saddr->sin6_addr), sizeof(src_ipv6));
-    v2_hdr[4].iov_base = (void *) &src_ipv6;
-    v2_hdr[4].iov_len = sizeof(src_ipv6);
+    v2_iov[4].iov_base = (void *) &src_ipv6;
+    v2_iov[4].iov_len = sizeof(src_ipv6);
 
     if (pr_netaddr_get_family(dst_addr) == AF_INET) {
       dst_addr = pr_netaddr_v4tov6(sub_pool, dst_addr);
@@ -1068,39 +1316,69 @@ int proxy_conn_send_proxy_v2(pool *p, conn_t *conn) {
 
     saddr = (struct sockaddr_in6 *) pr_netaddr_get_sockaddr(dst_addr);
     memcpy(&dst_ipv6, &(saddr->sin6_addr), sizeof(dst_ipv6));
-    v2_hdr[5].iov_base = (void *) &dst_ipv6;
-    v2_hdr[5].iov_len = sizeof(dst_ipv6);
+    v2_iov[5].iov_base = (void *) &dst_ipv6;
+    v2_iov[5].iov_len = sizeof(dst_ipv6);
 
     /* Quell compiler warnings about unused variables. */
     (void) src_ipv4;
     (void) dst_ipv4;
   }
 
-  v2_hdr[2].iov_base = (void *) &trans_fam;
-  v2_hdr[2].iov_len = sizeof(trans_fam);
+  v2_iov[2].iov_base = (void *) &trans_fam;
+  v2_iov[2].iov_len = sizeof(trans_fam);
+
+  if (proxy_opts & PROXY_OPT_USE_PROXY_PROTOCOL_V2_TLVS) {
+    uint16_t tlv_len;
+
+    tlv_pool = make_sub_pool(p);
+
+    tlv_len = add_v2_tlv_alpn(tlv_pool, v2_iov, &v2_niov);
+    if (tlv_len > 0) {
+      v2_len += tlv_len;
+    }
+
+    tlv_len = add_v2_tlv_authority(tlv_pool, v2_iov, &v2_niov);
+    if (tlv_len > 0) {
+      v2_len += tlv_len;
+    }
+
+    tlv_len = add_v2_tlv_ssl(tlv_pool, v2_iov, &v2_niov);
+    if (tlv_len > 0) {
+      v2_len += tlv_len;
+    }
+
+    tlv_len = add_v2_tlv_unique_id(tlv_pool, v2_iov, &v2_niov);
+    if (tlv_len > 0) {
+      v2_len += tlv_len;
+    }
+  }
 
   v2_len = htons(v2_len);
-  v2_hdr[3].iov_base = (void *) &v2_len;
-  v2_hdr[3].iov_len = sizeof(v2_len);
+  v2_iov[3].iov_base = (void *) &v2_len;
+  v2_iov[3].iov_len = sizeof(v2_len);
 
   src_port = htons(session.c->remote_port);
-  v2_hdr[6].iov_base = (void *) &src_port;
-  v2_hdr[6].iov_len = sizeof(src_port);
+  v2_iov[6].iov_base = (void *) &src_port;
+  v2_iov[6].iov_len = sizeof(src_port);
 
   dst_port = htons(session.c->local_port);
-  v2_hdr[7].iov_base = (void *) &dst_port;
-  v2_hdr[7].iov_len = sizeof(dst_port);
+  v2_iov[7].iov_base = (void *) &dst_port;
+  v2_iov[7].iov_len = sizeof(dst_port);
 
   pr_trace_msg(trace_channel, 9,
     "sending PROXY protocol V2 message for %s %s#%u %s#%u to backend",
     proto, pr_netaddr_get_ipstr(src_addr), (unsigned int) ntohs(src_port),
     pr_netaddr_get_ipstr(dst_addr), (unsigned int) ntohs(dst_port));
 
-  res = writev_conn(conn, v2_hdr, 8);
+  res = writev_conn(conn, v2_iov, v2_niov);
   xerrno = errno;
 
   if (sub_pool != NULL) {
     destroy_pool(sub_pool);
+  }
+
+  if (tlv_pool != NULL) {
+    destroy_pool(tlv_pool);
   }
 
   errno = xerrno;
