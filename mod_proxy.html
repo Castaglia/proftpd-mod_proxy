@@ -1062,7 +1062,7 @@ suites for that protocol:
 <p>
 <hr>
 <h3><a name="ProxyTLSEngine">ProxyTLSEngine</a></h3>
-<strong>Syntax:</strong> ProxyTLSEngine <em>on|off|auto</em><br>
+<strong>Syntax:</strong> ProxyTLSEngine <em>on|off|auto|MatchClient</em><br>
 <strong>Default:</strong> ProxyTLSEngine auto<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
 <strong>Module:</strong> mod_proxy<br>
@@ -1096,6 +1096,16 @@ The <code>ProxyTLSEngine</code> directive configures the use of SSL/TLS for
 
     <p>
     <b>Note</b>: this is the default behavior in <code>mod_proxy</code>.
+  </li>
+
+  <p>
+  <li>
+    <p>
+    Use of SSL/TLS to the backend server will attempt to <em>match</em> the
+    SSL/TLS usage of the frontend client.  Thus if the frontend client uses
+    explicit FTPS, then explicit FTPS will be attempted with the backend;
+    similarly for implicit FTPS.  And if the frontent client does not use
+    FTPS, then SSL/TLS will not be used for the backend connection.
   </li>
 </ul>
 
@@ -1936,7 +1946,7 @@ these problems disappeared once SQLite was upgraded to a newer version.
 <hr>
 
 <font size=2><b><i>
-&copy; Copyright 2015-2020 TJ Saunders<br>
+&copy; Copyright 2015-2021 TJ Saunders<br>
  All Rights Reserved<br>
 </i></b></font>
 

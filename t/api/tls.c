@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2015-2020 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2015-2021 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -134,7 +134,7 @@ START_TEST (tls_init_test) {
   int res, flags = PROXY_DB_OPEN_FL_SKIP_VACUUM;
 
   res = proxy_tls_init(NULL, NULL, flags);
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   fail_unless(res < 0, "Failed to handle null pool");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
@@ -184,7 +184,7 @@ START_TEST (tls_sess_free_test) {
 END_TEST
 
 START_TEST (tls_sess_init_test) {
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   int res, flags = PROXY_DB_OPEN_FL_SKIP_VACUUM;
 
   res = proxy_tls_sess_init(NULL, flags);
@@ -226,14 +226,14 @@ START_TEST (tls_using_tls_test) {
   int res, tls;
 
   tls = proxy_tls_using_tls();
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   fail_unless(tls == PROXY_TLS_ENGINE_AUTO, "Expected TLS auto, got %d", tls);
 #else
   fail_unless(tls == PROXY_TLS_ENGINE_OFF, "Expected TLS off, got %d", tls);
 #endif /* PR_USE_OPENSSL */
 
   res = proxy_tls_set_tls(7);
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   fail_unless(res < 0, "Set TLS unexpectedly");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
@@ -257,11 +257,36 @@ START_TEST (tls_using_tls_test) {
 }
 END_TEST
 
+START_TEST (tls_match_client_tls_test) {
+  int res;
+
+  /* Plain FTP */
+  mark_point();
+  res = proxy_tls_match_client_tls();
+  fail_unless(res == 0, "Failed to match plain FTP client: %s",
+    strerror(errno));
+
+  /* Explicit FTPS */
+  mark_point();
+  session.rfc2228_mech = "TLS";
+  res = proxy_tls_match_client_tls();
+  fail_unless(res == 0, "Failed to match explicit FTPS client: %s",
+    strerror(errno));
+
+  /* Implicit FTPS */
+  session.rfc2228_mech = NULL;
+
+  /* TODO: Add implicit FTPS check; requires setting TLSOptions config_rec,
+   * which pulls in need for server_rec, parser, etc.
+   */
+}
+END_TEST
+
 START_TEST (tls_set_data_prot_test) {
   int res;
 
   res = proxy_tls_set_data_prot(TRUE);
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   fail_unless(res == TRUE, "Expected TRUE, got %d", res);
 
   res = proxy_tls_set_data_prot(FALSE);
@@ -294,6 +319,7 @@ Suite *tests_get_tls_suite(void) {
   tcase_add_test(testcase, tls_sess_free_test);
   tcase_add_test(testcase, tls_sess_init_test);
   tcase_add_test(testcase, tls_using_tls_test);
+  tcase_add_test(testcase, tls_match_client_tls_test);
   tcase_add_test(testcase, tls_set_data_prot_test);
 
   suite_add_tcase(suite, testcase);

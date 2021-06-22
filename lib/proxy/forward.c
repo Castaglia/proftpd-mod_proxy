@@ -198,6 +198,10 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
   dst_addr = proxy_sess->dst_addr;
   other_addrs = proxy_sess->other_addrs;
 
+  if (proxy_tls_using_tls() == PROXY_TLS_ENGINE_MATCH_CLIENT) {
+    proxy_tls_match_client_tls();
+  }
+
   /* If the destination port is 990, assume implicit FTPS. */
   if (ntohs(pr_netaddr_get_port(dst_addr)) == PROXY_TLS_IMPLICIT_FTPS_PORT) {
     pr_trace_msg(trace_channel, 9, "%s#%u requesting, using implicit FTPS",

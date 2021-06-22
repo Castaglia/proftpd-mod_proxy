@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse proxy implementation
- * Copyright (c) 2012-2020 TJ Saunders
+ * Copyright (c) 2012-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -780,6 +780,10 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
   proxy_sess->dst_addr = dst_addr;
   proxy_sess->dst_pconn = pconn;
   proxy_sess->other_addrs = other_addrs;
+
+  if (proxy_tls_using_tls() == PROXY_TLS_ENGINE_MATCH_CLIENT) {
+    proxy_tls_match_client_tls();
+  }
 
   uri_tls = proxy_conn_get_tls(pconn);
   if (uri_tls == PROXY_TLS_ENGINE_IMPLICIT) {

@@ -313,6 +313,16 @@ int proxy_ftp_sess_send_auth_tls(pool *p,
   }
 
   use_tls = proxy_tls_using_tls();
+
+  /* Note: In theory, use_tls should never be MATCH_CLIENT here; that should
+   * have been handled earlier, in the connect routines of the forward/reverse
+   * APIs.
+   */
+  if (use_tls == PROXY_TLS_ENGINE_MATCH_CLIENT) {
+    proxy_tls_match_client_tls();
+    use_tls = proxy_tls_using_tls();
+  }
+
   if (use_tls == PROXY_TLS_ENGINE_OFF) {
     pr_trace_msg(trace_channel, 19,
       "TLS support not enabled/desired, skipping 'AUTH TLS' command");
