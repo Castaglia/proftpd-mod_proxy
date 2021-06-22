@@ -1439,7 +1439,7 @@ MODRET set_proxytlsciphersuite(cmd_rec *cmd) {
 #endif /* PR_USE_OPENSSL */
 }
 
-/* usage: ProxyTLSEngine on|off|auto */
+/* usage: ProxyTLSEngine on|off|auto|MatchClient */
 MODRET set_proxytlsengine(cmd_rec *cmd) {
 #ifdef PR_USE_OPENSSL
   int engine = -1;
@@ -1452,6 +1452,9 @@ MODRET set_proxytlsengine(cmd_rec *cmd) {
   if (engine == -1) {
     if (strcasecmp(cmd->argv[1], "auto") == 0) {
       engine = PROXY_TLS_ENGINE_AUTO;
+
+    } else if (strcasecmp(cmd->argv[1], "MatchClient") == 0) {
+      engine = PROXY_TLS_ENGINE_MATCH_CLIENT;
 
     } else {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown ProxyTLSEngine value: '",

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS API
- * Copyright (c) 2015-2020 TJ Saunders
+ * Copyright (c) 2015-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -52,6 +52,7 @@
 #define PROXY_TLS_ENGINE_OFF		2
 #define PROXY_TLS_ENGINE_AUTO		3
 #define PROXY_TLS_ENGINE_IMPLICIT	4
+#define PROXY_TLS_ENGINE_MATCH_CLIENT	5
 
 #define PROXY_TLS_IMPLICIT_FTPS_PORT	990
 
@@ -100,6 +101,9 @@ int proxy_tls_set_tls(int);
 
 /* Returns the ProxyTLSEngine value; see above. */
 int proxy_tls_using_tls(void);
+
+/* Implements the ProxyTLSEngine MatchClient functionality. */
+int proxy_tls_match_client_tls(void);
 
 /* Defines the datastore interface. */
 struct proxy_tls_datastore {

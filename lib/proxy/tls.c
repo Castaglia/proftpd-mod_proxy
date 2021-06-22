@@ -36,8 +36,9 @@
 # define HAVE_LIBRESSL  1
 #endif
 
-#ifdef PR_USE_OPENSSL
+static const char *trace_channel = "proxy.tls";
 
+#if defined(PR_USE_OPENSSL)
 extern xaset_t *server_list;
 
 static unsigned long tls_opts = 0UL;
@@ -63,7 +64,6 @@ static int tls_psk_used = FALSE;
 # define PROXY_TLS_USE_SESSION_TICKETS		1
 #endif
 
-static const char *trace_channel = "proxy.tls";
 static const char *timing_channel = "timing";
 
 #define PROXY_TLS_DEFAULT_CIPHER_SUITE		"DEFAULT:!ADH:!EXPORT:!DES"
@@ -78,7 +78,7 @@ static const char *timing_channel = "timing";
 #define PROXY_TLS_DATA_ADAPTIVE_WRITE_BOOST_THRESHOLD	(1024 * 1024)
 #define PROXY_TLS_DATA_ADAPTIVE_WRITE_BOOST_INTERVAL_MS	1000
 
-#ifdef SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS
+#if defined(SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS)
 static int tls_ssl_opts = (SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_SINGLE_DH_USE)^SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
 #else
 /* OpenSSL-0.9.6 and earlier (yes, it appears people still have these versions
@@ -877,7 +877,7 @@ static int cert_match_ip_san(pool *p, X509 *cert, const char *ipstr) {
       if (alt_name->type == GEN_IPADD) {
         unsigned char *san_data = NULL;
         int have_ipstr = FALSE, san_datalen;
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
         char san_ipstr[INET6_ADDRSTRLEN + 1] = {'\0'};
 #else
         char san_ipstr[INET_ADDRSTRLEN + 1] = {'\0'};
@@ -893,7 +893,7 @@ static int cert_match_ip_san(pool *p, X509 *cert, const char *ipstr) {
             san_data[0], san_data[1], san_data[2], san_data[3]);
           have_ipstr = TRUE;
 
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
         } else if (san_datalen == 16) {
           /* IPv6 address */
 
@@ -2322,7 +2322,7 @@ static int init_ssl_ctx(void) {
 #endif
 
   /* Disable SSL compression. */
-#ifdef SSL_OP_NO_COMPRESSION
+#if defined(SSL_OP_NO_COMPRESSION)
   ssl_opts |= SSL_OP_NO_COMPRESSION;
 #endif /* SSL_OP_NO_COMPRESSION */
 
@@ -2361,7 +2361,7 @@ static void proxy_tls_shutdown_ev(const void *event_data, void *user_data) {
 int proxy_tls_set_data_prot(int data_prot) {
   int old_data_prot;
 
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   old_data_prot = tls_need_data_prot;
   tls_need_data_prot = data_prot;
 #else
@@ -2372,7 +2372,7 @@ int proxy_tls_set_data_prot(int data_prot) {
 }
 
 int proxy_tls_set_tls(int engine) {
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   if (engine != PROXY_TLS_ENGINE_ON &&
       engine != PROXY_TLS_ENGINE_OFF &&
       engine != PROXY_TLS_ENGINE_AUTO &&
@@ -2388,15 +2388,70 @@ int proxy_tls_set_tls(int engine) {
 }
 
 int proxy_tls_using_tls(void) {
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   return tls_engine;
 #else
   return PROXY_TLS_ENGINE_OFF;
 #endif /* PR_USE_OPENSSL */
 }
 
+int proxy_tls_match_client_tls(void) {
+  int client_using_tls = FALSE, res = 0;
+
+  /* Is the client using TLS right now? */
+  if (session.rfc2228_mech != NULL &&
+      strcasecmp(session.rfc2228_mech, "TLS") == 0) {
+    client_using_tls = TRUE;
+  }
+
+  if (client_using_tls == TRUE) {
+    int client_using_implicit_ftps = FALSE;
+    config_rec *c;
+    unsigned long tls_opts = 0UL;
+
+    /* Is the client using implicit FTPS? */
+    c = find_config(main_server->conf, CONF_PARAM, "TLSOptions", FALSE);
+    while (c != NULL) {
+      unsigned long opts;
+
+      pr_signals_handle();
+
+      opts = *((unsigned long *) c->argv[0]);
+      tls_opts |= opts;
+
+      c = find_config_next(c, c->next, CONF_PARAM, "TLSOptions", FALSE);
+    }
+
+    /* We cheat, and duplicate/check for the UseImplicitTLS TLSOption
+     * (TLS_OPT_USE_IMPLICIT_SSL) from the mod_tls.c implementation.
+     */
+    if (tls_opts & 0x0200) {
+      client_using_implicit_ftps = TRUE;
+    }
+
+    if (client_using_implicit_ftps == TRUE) {
+      pr_trace_msg(trace_channel, 17,
+        "setting implicit FTPS due to ProxyTLSEngine MatchClient");
+      res = proxy_tls_set_tls(PROXY_TLS_ENGINE_IMPLICIT);
+
+    } else {
+      /* Using explicit FTPS. */
+      pr_trace_msg(trace_channel, 17,
+        "setting explicit FTPS due to ProxyTLSEngine MatchClient");
+      res = proxy_tls_set_tls(PROXY_TLS_ENGINE_ON);
+    }
+
+  } else {
+    pr_trace_msg(trace_channel, 17,
+      "disabling FTPS due to ProxyTLSEngine MatchClient");
+    res = proxy_tls_set_tls(PROXY_TLS_ENGINE_OFF);
+  }
+
+  return res;
+}
+
 int proxy_tls_init(pool *p, const char *tables_path, int flags) {
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   int res;
 
   memset(&tls_ds, 0, sizeof(tls_ds));
@@ -2457,7 +2512,7 @@ int proxy_tls_free(pool *p) {
     return -1;
   }
 
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   if (ssl_ctx != NULL) {
     SSL_CTX_free(ssl_ctx);
     ssl_ctx = NULL;
@@ -2479,7 +2534,7 @@ int proxy_tls_free(pool *p) {
   return 0;
 }
 
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
 /* Construct the options value that disables all unsupported protocols. */
 static int get_disabled_protocols(unsigned int supported_protocols) {
   int disabled_protocols;
@@ -2487,13 +2542,13 @@ static int get_disabled_protocols(unsigned int supported_protocols) {
   /* First, create an options value where ALL protocols are disabled. */
   disabled_protocols = (SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3|SSL_OP_NO_TLSv1);
 
-# ifdef SSL_OP_NO_TLSv1_1
+# if defined(SSL_OP_NO_TLSv1_1)
   disabled_protocols |= SSL_OP_NO_TLSv1_1;
 # endif
-# ifdef SSL_OP_NO_TLSv1_2
+# if defined(SSL_OP_NO_TLSv1_2)
   disabled_protocols |= SSL_OP_NO_TLSv1_2;
 # endif
-# ifdef SSL_OP_NO_TLSv1_3
+# if defined(SSL_OP_NO_TLSv1_3)
   disabled_protocols |= SSL_OP_NO_TLSv1_3;
 # endif
 
@@ -2519,7 +2574,7 @@ static int get_disabled_protocols(unsigned int supported_protocols) {
   }
 # endif /* OpenSSL-1.0.1 or later */
 
-#ifdef SSL_OP_NO_TLSv1_3
+#if defined(SSL_OP_NO_TLSv1_3)
   if (supported_protocols & PROXY_TLS_PROTO_TLS_V1_3) {
     disabled_protocols &= ~SSL_OP_NO_TLSv1_3;
   }
@@ -2714,7 +2769,7 @@ static void tls_info_cb(const SSL *ssl, int where, int ret) {
 
     ssl_state = SSL_get_state(ssl);
     switch (ssl_state) {
-# ifdef SSL_ST_BEFORE
+# if defined(SSL_ST_BEFORE)
       case SSL_ST_BEFORE:
         str = "before";
         break;
@@ -2729,7 +2784,7 @@ static void tls_info_cb(const SSL *ssl, int where, int ret) {
         str = "ok";
         break;
 
-# ifdef SSL_ST_RENEGOTIATE
+# if defined(SSL_ST_RENEGOTIATE)
       case SSL_ST_RENEGOTIATE:
         str = "renegotiating";
         break;
@@ -3397,7 +3452,7 @@ static void tls_print_server_hello(int io_flag, int version, int content_type,
   BIO_puts(bio, "\nServerHello:\n");
   tls_print_ssl_version(bio, "server_version", &buf, &buflen, &server_version);
 
-#ifdef TLS1_3_VERSION
+#if defined(TLS1_3_VERSION)
   if (server_version == TLS1_3_VERSION) {
     print_session_id = FALSE;
     print_compressions = FALSE;
@@ -3968,7 +4023,7 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
 #  endif /* TLS1_3_VERSION */
 
     default:
-#  ifdef SSL3_RT_HEADER
+#  if defined(SSL3_RT_HEADER)
       /* OpenSSL calls this callback for SSL records received; filter those
        * from true "unknowns".
        */
@@ -4294,7 +4349,7 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
       }
     }
 
-#  ifdef SSL3_RT_HEADER
+#  if defined(SSL3_RT_HEADER)
   } else if (version == 0 &&
              content_type == SSL3_RT_HEADER &&
              buflen == SSL3_RT_HEADER_LENGTH) {
@@ -4326,7 +4381,7 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
 #endif /* PR_USE_OPENSSL */
 
 int proxy_tls_sess_init(pool *p, int flags) {
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   config_rec *c;
   unsigned int enabled_proto_count = 0, tls_protocol = PROXY_TLS_PROTO_DEFAULT;
   int disabled_proto, res, xerrno = 0;
@@ -4683,7 +4738,7 @@ int proxy_tls_sess_free(pool *p) {
     return -1;
   }
 
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   /* Reset any state, but only if we have not already negotiated an SSL
    * session.
    */
