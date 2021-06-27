@@ -12,18 +12,27 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    environment: CI
+    env:
+      CI: true
 
     strategy:
       matrix:
         compiler:
-          - gcc
           - clang
+          - gcc
+        container:
+          - alpine:3.14
+          - centos:8
+          - ubuntu:18.04
+
+    container: ${{ matrix.container }}
 
     steps:
       - name: Checkout ProFTPD
-        run: |
-          git clone --depth 1 https://github.com/proftpd/proftpd.git proftpd
+        uses: actions/checkout@v2
+        with:
+          repository: proftpd/proftpd
+          path: proftpd
 
       - name: Checkout module source code
         uses: actions/checkout@v2
@@ -31,7 +40,10 @@ jobs:
           path: proftpd/contrib/mod_proxy
 
       - name: Whitespace check
+        if: ${{ matrix.container == 'ubuntu:18.04' }}
         run: |
+          apt-get update -qq
+          apt-get install -y git
           cd proftpd/contrib/mod_proxy
           if [[ -n $(git diff --check HEAD^) ]]; then
             echo "You must remove whitespace before submitting a pull request"
@@ -40,35 +52,73 @@ jobs:
             exit 1
           fi
 
-      - name: Install packages
+      - name: Install Alpine packages
+        if: ${{ matrix.container == 'alpine:3.14' }}
+        run: |
+          apk update
+          # for builds
+          apk add bash build-base clang compiler-rt-static gcc make zlib-dev
+          # for unit tests
+          apk add check check-dev subunit subunit-dev
+          # for Redis support
+          apk add hiredis-dev
+          # for OpenSSL support
+          apk add openssl openssl-dev
+          # for SQLite support
+          apk add sqlite sqlite-dev
+          # for debugging
+          clang --version
+          gcc --version
+          openssl version -a
+
+      - name: Install Centos packages
+        if: ${{ matrix.container == 'centos:8' }}
         run: |
           # Need to add other repos for e.g. libsodium
-          sudo apt-get update -qq
+          yum install -y dnf-plugins-core epel-release clang gcc make zlib-devel
+          yum config-manager --set-enabled powertools
           # for unit tests
-          sudo apt-get install -y check
-          sudo apt-get install -y libsubunit-dev
+          yum install -y check-devel https://cbs.centos.org/kojifiles/packages/subunit/1.4.0/1.el8/x86_64/subunit-1.4.0-1.el8.x86_64.rpm https://cbs.centos.org/kojifiles/packages/subunit/1.4.0/1.el8/x86_64/subunit-devel-1.4.0-1.el8.x86_64.rpm
+          # for Redis support
+          yum install -y hiredis-devel
+          # for OpenSSL support
+          yum install -y openssl-devel
+          # for SQLite support
+          yum install -y sqlite-devel
+          # for debugging
+          clang --version
+          gcc --version
+          openssl version -a
+
+      - name: Install Ubuntu packages
+        if: ${{ matrix.container == 'ubuntu:18.04' }}
+        run: |
+          apt-get update -qq
+          # for builds
+          apt-get install -y clang gcc make
+          # for unit tests
+          apt-get install -y check libsubunit-dev
 
           # for Redis support 
-          sudo apt-get install -y libhiredis-dev
+          apt-get install -y libhiredis-dev
           # for OpenSSL support
-          sudo apt-get install -y libssl-dev
+          apt-get install -y libssl-dev
           # for SQLite support
-          sudo apt-get install -y libsqlite3-dev sqlite3
+          apt-get install -y libsqlite3-dev sqlite3
 
           # for integration/regression test
           # for test code coverage
-          sudo apt-get install -y lcov
-          sudo gem install coveralls-lcov
+          apt-get install -y lcov ruby
+          gem install coveralls-lcov
           # for HTML validation
-          sudo apt-get install -y tidy
-          # for clang
-          sudo apt-get install -y clang
+          apt-get install -y tidy
           # for debugging
           clang --version
           gcc --version
           openssl version -a
 
       - name: Prepare code coverage
+        if: ${{ matrix.container == 'ubuntu:18.04' }}
         run: |
           lcov --directory proftpd --zerocounters
 
@@ -110,6 +160,8 @@ jobs:
       - name: Run unit tests
         env:
           CC: ${{ matrix.compiler }}
+        # Note: Skip the unit tests on Alpine
+        if: ${{ matrix.container != 'alpine:3.14' }}
         run: |
           cd proftpd/contrib/mod_proxy
           make TEST_VERBOSE=1 check
@@ -117,7 +169,7 @@ jobs:
       - name: Install with static modules
         run: |
           cd proftpd
-          sudo make install
+          make install
 
       - name: Build with shared modules
         env:
@@ -131,7 +183,7 @@ jobs:
       - name: Install with shared modules
         run: |
           cd proftpd
-          sudo make install
+          make install
 
       # https://github.com/google/sanitizers/wiki/AddressSanitizer
       # https://github.com/google/sanitizers/wiki/AddressSanitizerLeakSanitizer
@@ -146,7 +198,7 @@ jobs:
           CC: ${{ matrix.compiler }}
           CFLAGS: -fsanitize=address,undefined
           LDFLAGS: -fsanitize=address,undefined
-        if: ${{ matrix.compiler == 'clang' }}
+        if: ${{ matrix.compiler == 'clang' && matrix.container == 'ubuntu:18.04' }}
         run: |
           cd proftpd
           make clean
@@ -157,6 +209,7 @@ jobs:
           make TEST_VERBOSE=1 check
 
       - name: Check HTML docs
+        if: ${{ matrix.container == 'ubuntu:18.04' }}
         run: |
           cd proftpd/contrib/mod_proxy
           for f in $(/bin/ls *.html); do echo "Processing $f"; tidy -errors -omit -q $f; done || exit 0
