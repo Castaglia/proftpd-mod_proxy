@@ -651,29 +651,32 @@ static ssize_t tls_write(SSL *ssl, const void *buf, size_t len,
 
     (void) pr_gettimeofday_millis(&now);
     
-    (*adaptive_bytes_written_count) += count;
     wbio = SSL_get_wbio(ssl);
 
-    if (*adaptive_bytes_written_count >= PROXY_TLS_DATA_ADAPTIVE_WRITE_BOOST_THRESHOLD) {
-      /* Boost the buffer size if we've written more than the "boost"
-       * threshold.
-       */
-      (void) BIO_set_write_buf_size(wbio,
-        PROXY_TLS_DATA_ADAPTIVE_WRITE_MAX_BUFFER_SIZE);
+    if (adaptive_bytes_written_count != NULL) {
+      (*adaptive_bytes_written_count) += count;
+
+      if (*adaptive_bytes_written_count >= PROXY_TLS_DATA_ADAPTIVE_WRITE_BOOST_THRESHOLD) {
+        /* Boost the buffer size if we've written more than the "boost"
+         * threshold.
+         */
+        (void) BIO_set_write_buf_size(wbio,
+          PROXY_TLS_DATA_ADAPTIVE_WRITE_MAX_BUFFER_SIZE);
+      }
+
+      if (now > (*adaptive_bytes_written_ms + PROXY_TLS_DATA_ADAPTIVE_WRITE_BOOST_INTERVAL_MS)) {
+        /* If it's been longer than the boost interval since our last write,
+         * then reset the buffer size to the smaller version, assuming
+         * congestion (and thus closing of the TCP congestion window).
+         */
+        (void) BIO_set_write_buf_size(wbio,
+          PROXY_TLS_DATA_ADAPTIVE_WRITE_MIN_BUFFER_SIZE);
+
+        *adaptive_bytes_written_count = 0;
+      }
+
+      *adaptive_bytes_written_ms = now;
     }
-
-    if (now > (*adaptive_bytes_written_ms + PROXY_TLS_DATA_ADAPTIVE_WRITE_BOOST_INTERVAL_MS)) {
-      /* If it's been longer than the boost interval since our last write,
-       * then reset the buffer size to the smaller version, assuming
-       * congestion (and thus closing of the TCP congestion window).
-       */
-      (void) BIO_set_write_buf_size(wbio,
-        PROXY_TLS_DATA_ADAPTIVE_WRITE_MIN_BUFFER_SIZE);
-
-      *adaptive_bytes_written_count = 0;
-    }
-
-    *adaptive_bytes_written_ms = now;
   }
 
   errno = xerrno;

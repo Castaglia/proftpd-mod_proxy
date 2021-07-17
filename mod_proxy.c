@@ -535,10 +535,10 @@ MODRET set_proxydataxferpolicy(cmd_rec *cmd) {
 
 /* usage: ProxyDatastore type [info] */
 MODRET set_proxydatastore(cmd_rec *cmd) {
-  int ds;
-  const char *ds_name;
-  void *ds_data;
-  size_t ds_datasz;
+  int ds = -1;
+  const char *ds_name = NULL;
+  void *ds_data = NULL;
+  size_t ds_datasz = 0;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT);
@@ -575,7 +575,7 @@ MODRET set_proxydatastore(cmd_rec *cmd) {
 /* usage: ProxyDirectoryListPolicy "client"|"LIST" [opt1 ... ]*/
 MODRET set_proxydirlistpolicy(cmd_rec *cmd) {
   config_rec *c;
-  int policy_id;
+  int policy_id = -1;
   unsigned long opts = 0UL;
 
   if (cmd->argc < 2) {
