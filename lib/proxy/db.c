@@ -669,9 +669,10 @@ struct proxy_dbh *proxy_db_open(pool *p, const char *table_path,
     return NULL;
   }
 
-  if (pr_trace_get_level(trace_channel) >= PROXY_DB_SQLITE_TRACE_LEVEL) {
-    sqlite3_busy_handler(db, db_busy, (void *) schema_name);
+  /* Make sure we configure a busy handler. */
+  sqlite3_busy_handler(db, db_busy, (void *) schema_name);
 
+  if (pr_trace_get_level(trace_channel) >= PROXY_DB_SQLITE_TRACE_LEVEL) {
 #if defined(HAVE_SQLITE3_TRACE_V2)
     sqlite3_trace_v2(db, SQLITE_TRACE_STMT|SQLITE_TRACE_PROFILE|SQLITE_TRACE_ROW|SQLITE_TRACE_CLOSE,
       db_trace2, (void *) schema_name);
