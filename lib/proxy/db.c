@@ -330,6 +330,13 @@ int proxy_db_prepare_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt) {
 
   pstmt = (sqlite3_stmt *) pr_table_get(dbh->prepared_stmts, stmt, NULL);
   if (pstmt != NULL) {
+    res = sqlite3_clear_bindings(pstmt);
+    if (res != SQLITE_OK) {
+      pr_trace_msg(trace_channel, 3,
+        "error clearing bindings from prepared statement '%s': %s", stmt,
+        sqlite3_errmsg(dbh->db));
+    }
+
     res = sqlite3_reset(pstmt);
     if (res != SQLITE_OK) {
       pr_trace_msg(trace_channel, 3,

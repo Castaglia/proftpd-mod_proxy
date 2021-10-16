@@ -82,7 +82,7 @@ jobs:
           # for Redis support
           yum install -y hiredis-devel
           # for OpenSSL support
-          yum install -y openssl-devel
+          yum install -y openssl openssl-devel
           # for SQLite support
           yum install -y sqlite-devel
           # for debugging
