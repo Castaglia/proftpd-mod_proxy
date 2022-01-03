@@ -1,0 +1,111 @@
+name: Regression Tests
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      REDIS_HOST: redis
+      TZ: America/Los_Angeles
+
+    services:
+      redis:
+        # Docker Hub image
+        image: redis:6-alpine
+        # Set health checks to wait until redis has started
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    strategy:
+      matrix:
+        compiler:
+          - gcc
+        container:
+          - ubuntu:18.04
+
+    container: ${{ matrix.container }}
+
+    steps:
+      - name: Checkout ProFTPD
+        uses: actions/checkout@v2
+        with:
+          repository: proftpd/proftpd
+          path: proftpd
+
+      - name: Checkout mod_proxy_protocol source code
+        uses: actions/checkout@v2
+        with:
+          repository: Castaglia/proftpd-mod_proxy_protocol
+          path: mod_proxy_protocol
+
+      - name: Checkout module source code
+        uses: actions/checkout@v2
+        with:
+          path: proftpd/contrib/mod_proxy
+
+      - name: Install Ubuntu packages
+        run: |
+          apt-get update -qq
+          # for builds
+          apt-get install -y gcc git make tzdata
+
+          # for Redis support 
+          apt-get install -y libhiredis-dev
+          # for OpenSSL support
+          apt-get install -y libssl-dev
+          # for SQLite support
+          apt-get install -y libsqlite3-dev sqlite3
+
+          # for integration/regression tests
+          apt-get install -y \
+            libcompress-raw-zlib-perl \
+            libdata-dumper-simple-perl \
+            libdatetime-perl \
+            libfile-copy-recursive-perl \
+            libfile-path-tiny-perl \
+            libfile-spec-native-perl \
+            libnet-address-ip-local-perl \
+            libnet-ssh2-perl \
+            libnet-ssleay-perl \
+            libnet-telnet-perl \
+            libposix-2008-perl \
+            libtest-unit-perl \
+            libtime-hr-perl \
+            libwww-perl
+          PERL_MM_USE_DEFAULT=1 perl -MCPAN -e 'install Net::FTPSSL'
+
+          # for debugging
+          gcc --version
+          openssl version -a
+
+      - name: Prepare source code
+        run: |
+          cp mod_proxy_protocol/mod_proxy_protocol.c proftpd/contrib/mod_proxy_protocol.c
+
+      - name: Install with static modules
+        # NOTE: Docker does not have good IPv6 support, hence we disable it.
+        run: |
+          cd proftpd
+          ./configure --enable-ctrls --disable-ipv6 --enable-redis --with-modules=mod_ban:mod_sql:mod_sql_sqlite:mod_tls:mod_tls_shmcache:mod_proxy:mod_unique_id:mod_proxy_protocol
+          make
+          make install
+
+      - name: Run integration tests
+        env:
+          PROFTPD_TEST_BIN: /usr/local/sbin/proftpd
+          PROFTPD_TEST_DIR: ${{ github.workspace }}/proftpd/tests
+        run: |
+          cd proftpd/contrib/mod_proxy
+          perl tests.pl

@@ -10,7 +10,7 @@ use File::Path qw(mkpath);
 use File::Spec;
 use IO::Handle;
 use IO::Socket::INET;
-use Sys::HostAddr;
+use Net::Address::IP::Local;
 
 use ProFTPD::TestSuite::FTP;
 use ProFTPD::TestSuite::Utils qw(:auth :config :running :test :testsuite);
@@ -22,29 +22,28 @@ my $order = 0;
 my $TESTS = {
   proxy_reverse_ipv6_list_pasv => {
     order => ++$order,
-    test_class => [qw(forking reverse)],
+    test_class => [qw(feature_ipv6 forking reverse)],
   },
 
   proxy_reverse_ipv6_list_port => {
     order => ++$order,
-    test_class => [qw(forking reverse)],
+    test_class => [qw(feature_ipv6 forking reverse)],
   },
 
   proxy_reverse_ipv6_epsv => {
     order => ++$order,
-    test_class => [qw(forking reverse)],
+    test_class => [qw(feature_ipv6 forking reverse)],
   },
 
   proxy_reverse_ipv6_eprt_ipv4 => {
     order => ++$order,
-    test_class => [qw(forking reverse)],
+    test_class => [qw(feature_ipv6 forking reverse)],
   },
 
   proxy_reverse_ipv6_eprt_ipv6 => {
     order => ++$order,
     test_class => [qw(feature_ipv6 forking reverse)],
   },
-
 };
 
 sub new {

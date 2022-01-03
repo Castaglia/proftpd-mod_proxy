@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP dirlist routines
- * Copyright (c) 2020 TJ Saunders
+ * Copyright (c) 2020-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -79,11 +79,13 @@ int proxy_ftp_dirlist_init(pool *p, struct proxy_session *proxy_sess) {
   ctx->list_style = DIRLIST_LIST_STYLE_UNKNOWN;
   ctx->skip_total = TRUE;
 
-  /* This is the maximum size of one line, per mod_ls. */
-  ctx->input_textsz = (PR_TUNABLE_PATH_MAX * 2) + 128;
+  /* This is the maximum size of one line, per mod_ls.  Be aware, however, that
+   * we may be talking to non-ProFTPD servers, whose behaviors will be different.
+   */
+  ctx->input_textsz = (PR_TUNABLE_PATH_MAX * 2) + 256;
   ctx->input_ptr = ctx->input_text = palloc(ctx_pool, ctx->input_textsz);
 
-  ctx->output_textsz = pr_config_get_server_xfer_bufsz(PR_NETIO_IO_WR);
+  ctx->output_textsz = (pr_config_get_server_xfer_bufsz(PR_NETIO_IO_WR) * 64);
   ctx->output_ptr = ctx->output_text = palloc(ctx_pool, ctx->output_textsz);
 
   proxy_sess->dirlist_ctx = (void *) ctx;
@@ -114,7 +116,8 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_dos(pool *p,
     const char *text, size_t textlen, unsigned long opts) {
   struct proxy_dirlist_fileinfo *pdf;
   char *buf, *ptr;
-  size_t buflen;
+  size_t buflen, windows_ts_fmtlen = 17;
+  const char *windows_ts_fmt = "%m-%d-%y  %I:%M%p";
 
   if (p == NULL ||
       text == NULL ||
@@ -170,14 +173,24 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_dos(pool *p,
     return NULL;
   }
 
+  /* Some servers might mistakenly omit the AM/PM markers; try to handle these
+   * cases gracefully.
+   */
+  if (strpbrk(buf, "AMP") == NULL) {
+    pr_trace_msg(trace_channel, 3,
+      "Windows time format lacks AM/PM marker, adjusting expectations");
+    windows_ts_fmt = "%m-%d-%y  %I:%M";
+    windows_ts_fmtlen = 15;
+  }
+
   pdf->tm = pcalloc(p, sizeof(struct tm));
 
-  buflen = 17;
+  buflen = windows_ts_fmtlen;
   buf = pstrndup(p, text, buflen);
 
   pr_trace_msg(trace_channel, 19,
     "parsing Windows-style timestamp: '%*s'", (int) buflen, buf);
-  if (strptime(buf, "%m-%d-%y  %I:%M%p", pdf->tm) == NULL) {
+  if (strptime(buf, windows_ts_fmt, pdf->tm) == NULL) {
     pr_trace_msg(trace_channel, 3,
       "unexpected Windows timestamp format: '%*s'", (int) buflen, buf);
     errno = EINVAL;
@@ -1392,6 +1405,10 @@ int proxy_ftp_dirlist_to_text(pool *p, char *buf, size_t buflen,
       (int) output_linelen, output_line);
 
     /* XXX What to do if this will exceed capacity of output buffer? */
+    /* TODO: Watch for output_linelen > (ctx->output_textsz - ctx->output_textlen),
+     * and rejigger this function to handle the case of "no more input to
+     * accumulate, but have unprocess input".
+     */
 
     sstrcat(ctx->output_text, output_line,
       ctx->output_textsz - ctx->output_textlen);

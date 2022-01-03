@@ -96,8 +96,8 @@ sub proxy_reverse_backend_tls_login_redis_cached_session {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
   my $cache_file = File::Spec->rel2abs("$tmpdir/tls-shmcache.dat");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
@@ -110,6 +110,11 @@ sub proxy_reverse_backend_tls_login_redis_cached_session {
 
   if ($ENV{TEST_VERBOSE}) {
     $proxy_config->{ProxyTLSOptions} = 'EnableDiags';
+  }
+
+  my $redis_server = '127.0.0.1';
+  if (defined($ENV{REDIS_HOST})) {
+    $redis_server = $ENV{REDIS_HOST};
   }
 
   my $config = {
@@ -132,7 +137,7 @@ sub proxy_reverse_backend_tls_login_redis_cached_session {
 
       'mod_redis.c' => {
         RedisEngine => 'on',
-        RedisServer => '127.0.0.1:6379',
+        RedisServer => "$redis_server:6379",
         RedisLog => $log_file,
       },
 
@@ -276,8 +281,8 @@ sub proxy_reverse_backend_tls_login_redis_cached_ticket {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
   my $cache_file = File::Spec->rel2abs("$tmpdir/tls-shmcache.dat");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
@@ -290,6 +295,11 @@ sub proxy_reverse_backend_tls_login_redis_cached_ticket {
 
   if ($ENV{TEST_VERBOSE}) {
     $proxy_config->{ProxyTLSOptions} = 'EnableDiags NoSessionCache';
+  }
+
+  my $redis_server = '127.0.0.1';
+  if (defined($ENV{REDIS_HOST})) {
+    $redis_server = $ENV{REDIS_HOST};
   }
 
   my $config = {
@@ -312,7 +322,7 @@ sub proxy_reverse_backend_tls_login_redis_cached_ticket {
 
       'mod_redis.c' => {
         RedisEngine => 'on',
-        RedisServer => '127.0.0.1:6379',
+        RedisServer => "$redis_server:6379",
         RedisLog => $log_file,
       },
     },

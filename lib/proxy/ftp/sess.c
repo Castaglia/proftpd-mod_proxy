@@ -478,8 +478,8 @@ int proxy_ftp_sess_send_auth_tls(pool *p,
 
 int proxy_ftp_sess_send_pbsz_prot(pool *p,
     const struct proxy_session *proxy_sess) {
-  int have_feat_pbsz = FALSE, have_feat_prot = FALSE, res, send_prot, use_tls,
-    xerrno;
+  int have_feat_pbsz = FALSE, have_feat_prot = FALSE, res, send_prot = FALSE,
+    use_tls, xerrno;
   pool *tmp_pool;
   cmd_rec *cmd;
   pr_response_t *resp;

@@ -118,10 +118,15 @@ sub config_hash2array {
 sub get_redis_config {
   my $log_file = shift;
 
+  my $redis_server = '127.0.0.1';
+  if (defined($ENV{REDIS_HOST})) {
+    $redis_server = $ENV{REDIS_HOST};
+  }
+
   my $config = {
     RedisEngine => 'on',
     RedisLog => $log_file,
-    RedisServer => '127.0.0.1:6379',
+    RedisServer => "$redis_server:6379",
   };
 
   return $config;
@@ -955,7 +960,13 @@ sub proxy_sql_reverse_config_redis_connect_policy_per_user_by_sql {
   push(@$proxy_config, "ProxyReverseServers sql:/get-user-servers");
   my $nbackends = 1;
 
-  push(@$proxy_config, "ProxyDatastore Redis 127.0.0.1.");
+  my $redis_server = '127.0.0.1';
+  if (defined($ENV{REDIS_HOST})) {
+    $redis_server = $ENV{REDIS_HOST};
+  }
+
+  # No, the trailing '.' is NOT a typo; it is part of the prefix.
+  push(@$proxy_config, "ProxyDatastore Redis $redis_server.");
   my $db_file = File::Spec->rel2abs("$tmpdir/proftpd.db");
 
   # Build up the sqlite3 command to create tables and populate them
@@ -1417,7 +1428,12 @@ EOS
       'mod_sql.c' => {
         SQLEngine => 'log',
         SQLBackend => 'sqlite3',
-        SQLConnectInfo => $db_file,
+
+        # We provide dummy username/password values, in order to specify
+        # the policy.  In case of chroots, we need to explicitly use
+        # the PERCONNECTION policy.
+        SQLConnectInfo => "$db_file foo bar PERCONNECTION",
+
         SQLLogFile => $setup->{log_file},
         SQLNamedQuery => 'session_start FREEFORM "INSERT INTO proxy_sessions (user, protocol, frontend_ipaddr, local_ipaddr, backend_ipaddr, backend_port, timestamp) VALUES (\'%u\', \'%{protocol}\', \'%a\', \'%L\', \'%{note:mod_proxy.backend-ip}\', %{note:mod_proxy.backend-port}, \'%{iso8601}\')"',
         SQLLog => 'PASS session_start',
@@ -1504,7 +1520,7 @@ EOC
     my $expected = $setup->{user};
     $self->assert($expected eq $login, "Expected '$expected', got '$login'");
 
-    my $expected = 'ftp';
+    $expected = 'ftp';
     $self->assert($expected eq $protocol, "Expected '$expected', got '$protocol'");
 
     $expected = '127.0.0.1';
@@ -1611,7 +1627,12 @@ EOS
       'mod_sql.c' => {
         SQLEngine => 'log',
         SQLBackend => 'sqlite3',
-        SQLConnectInfo => $db_file,
+
+        # We provide dummy username/password values, in order to specify
+        # the policy.  In case of chroots, we need to explicitly use
+        # the PERCONNECTION policy.
+        SQLConnectInfo => "$db_file foo bar PERCONNECTION",
+
         SQLLogFile => $setup->{log_file},
         SQLNamedQuery => 'file_xfer FREEFORM "INSERT INTO proxy_transfers (user, protocol, frontend_ipaddr, local_ipaddr, backend_ipaddr, backend_port, file, timestamp) VALUES (\'%u\', \'%{protocol}\', \'%a\', \'%L\', \'%{note:mod_proxy.backend-ip}\', %{note:mod_proxy.backend-port}, \'%F\', \'%{iso8601}\')"',
         SQLLog => 'RETR,STOR file_xfer',
@@ -1713,7 +1734,7 @@ EOC
     my $expected = $setup->{user};
     $self->assert($expected eq $login, "Expected '$expected', got '$login'");
 
-    my $expected = 'ftp';
+    $expected = 'ftp';
     $self->assert($expected eq $protocol, "Expected '$expected', got '$protocol'");
 
     $expected = '127.0.0.1';
@@ -1813,7 +1834,12 @@ EOS
       'mod_sql.c' => {
         SQLEngine => 'log',
         SQLBackend => 'sqlite3',
-        SQLConnectInfo => $db_file,
+
+        # We provide dummy username/password values, in order to specify
+        # the policy.  In case of chroots, we need to explicitly use
+        # the PERCONNECTION policy.
+        SQLConnectInfo => "$db_file foo bar PERCONNECTION",
+
         SQLLogFile => $setup->{log_file},
         SQLNamedQuery => 'session_start FREEFORM "INSERT INTO proxy_sessions (user, protocol, frontend_ipaddr, local_ipaddr, backend_ipaddr, backend_port, timestamp) VALUES (\'%u\', \'%{protocol}\', \'%a\', \'%L\', \'%{note:mod_proxy.backend-ip}\', %{note:mod_proxy.backend-port}, \'%{iso8601}\')"',
         SQLLog => 'PASS session_start',
@@ -1905,7 +1931,7 @@ EOC
     my $expected = $setup->{user};
     $self->assert($expected eq $login, "Expected '$expected', got '$login'");
 
-    my $expected = 'ftp';
+    $expected = 'ftp';
     $self->assert($expected eq $protocol, "Expected '$expected', got '$protocol'");
 
     $expected = '127.0.0.1';
@@ -2012,7 +2038,12 @@ EOS
       'mod_sql.c' => {
         SQLEngine => 'log',
         SQLBackend => 'sqlite3',
-        SQLConnectInfo => $db_file,
+
+        # We provide dummy username/password values, in order to specify
+        # the policy.  In case of chroots, we need to explicitly use
+        # the PERCONNECTION policy.
+        SQLConnectInfo => "$db_file foo bar PERCONNECTION",
+
         SQLLogFile => $setup->{log_file},
         SQLNamedQuery => 'file_xfer FREEFORM "INSERT INTO proxy_transfers (user, protocol, frontend_ipaddr, local_ipaddr, backend_ipaddr, backend_port, file, timestamp) VALUES (\'%u\', \'%{protocol}\', \'%a\', \'%L\', \'%{note:mod_proxy.backend-ip}\', %{note:mod_proxy.backend-port}, \'%F\', \'%{iso8601}\')"',
         SQLLog => 'RETR,STOR file_xfer',
@@ -2113,7 +2144,7 @@ EOC
     my $expected = $setup->{user};
     $self->assert($expected eq $login, "Expected '$expected', got '$login'");
 
-    my $expected = 'ftp';
+    $expected = 'ftp';
     $self->assert($expected eq $protocol, "Expected '$expected', got '$protocol'");
 
     $expected = '127.0.0.1';

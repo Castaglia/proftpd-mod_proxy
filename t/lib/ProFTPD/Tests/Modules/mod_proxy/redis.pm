@@ -35,9 +35,11 @@ my $TESTS = {
     test_class => [qw(forking mod_redis reverse)],
   },
 
+  # This is flaky when run in GitHub workflows, but passes when run in Docker
+  # locally.  So marking it as "in progress".
   proxy_reverse_config_redis_connect_policy_leastconns => {
     order => ++$order,
-    test_class => [qw(forking mod_redis reverse)],
+    test_class => [qw(forking inprogress mod_redis reverse)],
   },
 
   proxy_reverse_config_redis_connect_policy_leastresponsetime => {
@@ -95,10 +97,15 @@ sub config_hash2array {
 sub get_redis_config {
   my $log_file = shift;
 
+  my $redis_server = '127.0.0.1';
+  if (defined($ENV{REDIS_HOST})) {
+    $redis_server = $ENV{REDIS_HOST};
+  }
+
   my $config = {
     RedisEngine => 'on',
     RedisLog => $log_file,
-    RedisServer => '127.0.0.1:6379',
+    RedisServer => "$redis_server:6379",
   };
 
   return $config;
@@ -640,43 +647,13 @@ EOC
 sub proxy_reverse_config_redis_connect_policy_leastconns {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'proxy');
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
   $proxy_config->{ProxyReverseConnectPolicy} = 'LeastConns';
 
   # For now, we cheat and simply repeat the same vhost three times
@@ -685,17 +662,17 @@ sub proxy_reverse_config_redis_connect_policy_leastconns {
 
   my $timeout_idle = 10;
 
-  my $redis_config = get_redis_config($log_file);
+  my $redis_config = get_redis_config($setup->{log_file});
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.reverse:20 proxy.reverse.redis:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -710,25 +687,26 @@ sub proxy_reverse_config_redis_connect_policy_leastconns {
 
     Limit => {
       LOGIN => {
-        DenyUser => $user,
+        DenyUser => $setup->{user},
       },
     },
-
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
   ServerName "Real Server"
 
-  AuthUserFile $auth_user_file
-  AuthGroupFile $auth_group_file
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
   AuthOrder mod_auth_file.c
 
   AllowOverride off
+  RootLogin on
   TimeoutIdle $timeout_idle
 
   TransferLog none
@@ -736,11 +714,11 @@ sub proxy_reverse_config_redis_connect_policy_leastconns {
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   # Open pipes, for use between the parent and child processes.  Specifically,
@@ -758,14 +736,16 @@ EOC
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
+      # Allow server to start up
+      sleep(2);
+
       for (my $i = 0; $i < $nbackends+1; $i++) {
-        sleep(2);
-        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
-        $client->login($user, $passwd);
+        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 2);
+        $client->login($setup->{user}, $setup->{passwd});
         ftp_list($self, $client);
+        sleep(1);
       }
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -774,7 +754,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh, $timeout_idle + 2) };
+    eval { server_wait($setup->{config_file}, $rfh, $timeout_idle + 2) };
     if ($@) {
       warn($@);
       exit 1;
@@ -784,18 +764,10 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
-
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_reverse_config_redis_connect_policy_leastresponsetime {

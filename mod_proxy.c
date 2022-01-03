@@ -3741,7 +3741,7 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     return PR_ERROR(cmd);
   }
 
-  if (successful) {
+  if (successful == TRUE) {
     config_rec *c;
     const char *notes_key = "mod_auth.orig-user";
     char *user;
@@ -3861,7 +3861,7 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     return PR_ERROR(cmd);
   }
 
-  if (successful) {
+  if (successful == TRUE) {
     const char *user;
     int proxy_auth = FALSE;
 
