@@ -106,7 +106,6 @@ jobs:
           # for SQLite support
           apt-get install -y libsqlite3-dev sqlite3
 
-          # for integration/regression test
           # for test code coverage
           apt-get install -y lcov ruby
           gem install coveralls-lcov

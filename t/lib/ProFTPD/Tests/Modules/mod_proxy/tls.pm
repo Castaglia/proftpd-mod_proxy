@@ -65,6 +65,8 @@ my $TESTS = {
     test_class => [qw(forking mod_tls reverse)],
   },
 
+  # This will fail with older OpenSSL versions, and TLSv1.3 sessions; see:
+  #   https://github.com/openssl/openssl/issues/7261
   proxy_reverse_backend_tls_login_psk => {
     order => ++$order,
     test_class => [qw(forking mod_tls reverse)],
@@ -75,6 +77,7 @@ my $TESTS = {
     test_class => [qw(forking mod_tls reverse)],
   },
 
+  # TODO: Investigate why this fails unexpectedly when TLSv1.3 is used
   proxy_reverse_backend_tls_login_failed_missing_client_auth => {
     order => ++$order,
     test_class => [qw(forking mod_tls reverse)],
@@ -559,8 +562,8 @@ sub proxy_reverse_frontend_tls_login {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -584,7 +587,6 @@ sub proxy_reverse_frontend_tls_login {
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $log_file,
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -662,7 +664,6 @@ EOC
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -731,8 +732,8 @@ sub proxy_reverse_frontend_tls_login_failed {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -756,7 +757,6 @@ sub proxy_reverse_frontend_tls_login_failed {
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $log_file,
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -839,7 +839,6 @@ EOC
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -908,9 +907,9 @@ sub proxy_reverse_frontend_tls_login_tlslogin {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $server_cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $client_cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/client-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $server_cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $client_cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/client-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -939,7 +938,6 @@ sub proxy_reverse_frontend_tls_login_tlslogin {
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $log_file,
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $server_cert_file,
         TLSCACertificateFile => $ca_file,
@@ -1039,7 +1037,6 @@ EOC
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -1108,8 +1105,8 @@ sub proxy_reverse_frontend_tls_list_pasv {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -1133,7 +1130,6 @@ sub proxy_reverse_frontend_tls_list_pasv {
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $log_file,
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -1229,7 +1225,6 @@ EOC
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response '$expected', got '$resp_msg'"));
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -1267,8 +1262,8 @@ sub proxy_reverse_backend_tls_login {
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -1393,8 +1388,8 @@ sub proxy_reverse_backend_tls_implicit_login {
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file}, 990);
   $proxy_config->{ProxyReverseServers} = 'ftps://demo:password@test.rebex.net:990';
@@ -1520,8 +1515,8 @@ sub proxy_reverse_backend_tls_login_cached_session {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
   my $cache_file = File::Spec->rel2abs("$tmpdir/tls-shmcache.dat");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
@@ -1584,7 +1579,6 @@ sub proxy_reverse_backend_tls_login_cached_session {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -1623,7 +1617,6 @@ EOC
         $client->quit();
       }
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -1694,8 +1687,8 @@ sub proxy_reverse_backend_tls_login_cached_ticket {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
   my $cache_file = File::Spec->rel2abs("$tmpdir/tls-shmcache.dat");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
@@ -1804,7 +1797,6 @@ EOC
         $client->quit();
       }
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -1873,9 +1865,9 @@ sub proxy_reverse_backend_tls_login_client_auth {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $client_cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/client-cert.pem');
-  my $server_cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $server_cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $client_cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/client-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -1934,7 +1926,6 @@ sub proxy_reverse_backend_tls_login_client_auth {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $server_cert_file
     TLSCACertificateFile $ca_file
@@ -1972,7 +1963,6 @@ EOC
       $client->login($user, $passwd);
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -2041,9 +2031,9 @@ sub proxy_reverse_backend_tls_login_psk {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $client_cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/client-cert.pem');
-  my $server_cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $server_cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $client_cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/client-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
   my $psk_file = File::Spec->rel2abs('t/etc/modules/mod_tls/psk.dat');
   my $psk_id = "proxy";
 
@@ -2056,6 +2046,7 @@ sub proxy_reverse_backend_tls_login_psk {
   $proxy_config->{ProxyTLSCertificateFile} = $client_cert_file;
   $proxy_config->{ProxyTLSCipherSuite} = "PSK";
   $proxy_config->{ProxyTLSPreSharedKey} = "$psk_id hex:$psk_file";
+  $proxy_config->{ProxyTLSProtocol} = 'TLSv1.2';
 
   if ($ENV{TEST_VERBOSE}) {
     $proxy_config->{ProxyTLSOptions} = 'EnableDiags';
@@ -2109,6 +2100,7 @@ sub proxy_reverse_backend_tls_login_psk {
     TLSRequired on
     TLSRSACertificateFile $server_cert_file
     TLSCACertificateFile $ca_file
+    TLSProtocol TLSv1.2
     TLSCipherSuite PSK
     TLSPreSharedKey $psk_id hex:$psk_file
     TLSOptions EnableDiags
@@ -2145,7 +2137,6 @@ EOC
       $client->login($user, $passwd);
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -2214,8 +2205,8 @@ sub proxy_reverse_backend_tls_login_failed_unknown_ca {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -2273,7 +2264,6 @@ sub proxy_reverse_backend_tls_login_failed_unknown_ca {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -2380,9 +2370,9 @@ sub proxy_reverse_backend_tls_login_failed_missing_client_auth {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $client_cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/client-cert.pem');
-  my $server_cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $server_cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $client_cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/client-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -2391,6 +2381,7 @@ sub proxy_reverse_backend_tls_login_failed_missing_client_auth {
   $proxy_config->{ProxyTLSEngine} = 'auto';
   $proxy_config->{ProxyTLSCACertificateFile} = $ca_file;
 #  $proxy_config->{ProxyTLSCertificateFile} = $client_cert_file;
+  $proxy_config->{ProxyTLSProtocol} = 'TLSv1.2';
 
   if ($ENV{TEST_VERBOSE}) {
     $proxy_config->{ProxyTLSOptions} = 'EnableDiags';
@@ -2441,7 +2432,6 @@ sub proxy_reverse_backend_tls_login_failed_missing_client_auth {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $server_cert_file
     TLSCACertificateFile $ca_file
@@ -2518,8 +2508,8 @@ sub proxy_reverse_backend_tls_login_tlsv13_issue197 {
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -2677,8 +2667,8 @@ sub proxy_reverse_backend_tls_list_pasv {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -2736,7 +2726,6 @@ sub proxy_reverse_backend_tls_list_pasv {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -2789,7 +2778,6 @@ EOC
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -2858,8 +2846,8 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -2883,7 +2871,6 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $log_file,
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -2943,7 +2930,6 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -2969,7 +2955,6 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -3065,7 +3050,6 @@ EOC
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response '$expected', got '$resp_msg'"));
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -3134,8 +3118,8 @@ sub proxy_reverse_frontend_backend_tls_peruser_login_after_host {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -3159,7 +3143,6 @@ sub proxy_reverse_frontend_backend_tls_peruser_login_after_host {
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $log_file,
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -3221,7 +3204,6 @@ sub proxy_reverse_frontend_backend_tls_peruser_login_after_host {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -3247,7 +3229,6 @@ sub proxy_reverse_frontend_backend_tls_peruser_login_after_host {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -3273,7 +3254,6 @@ sub proxy_reverse_frontend_backend_tls_peruser_login_after_host {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -3369,7 +3349,6 @@ EOC
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response '$expected', got '$resp_msg'"));
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -3438,8 +3417,8 @@ sub proxy_reverse_frontend_backend_tls_list_pasv {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -3469,7 +3448,6 @@ sub proxy_reverse_frontend_backend_tls_list_pasv {
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $log_file,
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -3510,7 +3488,6 @@ sub proxy_reverse_frontend_backend_tls_list_pasv {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -3602,7 +3579,6 @@ EOC
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -3640,8 +3616,8 @@ sub proxy_reverse_frontend_backend_tls_abort {
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -3673,7 +3649,6 @@ sub proxy_reverse_frontend_backend_tls_abort {
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $setup->{log_file},
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -3715,7 +3690,6 @@ sub proxy_reverse_frontend_backend_tls_abort {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $setup->{log_file}
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -3851,8 +3825,8 @@ sub proxy_reverse_frontend_tls_json_peruser {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -3902,7 +3876,6 @@ sub proxy_reverse_frontend_tls_json_peruser {
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $log_file,
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -3943,7 +3916,6 @@ sub proxy_reverse_frontend_tls_json_peruser {
   <IfModule mod_tls.c>
     TLSEngine off
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -4032,7 +4004,6 @@ EOC
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response '$expected', got '$resp_msg'"));
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -4101,8 +4072,8 @@ sub proxy_reverse_config_backend_tls_engine_auto_unavail {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -4188,7 +4159,6 @@ EOC
       $client->login($user, $passwd);
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -4257,8 +4227,8 @@ sub proxy_reverse_config_backend_tls_engine_auto_ftps_uri_unavail {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -4418,8 +4388,8 @@ sub proxy_reverse_config_backend_tls_engine_on_unavail {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -4544,8 +4514,8 @@ sub proxy_reverse_config_backend_tls_engine_match_client_ftp {
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -4662,8 +4632,8 @@ sub proxy_reverse_config_backend_tls_engine_match_client_ftps_explicit {
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -4699,7 +4669,6 @@ sub proxy_reverse_config_backend_tls_engine_match_client_ftps_explicit {
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $setup->{log_file},
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -4816,8 +4785,8 @@ sub proxy_reverse_config_backend_tls_engine_match_client_ftps_implicit {
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -4853,7 +4822,6 @@ sub proxy_reverse_config_backend_tls_engine_match_client_ftps_implicit {
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $setup->{log_file},
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -5002,8 +4970,8 @@ sub proxy_reverse_config_backend_tls_connect_policy_per_user {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -5067,7 +5035,6 @@ sub proxy_reverse_config_backend_tls_connect_policy_per_user {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -5089,7 +5056,6 @@ sub proxy_reverse_config_backend_tls_connect_policy_per_user {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -5197,8 +5163,8 @@ sub proxy_reverse_config_backend_tls_connect_policy_per_user_failed_unknown_ca {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -5261,7 +5227,6 @@ sub proxy_reverse_config_backend_tls_connect_policy_per_user_failed_unknown_ca {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -5283,7 +5248,6 @@ sub proxy_reverse_config_backend_tls_connect_policy_per_user_failed_unknown_ca {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -5335,7 +5299,6 @@ EOC
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -5404,8 +5367,8 @@ sub proxy_reverse_config_backend_tls_verify_server_off {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -5468,7 +5431,6 @@ sub proxy_reverse_config_backend_tls_verify_server_off {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -5490,7 +5452,6 @@ sub proxy_reverse_config_backend_tls_verify_server_off {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -5598,8 +5559,8 @@ sub proxy_reverse_config_backend_tls_no_session_cache {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
   my $cache_file = File::Spec->rel2abs("$tmpdir/tls-shmcache.dat");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
@@ -5664,7 +5625,6 @@ sub proxy_reverse_config_backend_tls_no_session_cache {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -5703,7 +5663,6 @@ EOC
         $client->quit();
       }
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -5741,8 +5700,8 @@ sub proxy_reverse_config_backend_tls_ctrl_use_direct_data_transfers_pasv {
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
   my $cache_file = File::Spec->rel2abs("$tmpdir/tls-shmcache.dat");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
@@ -5808,7 +5767,6 @@ sub proxy_reverse_config_backend_tls_ctrl_use_direct_data_transfers_pasv {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $setup->{log_file}
-    TLSProtocol SSLv3 TLSv1
 
     # Since we are using DSR, and the frontend client is not using TLS,
     # data transfers will fail if we require TLS on them.  So only require
@@ -5867,7 +5825,6 @@ EOC
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -5898,8 +5855,8 @@ sub proxy_reverse_config_frontend_backend_tls_required_use_direct_data_transfers
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -5938,7 +5895,6 @@ sub proxy_reverse_config_frontend_backend_tls_required_use_direct_data_transfers
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $setup->{log_file},
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -5977,7 +5933,6 @@ sub proxy_reverse_config_frontend_backend_tls_required_use_direct_data_transfers
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $setup->{log_file}
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -6064,7 +6019,6 @@ EOC
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response '$expected', got '$resp_msg'"));
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -6095,8 +6049,8 @@ sub proxy_reverse_proxy_protocol_v2_tlv_ssl {
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
@@ -6130,7 +6084,6 @@ sub proxy_reverse_proxy_protocol_v2_tlv_ssl {
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $setup->{log_file},
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -6312,8 +6265,8 @@ sub proxy_forward_frontend_tls_noproxyauth_login {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
@@ -6338,7 +6291,6 @@ sub proxy_forward_frontend_tls_noproxyauth_login {
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $log_file,
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -6416,7 +6368,6 @@ EOC
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -6485,8 +6436,8 @@ sub proxy_forward_backend_tls_login {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
@@ -6540,7 +6491,6 @@ sub proxy_forward_backend_tls_login {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -6579,7 +6529,6 @@ EOC
       $client->login("$user\@127.0.0.1:$vhost_port", $passwd);
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -6617,8 +6566,8 @@ sub proxy_forward_backend_tls_implicit_login {
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $proxy_config = get_forward_proxy_config($tmpdir, $setup->{log_file}, 990);
   $proxy_config->{ProxyForwardMethod} = 'user@host';
@@ -6738,8 +6687,8 @@ sub proxy_forward_backend_tls_login_failed_unknown_ca {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
@@ -6793,7 +6742,6 @@ sub proxy_forward_backend_tls_login_failed_unknown_ca {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $log_file
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -6842,11 +6790,10 @@ EOC
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "Unable to connect to 127.0.0.1: Operation not permitted";
-      $self->assert($expected eq $resp_msg,
+      $expected = 'Unable to connect to 127.0.0.1:\d+: Operation not permitted';
+      $self->assert(qr/$expected/, $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -6884,8 +6831,8 @@ sub proxy_forward_config_backend_tls_engine_match_client_ftp {
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
@@ -6941,7 +6888,6 @@ sub proxy_forward_config_backend_tls_engine_match_client_ftp {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $setup->{log_file}
-    TLSProtocol SSLv3 TLSv1
     TLSRequired off
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -7009,8 +6955,8 @@ sub proxy_forward_config_backend_tls_engine_match_client_ftps_explicit {
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
@@ -7075,7 +7021,6 @@ sub proxy_forward_config_backend_tls_engine_match_client_ftps_explicit {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $setup->{log_file}
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -7160,8 +7105,8 @@ sub proxy_forward_config_backend_tls_engine_match_client_ftps_implicit {
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
@@ -7226,7 +7171,6 @@ sub proxy_forward_config_backend_tls_engine_match_client_ftps_implicit {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $setup->{log_file}
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -7343,8 +7287,8 @@ sub proxy_forward_backend_tls_list_pasv {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
@@ -7508,8 +7452,8 @@ sub proxy_forward_frontend_backend_tls_login_after_host {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
@@ -7686,7 +7630,6 @@ EOC
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response '$expected', got '$resp_msg'"));
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -7755,8 +7698,8 @@ sub proxy_forward_frontend_backend_tls_list_pasv {
     '/bin/bash');
   auth_group_write($auth_group_file, $group, $gid, $user);
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
@@ -7905,7 +7848,6 @@ EOC
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -7948,8 +7890,8 @@ sub forward_frontend_plain_backend_tls_tls_xfer_policy {
   my $tls_xfer_policy = shift;
   my $use_upload = shift;
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
@@ -8096,8 +8038,8 @@ sub forward_frontend_backend_tls_tls_xfer_policy {
   my $tls_xfer_policy = shift;
   my $use_upload = shift;
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
@@ -8445,8 +8387,8 @@ sub proxy_forward_config_backend_tls_ctrl_use_direct_data_transfers_pasv {
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
@@ -8503,7 +8445,6 @@ sub proxy_forward_config_backend_tls_ctrl_use_direct_data_transfers_pasv {
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $setup->{log_file}
-    TLSProtocol SSLv3 TLSv1
 
     # Since we are using DSR, and the frontend client is not using TLS,
     # data transfers will fail if we require TLS on them.  So only require
@@ -8561,7 +8502,6 @@ EOC
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -8592,8 +8532,8 @@ sub proxy_forward_config_frontend_backend_tls_required_use_direct_data_transfers
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
-  my $cert_file = File::Spec->rel2abs('t/etc/modules/mod_tls/server-cert.pem');
-  my $ca_file = File::Spec->rel2abs('t/etc/modules/mod_tls/ca-cert.pem');
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
@@ -8627,7 +8567,6 @@ sub proxy_forward_config_frontend_backend_tls_required_use_direct_data_transfers
       'mod_tls.c' => {
         TLSEngine => 'on',
         TLSLog => $setup->{log_file},
-        TLSProtocol => 'SSLv3 TLSv1',
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -8660,7 +8599,6 @@ sub proxy_forward_config_frontend_backend_tls_required_use_direct_data_transfers
   <IfModule mod_tls.c>
     TLSEngine on
     TLSLog $setup->{log_file}
-    TLSProtocol SSLv3 TLSv1
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -8733,7 +8671,6 @@ EOC
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response '$expected', got '$resp_msg'"));
     };
-
     if ($@) {
       $ex = $@;
     }

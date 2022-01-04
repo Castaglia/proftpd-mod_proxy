@@ -131,8 +131,8 @@ sub proxy_ban_reverse_max_login_attempts {
         BanLog => $setup->{log_file},
 
         # This says to ban a client which exceeds the MaxLoginAttempts
-        # limit once within the last 1 minute will be banned for 5 secs
-        BanOnEvent => 'MaxLoginAttempts 1/00:01:00 00:00:05',
+        # limit once within the last 1 minute will be banned for 10 secs
+        BanOnEvent => 'MaxLoginAttempts 1/00:01:00 00:00:10',
 
         BanTable => $ban_tab,
       },
@@ -194,6 +194,9 @@ EOC
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
+      # Allow time for the server to start up
+      sleep(2);
+
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
       for (my $i = 0; $i < 2; $i++) {
         eval { $client->login($setup->{user}, 'foo') };
@@ -218,16 +221,25 @@ EOC
 
       eval { $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port,
         undef, 0) };
-      unless ($@) {
-        die("Connect succeeded unexpectedly");
+      if ($@) {
+        my $conn_ex = ProFTPD::TestSuite::FTP::get_connect_exception();
+        my $expected = "";
+        $self->assert($expected eq $conn_ex,
+          test_msg("Expected exception '$expected', got '$conn_ex'"));
+
+      } else {
+        eval { $client->quit() };
+        unless ($@) {
+          die("QUIT command succeeded unexpectedly");
+        }
+
+        my $resp_code = $client->response_code();
+
+        my $expected = 421;
+        $self->assert($expected == $resp_code,
+          test_msg("Expected response code $expected, got $resp_code"));
       }
-
-      my $conn_ex = ProFTPD::TestSuite::FTP::get_connect_exception();
-      my $expected = "";
-      $self->assert($expected eq $conn_ex,
-        test_msg("Expected exception '$expected', got '$conn_ex'"));
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -369,7 +381,6 @@ EOC
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -512,11 +523,14 @@ EOC
       }
 
       my $conn_ex = ProFTPD::TestSuite::FTP::get_connect_exception();
-      my $expected = "";
-      $self->assert($expected eq $conn_ex,
+      my $expected = '';
+      if (length($conn_ex) > 0) {
+        $expected = 'Connection closed';
+      }
+
+      $self->assert(qr/$expected/, $conn_ex,
         test_msg("Expected exception '$expected', got '$conn_ex'"));
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -673,11 +687,14 @@ EOC
       }
 
       my $conn_ex = ProFTPD::TestSuite::FTP::get_connect_exception();
-      my $expected = "";
-      $self->assert($expected eq $conn_ex,
+      my $expected = '';
+      if (length($conn_ex) > 0) {
+        $expected = 'Connection closed';
+      }
+
+      $self->assert(qr/$expected/, $conn_ex,
         test_msg("Expected exception '$expected', got '$conn_ex'"));
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -834,11 +851,14 @@ EOC
       }
 
       my $conn_ex = ProFTPD::TestSuite::FTP::get_connect_exception();
-      my $expected = "";
-      $self->assert($expected eq $conn_ex,
+      my $expected = '';
+      if (length($conn_ex) > 0) {
+        $expected = 'Connection closed';
+      }
+
+      $self->assert(qr/$expected/, $conn_ex,
         test_msg("Expected exception '$expected', got '$conn_ex'"));
     };
-
     if ($@) {
       $ex = $@;
     }
