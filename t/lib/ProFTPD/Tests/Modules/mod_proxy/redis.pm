@@ -36,10 +36,10 @@ my $TESTS = {
   },
 
   # This is flaky when run in GitHub workflows, but passes when run in Docker
-  # locally.  So marking it as "in progress".
+  # locally.  So marking it as flaky.
   proxy_reverse_config_redis_connect_policy_leastconns => {
     order => ++$order,
-    test_class => [qw(forking inprogress mod_redis reverse)],
+    test_class => [qw(flaky forking mod_redis reverse)],
   },
 
   proxy_reverse_config_redis_connect_policy_leastresponsetime => {
