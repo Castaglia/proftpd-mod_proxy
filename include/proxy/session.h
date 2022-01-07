@@ -57,7 +57,10 @@ struct proxy_session {
   const pr_netaddr_t *dst_addr;
   array_header *other_addrs;
 
-  /* Features supported by backend server */
+  /* Which protocol are we proxying? */
+  int use_ftp, use_ssh;
+
+  /* Features supported by backend server. */
   pr_table_t *backend_features;
 
   /* Data transfer pool, for things like the frontend/backend address

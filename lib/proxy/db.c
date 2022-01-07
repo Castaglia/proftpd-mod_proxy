@@ -375,7 +375,7 @@ int proxy_db_prepare_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt) {
 }
 
 int proxy_db_bind_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt,
-    int idx, int type, void *data) {
+    int idx, int type, void *data, int datalen) {
   sqlite3_stmt *pstmt;
   int res;
  
@@ -455,11 +455,28 @@ int proxy_db_bind_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt,
       }
 
       text = (const char *) data;
-      res = sqlite3_bind_text(pstmt, idx, text, -1, NULL);
+      res = sqlite3_bind_text(pstmt, idx, text, datalen, NULL);
       if (res != SQLITE_OK) {
         pr_trace_msg(trace_channel, 4,
           "error binding parameter %d of '%s' to TEXT '%s': %s", idx, stmt,
           text, sqlite3_errmsg(dbh->db));
+        errno = EPERM;
+        return -1;
+      }
+      break;
+    }
+
+    case PROXY_DB_BIND_TYPE_BLOB: {
+      if (data == NULL) {
+        errno = EINVAL;
+        return -1;
+      }
+
+      res = sqlite3_bind_blob(pstmt, idx, data, datalen, NULL);
+      if (res != SQLITE_OK) {
+        pr_trace_msg(trace_channel, 4,
+          "error binding parameter %d of '%s' to BLOB (%d bytes): %s", idx,
+          stmt, datalen, sqlite3_errmsg(dbh->db));
         errno = EPERM;
         return -1;
       }
@@ -566,7 +583,7 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
       const char *errmsg;
 
       errmsg = sqlite3_errmsg(dbh->db);
-      if (errstr) {
+      if (errstr != NULL) {
         *errstr = pstrdup(p, errmsg);
       }
       pr_trace_msg(trace_channel, 2,
@@ -601,17 +618,36 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
 
     for (i = 0; i < ncols; i++) {
       char *val = NULL;
+      int col_type;
 
       pr_signals_handle();
 
-      /* By using sqlite3_column_text, SQLite will coerce the column value
-       * into a string.
-       */
-      val = pstrdup(p, (const char *) sqlite3_column_text(pstmt, i));
+      col_type = sqlite3_column_type(pstmt, i);
 
-      pr_trace_msg(trace_channel, 17,
-        "column %s [%u]: %s", sqlite3_column_name(pstmt, i), i, val);
-      *((char **) push_array(results)) = val;
+      if (col_type != SQLITE_BLOB) {
+        /* By using sqlite3_column_text, SQLite will coerce the column value
+         * into a string.
+         */
+        val = pstrdup(p, (const char *) sqlite3_column_text(pstmt, i));
+        pr_trace_msg(trace_channel, 17,
+          "column %s [%u]: %s", sqlite3_column_name(pstmt, i), i, val);
+
+        *((char **) push_array(results)) = val;
+
+      } else {
+        int bloblen;
+        char bloblen_text[64];
+
+        bloblen = sqlite3_column_bytes(pstmt, i);
+        val = palloc(p, bloblen);
+        memcpy(val, sqlite3_column_blob(pstmt, i), bloblen);
+        *((char **) push_array(results)) = val;
+
+        /* For BLOBs, we need to provide the length as well. */
+        memset(&bloblen_text, '\0', sizeof(bloblen_text));
+        pr_snprintf(bloblen_text, sizeof(bloblen_text)-1, "%d", bloblen);
+        *((char **) push_array(results)) = pstrdup(p, bloblen_text);
+      }
     }
 
     res = sqlite3_step(pstmt);
@@ -742,7 +778,7 @@ static int get_schema_version(pool *p, struct proxy_dbh *dbh,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) schema_name);
+    (void *) schema_name, -1);
   if (res < 0) {
     return -1;
   }
@@ -808,13 +844,13 @@ static int set_schema_version(pool *p, struct proxy_dbh *dbh,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) schema_name);
+    (void *) schema_name, -1);
   if (res < 0) {
     return -1;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_INT,
-    (void *) &schema_version);
+    (void *) &schema_version, 0);
   if (res < 0) {
     return -1;
   }

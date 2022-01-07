@@ -111,6 +111,8 @@ START_TEST (session_alloc_test) {
   proxy_sess = (struct proxy_session *) proxy_session_alloc(p);
   fail_unless(proxy_sess != NULL, "Failed to allocate proxy session: %s",
     strerror(errno));
+  fail_unless(proxy_sess->use_ftp == TRUE, "Failed to use FTP by default");
+  fail_unless(proxy_sess->use_ssh == FALSE, "Failed to not use SSH by default");
 
   mark_point();
   proxy_session_free(p, proxy_sess);

@@ -397,13 +397,14 @@ START_TEST (db_bind_stmt_test) {
   int idx, int_val;
   long long_val;
   char *text_val;
+  void *blob_val;
 
-  res = proxy_db_bind_stmt(NULL, NULL, NULL, -1, -1, NULL);
+  res = proxy_db_bind_stmt(NULL, NULL, NULL, -1, -1, NULL, -1);
   fail_unless(res < 0, "Failed to handle null pool");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
-  res = proxy_db_bind_stmt(p, NULL, NULL, -1, -1, NULL);
+  res = proxy_db_bind_stmt(p, NULL, NULL, -1, -1, NULL, -1);
   fail_unless(res < 0, "Failed to handle null dbh");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
@@ -416,20 +417,20 @@ START_TEST (db_bind_stmt_test) {
   fail_unless(dbh != NULL, "Failed to open table '%s': %s", table_path,
     strerror(errno));
 
-  res = proxy_db_bind_stmt(p, dbh, NULL, -1, -1, NULL);
+  res = proxy_db_bind_stmt(p, dbh, NULL, -1, -1, NULL, -1);
   fail_unless(res < 0, "Failed to handle null statement");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   stmt = "SELECT COUNT(*) FROM table";
   idx = -1;
-  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT, NULL);
+  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT, NULL, -1);
   fail_unless(res < 0, "Failed to handle invalid index %d", idx);
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   idx = 1;
-  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT, NULL);
+  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT, NULL, -1);
   fail_unless(res < 0, "Failed to handle unprepared statement");
   fail_unless(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
     strerror(errno), errno);
@@ -442,42 +443,57 @@ START_TEST (db_bind_stmt_test) {
   fail_unless(res == 0, "Failed to prepare statement '%s': %s", stmt,
     strerror(errno));
 
-  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT, NULL);
+  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT, NULL, -1);
   fail_unless(res < 0, "Failed to handle missing INT value");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   int_val = 7;
-  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT, &int_val);
+  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT, &int_val,
+    -1);
   fail_unless(res < 0, "Failed to handle invalid index value");
   fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
     strerror(errno), errno);
 
-  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_LONG, NULL);
+  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_LONG, NULL,
+    -1);
   fail_unless(res < 0, "Failed to handle missing LONG value");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   long_val = 7;
   res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_LONG,
-    &long_val);
+    &long_val, -1);
   fail_unless(res < 0, "Failed to handle invalid index value");
   fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
     strerror(errno), errno);
 
-  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_TEXT, NULL);
+  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_TEXT, NULL, 0);
   fail_unless(res < 0, "Failed to handle missing TEXT value");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   text_val = "testing";
   res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_TEXT,
-    text_val);
+    text_val, 0);
   fail_unless(res < 0, "Failed to handle invalid index value");
   fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
     strerror(errno), errno);
 
-  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_NULL, NULL);
+  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_BLOB, NULL,
+    -1);
+  fail_unless(res < 0, "Failed to handle missing BLOB value");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  blob_val = "testing";
+  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_BLOB,
+    blob_val, strlen(blob_val));
+  fail_unless(res < 0, "Failed to handle invalid index value");
+  fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
+    strerror(errno), errno);
+
+  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_NULL, NULL, 0);
   fail_unless(res < 0, "Failed to handle invalid NULL value");
   fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
     strerror(errno), errno);
@@ -488,7 +504,7 @@ START_TEST (db_bind_stmt_test) {
     strerror(errno));
 
   int_val = 7;
-  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT, &int_val);
+  res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT, &int_val,     -1);
   fail_unless(res == 0, "Failed to bind INT value: %s", strerror(errno));
 
   res = proxy_db_close(p, dbh);

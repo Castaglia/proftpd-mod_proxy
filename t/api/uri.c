@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2012-2020 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2012-2021 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -53,7 +53,7 @@ static void tear_down(void) {
   } 
 }
 
-START_TEST (uri_parse_test) {
+START_TEST (uri_parse_args_test) {
   const char *uri;
   char *scheme, *host, *username, *password;
   unsigned int port;
@@ -158,6 +158,14 @@ START_TEST (uri_parse_test) {
   fail_unless(res < 0, "Failed to handle URI using URL encoding");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
+}
+END_TEST
+
+START_TEST (uri_parse_ftp_test) {
+  const char *uri;
+  char *scheme, *host, *username, *password;
+  unsigned int port;
+  int res;
 
   mark_point();
   scheme = host = username = password = NULL;
@@ -172,38 +180,6 @@ START_TEST (uri_parse_test) {
     "Expected host '%s', got '%s'", "foo", host);
   fail_unless(port == 21,
     "Expected port '%u', got '%u'", 21, port);
-  fail_unless(username == NULL, "Expected null username, got '%s'", username);
-  fail_unless(password == NULL, "Expected null password, got '%s'", password);
-
-  mark_point();
-  scheme = host = username = password = NULL;
-  port = 0;
-  uri = "ftps://foo";
-  res = proxy_uri_parse(p, uri, &scheme, &host, &port, &username, &password);
-  fail_unless(res == 0, "Expected successful parsing of URI '%s', got %s", uri,
-    strerror(errno));
-  fail_unless(strcmp(scheme, "ftps") == 0,
-    "Expected scheme '%s', got '%s'", "ftps", scheme);
-  fail_unless(strcmp(host, "foo") == 0,
-    "Expected host '%s', got '%s'", "foo", host);
-  fail_unless(port == 21,
-    "Expected port '%u', got '%u'", 21, port);
-  fail_unless(username == NULL, "Expected null username, got '%s'", username);
-  fail_unless(password == NULL, "Expected null password, got '%s'", password);
-
-  mark_point();
-  scheme = host = username = password = NULL;
-  port = 0;
-  uri = "sftp://foo";
-  res = proxy_uri_parse(p, uri, &scheme, &host, &port, &username, &password);
-  fail_unless(res == 0, "Expected successful parsing of URI '%s', got %s", uri,
-    strerror(errno));
-  fail_unless(strcmp(scheme, "sftp") == 0,
-    "Expected scheme '%s', got '%s'", "sftp", scheme);
-  fail_unless(strcmp(host, "foo") == 0,
-    "Expected host '%s', got '%s'", "foo", host);
-  fail_unless(port == 22,
-    "Expected port '%u', got '%u'", 22, port);
   fail_unless(username == NULL, "Expected null username, got '%s'", username);
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
 
@@ -263,38 +239,6 @@ START_TEST (uri_parse_test) {
   fail_unless(res < 0, "Failed to reject URI with bad IPv6 host encoding");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
-
-  mark_point();
-  scheme = host = username = password = NULL;
-  port = 0;
-  uri = "ftps://foo:2121";
-  res = proxy_uri_parse(p, uri, &scheme, &host, &port, &username, &password);
-  fail_unless(res == 0, "Expected successful parsing of URI '%s', got %s", uri,
-    strerror(errno));
-  fail_unless(strcmp(scheme, "ftps") == 0,
-    "Expected scheme '%s', got '%s'", "ftps", scheme);
-  fail_unless(strcmp(host, "foo") == 0,
-    "Expected host '%s', got '%s'", "foo", host);
-  fail_unless(port == 2121,
-    "Expected port '%u', got '%u'", 2121, port);
-  fail_unless(username == NULL, "Expected null username, got '%s'", username);
-  fail_unless(password == NULL, "Expected null password, got '%s'", password);
-
-  mark_point();
-  scheme = host = username = password = NULL;
-  port = 0;
-  uri = "sftp://foo:2222";
-  res = proxy_uri_parse(p, uri, &scheme, &host, &port, &username, &password);
-  fail_unless(res == 0, "Expected successful parsing of URI '%s', got %s", uri,
-    strerror(errno));
-  fail_unless(strcmp(scheme, "sftp") == 0,
-    "Expected scheme '%s', got '%s'", "sftp", scheme);
-  fail_unless(strcmp(host, "foo") == 0,
-    "Expected host '%s', got '%s'", "foo", host);
-  fail_unless(port == 2222,
-    "Expected port '%u', got '%u'", 2222, port);
-  fail_unless(username == NULL, "Expected null username, got '%s'", username);
-  fail_unless(password == NULL, "Expected null password, got '%s'", password);
 
   mark_point();
   scheme = host = username = password = NULL;
@@ -420,6 +364,64 @@ START_TEST (uri_parse_test) {
   mark_point();
   scheme = host = username = password = NULL;
   port = 0;
+  uri = "ftp://host:65555:foo";
+  res = proxy_uri_parse(p, uri, &scheme, &host, &port, NULL, NULL);
+  fail_unless(res < 0, "Failed to reject URI with bad port spec");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  scheme = host = username = password = NULL;
+  port = 0;
+  uri = "ftp://host:70000";
+  res = proxy_uri_parse(p, uri, &scheme, &host, &port, NULL, NULL);
+  fail_unless(res < 0, "Failed to reject URI with invalid port spec");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+}
+END_TEST
+
+START_TEST (uri_parse_ftps_test) {
+  const char *uri;
+  char *scheme, *host, *username, *password;
+  unsigned int port;
+  int res;
+
+  mark_point();
+  scheme = host = username = password = NULL;
+  port = 0;
+  uri = "ftps://foo";
+  res = proxy_uri_parse(p, uri, &scheme, &host, &port, &username, &password);
+  fail_unless(res == 0, "Expected successful parsing of URI '%s', got %s", uri,
+    strerror(errno));
+  fail_unless(strcmp(scheme, "ftps") == 0,
+    "Expected scheme '%s', got '%s'", "ftps", scheme);
+  fail_unless(strcmp(host, "foo") == 0,
+    "Expected host '%s', got '%s'", "foo", host);
+  fail_unless(port == 21,
+    "Expected port '%u', got '%u'", 21, port);
+  fail_unless(username == NULL, "Expected null username, got '%s'", username);
+  fail_unless(password == NULL, "Expected null password, got '%s'", password);
+
+  mark_point();
+  scheme = host = username = password = NULL;
+  port = 0;
+  uri = "ftps://foo:2121";
+  res = proxy_uri_parse(p, uri, &scheme, &host, &port, &username, &password);
+  fail_unless(res == 0, "Expected successful parsing of URI '%s', got %s", uri,
+    strerror(errno));
+  fail_unless(strcmp(scheme, "ftps") == 0,
+    "Expected scheme '%s', got '%s'", "ftps", scheme);
+  fail_unless(strcmp(host, "foo") == 0,
+    "Expected host '%s', got '%s'", "foo", host);
+  fail_unless(port == 2121,
+    "Expected port '%u', got '%u'", 2121, port);
+  fail_unless(username == NULL, "Expected null username, got '%s'", username);
+  fail_unless(password == NULL, "Expected null password, got '%s'", password);
+
+  mark_point();
+  scheme = host = username = password = NULL;
+  port = 0;
   uri = "ftps://foo:2121/home";
   res = proxy_uri_parse(p, uri, &scheme, &host, &port, &username, &password);
   fail_unless(res == 0, "Expected successful parsing of URI '%s', got %s", uri,
@@ -430,6 +432,46 @@ START_TEST (uri_parse_test) {
     "Expected host '%s', got '%s'", "foo", host);
   fail_unless(port == 2121,
     "Expected port '%u', got '%u'", 2121, port);
+  fail_unless(username == NULL, "Expected null username, got '%s'", username);
+  fail_unless(password == NULL, "Expected null password, got '%s'", password);
+}
+END_TEST
+
+START_TEST (uri_parse_sftp_test) {
+  const char *uri;
+  char *scheme, *host, *username, *password;
+  unsigned int port;
+  int res;
+
+  mark_point();
+  scheme = host = username = password = NULL;
+  port = 0;
+  uri = "sftp://foo";
+  res = proxy_uri_parse(p, uri, &scheme, &host, &port, &username, &password);
+  fail_unless(res == 0, "Expected successful parsing of URI '%s', got %s", uri,
+    strerror(errno));
+  fail_unless(strcmp(scheme, "sftp") == 0,
+    "Expected scheme '%s', got '%s'", "sftp", scheme);
+  fail_unless(strcmp(host, "foo") == 0,
+    "Expected host '%s', got '%s'", "foo", host);
+  fail_unless(port == 22,
+    "Expected port '%u', got '%u'", 22, port);
+  fail_unless(username == NULL, "Expected null username, got '%s'", username);
+  fail_unless(password == NULL, "Expected null password, got '%s'", password);
+
+  mark_point();
+  scheme = host = username = password = NULL;
+  port = 0;
+  uri = "sftp://foo:2222";
+  res = proxy_uri_parse(p, uri, &scheme, &host, &port, &username, &password);
+  fail_unless(res == 0, "Expected successful parsing of URI '%s', got %s", uri,
+    strerror(errno));
+  fail_unless(strcmp(scheme, "sftp") == 0,
+    "Expected scheme '%s', got '%s'", "sftp", scheme);
+  fail_unless(strcmp(host, "foo") == 0,
+    "Expected host '%s', got '%s'", "foo", host);
+  fail_unless(port == 2222,
+    "Expected port '%u', got '%u'", 2222, port);
   fail_unless(username == NULL, "Expected null username, got '%s'", username);
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
 
@@ -448,24 +490,14 @@ START_TEST (uri_parse_test) {
     "Expected port '%u', got '%u'", 2222, port);
   fail_unless(username == NULL, "Expected null username, got '%s'", username);
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
+}
+END_TEST
 
-  mark_point();
-  scheme = host = username = password = NULL;
-  port = 0;
-  uri = "ftp://host:65555:foo";
-  res = proxy_uri_parse(p, uri, &scheme, &host, &port, NULL, NULL);
-  fail_unless(res < 0, "Failed to reject URI with bad port spec");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
-    strerror(errno), errno);
-
-  mark_point();
-  scheme = host = username = password = NULL;
-  port = 0;
-  uri = "ftp://host:70000";
-  res = proxy_uri_parse(p, uri, &scheme, &host, &port, NULL, NULL);
-  fail_unless(res < 0, "Failed to reject URI with invalid port spec");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
-    strerror(errno), errno);
+START_TEST (uri_parse_http_test) {
+  const char *uri;
+  char *scheme, *host, *username, *password;
+  unsigned int port;
+  int res;
 
   mark_point();
   scheme = host = username = password = NULL;
@@ -475,8 +507,15 @@ START_TEST (uri_parse_test) {
   fail_unless(res < 0, "Failed to reject URI with unsupported scheme");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
+}
+END_TEST
 
-  /* SRV scheme variants */
+/* SRV scheme variants */
+START_TEST (uri_parse_srv_test) {
+  const char *uri;
+  char *scheme, *host, *username, *password;
+  unsigned int port;
+  int res;
 
   mark_point();
   scheme = host = username = password = NULL;
@@ -509,8 +548,15 @@ START_TEST (uri_parse_test) {
     "Expected port '%u', got '%u'", 0, port);
   fail_unless(username == NULL, "Expected null username, got '%s'", username);
   fail_unless(password == NULL, "Expected null password, got '%s'", password);
+}
+END_TEST
 
-  /* TXT scheme variants */
+/* TXT scheme variants */
+START_TEST (uri_parse_txt_test) {
+  const char *uri;
+  char *scheme, *host, *username, *password;
+  unsigned int port;
+  int res;
 
   mark_point();
   scheme = host = username = password = NULL;
@@ -555,7 +601,13 @@ Suite *tests_get_uri_suite(void) {
 
   tcase_add_checked_fixture(testcase, set_up, tear_down);
 
-  tcase_add_test(testcase, uri_parse_test);
+  tcase_add_test(testcase, uri_parse_args_test);
+  tcase_add_test(testcase, uri_parse_ftp_test);
+  tcase_add_test(testcase, uri_parse_ftps_test);
+  tcase_add_test(testcase, uri_parse_sftp_test);
+  tcase_add_test(testcase, uri_parse_http_test);
+  tcase_add_test(testcase, uri_parse_srv_test);
+  tcase_add_test(testcase, uri_parse_txt_test);
 
   suite_add_tcase(suite, testcase);
   return suite;

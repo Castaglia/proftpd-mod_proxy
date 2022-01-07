@@ -186,14 +186,26 @@ END_TEST
 START_TEST (tls_sess_init_test) {
 #if defined(PR_USE_OPENSSL)
   int res, flags = PROXY_DB_OPEN_FL_SKIP_VACUUM;
+  struct proxy_session *proxy_sess;
 
-  res = proxy_tls_sess_init(NULL, flags);
+  mark_point();
+  res = proxy_tls_sess_init(NULL, NULL, flags);
   fail_unless(res < 0, "Failed to handle null pool");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
-  res = proxy_tls_sess_init(p, flags);
+  res = proxy_tls_sess_init(p, NULL, flags);
+  fail_unless(res < 0, "Failed to handle null proxy_session");
+  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  proxy_sess = (struct proxy_session *) proxy_session_alloc(p);
+  fail_unless(proxy_sess != NULL, "Failed to allocate proxy session: %s",
+    strerror(errno));
+
+  mark_point();
+  res = proxy_tls_sess_init(p, proxy_sess, flags);
   fail_unless(res < 0, "Failed to handle invalid SSL_CTX");
   fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
     strerror(errno), errno);
@@ -205,7 +217,7 @@ START_TEST (tls_sess_init_test) {
   (void) proxy_db_close(p, NULL);
 
   mark_point();
-  res = proxy_tls_sess_init(p, flags);
+  res = proxy_tls_sess_init(p, proxy_sess, flags);
   fail_unless(res == 0, "Failed to init TLS API session resources: %s",
     strerror(errno));
 
@@ -218,6 +230,9 @@ START_TEST (tls_sess_init_test) {
   res = proxy_tls_free(p);
   fail_unless(res == 0, "Failed to release TLS API resources: %s",
     strerror(errno));
+
+  mark_point();
+  proxy_session_free(p, proxy_sess);
 #endif /* PR_USE_OPENSSL */
 }
 END_TEST

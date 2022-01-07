@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse datastore implementation
- * Copyright (c) 2012-2020 TJ Saunders
+ * Copyright (c) 2012-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -363,13 +363,13 @@ static int reverse_db_add_vhost(pool *p, struct proxy_dbh *dbh, server_rec *s) {
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &(s->sid));
+    (void *) &(s->sid), 0);
   if (res < 0) {
     return -1;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) s->ServerName);
+    (void *) s->ServerName, -1);
   if (res < 0) {
     return -1;
   }
@@ -398,19 +398,19 @@ static int reverse_db_add_backend(pool *p, struct proxy_dbh *dbh,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return -1;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) backend_uri);
+    (void *) backend_uri, -1);
   if (res < 0) {
     return -1;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 3, PROXY_DB_BIND_TYPE_INT,
-    (void *) &backend_id);
+    (void *) &backend_id, 0);
   if (res < 0) {
     return -1;
   }
@@ -474,13 +474,13 @@ static int reverse_db_add_shuffle(pool *p, struct proxy_dbh *dbh,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return -1;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_INT,
-    (void *) &backend_id);
+    (void *) &backend_id, 0);
   if (res < 0) {
     return -1;
   }
@@ -531,7 +531,7 @@ static int reverse_db_shuffle_next(pool *p, struct proxy_dbh *dbh,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return -1;
   }
@@ -583,13 +583,13 @@ static int reverse_db_shuffle_used(pool *p, struct proxy_dbh *dbh,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return -1;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_INT,
-    (void *) &backend_id);
+    (void *) &backend_id, 0);
   if (res < 0) {
     return -1;
   }
@@ -620,13 +620,13 @@ static int reverse_db_roundrobin_update(pool *p, struct proxy_dbh *dbh,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &backend_id);
+    (void *) &backend_id, 0);
   if (res < 0) {
     return -1;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return -1;
   }
@@ -655,13 +655,13 @@ static int reverse_db_roundrobin_init(pool *p, struct proxy_dbh *dbh,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return -1;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_INT,
-    (void *) &backend_id);
+    (void *) &backend_id, 0);
   if (res < 0) {
     return -1;
   }
@@ -690,7 +690,7 @@ static int reverse_db_roundrobin_next(pool *p, struct proxy_dbh *dbh,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return -1;
   }
@@ -744,7 +744,7 @@ static int reverse_db_leastconns_next(pool *p, struct proxy_dbh *dbh,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return -1;
   }
@@ -800,7 +800,7 @@ static int reverse_db_leastresponsetime_next(pool *p, struct proxy_dbh *dbh,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return -1;
   }
@@ -847,13 +847,13 @@ static array_header *reverse_db_peruser_get(pool *p, struct proxy_dbh *dbh,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return NULL;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) user);
+    (void *) user, -1);
   if (res < 0) {
     return NULL;
   }
@@ -913,20 +913,20 @@ static const struct proxy_conn *reverse_db_peruser_init(pool *p,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return NULL;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) user);
+    (void *) user, -1);
   if (res < 0) {
     return NULL;
   }
 
   uri = proxy_conn_get_uri(pconn);
   res = proxy_db_bind_stmt(p, dbh, stmt, 3, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) uri);
+    (void *) uri, -1);
   if (res < 0) {
     return NULL;
   }
@@ -1044,13 +1044,13 @@ static array_header *reverse_db_pergroup_get(pool *p, struct proxy_dbh *dbh,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return NULL;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) group);
+    (void *) group, -1);
   if (res < 0) {
     return NULL;
   }
@@ -1110,20 +1110,20 @@ static const struct proxy_conn *reverse_db_pergroup_init(pool *p,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return NULL;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) group);
+    (void *) group, -1);
   if (res < 0) {
     return NULL;
   }
 
   uri = proxy_conn_get_uri(pconn);
   res = proxy_db_bind_stmt(p, dbh, stmt, 3, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) uri);
+    (void *) uri, -1);
   if (res < 0) {
     return NULL;
   }
@@ -1241,14 +1241,14 @@ static array_header *reverse_db_perhost_get(pool *p, struct proxy_dbh *dbh,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return NULL;
   }
 
   ip = pr_netaddr_get_ipstr(addr);
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) ip);
+    (void *) ip, -1);
   if (res < 0) {
     return NULL;
   }
@@ -1298,20 +1298,20 @@ static const struct proxy_conn *reverse_db_perhost_init(pool *p,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return NULL;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) ip);
+    (void *) ip, -1);
   if (res < 0) {
     return NULL;
   }
 
   uri = proxy_conn_get_uri(pconn);
   res = proxy_db_bind_stmt(p, dbh, stmt, 3, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) uri);
+    (void *) uri, -1);
   if (res < 0) {
     return NULL;
   }
@@ -1642,7 +1642,7 @@ static int reverse_db_policy_update_backend(pool *p, void *dbh, int policy_id,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT,
-    (void *) &conn_incr);
+    (void *) &conn_incr, 0);
   if (res < 0) {
     return -1;
   }
@@ -1651,7 +1651,7 @@ static int reverse_db_policy_update_backend(pool *p, void *dbh, int policy_id,
 
   if (connect_ms > 0) {
     res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_LONG,
-      (void *) &connect_ms);
+      (void *) &connect_ms, 0);
     if (res < 0) {
       return -1;
     }
@@ -1660,7 +1660,7 @@ static int reverse_db_policy_update_backend(pool *p, void *dbh, int policy_id,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return -1;
   }
@@ -1668,7 +1668,7 @@ static int reverse_db_policy_update_backend(pool *p, void *dbh, int policy_id,
   idx++;
 
   res = proxy_db_bind_stmt(p, dbh, stmt, idx, PROXY_DB_BIND_TYPE_INT,
-    (void *) &backend_id);
+    (void *) &backend_id, 0);
   if (res < 0) {
     return -1;
   }

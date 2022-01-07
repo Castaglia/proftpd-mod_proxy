@@ -33,6 +33,7 @@
 #include "proxy/conn.h"
 #include "proxy/netio.h"
 #include "proxy/inet.h"
+#include "proxy/ssh.h"
 #include "proxy/tls.h"
 #include "proxy/forward.h"
 #include "proxy/reverse.h"
@@ -44,6 +45,9 @@
 #include "proxy/ftp/msg.h"
 #include "proxy/ftp/sess.h"
 #include "proxy/ftp/xfer.h"
+#include "proxy/ssh/ssh2.h"
+#include "proxy/ssh/auth.h"
+#include "proxy/ssh/crypto.h"
 
 /* Proxy role */
 #define PROXY_ROLE_REVERSE		1
@@ -839,7 +843,7 @@ MODRET set_proxyreverseconnectpolicy(cmd_rec *cmd) {
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
-  connect_policy = proxy_reverse_connect_get_policy(cmd->argv[1]);
+  connect_policy = proxy_reverse_connect_get_policy_id(cmd->argv[1]);
   if (connect_policy < 0) {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
       "unknown/unsupported connect policy: ", (char *) cmd->argv[1], NULL));
@@ -991,6 +995,411 @@ MODRET set_proxyrole(cmd_rec *cmd) {
   c = add_config_param(cmd->argv[0], 1, NULL);
   c->argv[0] = palloc(c->pool, sizeof(int));
   *((int *) c->argv[0]) = role;
+
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxySFTPCiphers algos */
+MODRET set_proxysftpciphers(cmd_rec *cmd) {
+#if defined(PR_USE_OPENSSL)
+  register unsigned int i;
+  config_rec *c;
+
+  if (cmd->argc < 2) {
+    CONF_ERROR(cmd, "Wrong number of parameters");
+  }
+
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  for (i = 1; i < cmd->argc; i++) {
+    if (proxy_ssh_crypto_get_cipher(cmd->argv[i], NULL, NULL) == NULL) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+        "unsupported cipher algorithm: ", (char *) cmd->argv[i], NULL));
+    }
+  }
+
+  c = add_config_param(cmd->argv[0], cmd->argc-1, NULL);
+  for (i = 1; i < cmd->argc; i++) {
+    c->argv[i-1] = pstrdup(c->pool, cmd->argv[i]);
+  }
+
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd,
+    "Use of the ProxySFTPCiphers directive requires OpenSSL support (--enable-openssl)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxySFTPCompression on|off|delayed */
+MODRET set_proxysftpcompression(cmd_rec *cmd) {
+  config_rec *c;
+  int comp;
+
+  if (cmd->argc != 2) {
+    CONF_ERROR(cmd, "Wrong number of parameters");
+  }
+
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+#if defined(HAVE_ZLIB_H)
+  comp = get_boolean(cmd, 1);
+  if (comp == -1) {
+    if (strcasecmp(cmd->argv[1], "delayed") != 0) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+        "unknown compression setting: ", cmd->argv[1], NULL));
+    }
+
+    comp = 2;
+  }
+#else
+  pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+    ": platform lacks zlib support, ignoring ProxySFTPCompression");
+  comp = 0;
+#endif /* !HAVE_ZLIB_H */
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = pcalloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = comp;
+
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxySFTPDigests algos */
+MODRET set_proxysftpdigests(cmd_rec *cmd) {
+#if defined(PR_USE_OPENSSL)
+  register unsigned int i;
+  config_rec *c;
+
+  if (cmd->argc < 2) {
+    CONF_ERROR(cmd, "Wrong number of parameters");
+  }
+
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  for (i = 1; i < cmd->argc; i++) {
+    if (proxy_ssh_crypto_get_digest(cmd->argv[i], NULL) == NULL) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+        "unsupported digest algorithm: ", cmd->argv[i], NULL));
+    }
+  }
+
+  c = add_config_param(cmd->argv[0], cmd->argc-1, NULL);
+  for (i = 1; i < cmd->argc; i++) {
+    c->argv[i-1] = pstrdup(c->pool, cmd->argv[i]);
+  }
+
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd,
+    "Use of the ProxySFTPDigests directive requires OpenSSL support (--enable-openssl)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxySFTPHostKey path|"agent:/..." */
+MODRET set_proxysftphostkey(cmd_rec *cmd) {
+  struct stat st;
+  int flags = 0;
+  config_rec *c;
+  const char *path = NULL;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  path = cmd->argv[1];
+
+  if (strncmp(cmd->argv[1], "agent:", 6) != 0 &&
+      flags == 0) {
+    int res, xerrno;
+
+    path = cmd->argv[1];
+    if (*path != '/') {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "must be an absolute path: ",
+        path, NULL));
+    }
+
+    PRIVS_ROOT
+    res = stat(path, &st);
+    xerrno = errno;
+    PRIVS_RELINQUISH
+
+    if (res < 0) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to check '", path,
+        "': ", strerror(xerrno), NULL));
+    }
+
+    if ((st.st_mode & S_IRWXG) ||
+        (st.st_mode & S_IRWXO)) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to use '", path,
+        "' as host key, as it is group- or world-accessible", NULL));
+    }
+  }
+
+  c = add_config_param_str(cmd->argv[0], 2, NULL, NULL);
+  c->argv[0] = pstrdup(c->pool, path);
+  c->argv[1] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[1]) = flags;
+
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxySFTPKeyExchanges algos */
+MODRET set_proxysftpkeyexchanges(cmd_rec *cmd) {
+#if defined(PR_USE_OPENSSL)
+  register unsigned int i;
+  config_rec *c;
+  char *exchanges = "";
+
+  if (cmd->argc < 2) {
+    CONF_ERROR(cmd, "Wrong number of parameters");
+  }
+
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  for (i = 1; i < cmd->argc; i++) {
+    if (strcmp(cmd->argv[i], "diffie-hellman-group1-sha1") != 0 &&
+        strcmp(cmd->argv[i], "diffie-hellman-group14-sha1") != 0 &&
+#if (OPENSSL_VERSION_NUMBER > 0x000907000L && defined(OPENSSL_FIPS)) || \
+    (OPENSSL_VERSION_NUMBER > 0x000908000L)
+        strcmp(cmd->argv[i], "diffie-hellman-group14-sha256") != 0 &&
+        strcmp(cmd->argv[i], "diffie-hellman-group16-sha512") != 0 &&
+        strcmp(cmd->argv[i], "diffie-hellman-group18-sha512") != 0 &&
+        strcmp(cmd->argv[i], "diffie-hellman-group-exchange-sha256") != 0 &&
+#endif
+        strcmp(cmd->argv[i], "diffie-hellman-group-exchange-sha1") != 0 &&
+#if defined(PR_USE_OPENSSL_ECC)
+        strcmp(cmd->argv[i], "ecdh-sha2-nistp256") != 0 &&
+        strcmp(cmd->argv[i], "ecdh-sha2-nistp384") != 0 &&
+        strcmp(cmd->argv[i], "ecdh-sha2-nistp521") != 0 &&
+#endif /* PR_USE_OPENSSL_ECC */
+#if defined(HAVE_SODIUM_H) && defined(HAVE_SHA256_OPENSSL)
+        strcmp(cmd->argv[i], "curve25519-sha256") != 0 &&
+        strcmp(cmd->argv[i], "curve25519-sha256@libssh.org") != 0 &&
+#endif /* HAVE_SODIUM_H and HAVE_SHA256_OPENSSL */
+        strcmp(cmd->argv[i], "rsa1024-sha1") != 0) {
+
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+        "unsupported key exchange algorithm: ", cmd->argv[i], NULL));
+    }
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  for (i = 1; i < cmd->argc; i++) {
+    exchanges = pstrcat(c->pool, exchanges, *exchanges ? "," : "", cmd->argv[i],
+      NULL);
+  }
+  c->argv[0] = exchanges;
+
+  return PR_HANDLED(cmd);
+#else
+  CONF_ERROR(cmd,
+    "Use of the ProxySFTPKeyExchanges directive requires OpenSSL support (--enable-openssl)");
+#endif /* PR_USE_OPENSSL */
+}
+
+/* usage: ProxySFTPOptions opts */
+MODRET set_proxysftpoptions(cmd_rec *cmd) {
+  register unsigned int i;
+  config_rec *c;
+  unsigned long opts = 0UL;
+
+  if (cmd->argc-1 == 0) {
+    CONF_ERROR(cmd, "wrong number of parameters");
+  }
+
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+
+  for (i = 1; i < cmd->argc; i++) {
+    if (strcmp(cmd->argv[i], "OldProtocolCompat") == 0) {
+      opts |= PROXY_OPT_SSH_OLD_PROTO_COMPAT;
+
+      /* This option also automatically enables PessimisticKexint,
+       * as per the comments in RFC4253, Section 5.1.
+       */
+      opts |= PROXY_OPT_SSH_PESSIMISTIC_KEXINIT;
+
+    } else if (strcmp(cmd->argv[i], "PessimisticKexinit") == 0) {
+      opts |= PROXY_OPT_SSH_PESSIMISTIC_KEXINIT;
+
+    } else if (strcmp(cmd->argv[i], "AllowWeakDH") == 0) {
+      opts |= PROXY_OPT_SSH_ALLOW_WEAK_DH;
+
+    } else if (strcmp(cmd->argv[i], "NoExtensionNegotiation") == 0) {
+      opts |= PROXY_OPT_SSH_NO_EXT_INFO;
+
+    } else if (strcmp(cmd->argv[i], "NoHostkeyRotation") == 0) {
+      opts |= PROXY_OPT_SSH_NO_HOSTKEY_ROTATION;
+
+    } else {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxySFTPOption '",
+        cmd->argv[i], "'", NULL));
+    }
+  }
+
+  c->argv[0] = pcalloc(c->pool, sizeof(unsigned long));
+  *((unsigned long *) c->argv[0]) = opts;
+
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxySFTPPassPhraseProvider path */
+MODRET set_proxysftppassphraseprovider(cmd_rec *cmd) {
+  struct stat st;
+  char *path;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT);
+
+  path = cmd->argv[1];
+
+  if (*path != '/') {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "must be a full path: '", path, "'",
+      NULL));
+  }
+
+  if (stat(path, &st) < 0) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error checking '", path, "': ",
+      strerror(errno), NULL));
+  }
+
+  if (!S_ISREG(st.st_mode)) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to use '", path,
+      ": Not a regular file", NULL));
+  }
+
+  add_config_param_str(cmd->argv[0], 1, path);
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxySFTPServerAlive count interval */
+MODRET set_proxysftpserveralive(cmd_rec *cmd) {
+  int count, interval;
+  config_rec *c;
+
+  CHECK_ARGS(cmd, 2);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  count = atoi(cmd->argv[1]);
+  if (count < 0) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "max count '",
+      (char *) cmd->argv[1], "' must be equal to or greater than zero", NULL));
+  }
+
+  interval = atoi(cmd->argv[2]);
+  if (interval < 0) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "interval '", (char *) cmd->argv[2],
+      "' must be equal to or greater than zero", NULL));
+  }
+
+  c = add_config_param(cmd->argv[0], 2, NULL, NULL);
+  c->argv[0] = palloc(c->pool, sizeof(unsigned int));
+  *((unsigned int *) c->argv[0]) = count;
+  c->argv[1] = palloc(c->pool, sizeof(unsigned int));
+  *((unsigned int *) c->argv[1]) = interval;
+
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxySFTPServerMatch pattern key1 val1 ... */
+MODRET set_proxysftpservermatch(cmd_rec *cmd) {
+#if defined(PR_USE_REGEX)
+  register unsigned int i;
+  config_rec *c;
+  pr_table_t *tab;
+  pr_regex_t *pre;
+  int res;
+
+  if (cmd->argc < 4) {
+    CONF_ERROR(cmd, "Wrong number of parameters");
+
+  } else {
+    int npairs;
+
+    /* Make sure we have an even number of args for the key/value pairs. */
+
+    npairs = cmd->argc - 2;
+    if (npairs % 2 != 0) {
+      CONF_ERROR(cmd, "Wrong number of parameters");
+    }
+  }
+
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  pre = pr_regexp_alloc(&proxy_module);
+
+  res = pr_regexp_compile(pre, cmd->argv[1], REG_EXTENDED|REG_NOSUB);
+  if (res != 0) {
+    char errstr[200];
+
+    memset(errstr, '\0', sizeof(errstr));
+    pr_regexp_error(res, pre, errstr, sizeof(errstr));
+    pr_regexp_free(NULL, pre);
+
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", (char *) cmd->argv[1],
+      "' failed regex compilation: ", errstr, NULL));
+  }
+
+  c = add_config_param(cmd->argv[0], 3, NULL, NULL, NULL);
+  c->argv[0] = pstrdup(c->pool, cmd->argv[1]);
+  c->argv[1] = pre;
+
+  tab = pr_table_alloc(c->pool, 0);
+  c->argv[2] = tab;
+
+  for (i = 2; i < cmd->argc; i++) {
+    if (strcmp(cmd->argv[i], "pessimisticNewkeys") == 0) {
+      int pessimistic_newkeys;
+      void *value;
+
+      pessimistic_newkeys = get_boolean(cmd, i+1);
+      if (pessimistic_newkeys == -1) {
+        CONF_ERROR(cmd, "expected Boolean parameter");
+      }
+
+      value = palloc(c->pool, sizeof(int));
+      *((int *) value) = pessimistic_newkeys;
+
+      if (pr_table_add(tab, pstrdup(c->pool, "pessimisticNewkeys"), value,
+          sizeof(int)) < 0) {
+        CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+          "error storing 'pessimisticNewkeys' value: ", strerror(errno), NULL));
+      }
+
+      /* Don't forget to advance i past the value. */
+      i++;
+
+    } else {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
+        ": unknown ProxySFTPServerMatch key: '", cmd->argv[i], "'", NULL));
+    }
+  }
+
+  return PR_HANDLED(cmd);
+
+#else /* no regular expression support at the moment */
+  CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "The ", cmd->argv[0],
+    " directive cannot be used on this system, as you do not have POSIX "
+    "compliant regex support", NULL));
+#endif
+}
+
+/* usage: ProxySFTPVerifyServer on|off */
+MODRET set_proxysftpverifyserver(cmd_rec *cmd) {
+  int setting = -1;
+  config_rec *c = NULL;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  setting = get_boolean(cmd, 1);
+  if (setting == -1) {
+    CONF_ERROR(cmd, "expected Boolean parameter");
+  }
+
+  c = add_config_param(cmd->argv[0], 1, NULL);
+  c->argv[0] = pcalloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = setting;
 
   return PR_HANDLED(cmd);
 }
@@ -1831,7 +2240,7 @@ static void proxy_process_cmd(void) {
 
   pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
 
-  if (cmd) {
+  if (cmd != NULL) {
     /* We unblock responses here so that if any PRE_CMD handlers generate
      * responses (usually errors), those responses are sent to the
      * connecting client.
@@ -4638,6 +5047,15 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
       "Failed reverse proxy initialization");
   }
 
+  if (proxy_ssh_init(proxy_pool, proxy_tables_dir, 0) < 0) {
+    pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
+      ": unable to initialize SSH support, failing to start up: %s",
+      strerror(errno));
+
+    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BAD_CONFIG,
+      "Failed SSH initialization");
+  }
+
   if (proxy_tls_init(proxy_pool, proxy_tables_dir, 0) < 0) {
     pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
       ": unable to initialize TLS support, failing to start up: %s",
@@ -4651,6 +5069,7 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
 static void proxy_restart_ev(const void *event_data, void *user_data) {
   proxy_forward_free(proxy_pool);
   proxy_reverse_free(proxy_pool);
+  proxy_ssh_free(proxy_pool);
   proxy_tls_free(proxy_pool);
 
   /* Do NOT close the database connection/handle here; we may have session
@@ -4682,6 +5101,7 @@ static void proxy_sess_reinit_ev(const void *event_data, void *user_data) {
   proxy_sess = (struct proxy_session *) pr_table_get(session.notes,
     "mod_proxy.proxy-session", NULL);
   if (proxy_sess != NULL) {
+    proxy_ssh_sess_free(proxy_pool);
     proxy_tls_sess_free(proxy_pool);
     proxy_reverse_sess_free(proxy_pool, proxy_sess);
     proxy_forward_sess_free(proxy_pool, proxy_sess);
@@ -4713,6 +5133,7 @@ static void proxy_shutdown_ev(const void *event_data, void *user_data) {
 
   proxy_forward_free(proxy_pool);
   proxy_reverse_free(proxy_pool);
+  proxy_ssh_free(proxy_pool);
   proxy_tls_free(proxy_pool);
 
   res = proxy_db_close(proxy_pool, NULL);
@@ -4732,25 +5153,41 @@ static void proxy_shutdown_ev(const void *event_data, void *user_data) {
   }
 }
 
+static void unblock_responses(void) {
+  const struct proxy_session *proxy_sess;
+  int block_responses = FALSE;
+
+  proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+  if (proxy_sess != NULL &&
+      proxy_sess->use_ssh == TRUE) {
+    /* We do not want mod_core's response flushed to the frontend client
+     * for SSH connections.
+     */
+    block_responses = TRUE;
+  }
+
+  pr_response_block(block_responses);
+}
+
 static void proxy_timeoutidle_ev(const void *event_data, void *user_data) {
   /* Unblock responses here, so that mod_core's response will be flushed
    * out to the frontend client.
    */
-  pr_response_block(FALSE);
+  unblock_responses();
 }
 
 static void proxy_timeoutnoxfer_ev(const void *event_data, void *user_data) {
   /* Unblock responses here, so that mod_xfer's response will be flushed
    * out to the frontend client.
    */
-  pr_response_block(FALSE);
+  unblock_responses();
 }
 
 static void proxy_timeoutstalled_ev(const void *event_data, void *user_data) {
   /* Unblock responses here, so that mod_xfer's response will be flushed
    * out to the frontend client.
    */
-  pr_response_block(FALSE);
+  unblock_responses();
 }
 
 /* XXX Do we want to support any Controls/ftpctl actions? */
@@ -4759,7 +5196,6 @@ static void proxy_timeoutstalled_ev(const void *event_data, void *user_data) {
  */
 
 static int proxy_init(void) {
-
   proxy_pool = make_sub_pool(permanent_pool);
   pr_pool_tag(proxy_pool, MOD_PROXY_VERSION);
 
@@ -4988,7 +5424,12 @@ static int proxy_sess_init(void) {
    */
   (void) proxy_db_close(proxy_pool, NULL);
 
-  if (proxy_tls_sess_init(proxy_pool, 0) < 0) {
+  if (proxy_ssh_sess_init(proxy_pool, proxy_sess, 0) < 0) {
+    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
+      "Unable to initialize SSH API");
+  }
+
+  if (proxy_tls_sess_init(proxy_pool, proxy_sess, 0) < 0) {
     pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
       "Unable to initialize TLS API");
   }
@@ -5059,6 +5500,18 @@ static conftable proxy_conftab[] = {
   { "ProxyTables",		set_proxytables,		NULL },
   { "ProxyTimeoutConnect",	set_proxytimeoutconnect,	NULL },
   { "ProxyTimeoutLinger",	set_proxytimeoutlinger,		NULL },
+
+  /* SSH support */
+  { "ProxySFTPCiphers",		set_proxysftpciphers,		NULL },
+  { "ProxySFTPCompression",	set_proxysftpcompression,	NULL },
+  { "ProxySFTPDigests",		set_proxysftpdigests,		NULL },
+  { "ProxySFTPHostKey",		set_proxysftphostkey,		NULL },
+  { "ProxySFTPKeyExchanges",	set_proxysftpkeyexchanges,	NULL },
+  { "ProxySFTPOptions",		set_proxysftpoptions,		NULL },
+  { "ProxySFTPPassPhraseProvider", set_proxysftppassphraseprovider, NULL },
+  { "ProxySFTPServerAlive",	set_proxysftpserveralive,	NULL },
+  { "ProxySFTPServerMatch",	set_proxysftpservermatch,	NULL },
+  { "ProxySFTPVerifyServer",	set_proxysftpverifyserver,	NULL },
 
   /* TLS support */
   { "ProxyTLSCACertificateFile",set_proxytlscacertfile,		NULL },

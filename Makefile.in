@@ -21,6 +21,8 @@ MODULE_OBJS=mod_proxy.o \
   lib/proxy/netio.o \
   lib/proxy/inet.o \
   lib/proxy/str.o \
+  lib/proxy/ssh.o \
+  lib/proxy/ssh/db.o \
   lib/proxy/tls.o \
   lib/proxy/tls/db.o \
   lib/proxy/tls/redis.o \
@@ -36,7 +38,24 @@ MODULE_OBJS=mod_proxy.o \
   lib/proxy/ftp/facts.o \
   lib/proxy/ftp/msg.o \
   lib/proxy/ftp/sess.o \
-  lib/proxy/ftp/xfer.o
+  lib/proxy/ftp/xfer.o \
+  lib/proxy/ssh/agent.o \
+  lib/proxy/ssh/auth.o \
+  lib/proxy/ssh/bcrypt.o \
+  lib/proxy/ssh/cipher.o \
+  lib/proxy/ssh/compress.o \
+  lib/proxy/ssh/crypto.o \
+  lib/proxy/ssh/disconnect.o \
+  lib/proxy/ssh/interop.o \
+  lib/proxy/ssh/kex.o \
+  lib/proxy/ssh/keys.o \
+  lib/proxy/ssh/mac.o \
+  lib/proxy/ssh/misc.o \
+  lib/proxy/ssh/msg.o \
+  lib/proxy/ssh/packet.o \
+  lib/proxy/ssh/service.o \
+  lib/proxy/ssh/session.o \
+  lib/proxy/ssh/utf8.o
 
 SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/random.lo \
@@ -47,6 +66,8 @@ SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/netio.lo \
   lib/proxy/inet.lo \
   lib/proxy/str.lo \
+  lib/proxy/ssh.lo \
+  lib/proxy/ssh/db.lo \
   lib/proxy/tls.lo \
   lib/proxy/tls/db.lo \
   lib/proxy/uri.lo \
@@ -61,7 +82,24 @@ SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/ftp/facts.lo \
   lib/proxy/ftp/msg.lo \
   lib/proxy/ftp/sess.lo \
-  lib/proxy/ftp/xfer.lo
+  lib/proxy/ftp/xfer.lo \
+  lib/proxy/ssh/agent.lo \
+  lib/proxy/ssh/auth.lo \
+  lib/proxy/ssh/bcrypt.lo \
+  lib/proxy/ssh/cipher.lo \
+  lib/proxy/ssh/compress.lo \
+  lib/proxy/ssh/crypto.lo \
+  lib/proxy/ssh/disconnect.lo \
+  lib/proxy/ssh/interop.lo \
+  lib/proxy/ssh/kex.lo \
+  lib/proxy/ssh/keys.lo \
+  lib/proxy/ssh/mac.lo \
+  lib/proxy/ssh/misc.lo \
+  lib/proxy/ssh/msg.lo \
+  lib/proxy/ssh/packet.lo \
+  lib/proxy/ssh/service.lo \
+  lib/proxy/ssh/session.lo \
+  lib/proxy/ssh/utf8.lo \
 
 # Necessary redefinitions
 INCLUDES=-I. -I./include -I../.. -I../../include @INCLUDES@
@@ -91,7 +129,7 @@ install-misc:
 	$(INSTALL) -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0644 cacerts.pem $(DESTDIR)$(sysconfdir)/cacerts.pem
 
 clean:
-	$(LIBTOOL) --mode=clean $(RM) $(MODULE_NAME).a $(MODULE_NAME).la *.o *.lo .libs/*.o lib/proxy/*.o lib/proxy/*.lo lib/proxy/ftp/*.o lib/proxy/ftp/*.lo lib/proxy/reverse/*.o lib/proxy/reverse/*.lo lib/proxy/tls/*.o lib/proxy/tls/*.lo
+	$(LIBTOOL) --mode=clean $(RM) $(MODULE_NAME).a $(MODULE_NAME).la *.o *.lo .libs/*.o lib/proxy/*.o lib/proxy/*.lo lib/proxy/ftp/*.o lib/proxy/ftp/*.lo lib/proxy/reverse/*.o lib/proxy/reverse/*.lo lib/proxy/ssh/*.o lib/proxy/ssh/*.lo lib/proxy/tls/*.o lib/proxy/tls/*.lo
 	cd t/ && $(MAKE) clean
 
 # Run the API tests

@@ -2410,7 +2410,7 @@ int proxy_tls_match_client_tls(void) {
   if (client_using_tls == TRUE) {
     int client_using_implicit_ftps = FALSE;
     config_rec *c;
-    unsigned long tls_opts = 0UL;
+    unsigned long mod_tls_opts = 0UL;
 
     /* Is the client using implicit FTPS? */
     c = find_config(main_server->conf, CONF_PARAM, "TLSOptions", FALSE);
@@ -2420,7 +2420,7 @@ int proxy_tls_match_client_tls(void) {
       pr_signals_handle();
 
       opts = *((unsigned long *) c->argv[0]);
-      tls_opts |= opts;
+      mod_tls_opts |= opts;
 
       c = find_config_next(c, c->next, CONF_PARAM, "TLSOptions", FALSE);
     }
@@ -2428,7 +2428,7 @@ int proxy_tls_match_client_tls(void) {
     /* We cheat, and duplicate/check for the UseImplicitTLS TLSOption
      * (TLS_OPT_USE_IMPLICIT_SSL) from the mod_tls.c implementation.
      */
-    if (tls_opts & 0x0200) {
+    if (mod_tls_opts & 0x0200) {
       client_using_implicit_ftps = TRUE;
     }
 
@@ -2485,7 +2485,8 @@ int proxy_tls_init(pool *p, const char *tables_path, int flags) {
     return -1;
   }
 
-  if (pr_module_exists("mod_tls.c") == FALSE) {
+  if (pr_module_exists("mod_sftp.c") == FALSE &&
+      pr_module_exists("mod_tls.c") == FALSE) {
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
     OPENSSL_config(NULL);
 #endif /* prior to OpenSSL-1.1.x */
@@ -4383,7 +4384,7 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
 # endif /* OpenSSL-0.9.7 or later */
 #endif /* PR_USE_OPENSSL */
 
-int proxy_tls_sess_init(pool *p, int flags) {
+int proxy_tls_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
 #if defined(PR_USE_OPENSSL)
   config_rec *c;
   unsigned int enabled_proto_count = 0, tls_protocol = PROXY_TLS_PROTO_DEFAULT;
@@ -4391,6 +4392,15 @@ int proxy_tls_sess_init(pool *p, int flags) {
   const char *enabled_proto_str = NULL;
   char *ca_file = NULL, *ca_path = NULL, *cert_file = NULL, *key_file = NULL,
     *crl_file = NULL, *crl_path = NULL;
+
+  if (proxy_sess == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (proxy_sess->use_ftp == FALSE) {
+    return 0;
+  }
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSEngine", FALSE);
   if (c != NULL) {

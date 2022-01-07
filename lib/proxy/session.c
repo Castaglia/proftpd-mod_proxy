@@ -57,6 +57,9 @@ const struct proxy_session *proxy_session_alloc(pool *p) {
   proxy_sess->connect_timerno = -1;
   proxy_sess->linger_timeout = -1;
 
+  proxy_sess->use_ftp = TRUE;
+  proxy_sess->use_ssh = FALSE;
+
   return proxy_sess;
 }
 

@@ -26,6 +26,7 @@
 #define MOD_PROXY_TLS_H
 
 #include "mod_proxy.h"
+#include "proxy/session.h"
 
 #ifdef PR_USE_OPENSSL
 # include <openssl/bio.h>
@@ -56,11 +57,13 @@
 
 #define PROXY_TLS_IMPLICIT_FTPS_PORT	990
 
-/* ProxyTLSOptions values */
-#define PROXY_TLS_OPT_ENABLE_DIAGS		0x0001
-#define PROXY_TLS_OPT_NO_SESSION_CACHE		0x0002
-#define PROXY_TLS_OPT_NO_SESSION_TICKETS	0x0004
-#define PROXY_TLS_OPT_ALLOW_WEAK_SECURITY	0x0008
+/* ProxyTLSOptions values.  NOTE: Make sure these do NOT collide with existing
+ * PROXY_OPT_ values defined in mod_proxy.h.
+ */
+#define PROXY_TLS_OPT_ENABLE_DIAGS		0x0100
+#define PROXY_TLS_OPT_NO_SESSION_CACHE		0x0200
+#define PROXY_TLS_OPT_NO_SESSION_TICKETS	0x0400
+#define PROXY_TLS_OPT_ALLOW_WEAK_SECURITY	0x0800
 
 /* ProxyTLSProtocol handling */
 #define PROXY_TLS_PROTO_SSL_V3		0x0001
@@ -88,7 +91,7 @@ const char *proxy_tls_get_errors(void);
 int proxy_tls_init(pool *p, const char *tables_dir, int flags);
 int proxy_tls_free(pool *p);
 
-int proxy_tls_sess_init(pool *p, int flags);
+int proxy_tls_sess_init(pool *p, struct proxy_session *proxy_sess, int flags);
 int proxy_tls_sess_free(pool *p);
 
 /* Set whether data transfers require TLS protection, based on e.g. clients'

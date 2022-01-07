@@ -67,15 +67,19 @@ jobs:
           apt-get install -y libssl-dev
           # for SQLite support
           apt-get install -y libsqlite3-dev sqlite3
+          # for Sodium support
+          apt-get install -y --force-yes libsodium-dev
 
           # for integration/regression tests
           apt-get install -y \
+            libauthen-oath-perl \
             libcompress-raw-zlib-perl \
             libdata-dumper-simple-perl \
             libdatetime-perl \
             libfile-copy-recursive-perl \
             libfile-path-tiny-perl \
             libfile-spec-native-perl \
+            libmime-base32-perl \
             libnet-address-ip-local-perl \
             libnet-ssh2-perl \
             libnet-ssleay-perl \
@@ -98,8 +102,9 @@ jobs:
         # NOTE: Docker does not have good IPv6 support, hence we disable it.
         run: |
           cd proftpd
-          ./configure --enable-ctrls --disable-ipv6 --enable-redis --with-modules=mod_ban:mod_sql:mod_sql_sqlite:mod_tls:mod_tls_shmcache:mod_proxy:mod_unique_id:mod_proxy_protocol
+          ./configure --enable-ctrls --disable-ipv6 --enable-redis --with-modules=mod_ban:mod_rewrite:mod_sftp:mod_auth_otp:mod_sql:mod_sql_sqlite:mod_tls:mod_tls_shmcache:mod_proxy:mod_unique_id:mod_proxy_protocol
           make
+          ./proftpd -V
           make install
 
       - name: Run integration tests
