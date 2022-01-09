@@ -1095,7 +1095,8 @@ static uint16_t add_v2_tlv_ssl(pool *p, struct iovec *v2_iov,
   uint8_t *tlv_type, client;
   uint16_t *tlv_len, total_len;
   uint32_t verify;
-  void *tlv_val, *tlv_ptr;
+  char *tlv_ptr;
+  void *tlv_val;
   size_t tlv_valsz = 0, valsz = 0;
   unsigned int niov;
   const char *proto, *tls_version, *tls_cipher;

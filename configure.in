@@ -1,5 +1,5 @@
 dnl ProFTPD - mod_proxy
-dnl Copyright (c) 2012-2020 TJ Saunders <tj@castaglia.org>
+dnl Copyright (c) 2012-2021 TJ Saunders <tj@castaglia.org>
 dnl
 dnl This program is free software; you can redistribute it and/or modify
 dnl it under the terms of the GNU General Public License as published by
@@ -65,6 +65,10 @@ AC_ARG_WITH(libraries,
 
 AC_HEADER_STDC
 AC_CHECK_HEADERS(sqlite3.h stdlib.h unistd.h limits.h fcntl.h sys/sysctl.h sys/sysinfo.h)
+AC_CHECK_HEADER(zlib.h,
+  [AC_DEFINE(HAVE_ZLIB_H, 1, [Define if zlib.h is present.])
+   MODULE_LIBS="$MODULE_LIBS -lz"
+  ])
 AC_CHECK_FUNCS(random srandom strnstr sysctl sysinfo)
 
 dnl Check whether libc provides the DNS resolver symbols (e.g. *BSD/Mac OSX)
@@ -180,6 +184,98 @@ AC_TRY_LINK(
   ]
 )
 
+# Check for OpenSSL-isms
+AC_MSG_CHECKING([whether OpenSSL has crippled AES support])
+LIBS="-lcrypto $LIBS"
+
+AC_TRY_LINK(
+  [ #ifdef HAVE_STRING_H
+    # include <string.h>
+    #endif
+    #include <openssl/evp.h>
+  ],
+  [
+    EVP_CIPHER *c;
+    c = EVP_aes_192_cbc();
+    c = EVP_aes_256_cbc();
+  ],
+  [
+    AC_MSG_RESULT(no)
+    LIBS="$saved_libs"
+  ],
+  [
+    AC_MSG_RESULT(yes)
+    AC_DEFINE(HAVE_AES_CRIPPLED_OPENSSL, 1, [OpenSSL is missing AES192 and AES256 support])
+    LIBS="$saved_libs"
+  ]
+)
+
+AC_MSG_CHECKING([whether OpenSSL supports SHA256])
+LIBS="-lcrypto $LIBS"
+
+AC_TRY_LINK(
+  [
+    #include <openssl/evp.h>
+  ],
+  [
+    const EVP_MD *md;
+    md = EVP_sha256();
+  ],
+  [
+    AC_MSG_RESULT(yes)
+    AC_DEFINE(HAVE_SHA256_OPENSSL, 1, [OpenSSL supports SHA224/SHA256])
+    LIBS="$saved_libs"
+  ],
+  [
+    AC_MSG_RESULT(no)
+    LIBS="$saved_libs"
+  ]
+)
+
+AC_MSG_CHECKING([whether OpenSSL supports SHA512])
+LIBS="-lcrypto $LIBS"
+
+AC_TRY_LINK(
+  [
+    #include <openssl/evp.h>
+  ],
+  [
+    const EVP_MD *md;
+    md = EVP_sha512();
+  ],
+  [
+    AC_MSG_RESULT(yes)
+    AC_DEFINE(HAVE_SHA512_OPENSSL, 1, [OpenSSL supports SHA384/SHA512])
+    LIBS="$saved_libs"
+  ],
+  [
+    AC_MSG_RESULT(no)
+    LIBS="$saved_libs"
+  ]
+)
+
+AC_MSG_CHECKING([whether OpenSSL supports EVP_aes_256_ctr])
+LIBS="-lcrypto $LIBS"
+
+AC_TRY_LINK(
+  [
+    #include <openssl/evp.h>
+  ],
+  [
+    EVP_CIPHER *cipher;
+    cipher = EVP_aes_256_ctr();
+  ],
+  [
+    AC_MSG_RESULT(yes)
+    AC_DEFINE(HAVE_EVP_AES_256_CTR_OPENSSL, 1, [OpenSSL supports EVP_aes_256_ctr])
+    LIBS="$saved_libs"
+  ],
+  [
+    AC_MSG_RESULT(no)
+    LIBS="$saved_libs"
+  ]
+)
+
 # Check for SQLite-isms
 AC_MSG_CHECKING([for sqlite3_stmt_readonly])
 saved_libs="$LIBS"
@@ -243,7 +339,7 @@ LIBS="$saved_libs"
 
 INCLUDES="$ac_build_addl_includes"
 LIBDIRS="$ac_build_addl_libdirs"
-MODULE_LIBS="$ac_dns_libs"
+MODULE_LIBS="$MODULE_LIBS $ac_dns_libs"
 
 AC_SUBST(INCLUDES)
 AC_SUBST(LDFLAGS)

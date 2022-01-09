@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2016-2021 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2016-2022 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -535,7 +535,7 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
  * its CA certs as a test resource, and configure it here.
  */
 
-  res = proxy_tls_sess_init(p, PROXY_DB_OPEN_FL_SKIP_VACUUM);
+  res = proxy_tls_sess_init(p, proxy_sess, PROXY_DB_OPEN_FL_SKIP_VACUUM);
   fail_unless(res == 0, "Failed to init TLS API session resources: %s",
     strerror(errno));
 

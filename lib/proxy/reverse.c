@@ -781,16 +781,27 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
   proxy_sess->dst_pconn = pconn;
   proxy_sess->other_addrs = other_addrs;
 
-  if (proxy_tls_using_tls() == PROXY_TLS_ENGINE_MATCH_CLIENT) {
-    proxy_tls_match_client_tls();
-  }
+  /* Carefully handle FTP-isms here; we may be proxying SSH instead.
+   *
+   * NOTE: All of these FTP-specific cases should be refactored into the
+   * the FTP client API, e.g. proxy_ftp_ctrl_on_connect().
+   *
+   * NOTE: Should we consider using the SSH client API to do the version
+   * exchange there?
+   */
 
-  uri_tls = proxy_conn_get_tls(pconn);
-  if (uri_tls == PROXY_TLS_ENGINE_IMPLICIT) {
-    pr_trace_msg(trace_channel, 9, "%s#%u requesting, using implicit FTPS",
-      pr_netaddr_get_ipstr(dst_addr),
-      (unsigned int) ntohs(pr_netaddr_get_port(dst_addr)));
-    proxy_tls_set_tls(uri_tls);
+  if (proxy_sess->use_ftp == TRUE) {
+    if (proxy_tls_using_tls() == PROXY_TLS_ENGINE_MATCH_CLIENT) {
+      proxy_tls_match_client_tls();
+    }
+
+    uri_tls = proxy_conn_get_tls(pconn);
+    if (uri_tls == PROXY_TLS_ENGINE_IMPLICIT) {
+      pr_trace_msg(trace_channel, 9, "%s#%u requesting, using implicit FTPS",
+        pr_netaddr_get_ipstr(dst_addr),
+        (unsigned int) ntohs(pr_netaddr_get_port(dst_addr)));
+      proxy_tls_set_tls(uri_tls);
+    }
   }
 
   pr_gettimeofday_millis(&connecting_ms);
@@ -871,52 +882,58 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
   proxy_sess->frontend_ctrl_conn = session.c;
   proxy_sess->backend_ctrl_conn = server_conn;
 
-  use_tls = proxy_tls_using_tls();
+  if (proxy_sess->use_ftp == TRUE) {
+    use_tls = proxy_tls_using_tls();
 
-  /* Handle implicit FTPS connects. */
-  if (use_tls == PROXY_TLS_ENGINE_IMPLICIT) {
-    if (reverse_tls_postopen(p, proxy_sess, server_conn) < 0) {
-      return -1;
+    /* Handle implicit FTPS connects. */
+    if (use_tls == PROXY_TLS_ENGINE_IMPLICIT) {
+      if (reverse_tls_postopen(p, proxy_sess, server_conn) < 0) {
+        return -1;
+      }
     }
-  }
 
-  /* XXX Support/send a CLNT command of our own?  Configurable via e.g.
-   * "UserAgent" string?
-   */
+    /* XXX Support/send a CLNT command of our own?  Configurable via e.g.
+     * "UserAgent" string?
+     */
 
-  resp = proxy_ftp_ctrl_recv_resp(p, server_conn, &resp_nlines, 0);
-  if (resp == NULL) {
-    xerrno = errno;
+    resp = proxy_ftp_ctrl_recv_resp(p, server_conn, &resp_nlines, 0);
+    if (resp == NULL) {
+      xerrno = errno;
 
-    pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to read banner from server %s:%u: %s",
-      pr_netaddr_get_ipstr(server_conn->remote_addr),
-      ntohs(pr_netaddr_get_port(server_conn->remote_addr)), strerror(xerrno));
+      pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to read banner from server %s:%u: %s",
+        pr_netaddr_get_ipstr(server_conn->remote_addr),
+        ntohs(pr_netaddr_get_port(server_conn->remote_addr)), strerror(xerrno));
 
-    errno = xerrno;
-    return -1;
+      errno = xerrno;
+      return -1;
+
+    } else {
+      int banner_ok = TRUE;
+
+      pr_gettimeofday_millis(&connected_ms);
+
+      if (resp->num[0] != '2') {
+        banner_ok = FALSE;
+      }
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "received banner from backend %s:%u%s: %s %s",
+        pr_netaddr_get_ipstr(server_conn->remote_addr),
+        ntohs(pr_netaddr_get_port(server_conn->remote_addr)),
+        banner_ok ? "" : ", DISCONNECTING", resp->num, resp->msg);
+
+      if (banner_ok == FALSE) {
+        pr_inet_close(p, server_conn);
+        proxy_sess->backend_ctrl_conn = NULL;
+        errno = EPERM;
+        return -1;
+      }
+    }
 
   } else {
-    int banner_ok = TRUE;
-
     pr_gettimeofday_millis(&connected_ms);
-
-    if (resp->num[0] != '2') {
-      banner_ok = FALSE;
-    }
-
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "received banner from backend %s:%u%s: %s %s",
-      pr_netaddr_get_ipstr(server_conn->remote_addr),
-      ntohs(pr_netaddr_get_port(server_conn->remote_addr)),
-      banner_ok ? "" : ", DISCONNECTING", resp->num, resp->msg);
-
-    if (banner_ok == FALSE) {
-      pr_inet_close(p, server_conn);
-      proxy_sess->backend_ctrl_conn = NULL;
-      errno = EPERM;
-      return -1;
-    }
+    use_tls = PROXY_TLS_ENGINE_OFF;
   }
 
   pr_trace_msg(trace_channel, 8,
@@ -931,64 +948,67 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
       strerror(errno));
   }
 
-  /* Get the features supported by the backend server. */
-  if (proxy_ftp_sess_get_feat(p, proxy_sess) < 0) {
-    if (errno != EPERM) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "unable to determine features of backend server: %s", strerror(errno));
-    }
-  }
-
-  pr_response_block(TRUE);
-
-  if (use_tls != PROXY_TLS_ENGINE_OFF &&
-      use_tls != PROXY_TLS_ENGINE_IMPLICIT) {
-    if (proxy_ftp_sess_send_auth_tls(p, proxy_sess) < 0 &&
-        errno != ENOSYS) {
-      xerrno = errno;
-
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error enabling TLS on control connection to backend server: %s",
-        strerror(xerrno));
-      pr_inet_close(p, server_conn);
-      proxy_sess->backend_ctrl_conn = NULL;
-
-      pr_response_block(FALSE);
-      errno = xerrno;
-      return -1;
+  if (proxy_sess->use_ftp == TRUE) {
+    /* Get the features supported by the backend server. */
+    if (proxy_ftp_sess_get_feat(p, proxy_sess) < 0) {
+      if (errno != EPERM) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "unable to determine features of backend server: %s",
+          strerror(errno));
+      }
     }
 
-    use_tls = proxy_tls_using_tls();
-  }
-
-  if (use_tls != PROXY_TLS_ENGINE_OFF &&
-      use_tls != PROXY_TLS_ENGINE_IMPLICIT) {
-    if (reverse_tls_postopen(p, proxy_sess, server_conn) < 0) {
-      return -1;
-    }
-  }
-
-  if (use_tls != PROXY_TLS_ENGINE_OFF) {
-    if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_HAS_CTRL_TLS) {
-      /* NOTE: should this be a fatal error? */
-      (void) proxy_ftp_sess_send_pbsz_prot(p, proxy_sess);
-    }
-  }
-
-  if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_SESS_INIT) {
-    pr_response_block(FALSE);
-  }
-
-  if (proxy_ftp_ctrl_send_resp(p, session.c, resp, resp_nlines) < 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "unable to send banner to client: %s", strerror(errno));
-  }
-
-  if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_SESS_INIT) {
     pr_response_block(TRUE);
-  }
 
-  (void) proxy_ftp_sess_send_host(p, proxy_sess);
+    if (use_tls != PROXY_TLS_ENGINE_OFF &&
+        use_tls != PROXY_TLS_ENGINE_IMPLICIT) {
+      if (proxy_ftp_sess_send_auth_tls(p, proxy_sess) < 0 &&
+          errno != ENOSYS) {
+        xerrno = errno;
+
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error enabling TLS on control connection to backend server: %s",
+          strerror(xerrno));
+        pr_inet_close(p, server_conn);
+        proxy_sess->backend_ctrl_conn = NULL;
+
+        pr_response_block(FALSE);
+        errno = xerrno;
+        return -1;
+      }
+
+      use_tls = proxy_tls_using_tls();
+    }
+
+    if (use_tls != PROXY_TLS_ENGINE_OFF &&
+        use_tls != PROXY_TLS_ENGINE_IMPLICIT) {
+      if (reverse_tls_postopen(p, proxy_sess, server_conn) < 0) {
+        return -1;
+      }
+    }
+
+    if (use_tls != PROXY_TLS_ENGINE_OFF) {
+      if (proxy_sess_state & PROXY_SESS_STATE_BACKEND_HAS_CTRL_TLS) {
+        /* NOTE: should this be a fatal error? */
+        (void) proxy_ftp_sess_send_pbsz_prot(p, proxy_sess);
+      }
+    }
+
+    if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_SESS_INIT) {
+      pr_response_block(FALSE);
+    }
+
+    if (proxy_ftp_ctrl_send_resp(p, session.c, resp, resp_nlines) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to send banner to client: %s", strerror(errno));
+    }
+
+    if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_SESS_INIT) {
+      pr_response_block(TRUE);
+    }
+
+    (void) proxy_ftp_sess_send_host(p, proxy_sess);
+  }
 
   /* Populate the session notes about this connection. */
   memset(port_text, '\0', sizeof(port_text));
@@ -1540,7 +1560,11 @@ array_header *proxy_reverse_json_parse_uris(pool *p, const char *path,
   return uris;
 }
 
-int proxy_reverse_connect_get_policy(const char *policy) {
+int proxy_reverse_get_connect_policy(void) {
+  return reverse_connect_policy;
+}
+
+int proxy_reverse_connect_get_policy_id(const char *policy) {
   if (policy == NULL) {
     errno = EINVAL;
     return -1;
@@ -1848,7 +1872,7 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
         return -1;
       }
 
-      if (session.auth_mech) {
+      if (session.auth_mech != NULL) {
         pr_log_debug(DEBUG2, "user '%s' authenticated by %s", user,
           session.auth_mech);
       }

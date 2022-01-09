@@ -127,6 +127,7 @@ sub get_redis_config {
     RedisEngine => 'on',
     RedisLog => $log_file,
     RedisServer => "$redis_server:6379",
+    RedisTimeouts => '2000 500',
   };
 
   return $config;

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS Database implementation
- * Copyright (c) 2017-2020 TJ Saunders
+ * Copyright (c) 2017-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -102,7 +102,7 @@ static int tls_db_add_sess(pool *p, void *dbh, const char *key,
 
   vhost_id = main_server->sid;
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     xerrno = errno;
 
@@ -112,7 +112,7 @@ static int tls_db_add_sess(pool *p, void *dbh, const char *key,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) key);
+    (void *) key, -1);
   if (res < 0) {
     xerrno = errno;
 
@@ -122,7 +122,7 @@ static int tls_db_add_sess(pool *p, void *dbh, const char *key,
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 3, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) data);
+    (void *) data, -1);
   if (res < 0) {
     xerrno = errno;
 
@@ -160,13 +160,13 @@ static int tls_db_remove_sess(pool *p, void *dbh, const char *key) {
 
   vhost_id = main_server->sid;
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return -1;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) key);
+    (void *) key, -1);
   if (res < 0) {
     return -1;
   }
@@ -199,13 +199,13 @@ static SSL_SESSION *tls_db_get_sess(pool *p, void *dbh, const char *key) {
 
   vhost_id = main_server->sid;
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &vhost_id);
+    (void *) &vhost_id, 0);
   if (res < 0) {
     return NULL;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) key);
+    (void *) key, -1);
   if (res < 0) {
     return NULL;
   }
@@ -350,13 +350,13 @@ static int tls_db_add_vhost(pool *p, void *dbh, server_rec *s) {
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 1, PROXY_DB_BIND_TYPE_INT,
-    (void *) &(s->sid));
+    (void *) &(s->sid), 0);
   if (res < 0) {
     return -1;
   }
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 2, PROXY_DB_BIND_TYPE_TEXT,
-    (void *) s->ServerName);
+    (void *) s->ServerName, -1);
   if (res < 0) {
     return -1;
   }

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy database API
- * Copyright (c) 2015-2017 TJ Saunders
+ * Copyright (c) 2015-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -55,11 +55,12 @@ int proxy_db_close(pool *p, struct proxy_dbh *dbh);
 int proxy_db_prepare_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt);
 int proxy_db_finish_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt);
 int proxy_db_bind_stmt(pool *p, struct proxy_dbh *dbh, const char *stmt,
-  int idx, int type, void *data);
+  int idx, int type, void *data, int datalen);
 #define PROXY_DB_BIND_TYPE_INT		1
 #define PROXY_DB_BIND_TYPE_LONG		2
 #define PROXY_DB_BIND_TYPE_TEXT		3
-#define PROXY_DB_BIND_TYPE_NULL		4
+#define PROXY_DB_BIND_TYPE_BLOB		4
+#define PROXY_DB_BIND_TYPE_NULL		5
 
 /* Executes the given statement.  Assumes that the caller is not using a SELECT,
  * and/or is uninterested in the statement results.

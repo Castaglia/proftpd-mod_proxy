@@ -911,64 +911,64 @@ START_TEST (reverse_json_parse_uris_usable_test) {
 }
 END_TEST
 
-START_TEST (reverse_connect_get_policy_test) {
+START_TEST (reverse_connect_get_policy_id_test) {
   int res;
   const char *policy;
 
-  res = proxy_reverse_connect_get_policy(NULL);
+  res = proxy_reverse_connect_get_policy_id(NULL);
   fail_unless(res < 0, "Failed to handle null argument");
   fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   policy = "foo";
-  res = proxy_reverse_connect_get_policy(policy);
+  res = proxy_reverse_connect_get_policy_id(policy);
   fail_unless(res < 0, "Failed to handle unsupported policy '%s'", policy);
   fail_unless(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
     strerror(errno), errno);
 
   policy = "random2";
-  res = proxy_reverse_connect_get_policy(policy);
+  res = proxy_reverse_connect_get_policy_id(policy);
   fail_unless(res < 0, "Failed to handle unsupported policy '%s'", policy);
   fail_unless(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
     strerror(errno), errno);
 
   policy = "random";
-  res = proxy_reverse_connect_get_policy(policy);
+  res = proxy_reverse_connect_get_policy_id(policy);
   fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_RANDOM,
     "Failed to handle supported policy '%s'", policy);
 
   policy = "roundrobin";
-  res = proxy_reverse_connect_get_policy(policy);
+  res = proxy_reverse_connect_get_policy_id(policy);
   fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN,
     "Failed to handle supported policy '%s'", policy);
 
   policy = "shuffle";
-  res = proxy_reverse_connect_get_policy(policy);
+  res = proxy_reverse_connect_get_policy_id(policy);
   fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_SHUFFLE,
     "Failed to handle supported policy '%s'", policy);
 
   policy = "leastconns";
-  res = proxy_reverse_connect_get_policy(policy);
+  res = proxy_reverse_connect_get_policy_id(policy);
   fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS,
     "Failed to handle supported policy '%s'", policy);
 
   policy = "peruser";
-  res = proxy_reverse_connect_get_policy(policy);
+  res = proxy_reverse_connect_get_policy_id(policy);
   fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_PER_USER,
     "Failed to handle supported policy '%s'", policy);
 
   policy = "pergroup";
-  res = proxy_reverse_connect_get_policy(policy);
+  res = proxy_reverse_connect_get_policy_id(policy);
   fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_PER_GROUP,
     "Failed to handle supported policy '%s'", policy);
 
   policy = "perhost";
-  res = proxy_reverse_connect_get_policy(policy);
+  res = proxy_reverse_connect_get_policy_id(policy);
   fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_PER_HOST,
     "Failed to handle supported policy '%s'", policy);
 
   policy = "leastresponsetime";
-  res = proxy_reverse_connect_get_policy(policy);
+  res = proxy_reverse_connect_get_policy_id(policy);
   fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME,
     "Failed to handle supported policy '%s'", policy);
 }
@@ -1035,7 +1035,7 @@ Suite *tests_get_reverse_suite(void) {
   tcase_add_test(testcase, reverse_json_parse_uris_empty_test);
   tcase_add_test(testcase, reverse_json_parse_uris_malformed_test);
   tcase_add_test(testcase, reverse_json_parse_uris_usable_test);
-  tcase_add_test(testcase, reverse_connect_get_policy_test);
+  tcase_add_test(testcase, reverse_connect_get_policy_id_test);
   tcase_add_test(testcase, reverse_use_proxy_auth_test);
   tcase_add_test(testcase, reverse_have_authenticated_test);
 

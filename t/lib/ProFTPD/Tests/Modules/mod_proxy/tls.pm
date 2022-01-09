@@ -1791,7 +1791,7 @@ EOC
       sleep(2);
 
       for (my $i = 0; $i < 3; $i++) {
-        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, undef, 1);
+        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, undef, 2);
         $client->login($user, $passwd);
         $client->list();
         $client->quit();

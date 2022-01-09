@@ -61,6 +61,16 @@ servers.
   <li><a href="#ProxyReverseServers">ProxyReverseServers</a>
   <li><a href="#ProxyRetryCount">ProxyRetryCount</a>
   <li><a href="#ProxyRole">ProxyRole</a>
+  <li><a href="#ProxySFTPCiphers">ProxySFTPCiphers</a>
+  <li><a href="#ProxySFTPCompression">ProxySFTPCompression</a>
+  <li><a href="#ProxySFTPDigests">ProxySFTPDigests</a>
+  <li><a href="#ProxySFTPHostKey">ProxySFTPHostKey</a>
+  <li><a href="#ProxySFTPKeyExchanges">ProxySFTPKeyExchanges</a>
+  <li><a href="#ProxySFTPOptions">ProxySFTPOptions</a>
+  <li><a href="#ProxySFTPPassPhraseProvider">ProxySFTPPassPhraseProvider</a>
+  <li><a href="#ProxySFTPServerAlive">ProxySFTPServerAlive</a>
+  <li><a href="#ProxySFTPServerMatch">ProxySFTPServerMatch</a>
+  <li><a href="#ProxySFTPVerifyServer">ProxySFTPVerifyServer</a>
   <li><a href="#ProxySourceAddress">ProxySourceAddress</a>
   <li><a href="#ProxyTables">ProxyTables</a>
   <li><a href="#ProxyTimeoutConnect">ProxyTimeoutConnect</a>
@@ -795,6 +805,388 @@ are thus:
 <b>Note</b> that the <code>ProxyRole</code> directive is <b>required</b>
 for <code>mod_proxy</code> to function.  If this directive is not configured,
 connections to <code>mod_proxy</code> will fail.
+
+<p>
+<hr>
+<h3><a name="ProxySFTPCiphers">ProxySFTPCiphers</a></h3>
+<strong>Syntax:</strong> ProxySFTPCiphers <em>algo1 ...</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.8rc3 and later
+
+<p>
+The <code>ProxySFTPCiphers</code> directive is used to specify the list of
+cipher algorithms that <code>mod_proxy</code> should use when connecting to
+backend SSH servers.  The current list of supported cipher algorithms is, in
+the default order of preference:
+<ul>
+  <li>aes256-ctr
+  <li>aes192-ctr
+  <li>aes128-ctr
+  <li>aes256-cbc
+  <li>aes192-cbc
+  <li>aes128-cbc
+  <li>cast128-cbc
+  <li>3des-ctr
+  <li>3des-cbc
+</ul>
+By default, all of the above cipher algorithms are presented to the server,
+in the above order, during the key exchange.
+
+<p>
+The "none" cipher (<i>i.e.</i> no encryption) will <b>not</b> be presented to
+the server by default; any sites which wish to use "none" will have to
+explicitly configure it via <code>ProxySFTPCiphers</code>.
+
+<p>
+Note that CTR mode ciphers (<i>e.g.</i> the <code>aes128-ctr</code>,
+<code>aes192-ctr</code>, and <code>aes256-ctr</code> ciphers) are recommended.
+Any CBC mode cipher allows for the possibility of an attack which causes
+several bits of plaintext to be leaked; the attack is described
+<a href="http://www.cpni.gov.uk/Docs/Vulnerability_Advisory_SSH.txt">here</a>.
+This attack is on the SSH2 protocol design itself; any SSH2 implementation
+which conforms to the RFCs will have this weakness.
+
+<p>
+In general, there is no need to use this directive unless only one specific
+cipher must be used.
+
+<p>
+<hr>
+<h3><a name="ProxySFTPCompression">ProxySFTPCompression</a></h3>
+<strong>Syntax:</strong> ProxySFTPCompression <em>on|off|delayed</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.8rc3 and later
+
+<p>
+The <code>ProxySFTPCompression</code> directive enables the use of zlib
+compression of the payload of SSH2 packets.  This can make for smaller packets,
+but require more CPU time to compress/uncompress the data.
+
+<p>
+The <em>delayed</em> parameter tells <code>mod_proxy</code> to support a custom
+extension used by OpenSSH, where compression is not actually enabled until
+after the client has successfully authenticated.
+
+<p>
+<hr>
+<h3><a name="ProxySFTPDigests">ProxySFTPDigests</a></h3>
+<strong>Syntax:</strong> ProxySFTPDigests <em>algo1 ...</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.8rc3 and later
+
+<p>
+The <code>ProxySFTPDigests</code> directive is used to specify the list of
+MAC digest algorithms that <code>mod_proxy</code> should use when connecting to
+backend SSH servers.  The current list of supported MAC algorithms is:
+<ul>
+  <li>hmac-sha2-256
+  <li>hmac-sha2-512
+  <li>hmac-sha1
+  <li>hmac-sha1-96
+</ul>
+By default, all of the above MAC algorithms are presented to the server,
+in the above order, during the key exchange.  <b>Note</b> that some algorithms
+(<i>e.g.</i> the SHA256 and SHA512 algorithms) may not be supported by
+the version of OpenSSL used; this will be automatically detected.
+
+<p>
+The following list of algorithms are <em>supported</em>, but <b>not</b>
+presented to servers by default.  These algorithms must be <em>explicitly</em>
+configured via <code>ProxySFTPDigests</code> to be available for use by servers:
+<ul>
+  <li>hmac-md5
+  <li>hmac-md5-96
+  <li>hmac-ripemd160
+</ul>
+
+<p>
+The "none" MAC (<i>i.e.</i> no MAC) will <b>not</b> be presented to the server
+by default; any sites which wish to use "none" will have to explicitly
+configure it via <code>ProxySFTPDigests</code>.
+
+<p>
+In general, there is no need to use this directive unless only one specific
+MAC algorithm must be used.
+
+<p>
+<hr>
+<h3><a name="ProxySFTPHostKey">ProxySFTPHostKey</a></h3>
+<strong>Syntax:</strong> ProxySFTPHostKey <em>file</em>|agent:<em>/path</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.8rc3 and later
+
+<p>
+The <code>ProxySFTPHostKey</code> directive configures the path to a host key
+file.  The <code>mod_proxy</code> module uses the keys thus configured for
+&quot;hostbased&quot; user authentication to backend SSH servers.
+
+<p>
+You can use either an RSA key, a DSA key, and/or ECDSA keys.  These <i>could</i>
+be the exact same host key files as used by your SSH server, <i>e.g.</i>:
+<pre>
+  <IfModule mod_sftp.c>
+    ...
+    SFTPHostKey /etc/ssh_host_dsa_key
+    SFTPHostKey /etc/ssh_host_rsa_key
+    SFTPHostKey /etc/ssh_host_ecdsa_key
+    SFTPHostKey /etc/ssh_host_ed25519_key
+  </IfModule>
+
+  <IfModule mod_proxy.c>
+    ProxyEngine on
+    ..
+    ProxySFTPHostKey /etc/ssh_host_dsa_key
+    ProxySFTPHostKey /etc/ssh_host_rsa_key
+    ProxySFTPHostKey /etc/ssh_host_ecdsa_key
+    ProxySFTPHostKey /etc/ssh_host_ed25519_key
+  </IfModule>
+</pre>
+
+<p>
+The <code>ProxySFTPHostKey</code> directive can also be used to load host keys
+from an SSH agent such as OpenSSH's <code>ssh-agent</code>.  For example:
+<pre>
+  # Load all of the keys from the ssh-agent configured for proxy use
+  ProxySFTPHostKey agent:%{env:SSH_AUTH_SOCK}
+</pre>
+Using an SSH agent for storing host keys allows for configurations where
+the host keys are not stored on files on the server system, <i>e.g.</i>
+the keys can be loaded into the SSH agent from a PKCS#11 token.
+
+<p>
+<hr>
+<h3><a name="ProxySFTPKeyExchanges">ProxySFTPKeyExchanges</a></h3>
+<strong>Syntax:</strong> ProxySFTPKeyExchanges <em>algo1 ...</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.8rc3 and later
+
+<p>
+The <code>ProxySFTPKeyExchanges</code> directive is used to specify the list of
+key exchange algorithms that <code>mod_proxy</code> should use when connecting
+to backend SSH servers.  The current list of supported key exchange algorithms
+is:
+<ul>
+  <li>curve25519-sha256@libssh.org
+  <li>ecdh-sha2-nistp521
+  <li>ecdh-sha2-nistp384
+  <li>ecdh-sha2-nistp256
+  <li>diffie-hellman-group18-sha512
+  <li>diffie-hellman-group16-sha512
+  <li>diffie-hellman-group14-sha256
+  <li>diffie-hellman-group-exchange-sha256
+  <li>diffie-hellman-group-exchange-sha1
+  <li>diffie-hellman-group14-sha1
+  <li>diffie-hellman-group1-sha1
+  <li>rsa1024-sha1
+</ul>
+By default, all of the above key exchange algorithms <i>except
+<code>diffie-hellman-group1-sha1</code></i> are presented to the server, in
+the above order, during the key exchange.
+
+<p>
+<b>Note</b> that the <code>diffie-hellman-group1-sha1</code> key exchange
+algorithm uses a weak hardcoded Diffie-Hellman group, and thus is <b>not</b>
+enabled by default.  To enable this key exchange algorithm, you must
+configure the <code>ProxySFTPKeyExchanges</code> list to <b>explicitly</b>
+include this algorithm, <i>or</i> use the following in your configuration:
+<pre>
+  ProxySFTPOptions AllowWeakDH
+</pre>
+
+<p>
+In general, there is no need to use this directive unless only one specific
+key exchange algorithm must be used.
+
+<p>
+<hr>
+<h3><a name="ProxySFTPOptions">ProxySFTPOptions</a></h3>
+<strong>Syntax:</strong> ProxySFTPOptions <em>opt1 ...</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.8rc3 and later
+
+<p>
+The <code>ProxySFTPOptions</code> directive is used to configure various
+optional SSH-specific behavior of <code>mod_proxy</code>.
+
+<p>
+For example:
+<pre>
+  ProxySFTPOptions AllowWeakDH
+</pre>
+
+<p>
+The currently implemented options are:
+<ul>
+  <p>
+  <li><code>AllowWeakDH</code><br>
+    <p>
+    The <code>mod_proxy</code> module will not use Diffie-Hellman groups of less
+    than 2048 bits, due to <a href="https://www.weakdh.org">weaknesses</a>
+    that can downgrade the security of an SSH session.  If for any reason
+    your SFTP/SCP servers <b>require</b> smaller Diffie-Hellman groups, then
+    use this option.
+  </li>
+
+  <p>
+  <li><code>NoExtensionNegotiation</code><br>
+    <p>
+    By default, <code>mod_proxy</code> will offer/support the SSH extension
+    negotiation, defined by
+    <a href="https://tools.ietf.org/html/rfc8308">RFC 8308</a>.  Use this
+    option to disable support for extension negotiations.
+  </li>
+
+  <p>
+  <li><code>NoHostkeyRotation</code><br>
+    <p>
+    By default, <code>mod_proxy</code> will offer/support the OpenSSH
+    hostkey rotation extensions, "hostkeys-00@openssh.com" and
+    "hostkeys-prove-00@openssh.com".  Use this option to disable support for
+    these custom OpenSSH extensions.
+  </li>
+
+  <p>
+  <li><code>OldProtocolCompat</code><br>
+    <p>
+    Older servers identity their protocol versions as "1.99", rather than as
+    "2.0".  By default, <code>mod_proxy</code> will refuse to handle connections
+    to such servers.  To enable compatibility with these servers (which
+    tend to be derived from ssh.com/Tectia code), use this option.
+
+    <p>
+    Note that this option automatically enables the
+    <code>PessimisticKexinit</code> ProxySFTPOption as well.
+  </li>
+
+  <p>
+  <li><code>PessimisticKexinit</code><br>
+    <p>
+    As described <a href="http://www.proftpd.org/docs/contrib/mod_sftp.html#SFTPTelnetBanner">here</a>, the <code>mod_proxy</code>
+    module tries to reduce the connection latency by optimistically sending
+    the <code>KEXINIT</code> key exchange message.  However, some SSH servers
+    cannot handle this behavior.  Use this option to disable the optimistic
+    sending of the <code>KEXINIT</code> message.
+  </li>
+</ul>
+
+<p>
+<hr>
+<h3><a name="ProxySFTPPassPhraseProvider">ProxySFTPPassPhraseProvider</a></h3>
+<strong>Syntax:</strong> ProxySFTPPassPhraseProvider <em>path</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.8rc3 and later
+
+<p>
+The <code>ProxySFTPPassPhraseProvider</code> directive is used to specify an
+external program which will be called, when <code>mod_proxy</code> starts up,
+for each encrypted <code>ProxySFTPHostKey</code> file.  The program will be
+invoked with two command-line arguments, passed on <code>stdin</code> to the
+program:
+<pre>
+  <em>servername</em>:<em>portnumber</em> <em>file</em>
+</pre>
+where <code><em>servername</em>:<em>portnumber</em></code> indicates the
+server using that encrypted certificate key, and <em>file</em> indicates the
+host key file in question. The program then must print the corresponding
+passphrase for the key to <code>stdout</code>.
+
+<p>
+The intent is that this external program can perform any security checks
+necessary, to make sure that the system is not compromised by an attacker,
+and only when these checks pass successfully will the passphrase be provided.
+These security checks, and the way the passphrase is determined, can be as
+complex as you like.
+
+<p>
+Example:
+<pre>
+  ProxySFTPPassPhraseProvider /etc/ftpd/proxy/get-ssh-passphrase
+</pre>
+
+<p>
+<hr>
+<h3><a name="ProxySFTPServerAlive">ProxySFTPServerAlive</a></h3>
+<strong>Syntax:</strong> ProxySFTPServerAlive <em>count interval</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.8rc3 and later
+
+<p>
+The <code>ProxySFTPServerAlive</code> directive configures
+<code>mod_proxy</code> to send messages to a server, through the encrypted
+channel, to request a response from the server.  If <em>count</em> server alive
+messages are sent without receiving any response messages from the server, the
+client will disconnect.  The <em>interval</em> indicates how much time, in
+seconds, that <code>mod_proxy</code> waits for data from the server before
+sending a server alive message.
+
+<p>
+For example, using:
+<pre>
+  ProxySFTPServerAlive 3 15
+</pre>
+will cause an unresponsive server to be disconnected after approximately 45
+seconds.
+
+<p>
+<hr>
+<h3><a name="ProxySFTPServerMatch">ProxySFTPServerMatch</a></h3>
+<strong>Syntax:</strong> ProxySFTPServerMatch <em>pattern key1 val1 ...</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.8rc3 and later
+
+<p>
+The <code>ProxySFTPServerMatch</code> directive is used to tune some of the
+SSH2/SFTP values based on the connected server, for better interoperability
+with those servers.  The <em>pattern</em> parameter specifies a POSIX regular
+expression which will be matched against the connected server's SSH version
+banner.  If the server's banner version matches <em>pattern</em>, then
+the configured keys/values are used for that session.
+
+<p>
+The currently supported SSH2/SFTP keys which can be tuned via
+<code>ProxySFTPServerMatch</code> are:
+<ul>
+  <li>pessimisticNewkeys<br>
+</ul>
+
+<p>
+<hr>
+<h3><a name="ProxySFTPVerifyServer">ProxySFTPVerifyServer</a></h3>
+<strong>Syntax:</strong> ProxySFTPVerifyServer <em>on|off</em><br>
+<strong>Default:</strong> ProxySFTPVerifyServer off<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.8rc3 and later
+
+<p>
+The <code>ProxySFTPVerifyServer</code> directive tells <code>mod_proxy</code>
+whether to verify whether the host keys presented by backend SSH servers have
+changed.
+
+<p>
+When <code>mod_proxy</code> connects to a backend SSH server for the very first
+time, its hostkey will be recorded.  The next time <code>mod_proxy</code>
+connects, the hostkey presented will be compared to the previously recorded
+hostkey.  When <code>ProxySFTPVerifyServer</code> is <em>on</em>, any hostkey
+mismatches will be logged.
 
 <p>
 <hr>
@@ -1657,11 +2049,13 @@ purposes, the module also uses <a href="http://www.proftpd.org/docs/howto/Tracin
   <li>proxy
   <li>proxy.conn
   <li>proxy.db
+  <li>proxy.dns
   <li>proxy.forward
   <li>proxy.ftp.conn
   <li>proxy.ftp.ctrl
   <li>proxy.ftp.data
   <li>proxy.ftp.dirlist
+  <li>proxy.ftp.facts
   <li>proxy.ftp.msg
   <li>proxy.ftp.sess
   <li>proxy.ftp.xfer
@@ -1672,6 +2066,21 @@ purposes, the module also uses <a href="http://www.proftpd.org/docs/howto/Tracin
   <li>proxy.reverse.db
   <li>proxy.reverse.redis
   <li>proxy.session
+  <li>proxy.ssh.agent
+  <li>proxy.ssh.auth
+  <li>proxy.ssh.bcrypt
+  <li>proxy.ssh.cipher
+  <li>proxy.ssh.compress
+  <li>proxy.ssh.crypto
+  <li>proxy.ssh.db
+  <li>proxy.ssh.disconnect
+  <li>proxy.ssh.interop
+  <li>proxy.ssh.kex
+  <li>proxy.ssh.keys
+  <li>proxy.ssh.msg
+  <li>proxy.ssh.packet
+  <li>proxy.ssh.service
+  <li>proxy.ssh.utf8
   <li>proxy.tls
   <li>proxy.tls.db
   <li>proxy.tls.redis
@@ -1946,7 +2355,7 @@ these problems disappeared once SQLite was upgraded to a newer version.
 <hr>
 
 <font size=2><b><i>
-&copy; Copyright 2015-2021 TJ Saunders<br>
+&copy; Copyright 2015-2022 TJ Saunders<br>
  All Rights Reserved<br>
 </i></b></font>
 

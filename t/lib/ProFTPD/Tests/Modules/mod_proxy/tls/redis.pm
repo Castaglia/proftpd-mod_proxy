@@ -138,6 +138,7 @@ sub proxy_reverse_backend_tls_login_redis_cached_session {
       'mod_redis.c' => {
         RedisEngine => 'on',
         RedisServer => "$redis_server:6379",
+        RedisTimeouts => '2000 500',
         RedisLog => $log_file,
       },
 
@@ -323,6 +324,7 @@ sub proxy_reverse_backend_tls_login_redis_cached_ticket {
       'mod_redis.c' => {
         RedisEngine => 'on',
         RedisServer => "$redis_server:6379",
+        RedisTimeouts => '2000 500',
         RedisLog => $log_file,
       },
     },

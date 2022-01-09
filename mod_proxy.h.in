@@ -34,6 +34,21 @@
 # include <sys/mman.h>
 #endif
 
+/* Define if you have the <zlib.h> header.  */
+#undef HAVE_ZLIB_H
+
+/* Define if you have OpenSSL with crippled AES support. */
+#undef HAVE_AES_CRIPPLED_OPENSSL
+
+/* Define if you have OpenSSL with EVP_aes_256_ctr support. */
+#undef HAVE_EVP_AES_256_CTR_OPENSSL
+
+/* Define if you have OpenSSL with SHA256 support. */
+#undef HAVE_SHA256_OPENSSL
+
+/* Define if you have OpenSSL with SHA512 support. */
+#undef HAVE_SHA512_OPENSSL
+
 /* Define if you have the sqlite3.h header.  */
 #undef HAVE_SQLITE3_H
 #if !defined(HAVE_SQLITE3_H)
@@ -58,7 +73,7 @@
 /* Define if you have the strnstr(3) function.  */
 #undef HAVE_STRNSTR
 
-#define MOD_PROXY_VERSION	"mod_proxy/0.9"
+#define MOD_PROXY_VERSION	"mod_proxy/0.9.1"
 
 /* Make sure the version of proftpd is as necessary. */
 #if PROFTPD_VERSION_NUMBER < 0x0001030706
@@ -95,8 +110,18 @@ extern size_t proxy_datastore_datasz;
 #define PROXY_SESS_STATE_BACKEND_HAS_CTRL_TLS	0x0008
 #define PROXY_SESS_STATE_BACKEND_HAS_DATA_TLS	0x0010
 
+#define PROXY_SESS_STATE_SSH_HAVE_KEX		0x0020
+#define PROXY_SESS_STATE_SSH_HAVE_SERVICE	0x0040
+#define PROXY_SESS_STATE_SSH_HAVE_AUTH		0x0080
+#define PROXY_SESS_STATE_SSH_REKEYING		0x0100
+#define PROXY_SESS_STATE_SSH_HAVE_EXT_INFO	0x0200
+
 #ifndef PROXY_DEFAULT_RETRY_COUNT
 # define PROXY_DEFAULT_RETRY_COUNT		5 
 #endif
+
+/* mod_proxy SSH roles */
+#define PROXY_SSH_ROLE_SERVER			1
+#define PROXY_SSH_ROLE_CLIENT			2
 
 #endif /* MOD_PROXY_H */

@@ -3748,6 +3748,16 @@ fi
 
 done
 
+ac_fn_c_check_header_mongrel "$LINENO" "zlib.h" "ac_cv_header_zlib_h" "$ac_includes_default"
+if test "x$ac_cv_header_zlib_h" = xyes; then :
+
+$as_echo "#define HAVE_ZLIB_H 1" >>confdefs.h
+
+   MODULE_LIBS="$MODULE_LIBS -lz"
+
+fi
+
+
 for ac_func in random srandom strnstr sysctl sysinfo
 do :
   as_ac_var=`$as_echo "ac_cv_func_$ac_func" | $as_tr_sh`
@@ -3929,6 +3939,170 @@ fi
 rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
 
+# Check for OpenSSL-isms
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether OpenSSL has crippled AES support" >&5
+$as_echo_n "checking whether OpenSSL has crippled AES support... " >&6; }
+LIBS="-lcrypto $LIBS"
+
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+ #ifdef HAVE_STRING_H
+    # include <string.h>
+    #endif
+    #include <openssl/evp.h>
+
+int
+main ()
+{
+
+    EVP_CIPHER *c;
+    c = EVP_aes_192_cbc();
+    c = EVP_aes_256_cbc();
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+    LIBS="$saved_libs"
+
+else
+
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+
+$as_echo "#define HAVE_AES_CRIPPLED_OPENSSL 1" >>confdefs.h
+
+    LIBS="$saved_libs"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether OpenSSL supports SHA256" >&5
+$as_echo_n "checking whether OpenSSL supports SHA256... " >&6; }
+LIBS="-lcrypto $LIBS"
+
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+    #include <openssl/evp.h>
+
+int
+main ()
+{
+
+    const EVP_MD *md;
+    md = EVP_sha256();
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+
+$as_echo "#define HAVE_SHA256_OPENSSL 1" >>confdefs.h
+
+    LIBS="$saved_libs"
+
+else
+
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+    LIBS="$saved_libs"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether OpenSSL supports SHA512" >&5
+$as_echo_n "checking whether OpenSSL supports SHA512... " >&6; }
+LIBS="-lcrypto $LIBS"
+
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+    #include <openssl/evp.h>
+
+int
+main ()
+{
+
+    const EVP_MD *md;
+    md = EVP_sha512();
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+
+$as_echo "#define HAVE_SHA512_OPENSSL 1" >>confdefs.h
+
+    LIBS="$saved_libs"
+
+else
+
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+    LIBS="$saved_libs"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether OpenSSL supports EVP_aes_256_ctr" >&5
+$as_echo_n "checking whether OpenSSL supports EVP_aes_256_ctr... " >&6; }
+LIBS="-lcrypto $LIBS"
+
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+    #include <openssl/evp.h>
+
+int
+main ()
+{
+
+    EVP_CIPHER *cipher;
+    cipher = EVP_aes_256_ctr();
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+
+$as_echo "#define HAVE_EVP_AES_256_CTR_OPENSSL 1" >>confdefs.h
+
+    LIBS="$saved_libs"
+
+else
+
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+    LIBS="$saved_libs"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+
 # Check for SQLite-isms
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for sqlite3_stmt_readonly" >&5
 $as_echo_n "checking for sqlite3_stmt_readonly... " >&6; }
@@ -4058,7 +4232,7 @@ LIBS="$saved_libs"
 
 INCLUDES="$ac_build_addl_includes"
 LIBDIRS="$ac_build_addl_libdirs"
-MODULE_LIBS="$ac_dns_libs"
+MODULE_LIBS="$MODULE_LIBS $ac_dns_libs"
 
 
 

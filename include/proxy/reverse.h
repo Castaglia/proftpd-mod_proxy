@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse-proxy API
- * Copyright (c) 2012-2020 TJ Saunders
+ * Copyright (c) 2012-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -55,10 +55,13 @@ array_header *proxy_reverse_json_parse_uris(pool *p, const char *path,
 #define PROXY_REVERSE_CONNECT_POLICY_PER_GROUP			7
 #define PROXY_REVERSE_CONNECT_POLICY_PER_HOST			8
 
+/* Returns the configured connect policy ID. */
+int proxy_reverse_get_connect_policy(void);
+
 /* Return the policy ID for the given string, or -1 if the given policy
  * is not recognized/supported.
  */
-int proxy_reverse_connect_get_policy(const char *policy);
+int proxy_reverse_connect_get_policy_id(const char *policy);
 
 /* Returns TRUE if the given policy ID is a "sticky" policy, i.e. one of
  * PerUser, PerGroup, or PerHost.
