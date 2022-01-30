@@ -189,7 +189,7 @@ START_TEST (dns_resolve_type_srv_test) {
 
   /* This particular DNS record may not always be there... */
   if (res < 0 &&
-      errno != NOENT) {
+      errno != ENOENT) {
     fail_unless(res > 0, "Failed to resolve SRV records for '%s': %s", name,
       strerror(errno));
     fail_unless(resp != NULL, "Expected non-null responses");
