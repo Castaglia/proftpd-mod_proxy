@@ -8,7 +8,7 @@ on:
     branches:
       - master
   schedule:
-    - cron: '0 0 * * 0'
+    - cron: '11 1 * * 0'
 
 jobs:
   build:
@@ -23,8 +23,8 @@ jobs:
           - clang
           - gcc
         container:
+          - almalinux:8
           - alpine:3.14
-          - centos:8
           - ubuntu:18.04
 
     container: ${{ matrix.container }}
@@ -73,15 +73,11 @@ jobs:
           gcc --version
           openssl version -a
 
-      - name: Install Centos packages
-        if: ${{ matrix.container == 'centos:8' }}
+      - name: Install RPM packages
+        if: ${{ matrix.container == 'almalinux:8' }}
         run: |
-          # Centos 8 reached EOL on Dec 31 2021
-          sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-Linux-*
-          sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-Linux-*
           # Need to add other repos for e.g. libsodium
           yum install -y dnf-plugins-core epel-release clang gcc make zlib-devel
-          yum config-manager --set-enabled powertools
           # for unit tests
           yum install -y check-devel https://cbs.centos.org/kojifiles/packages/subunit/1.4.0/1.el8/x86_64/subunit-1.4.0-1.el8.x86_64.rpm https://cbs.centos.org/kojifiles/packages/subunit/1.4.0/1.el8/x86_64/subunit-devel-1.4.0-1.el8.x86_64.rpm
           # for Redis support
