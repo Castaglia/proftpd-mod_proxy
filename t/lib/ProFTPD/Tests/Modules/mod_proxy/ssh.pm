@@ -228,9 +228,15 @@ my $TESTS = {
     test_class => [qw(forking mod_sftp reverse)],
   },
 
-# XXX TODO
-#  proxy_reverse_backend_ssh_mac_umac64_openssh
-#  proxy_reverse_backend_ssh_mac_umac128_openssh
+  proxy_reverse_backend_ssh_mac_umac64_openssh => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_mac_umac128_openssh => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
 
   proxy_reverse_backend_ssh_mac_none => {
     order => ++$order,
@@ -1836,6 +1842,28 @@ sub proxy_reverse_backend_ssh_mac_hmac_ripemd160 {
   my $self = shift;
   my $cipher_algo = 'aes256-ctr';
   my $digest_algo = 'hmac-ripemd160';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+  my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
+sub proxy_reverse_backend_ssh_mac_umac64_openssh {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'umac-64@openssh.com';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+  my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
+sub proxy_reverse_backend_ssh_mac_umac128_openssh {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'umac-128@openssh.com';
   my $kex_algo = 'diffie-hellman-group14-sha1';
   my $proxy_sftp_opts = '';
 

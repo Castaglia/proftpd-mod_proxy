@@ -55,6 +55,8 @@ MODULE_OBJS=mod_proxy.o \
   lib/proxy/ssh/packet.o \
   lib/proxy/ssh/service.o \
   lib/proxy/ssh/session.o \
+  lib/proxy/ssh/umac.o \
+  lib/proxy/ssh/umac128.o \
   lib/proxy/ssh/utf8.o
 
 SHARED_MODULE_OBJS=mod_proxy.lo \
@@ -99,7 +101,9 @@ SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/ssh/packet.lo \
   lib/proxy/ssh/service.lo \
   lib/proxy/ssh/session.lo \
-  lib/proxy/ssh/utf8.lo \
+  lib/proxy/ssh/umac.lo \
+  lib/proxy/ssh/umac128.lo \
+  lib/proxy/ssh/utf8.lo
 
 # Necessary redefinitions
 INCLUDES=-I. -I./include -I../.. -I../../include @INCLUDES@

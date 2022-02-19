@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH crypto
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 
 #include "mod_proxy.h"
 #include "proxy/ssh/crypto.h"
+#include "proxy/ssh/umac.h"
 
 #if defined(PR_USE_OPENSSL)
 #include <openssl/aes.h>
@@ -142,6 +143,10 @@ static struct proxy_ssh_digest digests[] = {
 #if !defined(OPENSSL_NO_RIPEMD)
   { "hmac-ripemd160",	"rmd160",	EVP_ripemd160,	0,	FALSE, FALSE },
 #endif /* !OPENSSL_NO_RIPEMD */
+#if OPENSSL_VERSION_NUMBER > 0x000907000L
+  { "umac-64@openssh.com", NULL,        NULL,           8,      TRUE, FALSE },
+  { "umac-128@openssh.com", NULL,       NULL,           16,     TRUE, FALSE },
+#endif /* OpenSSL-0.9.7 or later */
   { "none",		"null",		EVP_md_null,	0,	FALSE, TRUE },
   { NULL, NULL, NULL, 0, FALSE, FALSE }
 };
@@ -715,6 +720,204 @@ static const EVP_CIPHER *get_aes_ctr_cipher(int key_len) {
   return cipher;
 }
 
+static int update_umac64(EVP_MD_CTX *ctx, const void *data, size_t len) {
+  int res;
+  void *md_data;
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
+    !defined(HAVE_LIBRESSL)
+  md_data = EVP_MD_CTX_md_data(ctx);
+#else
+  md_data = ctx->md_data;
+#endif /* prior to OpenSSL-1.1.0 */
+  if (md_data == NULL) {
+    struct umac_ctx *umac;
+    void **ptr;
+
+    umac = proxy_ssh_umac_new((unsigned char *) data);
+    if (umac == NULL) {
+      return 0;
+    }
+
+    ptr = &md_data;
+    *ptr = umac;
+    return 1;
+  }
+
+  res = proxy_ssh_umac_update(md_data, (unsigned char *) data, (long) len);
+  return res;
+}
+
+static int update_umac128(EVP_MD_CTX *ctx, const void *data, size_t len) {
+  int res;
+  void *md_data;
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
+    !defined(HAVE_LIBRESSL)
+  md_data = EVP_MD_CTX_md_data(ctx);
+#else
+  md_data = ctx->md_data;
+#endif /* prior to OpenSSL-1.1.0 */
+
+  if (md_data == NULL) {
+    struct umac_ctx *umac;
+    void **ptr;
+
+    umac = proxy_ssh_umac128_new((unsigned char *) data);
+    if (umac == NULL) {
+      return 0;
+    }
+
+    ptr = &md_data;
+    *ptr = umac;
+    return 1;
+  }
+
+  res = proxy_ssh_umac128_update(md_data, (unsigned char *) data, (long) len);
+  return res;
+}
+
+static int final_umac64(EVP_MD_CTX *ctx, unsigned char *md) {
+  unsigned char nonce[8];
+  int res;
+  void *md_data;
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
+    !defined(HAVE_LIBRESSL)
+  md_data = EVP_MD_CTX_md_data(ctx);
+#else
+  md_data = ctx->md_data;
+#endif /* prior to OpenSSL-1.1.0 */
+
+  res = proxy_ssh_umac_final(md_data, md, nonce);
+  return res;
+}
+
+static int final_umac128(EVP_MD_CTX *ctx, unsigned char *md) {
+  unsigned char nonce[8];
+  int res;
+  void *md_data;
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
+    !defined(HAVE_LIBRESSL)
+  md_data = EVP_MD_CTX_md_data(ctx);
+#else
+  md_data = ctx->md_data;
+#endif /* prior to OpenSSL-1.1.0 */
+
+  res = proxy_ssh_umac128_final(md_data, md, nonce);
+  return res;
+}
+
+static int delete_umac64(EVP_MD_CTX *ctx) {
+  struct umac_ctx *umac;
+  void *md_data, **ptr;
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
+    !defined(HAVE_LIBRESSL)
+  md_data = EVP_MD_CTX_md_data(ctx);
+#else
+  md_data = ctx->md_data;
+#endif /* prior to OpenSSL-1.1.0 */
+
+  umac = md_data;
+  proxy_ssh_umac_delete(umac);
+
+  ptr = &md_data;
+  *ptr = NULL;
+
+  return 1;
+}
+
+static int delete_umac128(EVP_MD_CTX *ctx) {
+  struct umac_ctx *umac;
+  void *md_data, **ptr;
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
+    !defined(HAVE_LIBRESSL)
+  md_data = EVP_MD_CTX_md_data(ctx);
+#else
+  md_data = ctx->md_data;
+#endif /* prior to OpenSSL-1.1.0 */
+
+  umac = md_data;
+  proxy_ssh_umac128_delete(umac);
+
+  ptr = &md_data;
+  *ptr = NULL;
+
+  return 1;
+}
+
+static const EVP_MD *get_umac64_digest(void) {
+  EVP_MD *md;
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
+    !defined(HAVE_LIBRESSL)
+  /* XXX TODO: At some point, we also need to call EVP_MD_meth_free() on
+   * this, to avoid a resource leak.
+   */
+  md = EVP_MD_meth_new(NID_undef, NID_undef);
+  EVP_MD_meth_set_input_blocksize(md, 32);
+  EVP_MD_meth_set_result_size(md, 8);
+  EVP_MD_meth_set_flags(md, 0UL);
+  EVP_MD_meth_set_update(md, update_umac64);
+  EVP_MD_meth_set_final(md, final_umac64);
+  EVP_MD_meth_set_cleanup(md, delete_umac64);
+#else
+  static EVP_MD umac64_digest;
+
+  memset(&umac64_digest, 0, sizeof(EVP_MD));
+  umac64_digest.type = NID_undef;
+  umac64_digest.pkey_type = NID_undef;
+  umac64_digest.md_size = 8;
+  umac64_digest.flags = 0UL;
+  umac64_digest.update = update_umac64;
+  umac64_digest.final = final_umac64;
+  umac64_digest.cleanup = delete_umac64;
+  umac64_digest.block_size = 32;
+
+  md = &umac64_digest;
+#endif /* prior to OpenSSL-1.1.0 */
+
+  return md;
+}
+
+static const EVP_MD *get_umac128_digest(void) {
+  EVP_MD *md;
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
+    !defined(HAVE_LIBRESSL)
+  /* XXX TODO: At some point, we also need to call EVP_MD_meth_free() on
+   * this, to avoid a resource leak.
+   */
+  md = EVP_MD_meth_new(NID_undef, NID_undef);
+  EVP_MD_meth_set_input_blocksize(md, 64);
+  EVP_MD_meth_set_result_size(md, 16);
+  EVP_MD_meth_set_flags(md, 0UL);
+  EVP_MD_meth_set_update(md, update_umac128);
+  EVP_MD_meth_set_final(md, final_umac128);
+  EVP_MD_meth_set_cleanup(md, delete_umac128);
+
+#else
+  static EVP_MD umac128_digest;
+
+  memset(&umac128_digest, 0, sizeof(EVP_MD));
+  umac128_digest.type = NID_undef;
+  umac128_digest.pkey_type = NID_undef;
+  umac128_digest.md_size = 16;
+  umac128_digest.flags = 0UL;
+  umac128_digest.update = update_umac128;
+  umac128_digest.final = final_umac128;
+  umac128_digest.cleanup = delete_umac128;
+  umac128_digest.block_size = 64;
+
+  md = &umac128_digest;
+#endif /* prior to OpenSSL-1.1.0 */
+
+  return md;
+}
+
 const EVP_CIPHER *proxy_ssh_crypto_get_cipher(const char *name, size_t *key_len,
     size_t *discard_len) {
   register unsigned int i;
@@ -792,8 +995,21 @@ const EVP_MD *proxy_ssh_crypto_get_digest(const char *name, uint32_t *mac_len) {
     if (strcmp(digests[i].name, name) == 0) {
       const EVP_MD *digest = NULL;
 
-      digest = digests[i].get_type();
-      if (mac_len) {
+#if OPENSSL_VERSION_NUMBER > 0x000907000L
+      if (strcmp(name, "umac-64@openssh.com") == 0) {
+        digest = get_umac64_digest();
+
+      } else if (strcmp(name, "umac-128@openssh.com") == 0) {
+        digest = get_umac128_digest();
+#else
+      if (FALSE) {
+#endif /* OpenSSL older than 0.9.7 */
+
+      } else {
+        digest = digests[i].get_type();
+      }
+
+      if (mac_len != NULL) {
         *mac_len = digests[i].mac_len;
       }
 
@@ -964,9 +1180,17 @@ const char *proxy_ssh_crypto_get_kexinit_digest_list(pool *p) {
                 pstrdup(p, digests[j].name), NULL);
 
             } else {
-              pr_trace_msg(trace_channel, 3,
-                "unable to use '%s' digest: Unsupported by OpenSSL",
-                digests[j].name);
+              /* The umac-64/umac-128 digests are special cases. */
+              if (strcmp(digests[j].name, "umac-64@openssh.com") == 0 ||
+                  strcmp(digests[j].name, "umac-128@openssh.com") == 0) {
+                res = pstrcat(p, res, *res ? "," : "",
+                  pstrdup(p, digests[j].name), NULL);
+
+              } else {
+                pr_trace_msg(trace_channel, 3,
+                  "unable to use '%s' digest: Unsupported by OpenSSL",
+                  digests[j].name);
+              }
             }
 
           } else {
@@ -1003,9 +1227,17 @@ const char *proxy_ssh_crypto_get_kexinit_digest_list(pool *p) {
               pstrdup(p, digests[i].name), NULL);
 
           } else {
-            pr_trace_msg(trace_channel, 3,
-              "unable to use '%s' digest: Unsupported by OpenSSL",
-              digests[i].name);
+            /* The umac-64/umac-128 digests are special cases. */
+            if (strcmp(digests[i].name, "umac-64@openssh.com") == 0 ||
+                strcmp(digests[i].name, "umac-128@openssh.com") == 0) {
+              res = pstrcat(p, res, *res ? "," : "",
+                pstrdup(p, digests[i].name), NULL);
+
+            } else {
+              pr_trace_msg(trace_channel, 3,
+                "unable to use '%s' digest: Unsupported by OpenSSL",
+                digests[i].name);
+            }
           }
 
         } else {
