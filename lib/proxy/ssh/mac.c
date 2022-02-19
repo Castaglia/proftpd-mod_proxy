@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH MACs
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,6 +28,7 @@
 #include "proxy/ssh/packet.h"
 #include "proxy/ssh/crypto.h"
 #include "proxy/ssh/mac.h"
+#include "proxy/ssh/umac.h"
 #include "proxy/ssh/session.h"
 #include "proxy/ssh/disconnect.h"
 #include "proxy/ssh/interop.h"
@@ -55,6 +56,8 @@ struct proxy_ssh_mac {
 };
 
 #define PROXY_SSH_MAC_ALGO_TYPE_HMAC	1
+#define PROXY_SSH_MAC_ALGO_TYPE_UMAC64	2
+#define PROXY_SSH_MAC_ALGO_TYPE_UMAC128	3
 
 #define PROXY_SSH_MAC_FL_READ_MAC	1
 #define PROXY_SSH_MAC_FL_WRITE_MAC	2
@@ -70,12 +73,14 @@ static struct proxy_ssh_mac read_macs[] = {
   { NULL, NULL, 0, NULL, NULL, 0, 0, 0 }
 };
 static HMAC_CTX *hmac_read_ctxs[2];
+static struct umac_ctx *umac_read_ctxs[2];
 
 static struct proxy_ssh_mac write_macs[] = {
   { NULL, NULL, 0, NULL, NULL, 0, 0, 0 },
   { NULL, NULL, 0, NULL, NULL, 0, 0, 0 }
 };
 static HMAC_CTX *hmac_write_ctxs[2];
+static struct umac_ctx *umac_write_ctxs[2];
 
 static size_t mac_blockszs[2] = { 0, 0 };
 
@@ -113,6 +118,13 @@ static void switch_read_mac(void) {
     HMAC_cleanup(hmac_read_ctxs[read_mac_idx]);
 #endif
 
+    if (read_macs[read_mac_idx].algo_type == PROXY_SSH_MAC_ALGO_TYPE_UMAC64) {
+      proxy_ssh_umac_reset(umac_read_ctxs[read_mac_idx]);
+
+    } else if (read_macs[read_mac_idx].algo_type == PROXY_SSH_MAC_ALGO_TYPE_UMAC128) {
+      proxy_ssh_umac128_reset(umac_read_ctxs[read_mac_idx]);
+    }
+
     mac_blockszs[read_mac_idx] = 0; 
 
     /* Now we can switch the index. */
@@ -138,6 +150,13 @@ static void switch_write_mac(void) {
     HMAC_cleanup(hmac_write_ctxs[write_mac_idx]);
 #endif
 
+    if (write_macs[write_mac_idx].algo_type == PROXY_SSH_MAC_ALGO_TYPE_UMAC64) {
+      proxy_ssh_umac_reset(umac_write_ctxs[write_mac_idx]);
+
+    } else if (write_macs[write_mac_idx].algo_type == PROXY_SSH_MAC_ALGO_TYPE_UMAC128) {
+      proxy_ssh_umac128_reset(umac_write_ctxs[write_mac_idx]);
+    }
+
     /* Now we can switch the index. */
     if (write_mac_idx == 1) {
       write_mac_idx = 0;
@@ -161,7 +180,8 @@ static void clear_mac(struct proxy_ssh_mac *mac) {
   mac->algo = NULL;
 }
 
-static int init_mac(pool *p, struct proxy_ssh_mac *mac, HMAC_CTX *hmac_ctx) {
+static int init_mac(pool *p, struct proxy_ssh_mac *mac, HMAC_CTX *hmac_ctx,
+    struct umac_ctx *umac_ctx) {
   /* Currently unused. */
   (void) p;
 
@@ -197,13 +217,21 @@ static int init_mac(pool *p, struct proxy_ssh_mac *mac, HMAC_CTX *hmac_ctx) {
 #else
     HMAC_Init(hmac_ctx, mac->key, mac->key_len, mac->digest);
 #endif
+
+  } else if (mac->algo_type == PROXY_SSH_MAC_ALGO_TYPE_UMAC64) {
+    proxy_ssh_umac_reset(umac_ctx);
+    proxy_ssh_umac_init(umac_ctx, mac->key);
+
+  } else if (mac->algo_type == PROXY_SSH_MAC_ALGO_TYPE_UMAC128) {
+    proxy_ssh_umac128_reset(umac_ctx);
+    proxy_ssh_umac128_init(umac_ctx, mac->key);
   }
 
   return 0;
 }
 
 static int get_mac(struct proxy_ssh_packet *pkt, struct proxy_ssh_mac *mac,
-    HMAC_CTX *hmac_ctx, int flags) {
+    HMAC_CTX *hmac_ctx, struct umac_ctx *umac_ctx, int flags) {
   unsigned char *mac_data;
   unsigned char *buf, *ptr;
   uint32_t buflen, bufsz = 0, mac_len = 0, len = 0;
@@ -259,6 +287,42 @@ static int get_mac(struct proxy_ssh_packet *pkt, struct proxy_ssh_mac *mac,
     HMAC_Update(hmac_ctx, ptr, len);
     HMAC_Final(hmac_ctx, mac_data, &mac_len);
 #endif /* OpenSSL-1.0.0 and later */
+
+  } else if (mac->algo_type == PROXY_SSH_MAC_ALGO_TYPE_UMAC64 ||
+             mac->algo_type == PROXY_SSH_MAC_ALGO_TYPE_UMAC128) {
+    unsigned char nonce[8], *nonce_ptr;
+    uint32_t nonce_len = 0;
+
+    /* Always leave a little extra room in the buffer. */
+    bufsz = sizeof(uint32_t) + pkt->packet_len + 64;
+    mac_data = pcalloc(pkt->pool, EVP_MAX_MD_SIZE);
+
+    buflen = bufsz;
+    ptr = buf = palloc(pkt->pool, bufsz);
+
+    len += proxy_ssh_msg_write_int(&buf, &buflen, pkt->packet_len);
+    len += proxy_ssh_msg_write_byte(&buf, &buflen, pkt->padding_len);
+    len += proxy_ssh_msg_write_data(&buf, &buflen, pkt->payload,
+      pkt->payload_len, FALSE);
+    len += proxy_ssh_msg_write_data(&buf, &buflen, pkt->padding,
+      pkt->padding_len, FALSE);
+
+    nonce_ptr = nonce;
+    nonce_len = sizeof(nonce);
+    len += proxy_ssh_msg_write_long(&nonce_ptr, &nonce_len, pkt->seqno);
+
+    if (mac->algo_type == PROXY_SSH_MAC_ALGO_TYPE_UMAC64) {
+      proxy_ssh_umac_reset(umac_ctx);
+      proxy_ssh_umac_update(umac_ctx, ptr, (bufsz - buflen));
+      proxy_ssh_umac_final(umac_ctx, mac_data, nonce);
+      mac_len = 8;
+
+    } else if (mac->algo_type == PROXY_SSH_MAC_ALGO_TYPE_UMAC128) {
+      proxy_ssh_umac128_reset(umac_ctx);
+      proxy_ssh_umac128_update(umac_ctx, ptr, (bufsz - buflen));
+      proxy_ssh_umac128_final(umac_ctx, mac_data, nonce);
+      mac_len = 16;
+    }
   }
 
   if (mac_len == 0) {
@@ -589,6 +653,10 @@ static int set_mac_key(struct proxy_ssh_mac *mac, const EVP_MD *md,
 
   if (mac->algo_type == PROXY_SSH_MAC_ALGO_TYPE_HMAC) {
     mac->key_len = EVP_MD_size(mac->digest);
+
+  } else if (mac->algo_type == PROXY_SSH_MAC_ALGO_TYPE_UMAC64 ||
+             mac->algo_type == PROXY_SSH_MAC_ALGO_TYPE_UMAC128) {
+    mac->key_len = EVP_MD_block_size(mac->digest);
   }
 
   if (!proxy_ssh_interop_supports_feature(PROXY_SSH_FEAT_MAC_LEN)) {
@@ -609,7 +677,8 @@ void proxy_ssh_mac_set_block_size(size_t blocksz) {
 }
 
 const char *proxy_ssh_mac_get_read_algo(void) {
-  if (read_macs[read_mac_idx].key) {
+  if (read_macs[read_mac_idx].key != NULL ||
+      strcmp(read_macs[read_mac_idx].algo, "none") == 0) {
     return read_macs[read_mac_idx].algo;
   }
 
@@ -623,6 +692,21 @@ int proxy_ssh_mac_set_read_algo(pool *p, const char *algo) {
   if (read_macs[idx].key != NULL) {
     /* If we have an existing key, it means that we are currently rekeying. */
     idx = get_next_read_index();
+  }
+
+  /* Clear any potential UMAC contexts at this index. */
+  if (umac_read_ctxs[idx] != NULL) {
+    switch (read_macs[idx].algo_type) {
+      case PROXY_SSH_MAC_ALGO_TYPE_UMAC64:
+        proxy_ssh_umac_delete(umac_read_ctxs[idx]);
+        umac_read_ctxs[idx] = NULL;
+        break;
+
+      case PROXY_SSH_MAC_ALGO_TYPE_UMAC128:
+        proxy_ssh_umac128_delete(umac_read_ctxs[idx]);
+        umac_read_ctxs[idx] = NULL;
+        break;
+    }
   }
 
   read_macs[idx].digest = proxy_ssh_crypto_get_digest(algo, &mac_len);
@@ -641,7 +725,18 @@ int proxy_ssh_mac_set_read_algo(pool *p, const char *algo) {
   read_macs[idx].pool = make_sub_pool(p);
   pr_pool_tag(read_macs[idx].pool, "Proxy SFTP MAC read pool");
   read_macs[idx].algo = pstrdup(read_macs[idx].pool, algo);
-  read_macs[idx].algo_type = PROXY_SSH_MAC_ALGO_TYPE_HMAC;
+
+  if (strcmp(read_macs[idx].algo, "umac-64@openssh.com") == 0) {
+    read_macs[idx].algo_type = PROXY_SSH_MAC_ALGO_TYPE_UMAC64;
+    umac_read_ctxs[idx] = proxy_ssh_umac_alloc();
+
+  } else if (strcmp(read_macs[idx].algo, "umac-128@openssh.com") == 0) {
+    read_macs[idx].algo_type = PROXY_SSH_MAC_ALGO_TYPE_UMAC128;
+    umac_read_ctxs[idx] = proxy_ssh_umac128_alloc();
+
+  } else {
+    read_macs[idx].algo_type = PROXY_SSH_MAC_ALGO_TYPE_HMAC;
+  }
 
   read_macs[idx].mac_len = mac_len;
   return 0;
@@ -656,11 +751,13 @@ int proxy_ssh_mac_set_read_key(pool *p, const EVP_MD *md,
   size_t blocksz;
   struct proxy_ssh_mac *mac;
   HMAC_CTX *hmac_ctx;
+  struct umac_ctx *umac_ctx;
 
   switch_read_mac();
 
   mac = &(read_macs[read_mac_idx]);
   hmac_ctx = hmac_read_ctxs[read_mac_idx];
+  umac_ctx = umac_read_ctxs[read_mac_idx];
 
   id_len = proxy_ssh_session_get_id(&id);
 
@@ -677,7 +774,7 @@ int proxy_ssh_mac_set_read_key(pool *p, const EVP_MD *md,
   letter = (role == PROXY_SSH_ROLE_CLIENT ? 'F' : 'E');
   set_mac_key(mac, md, k, klen, h, hlen, &letter, id, id_len);
 
-  if (init_mac(p, mac, hmac_ctx) < 0) {
+  if (init_mac(p, mac, hmac_ctx, umac_ctx) < 0) {
     return -1;
   }
 
@@ -695,10 +792,12 @@ int proxy_ssh_mac_set_read_key(pool *p, const EVP_MD *md,
 int proxy_ssh_mac_read_data(struct proxy_ssh_packet *pkt) {
   struct proxy_ssh_mac *mac;
   HMAC_CTX *hmac_ctx;
+  struct umac_ctx *umac_ctx;
   int res;
 
   mac = &(read_macs[read_mac_idx]);
   hmac_ctx = hmac_read_ctxs[read_mac_idx];
+  umac_ctx = umac_read_ctxs[read_mac_idx];
 
   if (mac->key == NULL) {
     pkt->mac = NULL;
@@ -707,7 +806,7 @@ int proxy_ssh_mac_read_data(struct proxy_ssh_packet *pkt) {
     return 0;
   }
 
-  res = get_mac(pkt, mac, hmac_ctx, PROXY_SSH_MAC_FL_READ_MAC);
+  res = get_mac(pkt, mac, hmac_ctx, umac_ctx, PROXY_SSH_MAC_FL_READ_MAC);
   if (res < 0) {
     return -1;
   }
@@ -716,7 +815,7 @@ int proxy_ssh_mac_read_data(struct proxy_ssh_packet *pkt) {
 }
 
 const char *proxy_ssh_mac_get_write_algo(void) {
-  if (write_macs[write_mac_idx].key) {
+  if (write_macs[write_mac_idx].key != NULL) {
     return write_macs[write_mac_idx].algo;
   }
 
@@ -730,6 +829,21 @@ int proxy_ssh_mac_set_write_algo(pool *p, const char *algo) {
   if (write_macs[idx].key != NULL) {
     /* If we have an existing key, it means that we are currently rekeying. */
     idx = get_next_write_index();
+  }
+
+  /* Clear any potential UMAC contexts at this index. */
+  if (umac_write_ctxs[idx] != NULL) {
+    switch (write_macs[idx].algo_type) {
+      case PROXY_SSH_MAC_ALGO_TYPE_UMAC64:
+        proxy_ssh_umac_delete(umac_write_ctxs[idx]);
+        umac_write_ctxs[idx] = NULL;
+        break;
+
+      case PROXY_SSH_MAC_ALGO_TYPE_UMAC128:
+        proxy_ssh_umac128_delete(umac_write_ctxs[idx]);
+        umac_write_ctxs[idx] = NULL;
+        break;
+    }
   }
 
   write_macs[idx].digest = proxy_ssh_crypto_get_digest(algo, &mac_len);
@@ -748,7 +862,18 @@ int proxy_ssh_mac_set_write_algo(pool *p, const char *algo) {
   write_macs[idx].pool = make_sub_pool(p);
   pr_pool_tag(write_macs[idx].pool, "Proxy SFTP MAC write pool");
   write_macs[idx].algo = pstrdup(write_macs[idx].pool, algo);
-  write_macs[idx].algo_type = PROXY_SSH_MAC_ALGO_TYPE_HMAC;
+
+  if (strcmp(write_macs[idx].algo, "umac-64@openssh.com") == 0) {
+    write_macs[idx].algo_type = PROXY_SSH_MAC_ALGO_TYPE_UMAC64;
+    umac_write_ctxs[idx] = proxy_ssh_umac_alloc();
+
+  } else if (strcmp(write_macs[idx].algo, "umac-128@openssh.com") == 0) {
+    write_macs[idx].algo_type = PROXY_SSH_MAC_ALGO_TYPE_UMAC128;
+    umac_write_ctxs[idx] = proxy_ssh_umac128_alloc();
+
+  } else {
+    write_macs[idx].algo_type = PROXY_SSH_MAC_ALGO_TYPE_HMAC;
+  }
 
   write_macs[idx].mac_len = mac_len;
   return 0;
@@ -762,11 +887,13 @@ int proxy_ssh_mac_set_write_key(pool *p, const EVP_MD *md,
   char letter;
   struct proxy_ssh_mac *mac;
   HMAC_CTX *hmac_ctx;
+  struct umac_ctx *umac_ctx;
 
   switch_write_mac();
 
   mac = &(write_macs[write_mac_idx]);
   hmac_ctx = hmac_write_ctxs[write_mac_idx];
+  umac_ctx = umac_write_ctxs[write_mac_idx];
 
   id_len = proxy_ssh_session_get_id(&id);
 
@@ -783,7 +910,7 @@ int proxy_ssh_mac_set_write_key(pool *p, const EVP_MD *md,
   letter = (role == PROXY_SSH_ROLE_CLIENT ? 'E' : 'F');
   set_mac_key(mac, md, k, klen, h, hlen, &letter, id, id_len);
 
-  if (init_mac(p, mac, hmac_ctx) < 0) {
+  if (init_mac(p, mac, hmac_ctx, umac_ctx) < 0) {
     return -1;
   }
 
@@ -793,10 +920,12 @@ int proxy_ssh_mac_set_write_key(pool *p, const EVP_MD *md,
 int proxy_ssh_mac_write_data(struct proxy_ssh_packet *pkt) {
   struct proxy_ssh_mac *mac;
   HMAC_CTX *hmac_ctx;
+  struct umac_ctx *umac_ctx;
   int res;
 
   mac = &(write_macs[write_mac_idx]);
   hmac_ctx = hmac_write_ctxs[write_mac_idx];
+  umac_ctx = umac_write_ctxs[write_mac_idx];
 
   if (mac->key == NULL) {
     pkt->mac = NULL;
@@ -805,7 +934,7 @@ int proxy_ssh_mac_write_data(struct proxy_ssh_packet *pkt) {
     return 0;
   }
 
-  res = get_mac(pkt, mac, hmac_ctx, PROXY_SSH_MAC_FL_WRITE_MAC);
+  res = get_mac(pkt, mac, hmac_ctx, umac_ctx, PROXY_SSH_MAC_FL_WRITE_MAC);
   if (res < 0) {
     return -1;
   }
@@ -836,6 +965,11 @@ int proxy_ssh_mac_init(void) {
   hmac_write_ctxs[0] = HMAC_CTX_new();
   hmac_write_ctxs[1] = HMAC_CTX_new();
 #endif /* OpenSSL-1.1.0 and later */
+
+  umac_read_ctxs[0] = NULL;
+  umac_read_ctxs[1] = NULL;
+  umac_write_ctxs[0] = NULL;
+  umac_write_ctxs[1] = NULL;
 
   return 0;
 }
