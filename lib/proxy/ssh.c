@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH implementation
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,6 +32,7 @@
 #include "proxy/ssh/ssh2.h"
 #include "proxy/ssh/auth.h"
 #include "proxy/ssh/db.h"
+#include "proxy/ssh/redis.h"
 #include "proxy/ssh/crypto.h"
 #include "proxy/ssh/packet.h"
 #include "proxy/ssh/interop.h"
@@ -446,8 +447,11 @@ int proxy_ssh_init(pool *p, const char *tables_path, int flags) {
   memset(&ssh_ds, 0, sizeof(ssh_ds));
 
   switch (proxy_datastore) {
-    /* TODO: Support a Redis datastore for e.g. SSH hostkeys. */
     case PROXY_DATASTORE_REDIS:
+      res = proxy_ssh_redis_as_datastore(&ssh_ds, proxy_datastore_data,
+        proxy_datastore_datasz);
+      break;
+
     case PROXY_DATASTORE_SQLITE:
       res = proxy_ssh_db_as_datastore(&ssh_ds, proxy_datastore_data,
         proxy_datastore_datasz);
