@@ -1836,14 +1836,14 @@ sub proxy_reverse_login_roundrobin_after_host {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $host = 'localhost';
+  my $host = 'ftp.castaglia.org';
 
   my $config = {
     PidFile => $pid_file,
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'DEFAULT:10 binding:20 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+    Trace => 'DEFAULT:10 binding:30 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
@@ -1942,8 +1942,8 @@ EOC
       # The default reverse connect policy is RoundRobin; this means
       # that the backend server is selected at connect time.  By sending HOST,
       # we change that selected backend server, and thus we should get the
-      # "real" backend server banner.
-      $expected = 'Namebased Server';
+      # "real" proxied backend server banner.
+      $expected = 'Real Server';
       $self->assert(qr/$expected/, $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
@@ -4897,7 +4897,7 @@ EOC
       # Allow server to start up
       sleep(2);
 
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 3);
       $client->login($setup->{user}, $setup->{passwd});
       $client->type('binary');
 
@@ -22666,7 +22666,7 @@ EOC
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "Unable to connect to $bad_addr: (Connection|Operation) timed out";
+      $expected = "Unable to connect to $bad_addr: ((Connection|Operation) timed out|Transport endpoint is not connected)";
       $self->assert(qr/$expected/, $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
@@ -25418,7 +25418,7 @@ EOC
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "Unable to connect to $bad_addr: (Connection|Operation) timed out";
+      $expected = "Unable to connect to $bad_addr: ((Connection|Operation) timed out|Transport endpoint is not connected)";
       $self->assert(qr/$expected/, $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
@@ -26522,7 +26522,9 @@ EOC
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      sleep(1);
+      # Allow for server startup
+      sleep(2);
+
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
       $client->login($proxy_user, $proxy_passwd);
 
@@ -27331,7 +27333,7 @@ EOC
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
-      $expected = "Unable to connect to $bad_addr: (Connection|Operation) timed out";
+      $expected = "Unable to connect to $bad_addr: ((Connection|Operation) timed out|Transport endpoint is not connected)";
       $self->assert(qr/$expected/, $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 

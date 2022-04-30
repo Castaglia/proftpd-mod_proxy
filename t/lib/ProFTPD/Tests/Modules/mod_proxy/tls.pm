@@ -2813,38 +2813,7 @@ EOC
 sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'proxy');
 
   my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
   my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
@@ -2852,17 +2821,19 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $host = 'localhost';
+  my $host = 'ftp.castaglia.org';
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 netio:20 scoreboard:0 signal:0 proxy:20 proxy.netio:20 proxy.db:20 proxy.reverse:20 proxy.tls:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.ftp.sess:20 tls:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     DefaultServer => 'on',
     ServerName => '"Default Server"',
     SocketBindTight => 'on',
@@ -2870,7 +2841,7 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
     IfModules => {
       'mod_tls.c' => {
         TLSEngine => 'on',
-        TLSLog => $log_file,
+        TLSLog => $setup->{log_file},
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -2887,14 +2858,15 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
 
     Limit => {
       LOGIN => {
-        DenyUser => $user,
+        DenyUser => $setup->{user},
       },
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     my $tables_dir = File::Spec->rel2abs("$tmpdir/var/proxy");
 
     print $fh <<EOC;
@@ -2907,8 +2879,8 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
   ServerAlias $host
   ServerName "Namebased Server"
 
-  AuthUserFile $auth_user_file
-  AuthGroupFile $auth_group_file
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
   AuthOrder mod_auth_file.c
 
   <IfModule mod_delay.c>
@@ -2917,7 +2889,7 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
 
   <IfModule mod_proxy.c>
     ProxyEngine on
-    ProxyLog $log_file
+    ProxyLog $setup->{log_file}
     ProxyRole reverse
     ProxyReverseServers ftp://127.0.0.1:$vhost_port
     ProxyReverseConnectPolicy RoundRobin
@@ -2929,7 +2901,7 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
 
   <IfModule mod_tls.c>
     TLSEngine on
-    TLSLog $log_file
+    TLSLog $setup->{log_file}
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -2944,8 +2916,8 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
   Port $vhost_port
   ServerName "Real Server"
 
-  AuthUserFile $auth_user_file
-  AuthGroupFile $auth_group_file
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
   AuthOrder mod_auth_file.c
 
   AllowOverride off
@@ -2954,7 +2926,7 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
 
   <IfModule mod_tls.c>
     TLSEngine on
-    TLSLog $log_file
+    TLSLog $setup->{log_file}
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -2966,11 +2938,11 @@ sub proxy_reverse_frontend_backend_tls_roundrobin_login_after_host {
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   require Net::FTPSSL;
@@ -3020,7 +2992,7 @@ EOC
         die("HOST failed: " . $client->last_message());
       }
 
-      unless ($client->login($user, $passwd)) {
+      unless ($client->login($setup->{user}, $setup->{passwd})) {
         die("Can't login: " . $client->last_message());
       }
 
@@ -3058,7 +3030,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh, 20) };
+    eval { server_wait($setup->{config_file}, $rfh, 20) };
     if ($@) {
       warn($@);
       exit 1;
@@ -3068,18 +3040,10 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
-
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_reverse_frontend_backend_tls_peruser_login_after_host {

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse proxy implementation
- * Copyright (c) 2012-2021 TJ Saunders
+ * Copyright (c) 2012-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -998,9 +998,14 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
       pr_response_block(FALSE);
     }
 
-    if (proxy_ftp_ctrl_send_resp(p, session.c, resp, resp_nlines) < 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "unable to send banner to client: %s", strerror(errno));
+    /* Only send the banner if we haven't done so already; the banner
+     * might already have been sent due to e.g. TLS SNI.
+     */
+    if (pr_table_get(session.notes, "mod_tls.sni", NULL) == NULL) {
+      if (proxy_ftp_ctrl_send_resp(p, session.c, resp, resp_nlines) < 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "unable to send banner to client: %s", strerror(errno));
+      }
     }
 
     if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_SESS_INIT) {
