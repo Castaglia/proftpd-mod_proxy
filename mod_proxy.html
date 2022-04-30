@@ -1464,7 +1464,11 @@ suites for that protocol:
 
 <p>
 The <code>ProxyTLSEngine</code> directive configures the use of SSL/TLS for
-<em>backend</em> FTP connections.  The supported values are:
+<em>backend</em> FTP connections.  <b>Note</b> that SSL/TLS support
+<b>requires</b> the presence/use of the <code>mod_tls</code> ProFTPD module.
+
+<p>
+The supported values are:
 <ul>
   <li><em>on</em>
     <p> 
@@ -2018,7 +2022,8 @@ The <em>sticky</em> policies are:
 <p>
 <b>Implicit FTPS Support</b><br>
 The <code>mod_proxy</code> module includes support for using <a href="https://en.wikipedia.org/wiki/FTPS#Implicit">implicit FTPS</a> with backend servers,
-both when forward and reverse proxying.
+both when forward and reverse proxying.  <b>Note</b> that implicit FTPS support
+<b>requires</b> the presence/use of the <code>mod_tls</code> ProFTPD module.
 
 <p>
 In order to use implicit FTPS for a reverse proxy server, the URI syntax
