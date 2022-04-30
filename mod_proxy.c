@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy
- * Copyright (c) 2012-2021 TJ Saunders
+ * Copyright (c) 2012-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -5314,8 +5314,10 @@ static int proxy_sess_init(void) {
     }
   }
 
-  proxy_pool = make_sub_pool(session.pool);
-  pr_pool_tag(proxy_pool, MOD_PROXY_VERSION " Session Pool");
+  if (proxy_pool == NULL) {
+    proxy_pool = make_sub_pool(session.pool);
+    pr_pool_tag(proxy_pool, MOD_PROXY_VERSION " Session Pool");
+  }
 
   c = find_config(main_server->conf, CONF_PARAM, "ProxyOptions", FALSE);
   while (c != NULL) {

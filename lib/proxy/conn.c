@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy conn implementation
- * Copyright (c) 2012-2021 TJ Saunders
+ * Copyright (c) 2012-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -581,6 +581,87 @@ int proxy_conn_use_dns_txt(const struct proxy_conn *pconn) {
   return pconn->pconn_use_dns_txt;
 }
 
+/* Borrowed from proftpd/src/netaddr.c. */
+static int addr_ncmp(const unsigned char *aptr, const unsigned char *bptr,
+    unsigned int masklen) {
+  unsigned char nbits, nbytes;
+  int res;
+
+  nbytes = masklen / 8;
+  nbits = masklen % 8;
+
+  res = memcmp(aptr, bptr, nbytes);
+  if (res != 0) {
+    return -1;
+  }
+
+  if (nbits > 0) {
+    unsigned char abyte, bbyte, mask;
+
+    abyte = aptr[nbytes];
+    bbyte = bptr[nbytes];
+
+    mask = (0xff << (8 - nbits)) & 0xff;
+
+    if ((abyte & mask) > (bbyte & mask)) {
+      return 1;
+    }
+
+    if ((abyte & mask) < (bbyte & mask)) {
+      return -1;
+    }
+  }
+
+  return 0;
+}
+
+static int is_127_xxx_addr(uint32_t addrno) {
+  uint32_t rfc1918_addrno;
+
+  rfc1918_addrno = htonl(0x7f000000);
+  return addr_ncmp((const unsigned char *) &addrno,
+    (const unsigned char *) &rfc1918_addrno, 8);
+}
+
+static int netaddr_is_private(const pr_netaddr_t *addr) {
+  if (pr_netaddr_is_rfc1918(addr) == TRUE) {
+    return TRUE;
+  }
+
+  switch (pr_netaddr_get_family(addr)) {
+    case AF_INET: {
+      uint32_t addrno;
+
+      addrno = pr_netaddr_get_addrno(addr);
+      if (is_127_xxx_addr(addrno) == 0) {
+        return TRUE;
+      }
+
+      break;
+    }
+
+#if defined(PR_USE_IPV6)
+    case AF_INET6:
+      if (pr_netaddr_is_v4mappedv6(addr) == TRUE) {
+        pool *tmp_pool;
+        pr_netaddr_t *v4addr;
+        int res;
+
+        tmp_pool = make_sub_pool(proxy_pool);
+        v4addr = pr_netaddr_v6tov4(tmp_pool, addr);
+
+        res = netaddr_is_private(v4addr);
+        destroy_pool(tmp_pool);
+
+        return res;
+      }
+      break;
+#endif /* PR_USE_IPV6 */
+  }
+
+  return FALSE;
+}
+
 conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     const pr_netaddr_t *remote_addr) {
   const pr_netaddr_t *bind_addr = NULL, *local_addr = NULL;
@@ -721,6 +802,30 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error starting connect to %s#%u: %s", remote_ipstr, remote_port,
       strerror(xerrno));
+
+    /* If there is a mismatch in public/private addresses for our
+     * source/destination addresses, it might cause a connection error. Check
+     * for those particular errors, and if so, log a suggestion to explicitly
+     * configure an appropriate ProxySourceAddress (Issue #213).
+     */
+    if (netaddr_is_private(bind_addr) == TRUE) {
+      if (netaddr_is_private(remote_addr) != TRUE) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "local address '%s' is a private network address, and remote address "
+          "'%s' is a public address; consider using ProxySourceAddress "
+          "directive to configure a public local address",
+          pr_netaddr_get_ipstr(bind_addr), remote_ipstr);
+      }
+
+    } else {
+      if (netaddr_is_private(remote_addr) == TRUE) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "local address '%s' is a public address, and remote address '%s' is "
+          "a private network address; consider using ProxySourceAddress "
+          "directive to configure a private local address",
+          pr_netaddr_get_ipstr(bind_addr), remote_ipstr);
+      }
+    }
 
     pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
     errno = xerrno;

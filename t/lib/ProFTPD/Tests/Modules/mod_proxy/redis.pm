@@ -399,7 +399,6 @@ sub proxy_reverse_config_redis_connect_policy_shuffle {
         DenyUser => $user,
       },
     },
-
   };
 
   my ($port, $config_user, $config_group) = config_write($config_file, $config);
@@ -446,7 +445,8 @@ EOC
     eval {
       for (my $i = 0; $i < $nbackends+1; $i++) {
         sleep(2);
-        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
+
+        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 3);
         $client->login($user, $passwd);
         ftp_list($self, $client);
       }
