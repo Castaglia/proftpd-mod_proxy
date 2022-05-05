@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse-proxy API
- * Copyright (c) 2012-2021 TJ Saunders
+ * Copyright (c) 2012-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -74,6 +74,10 @@ const char *proxy_reverse_policy_name(int policy_id);
 /* Returns the per-user/group backends for the given name. */
 array_header *proxy_reverse_pername_backends(pool *p, const char *name,
   int per_user);
+
+/* Look up, and connect to, the selected backend server. */
+int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess,
+  const void *connect_data);
 
 /* Returns TRUE if the Reverse API is using proxy auth, FALSE otherwise. */
 int proxy_reverse_use_proxy_auth(void);

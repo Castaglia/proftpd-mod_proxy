@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH auth API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,6 +38,9 @@ int proxy_ssh_auth_sess_init(pool *p, const struct proxy_session *proxy_sess);
  */
 int proxy_ssh_auth_handle(struct proxy_ssh_packet *pkt,
   const struct proxy_session *proxy_sess);
+
+int proxy_ssh_auth_set_frontend_success_handle(pool *p, int (*cb)(pool *p,
+  const char *user));
 #endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_AUTH_H */

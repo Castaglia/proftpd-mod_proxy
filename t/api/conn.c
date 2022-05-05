@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2013-2020 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2013-2022 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -856,6 +856,11 @@ Suite *tests_get_conn_suite(void) {
   tcase_add_test(testcase, conn_timeout_cb_test);
   tcase_add_test(testcase, conn_send_proxy_v1_test);
   tcase_add_test(testcase, conn_send_proxy_v2_test);
+
+  /* Allow a longer timeout on these tests, especially for the
+   * unpredictable CI environment.
+   */
+  tcase_set_timeout(testcase, 15);
 
   suite_add_tcase(suite, testcase);
   return suite;

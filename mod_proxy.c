@@ -431,7 +431,7 @@ static void proxy_restrict_session(void) {
 
   PRIVS_ROOT
 
-  if (strncasecmp(xferlog, "none", 5) == 0) {
+  if (strcasecmp(xferlog, "none") == 0) {
     xferlog_open(NULL);
 
   } else {
@@ -4382,18 +4382,18 @@ MODRET proxy_type(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     type = pstrdup(cmd->tmp_pool, cmd->argv[1]);
     type[0] = toupper(type[0]);
 
-    if (strncmp(type, "A", 2) == 0 ||
+    if (strcmp(type, "A") == 0 ||
         (cmd->argc == 3 &&
-         strncmp(type, "L", 2) == 0 &&
-         strncmp(cmd->argv[2], "7", 2) == 0)) {
+         strcmp(type, "L") == 0 &&
+         strcmp(cmd->argv[2], "7") == 0)) {
 
       /* TYPE A(SCII) or TYPE L 7. */
       session.sf_flags |= SF_ASCII;
 
-    } else if (strncmp(type, "I", 2) == 0 ||
+    } else if (strcmp(type, "I") == 0 ||
         (cmd->argc == 3 &&
-         strncmp(type, "L", 2) == 0 &&
-         strncmp(cmd->argv[2], "8", 2) == 0)) {
+         strcmp(type, "L") == 0 &&
+         strcmp(cmd->argv[2], "8") == 0)) {
 
       /* TYPE I(MAGE) or TYPE L 8. */
       session.sf_flags &= (SF_ALL^(SF_ASCII|SF_ASCII_OVERRIDE));

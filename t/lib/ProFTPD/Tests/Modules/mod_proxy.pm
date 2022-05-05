@@ -1091,6 +1091,8 @@ sub proxy_sighup {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -1187,6 +1189,8 @@ sub proxy_reverse_connect {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -1298,6 +1302,8 @@ sub proxy_reverse_connect_failed_bad_dst_addr {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -1435,6 +1441,8 @@ sub proxy_reverse_connect_failed_non2xx {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -1566,6 +1574,8 @@ sub proxy_reverse_connect_failed_timeout {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -1701,6 +1711,8 @@ sub proxy_reverse_login {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -1847,6 +1859,8 @@ sub proxy_reverse_login_roundrobin_after_host {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     DefaultServer => 'on',
     ServerName => '"Default Server"',
     SocketBindTight => 'on',
@@ -2033,6 +2047,8 @@ sub proxy_reverse_login_peruser_after_host {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     DefaultServer => 'on',
     ServerName => '"Default Server"',
     SocketBindTight => 'on',
@@ -2205,6 +2221,8 @@ sub proxy_reverse_login_extra_user {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -2355,6 +2373,8 @@ sub proxy_reverse_login_extra_pass {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -2518,6 +2538,8 @@ sub proxy_reverse_login_failed {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -2654,6 +2676,8 @@ sub proxy_reverse_login_chrooted {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     # For dropping privs
@@ -2762,6 +2786,8 @@ sub proxy_reverse_login_no_backend_proxy_protocol {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -2901,6 +2927,8 @@ sub proxy_reverse_feat {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -3023,6 +3051,8 @@ sub proxy_reverse_abort {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -3170,6 +3200,8 @@ sub proxy_reverse_list_pasv {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -3344,6 +3376,8 @@ sub proxy_reverse_list_port {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -3518,6 +3552,8 @@ sub proxy_reverse_list_pasv_enoent {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -3696,6 +3732,8 @@ sub proxy_reverse_list_port_enoent {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -3873,6 +3911,8 @@ sub proxy_reverse_epsv {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -4033,6 +4073,8 @@ sub proxy_reverse_eprt_ipv4 {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -4197,6 +4239,8 @@ sub proxy_reverse_eprt_ipv6 {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -4352,6 +4396,8 @@ sub proxy_reverse_retr_pasv_ascii {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -4511,6 +4557,8 @@ sub proxy_reverse_retr_pasv_binary {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -4670,6 +4718,8 @@ sub proxy_reverse_retr_large_file {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -4832,6 +4882,8 @@ sub proxy_reverse_retr_empty_file {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -4995,6 +5047,8 @@ sub proxy_reverse_retr_abort {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
     TimeoutLinger => 1,
@@ -5131,6 +5185,8 @@ sub proxy_reverse_stor_pasv {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -5272,6 +5328,8 @@ sub proxy_reverse_stor_port {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -5413,6 +5471,8 @@ sub proxy_reverse_stor_large_file {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -5558,6 +5618,8 @@ sub proxy_reverse_stor_empty_file {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -5717,6 +5779,8 @@ sub proxy_reverse_stor_pasv_eperm {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -5873,6 +5937,8 @@ sub proxy_reverse_stor_port_eperm {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -6010,6 +6076,8 @@ sub proxy_reverse_stor_abort {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
     TimeoutLinger => 1,
@@ -6164,6 +6232,8 @@ sub proxy_reverse_rest_retr {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -6333,6 +6403,8 @@ sub proxy_reverse_rest_stor {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -6482,6 +6554,8 @@ sub proxy_reverse_stat {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -6651,6 +6725,8 @@ sub proxy_reverse_unknown_cmd {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -6817,6 +6893,8 @@ sub proxy_reverse_uri_creds_login {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -6979,6 +7057,8 @@ sub proxy_reverse_uri_creds_login_failed_bad_dst_user {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -7144,6 +7224,8 @@ sub proxy_reverse_uri_creds_login_failed_bad_dst_passwd {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -7466,6 +7548,8 @@ sub proxy_reverse_config_passiveports_pasv {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -7649,6 +7733,8 @@ sub proxy_reverse_config_passiveports_epsv {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -7828,6 +7914,8 @@ sub proxy_reverse_config_masqueradeaddress {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -8006,6 +8094,8 @@ sub proxy_reverse_config_allowforeignaddress_port {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -8172,6 +8262,8 @@ sub proxy_reverse_config_allowforeignaddress_eprt {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -8340,6 +8432,8 @@ sub proxy_reverse_config_timeoutidle_frontend {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     TimeoutIdle => $frontend_timeoutidle,
@@ -8509,6 +8603,8 @@ sub proxy_reverse_config_timeoutidle_backend {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     TimeoutIdle => $frontend_timeoutidle,
@@ -8680,6 +8776,8 @@ sub proxy_reverse_config_timeoutlogin_frontend {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     TimeoutIdle => $frontend_timeoutidle,
@@ -8840,6 +8938,8 @@ sub proxy_reverse_config_timeoutnoxfer_frontend {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     TimeoutNoTransfer => $frontend_timeoutnoxfer,
@@ -9009,6 +9109,8 @@ sub proxy_reverse_config_timeoutnoxfer_backend {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     TimeoutNoTransfer => $frontend_timeoutnoxfer,
@@ -9166,6 +9268,8 @@ sub proxy_reverse_config_timeoutstalled_frontend {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     TimeoutStalled => $frontend_timeoutstalled,
@@ -9335,6 +9439,8 @@ sub proxy_reverse_config_timeoutstalled_backend {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     TimeoutStalled => $frontend_timeoutstalled,
@@ -9509,6 +9615,8 @@ sub proxy_reverse_config_datatransferpolicy_pasv_list_pasv {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -9684,6 +9792,8 @@ sub proxy_reverse_config_datatransferpolicy_pasv_list_port {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -9859,6 +9969,8 @@ sub proxy_reverse_config_datatransferpolicy_port_list_pasv {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -10034,6 +10146,8 @@ sub proxy_reverse_config_datatransferpolicy_port_list_port {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -10209,6 +10323,8 @@ sub proxy_reverse_config_datatransferpolicy_epsv_list_pasv {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -10384,6 +10500,8 @@ sub proxy_reverse_config_datatransferpolicy_epsv_list_port {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -10559,6 +10677,8 @@ sub proxy_reverse_config_datatransferpolicy_eprt_list_pasv {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -10734,6 +10854,8 @@ sub proxy_reverse_config_datatransferpolicy_eprt_list_port {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -10909,6 +11031,8 @@ sub proxy_reverse_config_datatransferpolicy_active_list_pasv {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -11084,6 +11208,8 @@ sub proxy_reverse_config_datatransferpolicy_active_list_port {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -11259,6 +11385,8 @@ sub proxy_reverse_config_datatransferpolicy_active_list_eprt_port_fallback {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -11438,6 +11566,8 @@ sub proxy_reverse_config_datatransferpolicy_passive_list_pasv {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -11613,6 +11743,8 @@ sub proxy_reverse_config_datatransferpolicy_passive_list_epsv_pasv_fallback {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -11792,6 +11924,8 @@ sub proxy_reverse_config_datatransferpolicy_passive_list_port {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -11967,6 +12101,8 @@ sub proxy_reverse_config_datatransferpolicy_client {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -12112,6 +12248,8 @@ sub proxy_reverse_config_directorylistpolicy_client {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -12346,6 +12484,8 @@ sub proxy_reverse_config_directorylistpolicy_list_unix {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     RootLogin => 'on',
     SocketBindTight => 'on',
 
@@ -12589,6 +12729,8 @@ sub proxy_reverse_config_directorylistpolicy_list_unix_use_slink {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     RootLogin => 'on',
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
@@ -12821,6 +12963,8 @@ sub proxy_reverse_config_directorylistpolicy_list_unix_wide_dir {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     RootLogin => 'on',
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
@@ -13042,6 +13186,8 @@ sub proxy_reverse_config_directorylistpolicy_list_windows {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     RootLogin => 'on',
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
@@ -13236,6 +13382,8 @@ sub proxy_reverse_config_directorylistpolicy_list_backend_error {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -13433,6 +13581,8 @@ sub proxy_reverse_config_directorylistpolicy_list_opts_mlst {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     RootLogin => 'on',
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
@@ -13669,6 +13819,8 @@ sub proxy_reverse_config_connect_policy_random {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -13827,6 +13979,8 @@ sub proxy_reverse_config_connect_policy_shuffle {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -13985,6 +14139,8 @@ sub proxy_reverse_config_connect_policy_roundrobin {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -14148,6 +14304,8 @@ sub proxy_reverse_config_connect_policy_roundrobin_issue132 {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -14315,6 +14473,8 @@ sub proxy_reverse_config_connect_policy_leastconns {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -14473,6 +14633,8 @@ sub proxy_reverse_config_connect_policy_leastresponsetime {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -14631,6 +14793,8 @@ sub proxy_reverse_config_connect_policy_per_host {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -14804,6 +14968,8 @@ sub proxy_reverse_config_connect_policy_per_user {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -14996,6 +15162,8 @@ sub proxy_reverse_config_connect_policy_per_user_by_json {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -15190,6 +15358,8 @@ sub proxy_reverse_config_connect_policy_per_user_no_fallback_issue148 {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -15397,6 +15567,8 @@ sub proxy_reverse_config_connect_policy_per_group {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -15584,6 +15756,8 @@ sub proxy_reverse_config_connect_policy_per_group_by_json {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -15758,6 +15932,8 @@ sub proxy_reverse_config_transfer_rate_retr {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -15949,6 +16125,8 @@ sub proxy_reverse_config_use_reverse_proxy_auth_login {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -16065,6 +16243,8 @@ sub proxy_reverse_config_use_reverse_proxy_auth_login_extra_user {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -16216,6 +16396,8 @@ sub proxy_reverse_config_use_reverse_proxy_auth_login_extra_pass {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -16377,6 +16559,8 @@ sub proxy_reverse_config_use_reverse_proxy_auth_login_failed_bad_passwd {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -16502,6 +16686,8 @@ sub proxy_reverse_config_use_direct_data_transfers_port {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -16622,6 +16808,8 @@ sub proxy_reverse_config_use_direct_data_transfers_port_failed {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -16749,6 +16937,8 @@ sub proxy_reverse_config_use_direct_data_transfers_list_failed {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -16876,6 +17066,8 @@ sub proxy_reverse_config_use_direct_data_transfers_pasv {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -17025,6 +17217,8 @@ sub proxy_reverse_limit_list_deny_all {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -17192,6 +17386,8 @@ sub proxy_reverse_limit_list_deny_user {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -17359,6 +17555,8 @@ sub proxy_reverse_limit_list_deny_group {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -17516,6 +17714,8 @@ sub proxy_reverse_limit_mlsd_deny_all {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -17683,6 +17883,8 @@ sub proxy_reverse_limit_retr_deny_all {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -17850,6 +18052,8 @@ sub proxy_reverse_limit_stor_deny_all {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -18017,6 +18221,8 @@ sub proxy_reverse_limit_dirs_deny_all {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -18184,6 +18390,8 @@ sub proxy_reverse_limit_read_deny_all {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -18351,6 +18559,8 @@ sub proxy_reverse_limit_write_deny_all {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -18534,6 +18744,8 @@ sub proxy_reverse_xferlog_retr_ascii_ok {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -18792,6 +19004,8 @@ sub proxy_reverse_xferlog_retr_ascii_chrooted_ok {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -19031,6 +19245,8 @@ sub proxy_reverse_xferlog_retr_binary_ok {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -19260,6 +19476,8 @@ sub proxy_reverse_xferlog_stor_ascii_ok {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -19482,6 +19700,8 @@ sub proxy_reverse_xferlog_stor_binary_ok {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -19714,6 +19934,8 @@ sub proxy_reverse_extlog_retr_var_F_f {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -19916,6 +20138,8 @@ sub proxy_reverse_extlog_stor_var_F_f {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -20108,6 +20332,8 @@ sub proxy_reverse_extlog_list_var_D_d {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
 
@@ -20297,6 +20523,8 @@ sub proxy_reverse_proxy_protocol_v1_ipv4 {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -20443,6 +20671,8 @@ sub proxy_reverse_proxy_protocol_v1_ipv6 {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -20558,6 +20788,8 @@ sub proxy_reverse_proxy_protocol_v2_ipv4 {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -20667,6 +20899,8 @@ sub proxy_reverse_proxy_protocol_v2_ipv6 {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -20774,6 +21008,8 @@ sub proxy_reverse_proxy_protocol_v2_tlv_alpn {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     # Include the ALPN TLV in an ExtendedLog
@@ -20915,6 +21151,8 @@ sub proxy_reverse_proxy_protocol_v2_tlv_authority {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     # Include the Authority TLV in an ExtendedLog
@@ -21056,6 +21294,8 @@ sub proxy_reverse_proxy_protocol_v2_tlv_unique_id {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     # Include the Unique ID TLV in an ExtendedLog
@@ -21241,6 +21481,8 @@ sub proxy_reverse_config_reverseservers_json {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -21406,6 +21648,8 @@ sub proxy_reverse_config_reverseservers_json_per_user {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -21522,6 +21766,8 @@ sub proxy_forward_connect {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -21635,6 +21881,8 @@ sub proxy_forward_connect_failed_timeout {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -21784,6 +22032,8 @@ sub proxy_forward_noproxyauth_login {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -21924,6 +22174,8 @@ sub proxy_forward_noproxyauth_login_after_host {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     DefaultServer => 'on',
     ServerName => '"Default Server"',
     ServerIdent => 'on "Forward Proxy Server"',
@@ -22073,6 +22325,8 @@ sub proxy_forward_noproxyauth_login_extra_user {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -22220,6 +22474,8 @@ sub proxy_forward_noproxyauth_login_extra_pass {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -22378,6 +22634,8 @@ sub proxy_forward_noproxyauth_login_ipv6_dst_addr {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -22489,6 +22747,8 @@ sub proxy_forward_noproxyauth_login_netftp_fw_type_1 {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -22597,6 +22857,8 @@ sub proxy_forward_noproxyauth_login_failed_bad_dst_addr {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -22717,6 +22979,8 @@ sub proxy_forward_noproxyauth_login_failed_proxy_dst_addr {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -22876,6 +23140,8 @@ sub proxy_forward_noproxyauth_login_failed_non2xx {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -23011,6 +23277,8 @@ sub proxy_forward_noproxyauth_login_failed_login_limit {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -23132,6 +23400,8 @@ sub proxy_forward_noproxyauth_login_failed_bad_sequence {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -23280,6 +23550,8 @@ sub proxy_forward_noproxyauth_login_failed_bad_dst_passwd {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -23440,6 +23712,8 @@ sub proxy_forward_login_feat_first {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -23589,6 +23863,8 @@ sub proxy_forward_list_pasv {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -23753,6 +24029,8 @@ sub proxy_forward_list_port {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -23917,6 +24195,8 @@ sub proxy_forward_epsv {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -24021,54 +24301,26 @@ EOC
 sub proxy_forward_eprt_ipv4 {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'proxy');
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
 
-  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_forward_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
   $proxy_config->{ProxyForwardMethod} = 'user@host';
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -24081,16 +24333,17 @@ sub proxy_forward_eprt_ipv4 {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
   ServerName "Real Server"
 
-  AuthUserFile $auth_user_file
-  AuthGroupFile $auth_group_file
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
   AuthOrder mod_auth_file.c
 
   AllowOverride off
@@ -24099,11 +24352,11 @@ sub proxy_forward_eprt_ipv4 {
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   # Open pipes, for use between the parent and child processes.  Specifically,
@@ -24121,25 +24374,23 @@ EOC
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
-      $client->login("$user\@127.0.0.1:$vhost_port", $passwd);
+      # Allow for server startup
+      sleep(2);
 
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login("$setup->{user}\@127.0.0.1:$vhost_port", $setup->{passwd});
       my ($resp_code, $resp_msg) = $client->eprt('|1|127.0.0.1|4856|');
 
-      my $expected;
-
-      $expected = 200;
+      my $expected = 200;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = "EPRT command successful";
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -24148,7 +24399,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -24158,18 +24409,10 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
-
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_forward_eprt_ipv6 {
@@ -24223,6 +24466,8 @@ sub proxy_forward_eprt_ipv6 {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -24389,6 +24634,8 @@ sub proxy_forward_retr_port {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -24553,6 +24800,8 @@ sub proxy_forward_stor_pasv {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -24883,6 +25132,7 @@ sub proxy_forward_userwithproxyauth_login_extra_user {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -25052,6 +25302,7 @@ sub proxy_forward_userwithproxyauth_login_extra_pass {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -25223,6 +25474,7 @@ sub proxy_forward_userwithproxyauth_login_user_incl_at_symbol {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -25347,6 +25599,7 @@ sub proxy_forward_userwithproxyauth_login_failed_bad_dst_addr {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -25511,6 +25764,7 @@ sub proxy_forward_userwithproxyauth_login_failed_non2xx {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -25687,6 +25941,7 @@ sub proxy_forward_userwithproxyauth_login_failed_limit_login {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -25863,6 +26118,7 @@ sub proxy_forward_userwithproxyauth_login_failed_bad_sequence {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -26113,6 +26369,7 @@ sub proxy_forward_userwithproxyauth_login_failed_bad_proxy_passwd {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -26299,6 +26556,7 @@ sub proxy_forward_userwithproxyauth_login_failed_bad_dst_passwd {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -26470,6 +26728,7 @@ sub proxy_forward_userwithproxyauth_bad_sequence_no_dst_login {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -26643,6 +26902,7 @@ sub proxy_forward_proxyuserwithproxyauth_login {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -26797,6 +27057,7 @@ sub proxy_forward_proxyuserwithproxyauth_login_extra_user {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -26966,6 +27227,7 @@ sub proxy_forward_proxyuserwithproxyauth_login_extra_pass {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -27137,6 +27399,7 @@ sub proxy_forward_proxyuserwithproxyauth_login_user_incl_at_symbol {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -27261,6 +27524,7 @@ sub proxy_forward_proxyuserwithproxyauth_login_failed_bad_dst_addr {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -27426,6 +27690,7 @@ sub proxy_forward_proxyuserwithproxyauth_login_failed_non2xx {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -27602,6 +27867,7 @@ sub proxy_forward_proxyuserwithproxyauth_login_failed_limit_login {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -27778,6 +28044,7 @@ sub proxy_forward_proxyuserwithproxyauth_login_failed_bad_sequence {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -28029,6 +28296,7 @@ sub proxy_forward_proxyuserwithproxyauth_login_failed_bad_proxy_passwd {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -28215,6 +28483,7 @@ sub proxy_forward_proxyuserwithproxyauth_login_failed_bad_dst_passwd {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -28386,6 +28655,7 @@ sub proxy_forward_proxyuserwithproxyauth_bad_sequence_no_dst_login {
     AuthUserFile => $proxy_user_file,
     AuthGroupFile => $proxy_group_file,
     AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -28546,6 +28816,8 @@ sub proxy_forward_config_forward_to {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -28691,6 +28963,8 @@ sub proxy_forward_config_forward_to_negated {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -28806,6 +29080,8 @@ sub proxy_forward_config_use_direct_data_transfers_port {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
@@ -28927,6 +29203,8 @@ sub proxy_forward_config_use_direct_data_transfers_pasv {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
 
