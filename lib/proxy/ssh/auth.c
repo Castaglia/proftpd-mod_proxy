@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH user authentication
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -225,7 +225,8 @@ static int handle_userauth_none(struct proxy_ssh_packet *pkt,
   pkt->payload_len = len;
 
   res = proxy_ssh_packet_write_frontend(proxy_sess->frontend_ctrl_conn, pkt);
-  if (res < 0) {
+  if (res < 0 &&
+      errno != ENOSYS) {
     destroy_pool(pkt->pool);
     return -1;
   }
@@ -374,10 +375,15 @@ static int handle_userauth_hostbased(struct proxy_ssh_packet *pkt,
    */
   proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &orig_user);
 
-  res = dispatch_user_cmd(pkt->pool, orig_user, &new_user);
-  if (res < 0) {
-    destroy_pool(pkt->pool);
-    return -1;
+  /* If mod_sftp has already authenticated the client (as for PerUser/PerGroup
+   * connect policies), then we need not dispatch USER/PASS commands again.
+   */
+  if (session.auth_mech == NULL) {
+    res = dispatch_user_cmd(pkt->pool, orig_user, &new_user);
+    if (res < 0) {
+      destroy_pool(pkt->pool);
+      return -1;
+    }
   }
 
   proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &service);
@@ -388,11 +394,13 @@ static int handle_userauth_hostbased(struct proxy_ssh_packet *pkt,
 
   destroy_pool(pkt->pool);
 
-  (void) pr_table_remove(session.notes, "mod_auth.orig-user", NULL);
-  if (pr_table_add_dup(session.notes, "mod_auth.orig-user", user, 0) < 0 &&
-      errno != EEXIST) {
-    pr_log_debug(DEBUG3, "error stashing 'mod_auth.orig-user' in "
-      "session.notes: %s", strerror(errno));
+  if (session.auth_mech == NULL) {
+    (void) pr_table_remove(session.notes, "mod_auth.orig-user", NULL);
+    if (pr_table_add_dup(session.notes, "mod_auth.orig-user", user, 0) < 0 &&
+        errno != EEXIST) {
+      pr_log_debug(DEBUG3, "error stashing 'mod_auth.orig-user' in "
+        "session.notes: %s", strerror(errno));
+    }
   }
 
   if (proxy_ssh_keys_have_hostkey(PROXY_SSH_KEY_UNKNOWN) != 0) {
@@ -425,7 +433,8 @@ static int handle_userauth_hostbased(struct proxy_ssh_packet *pkt,
     pkt->payload_len = len;
 
     res = proxy_ssh_packet_write_frontend(proxy_sess->frontend_ctrl_conn, pkt);
-    if (res < 0) {
+    if (res < 0 &&
+        errno != ENOSYS) {
       destroy_pool(pkt->pool);
       return -1;
     }
@@ -1006,7 +1015,8 @@ static int handle_userauth_publickey(struct proxy_ssh_packet *pkt,
     pkt->payload_len = len;
 
     res = proxy_ssh_packet_write_frontend(proxy_sess->frontend_ctrl_conn, pkt);
-    if (res < 0) {
+    if (res < 0 &&
+        errno != ENOSYS) {
       destroy_pool(pkt->pool);
       return -1;
     }
@@ -1060,7 +1070,8 @@ static int handle_userauth_publickey(struct proxy_ssh_packet *pkt,
     }
 
     res = proxy_ssh_packet_write_frontend(proxy_sess->frontend_ctrl_conn, pkt);
-    if (res < 0) {
+    if (res < 0 &&
+        errno != ENOSYS) {
       xerrno = errno;
 
       destroy_pool(pkt->pool);
@@ -1196,11 +1207,13 @@ int proxy_ssh_auth_handle(struct proxy_ssh_packet *pkt,
 
     (void) pr_timer_remove(PR_TIMER_LOGIN, ANY_MODULE);
 
-    orig_user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
-    res = proxy_session_setup_env(proxy_pool, orig_user, 0);
-    if (res < 0) {
-      errno = EINVAL;
-      return -1;
+    if (session.auth_mech == NULL) {
+      orig_user = pr_table_get(session.notes, "mod_auth.orig-user", NULL);
+      res = proxy_session_setup_env(proxy_pool, orig_user, 0);
+      if (res < 0) {
+        errno = EINVAL;
+        return -1;
+      }
     }
 
     /* We call the compression init routines here as well, in case the
@@ -1210,7 +1223,13 @@ int proxy_ssh_auth_handle(struct proxy_ssh_packet *pkt,
     proxy_ssh_compress_init_write(PROXY_SSH_COMPRESS_FL_AUTHENTICATED);
   }
 
-  dispatch_pass_cmd(proxy_pool, success);
+  /* If mod_sftp has already authenticated the client (as for PerUser/PerGroup
+   * connect policies), then we need not dispatch USER/PASS commands again.
+   */
+  if (session.auth_mech == NULL) {
+    dispatch_pass_cmd(proxy_pool, success);
+  }
+
   return success;
 }
 
@@ -1227,6 +1246,37 @@ int proxy_ssh_auth_sess_init(pool *p, const struct proxy_session *proxy_sess) {
   /* Currently unused. */
   (void) p;
   (void) proxy_sess;
+
+  return 0;
+}
+
+int proxy_ssh_auth_set_frontend_success_handle(pool *p,
+    int (*success_handle)(pool *p, const char *user)) {
+  const char *hook_symbol;
+  cmdtable *sftp_cmdtab;
+  cmd_rec *cmd;
+  modret_t *result;
+
+  hook_symbol = "sftp_set_auth_success_handler";
+  sftp_cmdtab = pr_stash_get_symbol2(PR_SYM_HOOK, hook_symbol, NULL, NULL,
+    NULL);
+  if (sftp_cmdtab == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to find SFTP hook symbol '%s'", hook_symbol);
+    errno = ENOENT;
+    return -1;
+  }
+
+  cmd = pr_cmd_alloc(p, 1, NULL);
+  cmd->argv[0] = (void *) success_handle;
+  result = pr_module_call(sftp_cmdtab->m, sftp_cmdtab->handler, cmd);
+  if (result == NULL ||
+      MODRET_ISERROR(result)) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error setting Proxy SSH Auth success handler");
+    errno = EPERM;
+    return -1;
+  }
 
   return 0;
 }

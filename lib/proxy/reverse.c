@@ -1031,14 +1031,21 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
   return 0;
 }
 
-static int reverse_connect(pool *p, struct proxy_session *proxy_sess) {
+int proxy_reverse_connect(pool *p, struct proxy_session *proxy_sess,
+    const void *connect_data) {
   register int i;
   int res;
+
+  if (p == NULL ||
+      proxy_sess == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
 
   for (i = 0; i < reverse_retry_count; i++) {
     pr_signals_handle();
 
-    res = reverse_try_connect(p, proxy_sess, NULL);
+    res = reverse_try_connect(p, proxy_sess, connect_data);
     if (res == 0) {
       return 0;
     }
@@ -1337,7 +1344,7 @@ int proxy_reverse_sess_init(pool *p, const char *tables_dir,
   }
 
   if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_SESS_INIT) {
-    res = reverse_connect(p, proxy_sess);
+    res = proxy_reverse_connect(p, proxy_sess, NULL);
     if (res < 0) {
       return -1;
     }
@@ -1575,28 +1582,28 @@ int proxy_reverse_connect_get_policy_id(const char *policy) {
     return -1;
   }
 
-  if (strncasecmp(policy, "Random", 7) == 0) {
+  if (strcasecmp(policy, "Random") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_RANDOM;
 
-  } else if (strncasecmp(policy, "RoundRobin", 11) == 0) {
+  } else if (strcasecmp(policy, "RoundRobin") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN;
 
-  } else if (strncasecmp(policy, "Shuffle", 8) == 0) {
+  } else if (strcasecmp(policy, "Shuffle") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_SHUFFLE;
 
-  } else if (strncasecmp(policy, "LeastConns", 11) == 0) {
+  } else if (strcasecmp(policy, "LeastConns") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS;
 
-  } else if (strncasecmp(policy, "PerUser", 8) == 0) {
+  } else if (strcasecmp(policy, "PerUser") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_PER_USER;
 
-  } else if (strncasecmp(policy, "PerGroup", 9) == 0) {
+  } else if (strcasecmp(policy, "PerGroup") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_PER_GROUP;
 
-  } else if (strncasecmp(policy, "PerHost", 8) == 0) {
+  } else if (strcasecmp(policy, "PerHost") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_PER_HOST;
 
-  } else if (strncasecmp(policy, "LeastResponseTime", 18) == 0) {
+  } else if (strcasecmp(policy, "LeastResponseTime") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME;
   }
 
@@ -1701,27 +1708,18 @@ int proxy_reverse_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
   }
 
   if (reverse_flags == PROXY_REVERSE_FL_CONNECT_AT_USER) {
-    register int i;
     int connected = FALSE, xerrno = 0;
 
-    for (i = 0; i < reverse_retry_count; i++) {
-      pr_signals_handle();
+    res = proxy_reverse_connect(proxy_pool, proxy_sess, cmd->arg);
+    xerrno = errno;
 
-      res = reverse_try_connect(proxy_pool, proxy_sess, cmd->arg);
-      if (res == 0) {
-        connected = TRUE;
-        break;
-      }
-
-      xerrno = errno;
+    if (res == 0) {
+      connected = TRUE;
     }
 
     pr_response_block(FALSE);
 
     if (connected == FALSE) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "ProxyRetryCount %d reached with no successful connection, failing",
-        reverse_retry_count);
       *successful = FALSE;
 
       if (xerrno != EINVAL) {
@@ -1884,7 +1882,6 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     }
 
     if (!(proxy_sess_state & PROXY_SESS_STATE_CONNECTED)) {
-      register int i;
       int connected = FALSE;
       const char *user = NULL, *connect_name = NULL;
       cmd_rec *user_cmd;
@@ -1906,24 +1903,16 @@ int proxy_reverse_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
         }
       }
 
-      for (i = 0; i < reverse_retry_count; i++) {
-        pr_signals_handle();
+      res = proxy_reverse_connect(proxy_pool, proxy_sess, connect_name);
+      xerrno = errno;
 
-        res = reverse_try_connect(proxy_pool, proxy_sess, connect_name);
-        if (res == 0) {
-          connected = TRUE;
-          break;
-        }
-
-        xerrno = errno;
+      if (res == 0) {
+        connected = TRUE;
       }
 
       pr_response_block(FALSE);
 
       if (connected == FALSE) {
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "ProxyRetryCount %d reached with no successful connection, failing",
-          reverse_retry_count);
         *successful = FALSE;
 
         if (xerrno != EINVAL) {

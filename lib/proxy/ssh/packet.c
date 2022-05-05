@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH packet IO
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -47,7 +47,7 @@
 
 extern pr_response_t *resp_list, *resp_err_list;
 
-static int (*frontend_packet_write)(int, void *);
+static int (*frontend_packet_write)(int, void *) = NULL;
 
 static uint32_t packet_client_seqno = 0;
 static uint32_t packet_server_seqno = 0;
@@ -1491,6 +1491,11 @@ int proxy_ssh_packet_write(conn_t *conn, struct proxy_ssh_packet *pkt) {
 
 int proxy_ssh_packet_write_frontend(conn_t *conn,
     struct proxy_ssh_packet *pkt) {
+  if (frontend_packet_write == NULL) {
+    errno = ENOSYS;
+    return -1;
+  }
+
   return (frontend_packet_write)(conn->wfd, pkt);
 }
 
@@ -1655,12 +1660,22 @@ int proxy_ssh_packet_proxied(const struct proxy_session *proxy_sess,
     pr_trace_msg(trace_channel, 17,
       "proxying %s (%d) packet from backend to frontend",
        proxy_ssh_packet_get_msg_type_desc(msg_type), msg_type);
-    res = (frontend_packet_write)(proxy_sess->frontend_ctrl_conn->wfd, pkt);
+    res = proxy_ssh_packet_write_frontend(proxy_sess->frontend_ctrl_conn, pkt);
     xerrno = errno;
 
     if (res < 0) {
-      pr_trace_msg(trace_channel, 2,
-        "error proxying packet from backend to frontend: %s", strerror(xerrno));
+      if (xerrno != ENOSYS) {
+        pr_trace_msg(trace_channel, 2,
+          "error proxying packet from backend to frontend: %s",
+          strerror(xerrno));
+
+      } else {
+        /* Ignore the case where we are told not to write packets to the
+         * frontend client.
+         */
+        res = 0;
+        xerrno = errno = 0;
+      }
     }
   }
 
