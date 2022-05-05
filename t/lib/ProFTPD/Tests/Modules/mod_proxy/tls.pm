@@ -8049,6 +8049,8 @@ sub forward_frontend_backend_tls_tls_xfer_policy {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -8124,7 +8126,7 @@ EOC
   if ($pid) {
     eval {
       # Give the server a chance to start up
-      sleep(2);
+      sleep(3);
 
       my $ssl_opts = {
         SSL_ca_file => $ca_file,
