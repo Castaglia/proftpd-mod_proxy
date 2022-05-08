@@ -934,22 +934,22 @@ file.  The <code>mod_proxy</code> module uses the keys thus configured for
 You can use either an RSA key, a DSA key, and/or ECDSA keys.  These <i>could</i>
 be the exact same host key files as used by your SSH server, <i>e.g.</i>:
 <pre>
-  <IfModule mod_sftp.c>
+  &lt;IfModule mod_sftp.c&gt;
     ...
     SFTPHostKey /etc/ssh_host_dsa_key
     SFTPHostKey /etc/ssh_host_rsa_key
     SFTPHostKey /etc/ssh_host_ecdsa_key
     SFTPHostKey /etc/ssh_host_ed25519_key
-  </IfModule>
+  &lt;/IfModule&gt;
 
-  <IfModule mod_proxy.c>
+  &lt;IfModule mod_proxy.c&gt;
     ProxyEngine on
     ..
     ProxySFTPHostKey /etc/ssh_host_dsa_key
     ProxySFTPHostKey /etc/ssh_host_rsa_key
     ProxySFTPHostKey /etc/ssh_host_ecdsa_key
     ProxySFTPHostKey /etc/ssh_host_ed25519_key
-  </IfModule>
+  &lt;/IfModule&gt;
 </pre>
 
 <p>
@@ -2043,8 +2043,94 @@ specify a port of 990, <i>e.g.</i>:
 
 <p>
 <b>SFTP/SCP Support</b><br>
-The <code>mod_proxy</code> module only works for FTP/FTPS sessions; it does
-<b>not</b> currently support/handle SFTP/SCP sessions.
+The <code>mod_proxy</code> module now supports <em>reverse</em> proxying (but
+<b>not</b> <em>forward</em> proxying) of SFTP/SCP sessions.
+
+<p>
+To support a reverse proxy configuration for SFTP/SCP sessions, specify
+the <code>sftp</code> scheme in your <code>ProxyReverseServers</code> URIs,
+like so:
+<pre>
+  &lt;IfModule mod_proxy.c&gt;
+    ProxyEngine on
+    ProxyLog /path/to/proxy.log
+    ProxyTables /var/ftp/proxy
+
+    ProxyRole reverse
+    ProxyReverseConnectPolicy RoundRobin
+    ProxyReverseServers sftp://ssh-backend1.example.com:2222 sftp://ssh-backend2.example.com ...
+  &lt;/IfModule&gt;
+</pre>
+
+<p>
+When proxying SSH connections like this, there will be <em>two</em> separate
+SSH sessions:
+<pre>
+  frontend client --- (SSH session #1) --> proxy --- (SSH session #2) --> backend server
+</pre>
+Each SSH session creates a unique session ID, as a hash of client- and
+server-provided values known as <code>H</code>.  This is important for some
+types of authentication, as we see later.
+
+<p>
+Proxying of SSH connections is more complex than proxying of FTP/FTPS
+connections, <i>especially</i> when it comes to authentication.  FTP supports
+simple password-based authentication, whereas SSH supports multiple different
+authentication mechanisms.  And two authentication mechanisms, in particular,
+require a slightly more sophisticated <code>mod_proxy</code> configuration:
+&quot;hostbased&quot; and &quot;publickey&quot;.
+
+<p>
+When the frontend SSH client requests the &quot;keyboard-interactive&quot;
+or &quot;password&quot; authentication mechanisms, then <code>mod_proxy</code>
+can handle the client using the above configuration as-is. For the
+&quot;hostbased&quot; and &quot;publickey&quot; authentication mechanisms,
+<code>mod_proxy</code> needs to do a little more work -- and it requires
+support on the backend servers for &quot;hostbased&quot; authentication.
+
+<p>
+Let's consider the common &quot;publickey&quot; use case (the frontend
+&quot;hostbased&quot; case is quite similar).  The frontend client has a
+public/private key pair; <code>mod_proxy</code> has no knowledge or access to
+that frontend private key (by design).  The frontend client performs the
+&quot;publickey&quot; authentication by hashing several types of data, then
+encrypts that hash with its private key; the server (<code>mod_proxy</code> in
+this case) then hashes the same data, and decrypts the client-sent value with
+the client's public key.  The complication is that one of the types of data
+included in these hashes is the unique session ID known as <code>H</code>
+mentioned above.  The <code>H</code> values for the SSH connections (from the
+frontend client to the proxy, and separately from the proxy to the backend
+server) <b>will be different</b>.  And since <code>mod_proxy</code> has no
+access to the frontend private key, it cannot forge or change <code>H</code>
+(and this is a good thing).  But it does mean that <code>mod_proxy</code>
+cannot simply proxy the &quot;publickey&quot; authentication request as is,
+from frontend client to backend server.
+
+<p>
+Instead, for these authentication mechanisms, <code>mod_proxy</code> will
+use a different authentication mechanism, specifically &quot;hostbased&quot;
+authentication, to the backend server.  This makes sense, right?  The backend
+server trusts that the proxy is doing proper handling of <b>all</b> frontend
+clients, thus backend server can trust the entire proxy host, not just
+individual clients proxied by that host.  In order support these backend
+&quot;hostbased&quot; authentication requests, <code>mod_proxy</code> will
+need to know its private key to use for such things, via
+<a href="#ProxySFTPHostKey"><code>ProxySFTPHostKey</code></a>; this can
+actually the same private key used by the <code>SFTPHostKey</code> directive
+(or be a different private key, depending on your needs).  It also requires
+that the backend servers be configured to trust the corresponding public key;
+for <code>mod_sftp</code>, this would be done using its
+<code>SFTPAuthorizedHostKeys</code> directive.
+
+<p>
+The SFTP/SCP support in <code>mod_proxy</code> also properly supports the
+<code>PerUser</code>, <code>PerGroup</code>
+<a href="#ProxyReverseConnectPolicy"><code>ProxyReverseConnectPolicy</code></a>
+values, subject the same caveats.  This means that <code>mod_proxy</code>
+can proxy different frontend SSH users to different backend servers (and
+even rewrite/change the user name via the <a href="http://www.proftpd.org/docs/contrib/mod_rewrite.html"><code>mod_rewrite</code></a> module); just like for
+FTP/FTPS sessions, you can configure the per-user lookup of backend servers
+using SQL queries, JSON files, <i>etc</i>.
 
 <p>
 <b>Logging</b><br>
