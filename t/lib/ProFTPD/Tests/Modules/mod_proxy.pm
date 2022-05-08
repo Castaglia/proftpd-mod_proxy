@@ -24688,7 +24688,8 @@ EOC
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      sleep(1);
+      sleep(2);
+
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1);
       $client->login("$user\@127.0.0.1:$vhost_port", $passwd);
 
