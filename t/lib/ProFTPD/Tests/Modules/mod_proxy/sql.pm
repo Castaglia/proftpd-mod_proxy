@@ -1282,11 +1282,14 @@ EOC
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
+      # Allow for server startup
+      sleep(2);
+
       for (my $i = 0; $i < $nbackends+1; $i++) {
-        sleep(2);
         my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 0);
         $client->login($setup->{user}, $setup->{passwd});
         ftp_list($self, $client);
+        sleep(2);
       }
     };
 
