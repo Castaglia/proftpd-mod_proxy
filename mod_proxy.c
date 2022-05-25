@@ -49,6 +49,10 @@
 #include "proxy/ssh/auth.h"
 #include "proxy/ssh/crypto.h"
 
+#if defined(HAVE_OSSL_PROVIDER_LOAD_OPENSSL)
+# include <openssl/provider.h>
+#endif /* HAVE_OSSL_PROVIDER_LOAD_OPENSSL */
+
 /* Proxy role */
 #define PROXY_ROLE_REVERSE		1
 #define PROXY_ROLE_FORWARD		2
@@ -80,6 +84,10 @@ static unsigned int proxy_login_attempts = 0;
 static int proxy_role = PROXY_ROLE_REVERSE;
 static const char *proxy_tables_dir = NULL;
 static int proxy_tls_xfer_prot_policy = PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_REQUIRED;
+
+#if defined(HAVE_OSSL_PROVIDER_LOAD_OPENSSL)
+static OSSL_PROVIDER *legacy_provider = NULL;
+#endif /* HAVE_OSSL_PROVIDER_LOAD_OPENSSL */
 
 static const char *trace_channel = "proxy";
 
@@ -5144,6 +5152,13 @@ static void proxy_shutdown_ev(const void *event_data, void *user_data) {
 
   proxy_db_free();
 
+#if defined(HAVE_OSSL_PROVIDER_LOAD_OPENSSL)
+  if (legacy_provider != NULL) {
+    OSSL_PROVIDER_unload(legacy_provider);
+    legacy_provider = NULL;
+  }
+#endif /* HAVE_OSSL_PROVIDER_LOAD_OPENSSL */
+
   destroy_pool(proxy_pool);
   proxy_pool = NULL;
 
@@ -5206,6 +5221,13 @@ static int proxy_init(void) {
   pr_event_register(&proxy_module, "core.postparse", proxy_postparse_ev, NULL);
   pr_event_register(&proxy_module, "core.restart", proxy_restart_ev, NULL);
   pr_event_register(&proxy_module, "core.shutdown", proxy_shutdown_ev, NULL);
+
+#if defined(HAVE_OSSL_PROVIDER_LOAD_OPENSSL)
+  /* Load the "legacy" OpenSSL algorithm provider, for those SSH algorithms
+   * that require support of algorithms that OpenSSL deemed "legacy".
+   */
+  legacy_provider = OSSL_PROVIDER_load(NULL, "legacy");
+#endif /* HAVE_OSSL_PROVIDER_LOAD_OPENSSL */
 
   if (proxy_db_init(proxy_pool) < 0) {
     return -1;

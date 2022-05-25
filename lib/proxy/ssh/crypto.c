@@ -78,7 +78,7 @@ static struct proxy_ssh_cipher ciphers[] = {
   { "aes192-ctr",	NULL,		0,	NULL,	TRUE, TRUE },
   { "aes128-ctr",	NULL,		0,	NULL,	TRUE, TRUE },
 
-#ifndef HAVE_AES_CRIPPLED_OPENSSL
+#if !defined(HAVE_AES_CRIPPLED_OPENSSL)
   { "aes256-cbc",	"aes-256-cbc",	0,	EVP_aes_256_cbc, TRUE, TRUE },
   { "aes192-cbc",	"aes-192-cbc",	0,	EVP_aes_192_cbc, TRUE, TRUE },
 #endif /* !HAVE_AES_CRIPPLED_OPENSSL */
@@ -86,7 +86,9 @@ static struct proxy_ssh_cipher ciphers[] = {
   { "aes128-cbc",	"aes-128-cbc",	0,	EVP_aes_128_cbc, TRUE, TRUE },
 
 #if !defined(OPENSSL_NO_BF)
+# if OPENSSL_VERSION_NUMBER < 0x30000000L
   { "blowfish-ctr",	NULL,		0,	NULL,	FALSE, FALSE },
+# endif /* Prior to OpenSSL 3.x */
   { "blowfish-cbc",	"bf-cbc",	0,	EVP_bf_cbc, FALSE, FALSE },
 #endif /* !OPENSSL_NO_BF */
 
@@ -100,7 +102,9 @@ static struct proxy_ssh_cipher ciphers[] = {
 #endif /* !OPENSSL_NO_RC4 */
 
 #if !defined(OPENSSL_NO_DES)
+# if OPENSSL_VERSION_NUMBER < 0x30000000L
   { "3des-ctr",		NULL,		0,	NULL, TRUE, TRUE },
+# endif /* Prior to OpenSSL 3.x */
   { "3des-cbc",		"des-ede3-cbc",	0,	EVP_des_ede3_cbc, TRUE, TRUE },
 #endif /* !OPENSSL_NO_DES */
 
@@ -153,6 +157,7 @@ static struct proxy_ssh_digest digests[] = {
 
 static const char *trace_channel = "proxy.ssh.crypto";
 
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
 static void ctr_incr(unsigned char *ctr, size_t len) {
   register int i;
 
@@ -167,8 +172,10 @@ static void ctr_incr(unsigned char *ctr, size_t len) {
     }
   }
 }
+#endif /* Prior to OpenSSL 3.x */
 
-#if !defined(OPENSSL_NO_BF)
+#if !defined(OPENSSL_NO_BF) && \
+    OPENSSL_VERSION_NUMBER < 0x30000000L
 /* Blowfish CTR mode implementation */
 
 struct bf_ctr_ex {
@@ -323,9 +330,10 @@ static const EVP_CIPHER *get_bf_ctr_cipher(void) {
 
   return cipher;
 }
-#endif /* !OPENSSL_NO_BF */
+#endif /* !OPENSSL_NO_BF and OpenSSL prior to 3.x */
 
-#if !defined(OPENSSL_NO_DES)
+#if !defined(OPENSSL_NO_DES) && \
+    OPENSSL_VERSION_NUMBER < 0x30000000L
 /* 3DES CTR mode implementation */
 
 struct des3_ctr_ex {
@@ -503,7 +511,11 @@ static const EVP_CIPHER *get_des3_ctr_cipher(void) {
 
   return cipher;
 }
-#endif /* !OPENSSL_NO_DES */
+#endif /* !OPENSSL_NO_DES and OpenSSL prior to 3.x */
+
+#if !defined(HAVE_EVP_AES_128_CTR_OPENSSL) && \
+    !defined(HAVE_EVP_AES_192_CTR_OPENSSL) && \
+    !defined(HAVE_EVP_AES_256_CTR_OPENSSL)
 
 /* AES CTR mode implementation */
 struct aes_ctr_ex {
@@ -519,7 +531,6 @@ static int init_aes_ctr(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 
   ace = EVP_CIPHER_CTX_get_app_data(ctx);
   if (ace == NULL) {
-
     /* Allocate our data structure. */
     ace = calloc(1, sizeof(struct aes_ctr_ex));
     if (ace == NULL) {
@@ -719,6 +730,7 @@ static const EVP_CIPHER *get_aes_ctr_cipher(int key_len) {
 
   return cipher;
 }
+#endif /* OpenSSL implements AES CTR modes */
 
 static int update_umac64(EVP_MD_CTX *ctx, const void *data, size_t len) {
   int res;
@@ -927,34 +939,48 @@ const EVP_CIPHER *proxy_ssh_crypto_get_cipher(const char *name, size_t *key_len,
       const EVP_CIPHER *cipher;
 
       if (strcmp(name, "blowfish-ctr") == 0) {
-#if !defined(OPENSSL_NO_BF)
+#if !defined(OPENSSL_NO_BF) && \
+    OPENSSL_VERSION_NUMBER < 0x30000000L
         cipher = get_bf_ctr_cipher();
 #else
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "'%s' cipher unsupported", name);
         errno = ENOENT;
         return NULL;
-#endif /* !OPENSSL_NO_BF */
+#endif /* !OPENSSL_NO_BF and OpenSSL prior to 3.x */
 
 #if OPENSSL_VERSION_NUMBER > 0x000907000L
       } else if (strcmp(name, "3des-ctr") == 0) {
-# if !defined(OPENSSL_NO_DES)
+# if !defined(OPENSSL_NO_DES) && \
+     OPENSSL_VERSION_NUMBER < 0x30000000L
         cipher = get_des3_ctr_cipher();
 # else
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "'%s' cipher unsupported", name);
         errno = ENOENT;
         return NULL;
-# endif /* !OPENSSL_NO_DES */
+# endif /* !OPENSSL_NO_DES and OpenSSL prior to 3.x */
 
       } else if (strcmp(name, "aes256-ctr") == 0) {
+# if defined(HAVE_EVP_AES_256_CTR_OPENSSL)
+        cipher = EVP_aes_256_ctr();
+# else
         cipher = get_aes_ctr_cipher(32);
+# endif /* HAVE_EVP_AES_256_CTR_OPENSSL */
 
       } else if (strcmp(name, "aes192-ctr") == 0) {
+# if defined(HAVE_EVP_AES_192_CTR_OPENSSL)
+        cipher = EVP_aes_192_ctr();
+# else
         cipher = get_aes_ctr_cipher(24);
+# endif /* HAVE_EVP_AES_192_CTR_OPENSSL */
 
       } else if (strcmp(name, "aes128-ctr") == 0) {
+# if defined(HAVE_EVP_AES_128_CTR_OPENSSL)
+        cipher = EVP_aes_128_ctr();
+# else
         cipher = get_aes_ctr_cipher(16);
+# endif /* HAVE_EVP_AES_128_CTR_OPENSSL */
 #endif /* OpenSSL older than 0.9.7 */
 
       } else {
