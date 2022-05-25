@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH ciphers
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -98,7 +98,7 @@ static unsigned int get_next_write_index(void) {
 
 static void switch_read_cipher(void) {
   /* First, clear the context of the existing read cipher, if any. */
-  if (read_ciphers[read_cipher_idx].key) {
+  if (read_ciphers[read_cipher_idx].key != NULL) {
     clear_cipher(&(read_ciphers[read_cipher_idx]));
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L || \
@@ -125,7 +125,7 @@ static void switch_read_cipher(void) {
 
 static void switch_write_cipher(void) {
   /* First, clear the context of the existing read cipher, if any. */
-  if (write_ciphers[write_cipher_idx].key) {
+  if (write_ciphers[write_cipher_idx].key != NULL) {
     clear_cipher(&(write_ciphers[write_cipher_idx]));
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L || \
@@ -207,14 +207,40 @@ static int set_cipher_iv(struct proxy_ssh_cipher *cipher, const EVP_MD *md,
   }
 
   ctx = EVP_MD_CTX_create();
-  EVP_DigestInit(ctx, md);
+  if (EVP_DigestInit(ctx, md) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to initialize SSH MD context for '%s': %s", EVP_MD_name(md),
+      proxy_ssh_crypto_get_errors());
+    free(iv);
+    errno = EINVAL;
+    return -1;
+  }
+
   if (proxy_ssh_interop_supports_feature(PROXY_SSH_FEAT_CIPHER_USE_K)) {
     EVP_DigestUpdate(ctx, k, klen);
   }
-  EVP_DigestUpdate(ctx, h, hlen);
+
+  if (EVP_DigestUpdate(ctx, h, hlen) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to update SSH MD context for '%s': %s", EVP_MD_name(md),
+      proxy_ssh_crypto_get_errors());
+    free(iv);
+    errno = EINVAL;
+    return -1;
+  }
+
   EVP_DigestUpdate(ctx, &letter, sizeof(letter));
   EVP_DigestUpdate(ctx, (char *) id, id_len);
-  EVP_DigestFinal(ctx, iv, &iv_len);
+
+  if (EVP_DigestFinal(ctx, iv, &iv_len) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to finish SSH MD context for '%s': %s", EVP_MD_name(md),
+      proxy_ssh_crypto_get_errors());
+    free(iv);
+    errno = EINVAL;
+    return -1;
+  }
+
   EVP_MD_CTX_destroy(ctx);
 
   /* If we need more, keep hashing, as per RFC, until we have enough
@@ -279,12 +305,37 @@ static int set_cipher_key(struct proxy_ssh_cipher *cipher, const EVP_MD *md,
   }
 
   ctx = EVP_MD_CTX_create();
-  EVP_DigestInit(ctx, md);
-  EVP_DigestUpdate(ctx, k, klen);
+  if (EVP_DigestInit(ctx, md) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to initialize SSH MD context for '%s': %s", EVP_MD_name(md),
+      proxy_ssh_crypto_get_errors());
+    free(key);
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (EVP_DigestUpdate(ctx, k, klen) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to update SSH MD context for '%s': %s", EVP_MD_name(md),
+      proxy_ssh_crypto_get_errors());
+    free(key);
+    errno = EINVAL;
+    return -1;
+  }
+
   EVP_DigestUpdate(ctx, h, hlen);
   EVP_DigestUpdate(ctx, &letter, sizeof(letter));
   EVP_DigestUpdate(ctx, (char *) id, id_len);
-  EVP_DigestFinal(ctx, key, &key_len);
+
+  if (EVP_DigestFinal(ctx, key, &key_len) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to finish SSH MD context for '%s': %s", EVP_MD_name(md),
+      proxy_ssh_crypto_get_errors());
+    free(key);
+    errno = EINVAL;
+    return -1;
+  }
+
   EVP_MD_CTX_destroy(ctx);
 
   pr_trace_msg(trace_channel, 19, "hashed data to produce key (%lu bytes)",
@@ -512,7 +563,18 @@ int proxy_ssh_cipher_set_read_key(pool *p, const EVP_MD *md,
     return -1;
   }
 
-  proxy_ssh_cipher_set_block_size(EVP_CIPHER_block_size(cipher->cipher));
+  if (strcmp(cipher->algo, "aes128-ctr") == 0 ||
+      strcmp(cipher->algo, "aes192-ctr") == 0 ||
+      strcmp(cipher->algo, "aes256-ctr") == 0) {
+    /* For some reason, OpenSSL returns 8 for the AES CTR/GCM block size (even
+     * though the AES block size is 16, per RFC 5647), but OpenSSH wants 16.
+     */
+    proxy_ssh_cipher_set_block_size(16);
+
+  } else {
+    proxy_ssh_cipher_set_block_size(EVP_CIPHER_block_size(cipher->cipher));
+  }
+
   return 0;
 }
 
