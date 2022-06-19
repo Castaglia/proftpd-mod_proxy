@@ -2389,24 +2389,70 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
 
   /* XXX Should handle EPSV_ALL here, too. */
   if (proxy_sess->backend_sess_flags & SF_PASSIVE) {
-    const pr_netaddr_t *bind_addr = NULL;
+    const pr_netaddr_t *bind_addr = NULL, *local_addr = NULL;
 
     /* Connect to the backend server now. We won't receive the initial
      * response until we connect to the backend data address/port.
      */
+
+    /* Check the family of the remote address vs what we'll be using to connect.
+     * If there's a mismatch, we need to get an addr with the matching family.
+     */
+    if (pr_netaddr_get_family(bind_addr) != pr_netaddr_get_family(proxy_sess->backend_data_addr)) {
+      /* In this scenario, the proxy has an IPv6 socket, but the remote/backend
+       * server has an IPv4 (or IPv4-mapped IPv6) address.  OR it's the proxy
+       * which has an IPv4 socket, and the remote/backend server has an IPv6
+       * address.
+       */
+      if (pr_netaddr_get_family(session.c->local_addr) == AF_INET) {
+        char *ip_str;
+
+        /* Convert the local address from an IPv4 to an IPv6 addr. */
+        ip_str = pcalloc(cmd->tmp_pool, INET6_ADDRSTRLEN + 1);
+        snprintf(ip_str, INET6_ADDRSTRLEN, "::ffff:%s",
+          pr_netaddr_get_ipstr(session.c->local_addr));
+        local_addr = pr_netaddr_get_addr(cmd->tmp_pool, ip_str, NULL);
+
+      } else {
+        local_addr = pr_netaddr_v6tov4(cmd->tmp_pool, session.c->local_addr);
+        if (local_addr == NULL) {
+          pr_trace_msg(trace_channel, 4,
+            "error converting IPv6 local address %s to IPv4 address: %s",
+            pr_netaddr_get_ipstr(session.c->local_addr), strerror(errno));
+
+          if (proxy_sess->src_addr == NULL) {
+            (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+              "local address '%s' is an IPv6 address, and remote address "
+              "'%s' is an IPv4 address; consider using ProxySourceAddress "
+              "directive to configure an IPv4 address",
+              pr_netaddr_get_ipstr(session.c->local_addr),
+              pr_netaddr_get_ipstr(proxy_sess->backend_data_addr));
+          }
+        }
+      }
+
+      if (local_addr != NULL) {
+        pr_trace_msg(trace_channel, 7,
+          "converted local address %s to %s for passive backend transfer",
+          pr_netaddr_get_ipstr(session.c->local_addr),
+          pr_netaddr_get_ipstr(local_addr));
+
+      } else {
+        local_addr = session.c->local_addr;
+      }
+    }
 
     /* Specify the specific address/interface to use as the source address for
      * connections to the destination server.
      */
     bind_addr = proxy_sess->src_addr;
     if (bind_addr == NULL) {
-      bind_addr = session.c->local_addr;
+      bind_addr = local_addr;
     }
 
     if (pr_netaddr_is_loopback(bind_addr) == TRUE &&
         pr_netaddr_is_loopback(proxy_sess->backend_ctrl_conn->remote_addr) != TRUE) {
       const char *local_name;
-      const pr_netaddr_t *local_addr;
 
       local_name = pr_netaddr_get_localaddr_str(cmd->pool);
       local_addr = pr_netaddr_get_addr(cmd->pool, local_name, NULL);
@@ -2423,7 +2469,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
         if (local_family != remote_family) {
           pr_netaddr_t *new_addr = NULL;
 
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
           if (local_family == AF_INET) {
             new_addr = pr_netaddr_v4tov6(cmd->pool, local_addr);
 

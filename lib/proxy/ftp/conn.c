@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP connection routines
- * Copyright (c) 2013-2021 TJ Saunders
+ * Copyright (c) 2013-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -166,7 +166,7 @@ conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
     pr_netaddr_get_ipstr(remote_addr), ntohs(pr_netaddr_get_port(remote_addr)),
     pr_netaddr_get_ipstr(bind_addr), ntohs(pr_netaddr_get_port(bind_addr)));
 
-  if (frontend_data) {
+  if (frontend_data == TRUE) {
     res = pr_inet_connect(p, conn, remote_addr,
       ntohs(pr_netaddr_get_port(remote_addr)));
 
@@ -182,7 +182,7 @@ conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
       "unable to connect to %s#%u: %s\n", pr_netaddr_get_ipstr(remote_addr),
       ntohs(pr_netaddr_get_port(remote_addr)), strerror(xerrno));
 
-    if (!frontend_data) {
+    if (frontend_data == FALSE) {
       proxy_inet_close(session.pool, conn);
     }
     pr_inet_close(session.pool, conn);
@@ -193,7 +193,7 @@ conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
 
   /* XXX Will it always be STRM_DATA? */
 
-  if (frontend_data) {
+  if (frontend_data == TRUE) {
     opened = pr_inet_openrw(session.pool, conn, NULL, PR_NETIO_STRM_DATA,
       conn->listen_fd, -1, -1, TRUE);
 
@@ -207,7 +207,7 @@ conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
   if (opened == NULL) {
     int xerrno = errno;
 
-    if (!frontend_data) {
+    if (frontend_data == FALSE) {
       proxy_inet_close(session.pool, conn);
     }
     pr_inet_close(session.pool, conn);
@@ -219,7 +219,7 @@ conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
   /* The conn returned by pr_inet_openrw() is a copy of the input conn;
    * we no longer need the input conn at this point.
    */
-  if (frontend_data) {
+  if (frontend_data == TRUE) {
     pr_inet_close(session.pool, conn);
     pr_pool_tag(opened->pool, "proxy frontend data connect conn pool");
 

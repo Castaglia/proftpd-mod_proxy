@@ -81,6 +81,7 @@ jobs:
             libfile-spec-native-perl \
             libmime-base32-perl \
             libnet-address-ip-local-perl \
+            libnet-inet6glue-perl \
             libnet-ssh2-perl \
             libnet-ssleay-perl \
             libnet-telnet-perl \
