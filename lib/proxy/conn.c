@@ -717,6 +717,21 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
         pr_trace_msg(trace_channel, 4,
           "error converting IPv6 local address %s to IPv4 address: %s",
           pr_netaddr_get_ipstr(session.c->local_addr), strerror(errno));
+
+        if (proxy_sess->src_addr == NULL) {
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "local address '%s' is an IPv6 address, and remote address "
+            "'%s' is an IPv4 address; consider using ProxySourceAddress "
+            "directive to configure an IPv4 address",
+            pr_netaddr_get_ipstr(session.c->local_addr),
+            pr_netaddr_get_ipstr(remote_addr));
+        }
+
+      } else {
+        pr_trace_msg(trace_channel, 9,
+          "converted IPv6 local address %s to IPv4 address %s",
+          pr_netaddr_get_ipstr(session.c->local_addr),
+          pr_netaddr_get_ipstr(local_addr));
       }
     }
 
@@ -755,7 +770,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
       if (local_family != remote_family) {
         pr_netaddr_t *new_addr = NULL;
 
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
         if (local_family == AF_INET) {
           new_addr = pr_netaddr_v4tov6(p, new_local_addr);
 
@@ -808,22 +823,25 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
      * for those particular errors, and if so, log a suggestion to explicitly
      * configure an appropriate ProxySourceAddress (Issue #213).
      */
-    if (netaddr_is_private(bind_addr) == TRUE) {
-      if (netaddr_is_private(remote_addr) != TRUE) {
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "local address '%s' is a private network address, and remote address "
-          "'%s' is a public address; consider using ProxySourceAddress "
-          "directive to configure a public local address",
-          pr_netaddr_get_ipstr(bind_addr), remote_ipstr);
-      }
 
-    } else {
-      if (netaddr_is_private(remote_addr) == TRUE) {
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "local address '%s' is a public address, and remote address '%s' is "
-          "a private network address; consider using ProxySourceAddress "
-          "directive to configure a private local address",
-          pr_netaddr_get_ipstr(bind_addr), remote_ipstr);
+    if (pr_netaddr_get_family(bind_addr) == pr_netaddr_get_family(remote_addr)) {
+      if (netaddr_is_private(bind_addr) == TRUE) {
+        if (netaddr_is_private(remote_addr) != TRUE) {
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "local address '%s' is a private network address, and remote "
+            "address '%s' is a public address; consider using "
+            "ProxySourceAddress directive to configure a public local address",
+            pr_netaddr_get_ipstr(bind_addr), remote_ipstr);
+        }
+
+      } else {
+        if (netaddr_is_private(remote_addr) == TRUE) {
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "local address '%s' is a public address, and remote address '%s' "
+            "is a private network address; consider using ProxySourceAddress "
+            "directive to configure a private local address",
+            pr_netaddr_get_ipstr(bind_addr), remote_ipstr);
+        }
       }
     }
 
