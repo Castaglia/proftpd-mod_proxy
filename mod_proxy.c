@@ -3421,8 +3421,9 @@ MODRET proxy_directory_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
 MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res, xerrno;
   const pr_netaddr_t *remote_addr = NULL;
+  config_rec *c;
   unsigned short remote_port;
-  unsigned char *allow_foreign_addr = NULL;
+  int allow_foreign_address = FALSE;
 
   CHECK_CMD_ARGS(cmd, 2);
 
@@ -3494,11 +3495,44 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   /* Make sure that the address specified matches the address from which
    * the control connection is coming.
    */
-  allow_foreign_addr = get_param_ptr(main_server->conf, "AllowForeignAddress",
+  c = find_config(main_server->conf, CONF_PARAM, "AllowForeignAddress",
     FALSE);
+  if (c != NULL) {
+    int allowed;
 
-  if (allow_foreign_addr == NULL ||
-      *allow_foreign_addr == FALSE) {
+    allowed = *((int *) c->argv[0]);
+    switch (allowed) {
+      case TRUE:
+        allow_foreign_address = TRUE;
+        break;
+
+      case FALSE:
+        break;
+
+      default: {
+        char *class_name;
+        const pr_class_t *cls;
+
+        class_name = c->argv[1];
+        cls = pr_class_find(class_name);
+        if (cls != NULL) {
+          if (pr_class_satisfied(cmd->tmp_pool, cls, remote_addr) == TRUE) {
+            allow_foreign_address = TRUE;
+
+          } else {
+            pr_log_debug(DEBUG8, "<Class> '%s' not satisfied by foreign "
+              "address '%s'", class_name, pr_netaddr_get_ipstr(remote_addr));
+          }
+
+        } else {
+          pr_log_debug(DEBUG8, "<Class> '%s' not found for filtering "
+            "AllowForeignAddress", class_name);
+        }
+      }
+    }
+  }
+
+  if (allow_foreign_address == FALSE) {
     if (pr_netaddr_cmp(remote_addr, session.c->remote_addr) != 0 ||
         !remote_port) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -3880,7 +3914,8 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   int res, xerrno;
   const pr_netaddr_t *remote_addr = NULL;
   unsigned short remote_port;
-  unsigned char *allow_foreign_addr = NULL;
+  config_rec *c;
+  int allow_foreign_address = FALSE;
 
   CHECK_CMD_ARGS(cmd, 2);
 
@@ -3936,11 +3971,43 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    * the control connection is coming.
    */
 
-  allow_foreign_addr = get_param_ptr(TOPLEVEL_CONF, "AllowForeignAddress",
-    FALSE);
+  c = find_config(TOPLEVEL_CONF, CONF_PARAM, "AllowForeignAddress", FALSE);
+  if (c != NULL) {
+    int allowed;
 
-  if (allow_foreign_addr == NULL ||
-      *allow_foreign_addr == FALSE) {
+    allowed = *((int *) c->argv[0]);
+    switch (allowed) {
+      case TRUE:
+        allow_foreign_address = TRUE;
+        break;
+
+      case FALSE:
+        break;
+
+      default: {
+        char *class_name;
+        const pr_class_t *cls;
+
+        class_name = c->argv[1];
+        cls = pr_class_find(class_name);
+        if (cls != NULL) {
+          if (pr_class_satisfied(cmd->tmp_pool, cls, remote_addr) == TRUE) {
+            allow_foreign_address = TRUE;
+
+          } else {
+            pr_log_debug(DEBUG8, "<Class> '%s' not satisfied by foreign "
+              "address '%s'", class_name, pr_netaddr_get_ipstr(remote_addr));
+          }
+
+        } else {
+          pr_log_debug(DEBUG8, "<Class> '%s' not found for filtering "
+            "AllowForeignAddress", class_name);
+        }
+      }
+    }
+  }
+
+  if (allow_foreign_address == FALSE) {
 #ifdef PR_USE_IPV6
     if (pr_netaddr_use_ipv6()) {
       /* We can only compare the PORT-given address against the remote client

@@ -111,12 +111,27 @@ my $TESTS = {
     test_class => [qw(forking reverse)],
   },
 
+  proxy_reverse_pasv_allowforeignaddress_false => {
+    order => ++$order,
+    test_class => [qw(forking reverse)],
+  },
+
+  proxy_reverse_pasv_allowforeignaddress_allowed_by_class_issue223 => {
+    order => ++$order,
+    test_class => [qw(forking reverse)],
+  },
+
   proxy_reverse_list_port_enoent => {
     order => ++$order,
     test_class => [qw(forking reverse)],
   },
 
   proxy_reverse_port_allowforeignaddress_false => {
+    order => ++$order,
+    test_class => [qw(forking reverse)],
+  },
+
+  proxy_reverse_port_allowforeignaddress_allowed_by_class_issue223 => {
     order => ++$order,
     test_class => [qw(forking reverse)],
   },
@@ -139,6 +154,11 @@ my $TESTS = {
   },
 
   proxy_reverse_eprt_allowforeignaddress_false => {
+    order => ++$order,
+    test_class => [qw(forking reverse)],
+  },
+
+  proxy_reverse_eprt_allowforeignaddress_allowed_by_class_issue223 => {
     order => ++$order,
     test_class => [qw(forking reverse)],
   },
@@ -3334,6 +3354,368 @@ EOC
   unlink($log_file);
 }
 
+sub proxy_reverse_pasv_allowforeignaddress_false {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+
+  my $timeout_idle = 10;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      sleep(1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      # We use PASV here, and AllowForeignAddress is off.  The data transfer
+      # should still succeed, because we connect to the server's data port
+      # from the same IP as our control connection.
+      my $conn = $client->list_raw();
+      unless ($conn) {
+        die("Failed to LIST: " . $client->response_code() . ' ' .
+          $client->response_msg());
+      }
+
+      my $buf;
+      $conn->read($buf, 8192, 10);
+      eval { $conn->close() };
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      my $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  if (defined($ex)) {
+    test_cleanup($setup->{log_file}, $ex);
+    die($ex);
+  }
+
+  eval {
+    if (open(my $fh, "< $setup->{log_file}")) {
+      my $ok = 1;
+
+      while (my $line = <$fh>) {
+        chomp($line);
+
+        if ($ENV{TEST_VERBOSE}) {
+          print STDERR "$line\n";
+        }
+
+        if ($line =~ /SECURITY VIOLATION/) {
+          $ok = 0;
+          last;
+        }
+
+        if ($line =~ /Passive connection from IP address \S+ matches control connection address; skipping <Class> '\S+'/) {
+          last;
+        }
+      }
+
+      close($fh);
+      $self->assert($ok, "Did not see expected log messages");
+
+    } else {
+      die("Can't read $setup->{log_file}: $!");
+    }
+  };
+  if ($@) {
+    $ex = $@;
+  }
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_pasv_allowforeignaddress_allowed_by_class_issue223 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+
+  my $class_name = 'allow_fxp';
+  my $timeout_idle = 10;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    AllowForeignAddress => $class_name,
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<Class $class_name>
+  From 127.0.0.0/8
+</Class>
+
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      sleep(1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      # We use PASV here, and AllowForeignAddress is off.  The data transfer
+      # should still succeed, because we connect to the server's data port
+      # from the same IP as our control connection.
+      my $conn = $client->list_raw();
+      unless ($conn) {
+        die("Failed to LIST: " . $client->response_code() . ' ' .
+          $client->response_msg());
+      }
+
+      my $buf;
+      $conn->read($buf, 8192, 10);
+      eval { $conn->close() };
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      my $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  if (defined($ex)) {
+    test_cleanup($setup->{log_file}, $ex);
+    die($ex);
+  }
+
+  eval {
+    if (open(my $fh, "< $setup->{log_file}")) {
+      my $ok = 1;
+
+      while (my $line = <$fh>) {
+        chomp($line);
+
+        if ($ENV{TEST_VERBOSE}) {
+          print STDERR "$line\n";
+        }
+
+        if ($line =~ /SECURITY VIOLATION/) {
+          $ok = 0;
+          last;
+        }
+
+        if ($line =~ /Passive connection from IP address \S+ matches control connection address; skipping <Class> '\S+'/) {
+          last;
+        }
+      }
+
+      close($fh);
+      $self->assert($ok, "Did not see expected log messages");
+
+    } else {
+      die("Can't read $setup->{log_file}: $!");
+    }
+  };
+  if ($@) {
+    $ex = $@;
+  }
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
 sub proxy_reverse_list_port {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
@@ -3959,6 +4341,7 @@ EOC
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
       $client->login($setup->{user}, $setup->{passwd});
 
+      # Deliberately provide an IP address that does not match our source
       # IP address, to trigger the AllowForeignAddress restriction.
       my $port_addr = '1,2,3,4,192,6';
       eval { $client->port($port_addr) };
@@ -3974,6 +4357,149 @@ EOC
         test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = 'Illegal PORT command';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      ($resp_code, $resp_msg) = $client->quit();
+
+      $expected = 221;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Goodbye.';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_port_allowforeignaddress_allowed_by_class_issue223 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+
+  my $class_name = 'allow_fxp';
+  my $timeout_idle = 10;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    AllowForeignAddress => $class_name,
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<Class $class_name>
+  From 1.2.3.4/8
+</Class>
+
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      sleep(1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      # Deliberately provide an IP address that does not match our source
+      # IP address, to attempt to trigger the AllowForeignAddress restriction.
+      my $port_addr = '1,2,3,4,192,6';
+      my ($resp_code, $resp_msg) = $client->port($port_addr);
+
+      my $expected = 200;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'PORT command successful';
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
 
@@ -4611,6 +5137,141 @@ EOC
         "Expected response code $expected, got $resp_code");
 
       $expected = 'Illegal EPRT command';
+      $self->assert($expected eq $resp_msg,
+        "Expected response message '$expected', got '$resp_msg'");
+
+      $client->quit();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_eprt_allowforeignaddress_allowed_by_class_issue223 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+
+  my $class_name = 'allow_fxp';
+  my $timeout_idle = 10;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    AllowForeignAddress => $class_name,
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<Class $class_name>
+  From 1.2.3.4/8
+</Class>
+
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      sleep(1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      # Deliberately provide an IP address that does not match our source
+      # IP address, to attempt to trigger the AllowForeignAddress restriction.
+      my $eprt_addr = '|1|1.2.3.4|49158|';
+      my ($resp_code, $resp_msg) = $client->eprt($eprt_addr);
+
+      my $expected = 200;
+      $self->assert($expected == $resp_code,
+        "Expected response code $expected, got $resp_code");
+
+      $expected = 'EPRT command successful';
       $self->assert($expected eq $resp_msg,
         "Expected response message '$expected', got '$resp_msg'");
 
