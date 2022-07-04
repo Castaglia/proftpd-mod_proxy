@@ -2890,6 +2890,8 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     int frontend_data = FALSE;
     conn_t *src_data_conn = NULL, *dst_data_conn = NULL;
 
+    pr_signals_handle();
+
     if (data_eof == TRUE ||
         xfer_ok == FALSE) {
       tv.tv_sec = proxy_sess->linger_timeout;
@@ -2899,8 +2901,6 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     }
 
     tv.tv_usec = 0;
-
-    pr_signals_handle();
 
     FD_ZERO(&rfds);
 
@@ -2989,7 +2989,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
       if (data_eof == TRUE ||
           xfer_ok == FALSE) {
 
-        if (data_eof) {
+        if (data_eof == TRUE) {
           /* We've timed out waiting for the end-of-transfer response on the
            * backend control connection.
            */
@@ -3195,11 +3195,13 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
      * the data; we need the explicit EOF for that.
      */
 
-    if ((data_eof == TRUE || xfer_ok == FALSE) &&
-        backend_ctrlfd >= 0 &&
-        FD_ISSET(backend_ctrlfd, &rfds)) {
+    if (data_eof == TRUE ||
+        xfer_ok == FALSE) {
 
-      /* Some data arrived on the ctrl connection... */
+      /* Hopefully we have some data on the ctrl connection... */
+      pr_trace_msg(trace_channel, 19,
+        "handling control connection after data transfer");
+
       pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
 
       resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool,
