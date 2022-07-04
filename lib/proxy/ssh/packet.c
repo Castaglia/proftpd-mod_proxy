@@ -610,26 +610,40 @@ static void read_packet_discard(conn_t *conn) {
 }
 
 static int read_packet_len(conn_t *conn, struct proxy_ssh_packet *pkt,
-    unsigned char *buf, size_t *offset, size_t *buflen, size_t bufsz) {
+    unsigned char *buf, size_t *offset, size_t *buflen, size_t bufsz,
+    int etm_mac) {
   uint32_t packet_len = 0, len = 0;
-  size_t blocksz; 
+  size_t readsz;
   int res;
   unsigned char *ptr = NULL;
 
-  blocksz = proxy_ssh_cipher_get_block_size();
+  readsz = proxy_ssh_cipher_get_read_block_size();
 
   /* Since the packet length may be encrypted, we need to read in the first
    * cipher_block_size bytes from the socket, and try to decrypt them, to know
    * how many more bytes there are in the packet.
    */
 
-  res = proxy_ssh_packet_conn_read(conn, buf, blocksz, 0);
+  if (pkt->aad_len > 0) {
+    /* If we are dealing with an authenticated encryption algorithm, or an
+     * ETM mode, read enough to include the AAD.  For ETM modes, leave the
+     * first block for later.
+     */
+    if (etm_mac == TRUE) {
+      readsz = pkt->aad_len;
+
+    } else {
+      readsz += pkt->aad_len;
+    }
+  }
+
+  res = proxy_ssh_packet_conn_read(conn, buf, readsz, 0);
   if (res < 0) {
     return res;
   }
 
   len = res;
-  if (proxy_ssh_cipher_read_data(pkt->pool, buf, blocksz, &ptr, &len) < 0) {
+  if (proxy_ssh_cipher_read_data(pkt, buf, readsz, &ptr, &len) < 0) {
     return -1;
   }
 
@@ -672,13 +686,31 @@ static int read_packet_padding_len(conn_t *conn, struct proxy_ssh_packet *pkt,
 }
 
 static int read_packet_payload(conn_t *conn, struct proxy_ssh_packet *pkt,
-    unsigned char *buf, size_t *offset, size_t *buflen, size_t bufsz) {
+    unsigned char *buf, size_t *offset, size_t *buflen, size_t bufsz,
+    int etm_mac) {
   unsigned char *ptr = NULL;
   int res;
-  uint32_t payload_len = pkt->payload_len, padding_len = pkt->padding_len,
+  uint32_t payload_len = pkt->payload_len, padding_len = 0, auth_len = 0,
     data_len, len = 0;
 
-  if (payload_len + padding_len == 0) {
+  /* For authenticated encryption or ETM modes, we will NOT have the
+   * pkt->padding_len field yet.
+   *
+   * For authenticated encryption, we need to read in the first block, then
+   * decrypt it, to find the padding.
+   *
+   * For ETM, we only want to find the payload and padding AFTER we've read
+   * the entire (encrypted) payload, MAC'd it, THEN decrypt it.
+   */
+
+  if (pkt->padding_len > 0) {
+    padding_len = pkt->padding_len;
+  }
+
+  auth_len = proxy_ssh_cipher_get_read_auth_size();
+
+  if (payload_len + padding_len + auth_len == 0 &&
+      etm_mac == FALSE) {
     return 0;
   }
 
@@ -725,14 +757,20 @@ static int read_packet_payload(conn_t *conn, struct proxy_ssh_packet *pkt,
     }
   }
 
-  /* The padding length is required to be greater than zero. */
-  pkt->padding = pcalloc(pkt->pool, padding_len);
+  /* The padding length is required to be greater than zero.  However, we may
+   * not know the padding length yet, as for authenticated encryption or ETM
+   * modes.
+   */
+  if (padding_len > 0) {
+    pkt->padding = pcalloc(pkt->pool, padding_len);
+  }
 
   /* If there's data in the buffer we received, it's probably already part
    * of the padding, unencrypted.  That will leave the remaining padding
    * data, if any, to be read in and decrypted.
    */
-  if (*buflen > 0) {
+  if (*buflen > 0 &&
+      padding_len > 0) {
     if (*buflen < padding_len) {
       memmove(pkt->padding, buf + *offset, *buflen);
 
@@ -750,7 +788,13 @@ static int read_packet_payload(conn_t *conn, struct proxy_ssh_packet *pkt,
     }
   }
 
-  data_len = payload_len + padding_len;
+  if (etm_mac == TRUE) {
+    data_len = pkt->packet_len;
+
+  } else {
+    data_len = payload_len + padding_len + auth_len;
+  }
+
   if (data_len == 0) {
     return 0;
   }
@@ -769,18 +813,29 @@ static int read_packet_payload(conn_t *conn, struct proxy_ssh_packet *pkt,
   }
  
   len = res;
-  if (proxy_ssh_cipher_read_data(pkt->pool, buf + *offset, data_len, &ptr,
-      &len) < 0) {
-    return -1;
+
+  /* For ETM modes, we do NOT want to decrypt the data yet; we need to read/
+   * compare MACs first.
+   */
+
+  if (etm_mac == TRUE) {
+    *buflen = res;
+
+  } else {
+    if (proxy_ssh_cipher_read_data(pkt, buf + *offset, data_len, &ptr,
+        &len) < 0) {
+      return -1;
+    }
+
+    if (payload_len > 0) {
+      memmove(pkt->payload + (pkt->payload_len - payload_len), ptr,
+        payload_len);
+    }
+
+    memmove(pkt->padding + (pkt->padding_len - padding_len), ptr + payload_len,
+      padding_len);
   }
 
-  if (payload_len > 0) {
-    memmove(pkt->payload + (pkt->payload_len - payload_len), ptr,
-      payload_len);
-  }
-
-  memmove(pkt->padding + (pkt->padding_len - padding_len), ptr + payload_len,
-    padding_len);
   return 0;
 }
 
@@ -818,6 +873,8 @@ struct proxy_ssh_packet *proxy_ssh_packet_create(pool *p) {
   pkt->payload = NULL;
   pkt->payload_len = 0;
   pkt->padding_len = 0;
+  pkt->aad = NULL;
+  pkt->aad_len = 0;
 
   return pkt;
 }
@@ -1027,12 +1084,29 @@ static void reset_timers(void) {
 
 int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
   unsigned char buf[PROXY_SSH_MAX_PACKET_LEN];
-  size_t buflen, bufsz = PROXY_SSH_MAX_PACKET_LEN, offset = 0;
+  size_t buflen, bufsz = PROXY_SSH_MAX_PACKET_LEN, offset = 0, auth_len = 0;
+  int etm_mac = FALSE;
 
   pr_session_set_idle();
 
+  auth_len = proxy_ssh_cipher_get_read_auth_size();
+  if (auth_len > 0) {
+    /* Authenticated encryption ciphers do not encrypt the packet length,
+     * and instead use it as Additional Authenticated Data (AAD).
+     */
+    pkt->aad_len = sizeof(uint32_t);
+  }
+
+  etm_mac = proxy_ssh_mac_is_read_etm();
+  if (etm_mac == TRUE) {
+    /* ETM modes do not encrypt the packet length, and instead use it as
+     * Additional Authenticated Data (AAD).
+     */
+    pkt->aad_len = sizeof(uint32_t);
+  }
+
   while (TRUE) {
-    uint32_t req_blocksz;
+    uint32_t encrypted_datasz, req_blocksz;
 
     pr_signals_handle();
 
@@ -1043,7 +1117,7 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
     buflen = 0;
     memset(buf, 0, sizeof(buf));
 
-    if (read_packet_len(conn, pkt, buf, &offset, &buflen, bufsz) < 0) {
+    if (read_packet_len(conn, pkt, buf, &offset, &buflen, bufsz, etm_mac) < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "no data to be read from socket %d", conn->rfd);
       return -1;
@@ -1066,18 +1140,20 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
      * Thus that particular check is omitted.
      */
 
-    if (read_packet_padding_len(conn, pkt, buf, &offset, &buflen,
-        bufsz) < 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "no data to be read from socket %d", conn->rfd);
-      read_packet_discard(conn);
-      return -1;
+    if (etm_mac == FALSE) {
+      if (read_packet_padding_len(conn, pkt, buf, &offset, &buflen,
+          bufsz) < 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "no data to be read from socket %d", conn->rfd);
+        read_packet_discard(conn);
+        return -1;
+      }
+
+      pr_trace_msg(trace_channel, 20, "SSH2 packet padding len = %u bytes",
+        (unsigned int) pkt->padding_len);
+
+      pkt->payload_len = (pkt->packet_len - pkt->padding_len - 1);
     }
-
-    pr_trace_msg(trace_channel, 20, "SSH2 packet padding len = %u bytes",
-      (unsigned int) pkt->padding_len);
-
-    pkt->payload_len = (pkt->packet_len - pkt->padding_len - 1);
 
     pr_trace_msg(trace_channel, 20, "SSH2 packet payload len = %lu bytes",
       (unsigned long) pkt->payload_len);
@@ -1085,37 +1161,107 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
     /* Read both payload and padding, since we may need to have both before
      * decrypting the data.
      */
-    if (read_packet_payload(conn, pkt, buf, &offset, &buflen, bufsz) < 0) {
+    if (read_packet_payload(conn, pkt, buf, &offset, &buflen, bufsz,
+        etm_mac) < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unable to read payload from socket %d", conn->rfd);
       read_packet_discard(conn);
       return -1;
     }
 
-    memset(buf, 0, sizeof(buf));
     pkt->mac_len = proxy_ssh_mac_get_block_size();
-
     pr_trace_msg(trace_channel, 20, "SSH2 packet MAC len = %lu bytes",
       (unsigned long) pkt->mac_len);
 
-    if (read_packet_mac(conn, pkt, buf) < 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "unable to read MAC from socket %d", conn->rfd);
-      read_packet_discard(conn);
-      return -1;
-    }
+    if (etm_mac == TRUE) {
+      unsigned char *buf2;
+      size_t buflen2, bufsz2;
 
-    pkt->seqno = packet_server_seqno;
-    if (proxy_ssh_mac_read_data(pkt) < 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "unable to verify MAC on packet from socket %d", conn->rfd);
+      bufsz2 = buflen2 = pkt->mac_len;
+      buf2 = pcalloc(pkt->pool, bufsz2);
 
-      /* In order to further mitigate CPNI-957037, we will read in a
-       * random amount of more data from the network before closing
-       * the connection.
+      /* The MAC routines assume the presence of the necessary data in
+       * pkt->payload, so we temporarily put our encrypted packet data there.
        */
-      read_packet_discard(conn);
-      return -1;
+      pkt->payload = buf;
+      pkt->payload_len = buflen;
+
+      pkt->seqno = packet_server_seqno;
+
+      if (read_packet_mac(conn, pkt, buf2) < 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "unable to read MAC from socket %d", conn->rfd);
+        read_packet_discard(conn);
+        return -1;
+      }
+
+      if (proxy_ssh_mac_read_data(pkt) < 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "unable to verify MAC on packet from socket %d", conn->rfd);
+
+        /* In order to further mitigate CPNI-957037, we will read in a
+         * random amount of more data from the network before closing
+         * the connection.
+         */
+        read_packet_discard(conn);
+        return -1;
+      }
+
+      /* Now we can decrypt the payload; `buf/buflen` are the encrypted
+       * packet from read_packet_payload().
+       */
+      bufsz2 = buflen2 = PROXY_SSH_MAX_PACKET_LEN;
+      buf2 = pcalloc(pkt->pool, bufsz2);
+
+      if (proxy_ssh_cipher_read_data(pkt, buf, buflen, &buf2,
+          (uint32_t *) &buflen2) < 0) {
+        return -1;
+      }
+
+      offset = 0;
+
+      if (read_packet_padding_len(conn, pkt, buf2, &offset, &buflen2,
+          bufsz2) < 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "no data to be read from socket %d", conn->rfd);
+        read_packet_discard(conn);
+        return -1;
+      }
+
+      pr_trace_msg(trace_channel, 20, "SSH2 packet padding len = %u bytes",
+        (unsigned int) pkt->padding_len);
+
+      pkt->payload_len = (pkt->packet_len - pkt->padding_len - 1);
+      if (pkt->payload_len > 0) {
+        pkt->payload = pcalloc(pkt->pool, pkt->payload_len);
+        memmove(pkt->payload, buf2 + offset, pkt->payload_len);
+      }
+
+      pkt->padding = pcalloc(pkt->pool, pkt->padding_len);
+      memmove(pkt->padding, buf2 + offset + pkt->payload_len, pkt->padding_len);
+
+    } else {
+      memset(buf, 0, sizeof(buf));
+
+      if (read_packet_mac(conn, pkt, buf) < 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "unable to read MAC from socket %d", conn->rfd);
+        read_packet_discard(conn);
+        return -1;
+      }
+
+      pkt->seqno = packet_server_seqno;
+      if (proxy_ssh_mac_read_data(pkt) < 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "unable to verify MAC on packet from socket %d", conn->rfd);
+
+        /* In order to further mitigate CPNI-957037, we will read in a
+         * random amount of more data from the network before closing
+         * the connection.
+         */
+        read_packet_discard(conn);
+        return -1;
+      }
     }
 
     /* Now that the MAC check has passed, we can do sanity checks based
@@ -1174,13 +1320,18 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
      * value.
      */
 
-    req_blocksz = MAX(8, proxy_ssh_cipher_get_block_size());
+    req_blocksz = MAX(8, proxy_ssh_cipher_get_read_block_size());
+    encrypted_datasz = pkt->packet_len + sizeof(uint32_t);
 
-    if ((pkt->packet_len + sizeof(uint32_t)) % req_blocksz != 0) {
+    /* If AAD bytes are present, they are not encrypted. */
+    if (pkt->aad_len > 0) {
+      encrypted_datasz -= pkt->aad_len;
+    }
+
+    if (encrypted_datasz % req_blocksz != 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "packet length (%lu) not a multiple of the required block size (%lu)",
-        (unsigned long) pkt->packet_len + sizeof(uint32_t),
-        (unsigned long) req_blocksz);
+        (unsigned long) encrypted_datasz, (unsigned long) req_blocksz);
       read_packet_discard(conn);
       return -1;
     }
@@ -1218,7 +1369,7 @@ static int write_packet_padding(struct proxy_ssh_packet *pkt) {
   uint32_t packet_len = 0;
   size_t blocksz;
 
-  blocksz = proxy_ssh_cipher_get_block_size();
+  blocksz = proxy_ssh_cipher_get_write_block_size();
 
   /* RFC 4253, section 6, says that the random padding is calculated
    * as follows:
@@ -1238,6 +1389,12 @@ static int write_packet_padding(struct proxy_ssh_packet *pkt) {
    */
 
   packet_len = sizeof(uint32_t) + sizeof(char) + pkt->payload_len;
+  if (pkt->aad_len > 0) {
+    /* Packet length is not encrypted for encrypted authentication, or
+     * Encrypt-Then-MAC modes.
+     */
+    packet_len -= pkt->aad_len;
+  }
 
   pkt->padding_len = (char) (blocksz - (packet_len % blocksz));
   if (pkt->padding_len < 4) {
@@ -1265,8 +1422,8 @@ static unsigned int packet_niov = 0;
 int proxy_ssh_packet_send(conn_t *conn, struct proxy_ssh_packet *pkt) {
   unsigned char buf[PROXY_SSH_MAX_PACKET_LEN * 2], msg_type;
   size_t buflen = 0, bufsz = PROXY_SSH_MAX_PACKET_LEN;
-  uint32_t packet_len = 0;
-  int res, write_len = 0, block_alarms = FALSE;
+  uint32_t packet_len = 0, auth_len = 0;
+  int res, write_len = 0, block_alarms = FALSE, etm_mac = FALSE;
 
   /* No interruptions, please.  If, for example, we are interrupted here
    * by the SFTPRekey timer, that timer will cause this same function to
@@ -1282,6 +1439,24 @@ int proxy_ssh_packet_send(conn_t *conn, struct proxy_ssh_packet *pkt) {
     pr_alarms_block();
   }
 
+  auth_len = proxy_ssh_cipher_get_write_auth_size();
+  if (auth_len > 0) {
+    /* Authenticated encryption ciphers do not encrypt the packet length,
+     * and instead use it as Additional Authenticated Data (AAD).
+     */
+    pkt->aad_len = sizeof(uint32_t);
+    pkt->aad = NULL;
+  }
+
+  etm_mac = proxy_ssh_mac_is_write_etm();
+  if (etm_mac == TRUE) {
+    /* Encrypt-Then-Mac modes do not encrypt the packet length; treat it
+     * as Additional Authenticated Data (AAD).
+     */
+    pkt->aad_len = sizeof(uint32_t);
+    pkt->aad = NULL;
+  }
+
   /* Clear the iovec array before sending the data, if possible. */
   if (packet_niov == 0) {
     memset(packet_iov, 0, sizeof(packet_iov));
@@ -1295,6 +1470,7 @@ int proxy_ssh_packet_send(conn_t *conn, struct proxy_ssh_packet *pkt) {
     if (block_alarms == TRUE) {
       pr_alarms_unblock();
     }
+
     errno = xerrno;
     return -1;
   }
@@ -1305,6 +1481,7 @@ int proxy_ssh_packet_send(conn_t *conn, struct proxy_ssh_packet *pkt) {
     if (block_alarms == TRUE) {
       pr_alarms_unblock();
     }
+
     errno = xerrno;
     return -1;
   }
@@ -1315,27 +1492,60 @@ int proxy_ssh_packet_send(conn_t *conn, struct proxy_ssh_packet *pkt) {
 
   pkt->seqno = packet_client_seqno;
 
-  if (proxy_ssh_mac_write_data(pkt) < 0) {
-    int xerrno = errno;
-
-    if (block_alarms == TRUE) {
-      pr_alarms_unblock();
-    }
-    errno = xerrno;
-    return -1;
-  }
-
   memset(buf, 0, sizeof(buf));
   buflen = bufsz;
 
-  if (proxy_ssh_cipher_write_data(pkt, buf, &buflen) < 0) {
-    int xerrno = errno;
+  if (etm_mac == TRUE) {
+    if (proxy_ssh_cipher_write_data(pkt, buf, &buflen) < 0) {
+      int xerrno = errno;
 
-    if (block_alarms == TRUE) {
-      pr_alarms_unblock();
+      if (block_alarms == TRUE) {
+        pr_alarms_unblock();
+      }
+
+      errno = xerrno;
+      return -1;
     }
-    errno = xerrno;
-    return -1;
+
+    /* Once we have the encrypted data, overwrite the plaintext packet payload
+     * with it, so that the MAC is calculated from the encrypted data.
+     */
+    pkt->payload = buf;
+    pkt->payload_len = buflen;
+
+    if (proxy_ssh_mac_write_data(pkt) < 0) {
+      int xerrno = errno;
+
+      if (block_alarms == TRUE) {
+        pr_alarms_unblock();
+      }
+
+      errno = xerrno;
+      return -1;
+    }
+
+  } else {
+    if (proxy_ssh_mac_write_data(pkt) < 0) {
+      int xerrno = errno;
+
+      if (block_alarms == TRUE) {
+        pr_alarms_unblock();
+      }
+
+      errno = xerrno;
+      return -1;
+    }
+
+    if (proxy_ssh_cipher_write_data(pkt, buf, &buflen) < 0) {
+      int xerrno = errno;
+
+      if (block_alarms == TRUE) {
+        pr_alarms_unblock();
+      }
+
+      errno = xerrno;
+      return -1;
+    }
   }
 
   if (buflen > 0) {
@@ -1350,12 +1560,25 @@ int proxy_ssh_packet_send(conn_t *conn, struct proxy_ssh_packet *pkt) {
       packet_niov++;
     }
 
+    if (pkt->aad_len > 0) {
+      pr_trace_msg(trace_channel, 20, "sending %lu bytes of packet AAD data",
+        (unsigned long) pkt->aad_len);
+      packet_iov[packet_niov].iov_base = (void *) pkt->aad;
+      packet_iov[packet_niov].iov_len = pkt->aad_len;
+      write_len += packet_iov[packet_niov].iov_len;
+      packet_niov++;
+    }
+
+    pr_trace_msg(trace_channel, 20, "sending %lu bytes of packet payload data",
+      (unsigned long) buflen);
     packet_iov[packet_niov].iov_base = (void *) buf;
     packet_iov[packet_niov].iov_len = buflen;
     write_len += packet_iov[packet_niov].iov_len;
     packet_niov++;
 
     if (pkt->mac_len > 0) {
+      pr_trace_msg(trace_channel, 20, "sending %lu bytes of packet MAC data",
+        (unsigned long) pkt->mac_len);
       packet_iov[packet_niov].iov_base = (void *) pkt->mac;
       packet_iov[packet_niov].iov_len = pkt->mac_len;
       write_len += packet_iov[packet_niov].iov_len;
@@ -1413,6 +1636,7 @@ int proxy_ssh_packet_send(conn_t *conn, struct proxy_ssh_packet *pkt) {
     if (block_alarms == TRUE) {
       pr_alarms_unblock();
     }
+
     errno = xerrno;
     return -1;
   }
@@ -1455,6 +1679,7 @@ int proxy_ssh_packet_send(conn_t *conn, struct proxy_ssh_packet *pkt) {
     if (block_alarms == TRUE) {
       pr_alarms_unblock();
     }
+
     errno = xerrno;
     return -1;
   }
@@ -1494,6 +1719,14 @@ int proxy_ssh_packet_write_frontend(conn_t *conn,
   if (frontend_packet_write == NULL) {
     errno = ENOSYS;
     return -1;
+  }
+
+  /* Make sure that any backend AAD ciphers/data are not leaked through to
+   * the frontend IO routines.
+   */
+  if (pkt->aad_len > 0) {
+    pkt->aad_len = 0;
+    pkt->aad = NULL;
   }
 
   return (frontend_packet_write)(conn->wfd, pkt);

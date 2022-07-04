@@ -133,6 +133,11 @@ my $TESTS = {
     test_class => [qw(feature_sodium forking mod_sftp reverse)],
   },
 
+  proxy_reverse_backend_ssh_cipher_aes256_gcm => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
   proxy_reverse_backend_ssh_cipher_aes256_ctr => {
     order => ++$order,
     test_class => [qw(forking mod_sftp reverse)],
@@ -149,6 +154,11 @@ my $TESTS = {
   },
 
   proxy_reverse_backend_ssh_cipher_aes192_cbc => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_cipher_aes128_gcm => {
     order => ++$order,
     test_class => [qw(forking mod_sftp reverse)],
   },
@@ -208,7 +218,17 @@ my $TESTS = {
     test_class => [qw(forking mod_sftp reverse)],
   },
 
+  proxy_reverse_backend_ssh_mac_hmac_sha1_etm_openssh => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
   proxy_reverse_backend_ssh_mac_hmac_sha1_96 => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_mac_hmac_sha1_96_etm_openssh => {
     order => ++$order,
     test_class => [qw(forking mod_sftp reverse)],
   },
@@ -218,7 +238,17 @@ my $TESTS = {
     test_class => [qw(forking mod_sftp reverse)],
   },
 
+  proxy_reverse_backend_ssh_mac_hmac_md5_etm_openssh => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
   proxy_reverse_backend_ssh_mac_hmac_md5_96 => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_mac_hmac_md5_96_etm_openssh => {
     order => ++$order,
     test_class => [qw(forking mod_sftp reverse)],
   },
@@ -228,12 +258,42 @@ my $TESTS = {
     test_class => [qw(forking mod_sftp reverse)],
   },
 
+  proxy_reverse_backend_ssh_mac_hmac_sha256 => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_mac_hmac_sha256_etm_openssh => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_mac_hmac_sha512 => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_mac_hmac_sha512_etm_openssh => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
   proxy_reverse_backend_ssh_mac_umac64_openssh => {
     order => ++$order,
     test_class => [qw(forking mod_sftp reverse)],
   },
 
+  proxy_reverse_backend_ssh_mac_umac64_etm_openssh => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
   proxy_reverse_backend_ssh_mac_umac128_openssh => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_mac_umac128_etm_openssh => {
     order => ++$order,
     test_class => [qw(forking mod_sftp reverse)],
   },
@@ -1673,6 +1733,17 @@ sub proxy_reverse_backend_ssh_hostkey_ed25519 {
     $proxy_sftp_opts, $ssh_host_key);
 }
 
+sub proxy_reverse_backend_ssh_cipher_aes256_gcm {
+  my $self = shift;
+  my $cipher_algo = 'aes256-gcm@openssh.com';
+  my $digest_algo = 'hmac-sha1';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+  my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
 sub proxy_reverse_backend_ssh_cipher_aes256_ctr {
   my $self = shift;
   my $cipher_algo = 'aes256-ctr';
@@ -1709,6 +1780,17 @@ sub proxy_reverse_backend_ssh_cipher_aes192_ctr {
 sub proxy_reverse_backend_ssh_cipher_aes192_cbc {
   my $self = shift;
   my $cipher_algo = 'aes192-cbc';
+  my $digest_algo = 'hmac-sha1';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+  my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
+sub proxy_reverse_backend_ssh_cipher_aes128_gcm {
+  my $self = shift;
+  my $cipher_algo = 'aes128-gcm@openssh.com';
   my $digest_algo = 'hmac-sha1';
   my $kex_algo = 'diffie-hellman-group14-sha1';
   my $proxy_sftp_opts = '';
@@ -1842,10 +1924,32 @@ sub proxy_reverse_backend_ssh_mac_hmac_sha1 {
     $proxy_sftp_opts);
 }
 
+sub proxy_reverse_backend_ssh_mac_hmac_sha1_etm_openssh {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-sha1-etm@openssh.com';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+  my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
 sub proxy_reverse_backend_ssh_mac_hmac_sha1_96 {
   my $self = shift;
   my $cipher_algo = 'aes256-ctr';
   my $digest_algo = 'hmac-sha1-96';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+  my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
+sub proxy_reverse_backend_ssh_mac_hmac_sha1_96_etm_openssh {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-sha1-96-etm@openssh.com';
   my $kex_algo = 'diffie-hellman-group14-sha1';
   my $proxy_sftp_opts = '';
 
@@ -1864,10 +1968,32 @@ sub proxy_reverse_backend_ssh_mac_hmac_md5 {
     $proxy_sftp_opts);
 }
 
+sub proxy_reverse_backend_ssh_mac_hmac_md5_etm_openssh {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-md5-etm@openssh.com';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+  my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
 sub proxy_reverse_backend_ssh_mac_hmac_md5_96 {
   my $self = shift;
   my $cipher_algo = 'aes256-ctr';
   my $digest_algo = 'hmac-md5-96';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+  my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
+sub proxy_reverse_backend_ssh_mac_hmac_md5_96_etm_openssh {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-md5-96-etm@openssh.com';
   my $kex_algo = 'diffie-hellman-group14-sha1';
   my $proxy_sftp_opts = '';
 
@@ -1886,6 +2012,50 @@ sub proxy_reverse_backend_ssh_mac_hmac_ripemd160 {
     $proxy_sftp_opts);
 }
 
+sub proxy_reverse_backend_ssh_mac_hmac_sha256 {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-sha2-256';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+  my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
+sub proxy_reverse_backend_ssh_mac_hmac_sha256_etm_openssh {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-sha2-256-etm@openssh.com';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+  my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
+sub proxy_reverse_backend_ssh_mac_hmac_sha512 {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-sha2-512';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+  my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
+sub proxy_reverse_backend_ssh_mac_hmac_sha512_etm_openssh {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-sha2-512-etm@openssh.com';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+  my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
 sub proxy_reverse_backend_ssh_mac_umac64_openssh {
   my $self = shift;
   my $cipher_algo = 'aes256-ctr';
@@ -1897,7 +2067,29 @@ sub proxy_reverse_backend_ssh_mac_umac64_openssh {
     $proxy_sftp_opts);
 }
 
+sub proxy_reverse_backend_ssh_mac_umac64_etm_openssh {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'umac-64-etm@openssh.com';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+  my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
 sub proxy_reverse_backend_ssh_mac_umac128_openssh {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'umac-128@openssh.com';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+  my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
+sub proxy_reverse_backend_ssh_mac_umac128_etm_openssh {
   my $self = shift;
   my $cipher_algo = 'aes256-ctr';
   my $digest_algo = 'umac-128@openssh.com';

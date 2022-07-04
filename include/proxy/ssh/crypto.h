@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH crypto API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@
 
 void proxy_ssh_crypto_free(int flags);
 const EVP_CIPHER *proxy_ssh_crypto_get_cipher(const char *algo, size_t *key_len,
-  size_t *discard_len);
+  size_t *auth_len, size_t *discard_len);
 const EVP_MD *proxy_ssh_crypto_get_digest(const char *algo, uint32_t *mac_len);
 const char *proxy_ssh_crypto_get_kexinit_cipher_list(pool *p);
 const char *proxy_ssh_crypto_get_kexinit_digest_list(pool *p);

@@ -27,6 +27,7 @@
 #include "proxy/ssh/msg.h"
 #include "proxy/ssh/packet.h"
 #include "proxy/ssh/crypto.h"
+#include "proxy/ssh/cipher.h"
 #include "proxy/ssh/mac.h"
 #include "proxy/ssh/umac.h"
 #include "proxy/ssh/session.h"
@@ -42,6 +43,7 @@ struct proxy_ssh_mac {
   pool *pool;
   const char *algo;
   int algo_type;
+  int is_etm;
 
   const EVP_MD *digest;
   unsigned char *key;
@@ -69,15 +71,15 @@ struct proxy_ssh_mac {
  */
 
 static struct proxy_ssh_mac read_macs[] = {
-  { NULL, NULL, 0, NULL, NULL, 0, 0, 0 },
-  { NULL, NULL, 0, NULL, NULL, 0, 0, 0 }
+  { NULL, NULL, 0, FALSE, NULL, NULL, 0, 0, 0 },
+  { NULL, NULL, 0, FALSE, NULL, NULL, 0, 0, 0 }
 };
 static HMAC_CTX *hmac_read_ctxs[2];
 static struct umac_ctx *umac_read_ctxs[2];
 
 static struct proxy_ssh_mac write_macs[] = {
-  { NULL, NULL, 0, NULL, NULL, 0, 0, 0 },
-  { NULL, NULL, 0, NULL, NULL, 0, 0, 0 }
+  { NULL, NULL, 0, FALSE, NULL, NULL, 0, 0, 0 },
+  { NULL, NULL, 0, FALSE, NULL, NULL, 0, 0, 0 }
 };
 static HMAC_CTX *hmac_write_ctxs[2];
 static struct umac_ctx *umac_write_ctxs[2];
@@ -231,7 +233,7 @@ static int init_mac(pool *p, struct proxy_ssh_mac *mac, HMAC_CTX *hmac_ctx,
 }
 
 static int get_mac(struct proxy_ssh_packet *pkt, struct proxy_ssh_mac *mac,
-    HMAC_CTX *hmac_ctx, struct umac_ctx *umac_ctx, int flags) {
+    HMAC_CTX *hmac_ctx, struct umac_ctx *umac_ctx, int etm_mac, int flags) {
   unsigned char *mac_data;
   unsigned char *buf, *ptr;
   uint32_t buflen, bufsz = 0, mac_len = 0, len = 0;
@@ -241,16 +243,30 @@ static int get_mac(struct proxy_ssh_packet *pkt, struct proxy_ssh_mac *mac,
     bufsz = (sizeof(uint32_t) * 2) + pkt->packet_len + 64;
     mac_data = pcalloc(pkt->pool, EVP_MAX_MD_SIZE);
 
+    if (etm_mac == TRUE) {
+      bufsz += proxy_ssh_mac_get_block_size();
+    }
+
     buflen = bufsz;
     ptr = buf = palloc(pkt->pool, bufsz);
 
     len += proxy_ssh_msg_write_int(&buf, &buflen, pkt->seqno);
     len += proxy_ssh_msg_write_int(&buf, &buflen, pkt->packet_len);
-    len += proxy_ssh_msg_write_byte(&buf, &buflen, pkt->padding_len);
+
+    if (etm_mac == FALSE) {
+      /* For Encrypt-Then-Mac modes, padding and its length will be part of
+       * the encrypted payload.
+       */
+      len += proxy_ssh_msg_write_byte(&buf, &buflen, pkt->padding_len);
+    }
+
     len += proxy_ssh_msg_write_data(&buf, &buflen, pkt->payload,
       pkt->payload_len, FALSE);
-    len += proxy_ssh_msg_write_data(&buf, &buflen, pkt->padding,
-      pkt->padding_len, FALSE);
+
+    if (etm_mac == FALSE) {
+      len += proxy_ssh_msg_write_data(&buf, &buflen, pkt->padding,
+        pkt->padding_len, FALSE);
+    }
 
 #if OPENSSL_VERSION_NUMBER > 0x000907000L
 # if OPENSSL_VERSION_NUMBER >= 0x10000001L
@@ -297,29 +313,43 @@ static int get_mac(struct proxy_ssh_packet *pkt, struct proxy_ssh_mac *mac,
     bufsz = sizeof(uint32_t) + pkt->packet_len + 64;
     mac_data = pcalloc(pkt->pool, EVP_MAX_MD_SIZE);
 
+    if (etm_mac == TRUE) {
+      bufsz += proxy_ssh_mac_get_block_size();
+    }
+
     buflen = bufsz;
     ptr = buf = palloc(pkt->pool, bufsz);
 
     len += proxy_ssh_msg_write_int(&buf, &buflen, pkt->packet_len);
-    len += proxy_ssh_msg_write_byte(&buf, &buflen, pkt->padding_len);
+
+    if (etm_mac == FALSE) {
+      /* For Encrypt-Then-Mac modes, padding and its length will be part of
+       * the encrypted payload.
+       */
+      len += proxy_ssh_msg_write_byte(&buf, &buflen, pkt->padding_len);
+    }
+
     len += proxy_ssh_msg_write_data(&buf, &buflen, pkt->payload,
       pkt->payload_len, FALSE);
-    len += proxy_ssh_msg_write_data(&buf, &buflen, pkt->padding,
-      pkt->padding_len, FALSE);
+
+    if (etm_mac == FALSE) {
+      len += proxy_ssh_msg_write_data(&buf, &buflen, pkt->padding,
+        pkt->padding_len, FALSE);
+    }
 
     nonce_ptr = nonce;
     nonce_len = sizeof(nonce);
-    len += proxy_ssh_msg_write_long(&nonce_ptr, &nonce_len, pkt->seqno);
+    (void) proxy_ssh_msg_write_long(&nonce_ptr, &nonce_len, pkt->seqno);
 
     if (mac->algo_type == PROXY_SSH_MAC_ALGO_TYPE_UMAC64) {
       proxy_ssh_umac_reset(umac_ctx);
-      proxy_ssh_umac_update(umac_ctx, ptr, (bufsz - buflen));
+      proxy_ssh_umac_update(umac_ctx, ptr, len);
       proxy_ssh_umac_final(umac_ctx, mac_data, nonce);
       mac_len = 8;
 
     } else if (mac->algo_type == PROXY_SSH_MAC_ALGO_TYPE_UMAC128) {
       proxy_ssh_umac128_reset(umac_ctx);
-      proxy_ssh_umac128_update(umac_ctx, ptr, (bufsz - buflen));
+      proxy_ssh_umac128_update(umac_ctx, ptr, len);
       proxy_ssh_umac128_final(umac_ctx, mac_data, nonce);
       mac_len = 16;
     }
@@ -682,12 +712,31 @@ const char *proxy_ssh_mac_get_read_algo(void) {
     return read_macs[read_mac_idx].algo;
   }
 
-  return NULL;
+  /* It is possible for there to be no MAC, as for some ciphers such as
+   * AES-GCM.  Rather than returning NULL here, we indicate this by returning
+   * a string (see Issue #1411).
+   */
+  return "implicit";
+}
+
+int proxy_ssh_mac_is_read_etm(void) {
+  if (read_macs[read_mac_idx].key != NULL) {
+    return read_macs[read_mac_idx].is_etm;
+  }
+
+  return FALSE;
 }
 
 int proxy_ssh_mac_set_read_algo(pool *p, const char *algo) {
+  const char *etm_suffix;
+  size_t algo_len, etm_len;
   uint32_t mac_len;
   unsigned int idx = read_mac_idx;
+
+  /* For authenticated encryption ciphers, there is no separate MAC. */
+  if (proxy_ssh_cipher_get_read_auth_size() > 0) {
+    return 0;
+  }
 
   if (read_macs[idx].key != NULL) {
     /* If we have an existing key, it means that we are currently rekeying. */
@@ -726,11 +775,13 @@ int proxy_ssh_mac_set_read_algo(pool *p, const char *algo) {
   pr_pool_tag(read_macs[idx].pool, "Proxy SFTP MAC read pool");
   read_macs[idx].algo = pstrdup(read_macs[idx].pool, algo);
 
-  if (strcmp(read_macs[idx].algo, "umac-64@openssh.com") == 0) {
+  if (strcmp(read_macs[idx].algo, "umac-64@openssh.com") == 0 ||
+      strcmp(read_macs[idx].algo, "umac-64-etm@openssh.com") == 0) {
     read_macs[idx].algo_type = PROXY_SSH_MAC_ALGO_TYPE_UMAC64;
     umac_read_ctxs[idx] = proxy_ssh_umac_alloc();
 
-  } else if (strcmp(read_macs[idx].algo, "umac-128@openssh.com") == 0) {
+  } else if (strcmp(read_macs[idx].algo, "umac-128@openssh.com") == 0 ||
+             strcmp(read_macs[idx].algo, "umac-128-etm@openssh.com") == 0) {
     read_macs[idx].algo_type = PROXY_SSH_MAC_ALGO_TYPE_UMAC128;
     umac_read_ctxs[idx] = proxy_ssh_umac128_alloc();
 
@@ -739,6 +790,15 @@ int proxy_ssh_mac_set_read_algo(pool *p, const char *algo) {
   }
 
   read_macs[idx].mac_len = mac_len;
+
+  algo_len = strlen(algo);
+  etm_suffix = "-etm@openssh.com";
+  etm_len = strlen(etm_suffix);
+
+  if (pr_strnrstr(algo, algo_len, etm_suffix, etm_len, 0) == TRUE) {
+    read_macs[idx].is_etm = TRUE;
+  }
+
   return 0;
 }
 
@@ -752,6 +812,11 @@ int proxy_ssh_mac_set_read_key(pool *p, const EVP_MD *md,
   struct proxy_ssh_mac *mac;
   HMAC_CTX *hmac_ctx;
   struct umac_ctx *umac_ctx;
+
+  /* For authenticated encryption ciphers, there is no separate MAC. */
+  if (proxy_ssh_cipher_get_read_auth_size() > 0) {
+    return 0;
+  }
 
   switch_read_mac();
 
@@ -793,7 +858,14 @@ int proxy_ssh_mac_read_data(struct proxy_ssh_packet *pkt) {
   struct proxy_ssh_mac *mac;
   HMAC_CTX *hmac_ctx;
   struct umac_ctx *umac_ctx;
-  int res;
+  int res, etm_mac = FALSE;
+
+  /* For authenticated encryption ciphers, there is no separate MAC. */
+  if (proxy_ssh_cipher_get_read_auth_size() > 0) {
+    return 0;
+  }
+
+  etm_mac = proxy_ssh_mac_is_read_etm();
 
   mac = &(read_macs[read_mac_idx]);
   hmac_ctx = hmac_read_ctxs[read_mac_idx];
@@ -806,7 +878,8 @@ int proxy_ssh_mac_read_data(struct proxy_ssh_packet *pkt) {
     return 0;
   }
 
-  res = get_mac(pkt, mac, hmac_ctx, umac_ctx, PROXY_SSH_MAC_FL_READ_MAC);
+  res = get_mac(pkt, mac, hmac_ctx, umac_ctx, etm_mac,
+    PROXY_SSH_MAC_FL_READ_MAC);
   if (res < 0) {
     return -1;
   }
@@ -819,12 +892,31 @@ const char *proxy_ssh_mac_get_write_algo(void) {
     return write_macs[write_mac_idx].algo;
   }
 
-  return NULL;
+  /* It is possible for there to be no MAC, as for some ciphers such as
+   * AES-GCM.  Rather than returning NULL here, we indicate this by returning
+   * a string (see Issue #1411).
+   */
+  return "implicit";
+}
+
+int proxy_ssh_mac_is_write_etm(void) {
+  if (write_macs[write_mac_idx].key != NULL) {
+    return write_macs[write_mac_idx].is_etm;
+  }
+
+  return FALSE;
 }
 
 int proxy_ssh_mac_set_write_algo(pool *p, const char *algo) {
+  const char *etm_suffix;
+  size_t algo_len, etm_len;
   uint32_t mac_len;
   unsigned int idx = write_mac_idx;
+
+  /* For authenticated encryption ciphers, there is no separate MAC. */
+  if (proxy_ssh_cipher_get_write_auth_size() > 0) {
+    return 0;
+  }
 
   if (write_macs[idx].key != NULL) {
     /* If we have an existing key, it means that we are currently rekeying. */
@@ -863,11 +955,13 @@ int proxy_ssh_mac_set_write_algo(pool *p, const char *algo) {
   pr_pool_tag(write_macs[idx].pool, "Proxy SFTP MAC write pool");
   write_macs[idx].algo = pstrdup(write_macs[idx].pool, algo);
 
-  if (strcmp(write_macs[idx].algo, "umac-64@openssh.com") == 0) {
+  if (strcmp(write_macs[idx].algo, "umac-64@openssh.com") == 0 ||
+      strcmp(write_macs[idx].algo, "umac-64-etm@openssh.com") == 0) {
     write_macs[idx].algo_type = PROXY_SSH_MAC_ALGO_TYPE_UMAC64;
     umac_write_ctxs[idx] = proxy_ssh_umac_alloc();
 
-  } else if (strcmp(write_macs[idx].algo, "umac-128@openssh.com") == 0) {
+  } else if (strcmp(write_macs[idx].algo, "umac-128@openssh.com") == 0 ||
+             strcmp(write_macs[idx].algo, "umac-128-etm@openssh.com") == 0) {
     write_macs[idx].algo_type = PROXY_SSH_MAC_ALGO_TYPE_UMAC128;
     umac_write_ctxs[idx] = proxy_ssh_umac128_alloc();
 
@@ -876,6 +970,15 @@ int proxy_ssh_mac_set_write_algo(pool *p, const char *algo) {
   }
 
   write_macs[idx].mac_len = mac_len;
+
+  algo_len = strlen(algo);
+  etm_suffix = "-etm@openssh.com";
+  etm_len = strlen(etm_suffix);
+
+  if (pr_strnrstr(algo, algo_len, etm_suffix, etm_len, 0) == TRUE) {
+    write_macs[idx].is_etm = TRUE;
+  }
+
   return 0;
 }
 
@@ -888,6 +991,11 @@ int proxy_ssh_mac_set_write_key(pool *p, const EVP_MD *md,
   struct proxy_ssh_mac *mac;
   HMAC_CTX *hmac_ctx;
   struct umac_ctx *umac_ctx;
+
+  /* For authenticated encryption ciphers, there is no separate MAC. */
+  if (proxy_ssh_cipher_get_write_auth_size() > 0) {
+    return 0;
+  }
 
   switch_write_mac();
 
@@ -921,7 +1029,14 @@ int proxy_ssh_mac_write_data(struct proxy_ssh_packet *pkt) {
   struct proxy_ssh_mac *mac;
   HMAC_CTX *hmac_ctx;
   struct umac_ctx *umac_ctx;
-  int res;
+  int res, etm_mac = FALSE;
+
+  /* For authenticated encryption ciphers, there is no separate MAC. */
+  if (proxy_ssh_cipher_get_write_auth_size() > 0) {
+    return 0;
+  }
+
+  etm_mac = proxy_ssh_mac_is_write_etm();
 
   mac = &(write_macs[write_mac_idx]);
   hmac_ctx = hmac_write_ctxs[write_mac_idx];
@@ -934,7 +1049,8 @@ int proxy_ssh_mac_write_data(struct proxy_ssh_packet *pkt) {
     return 0;
   }
 
-  res = get_mac(pkt, mac, hmac_ctx, umac_ctx, PROXY_SSH_MAC_FL_WRITE_MAC);
+  res = get_mac(pkt, mac, hmac_ctx, umac_ctx, etm_mac,
+    PROXY_SSH_MAC_FL_WRITE_MAC);
   if (res < 0) {
     return -1;
   }
