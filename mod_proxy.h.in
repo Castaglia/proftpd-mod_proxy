@@ -49,6 +49,9 @@
 /* Define if you have OpenSSL with EVP_aes_256_ctr support. */
 #undef HAVE_EVP_AES_256_CTR_OPENSSL
 
+/* Define if you have OpenSSL with EVP_aes_256_gcm support. */
+#undef HAVE_EVP_AES_256_GCM_OPENSSL
+
 /* Define if you have OpenSSL with OSSL_PROVIDER_load support. */
 #undef HAVE_OSSL_PROVIDER_LOAD_OPENSSL
 
@@ -82,7 +85,7 @@
 /* Define if you have the strnstr(3) function.  */
 #undef HAVE_STRNSTR
 
-#define MOD_PROXY_VERSION	"mod_proxy/0.9.1"
+#define MOD_PROXY_VERSION	"mod_proxy/0.9.2"
 
 /* Make sure the version of proftpd is as necessary. */
 #if PROFTPD_VERSION_NUMBER < 0x0001030706

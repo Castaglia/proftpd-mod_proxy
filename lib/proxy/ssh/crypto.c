@@ -40,6 +40,9 @@ struct proxy_ssh_cipher {
   const char *name;
   const char *openssl_name;
 
+  /* Used mostly for AEAD algorithms like GCM. */
+  size_t auth_len;
+
   /* Used mostly for the RC4/ArcFour algorithms, for mitigating attacks
    * based on the first N bytes of the keystream.
    */
@@ -74,42 +77,47 @@ static struct proxy_ssh_cipher ciphers[] = {
   /* The handling of NULL openssl_name and get_type fields is done in
    * proxy_ssh_crypto_get_cipher(), as special cases.
    */
-  { "aes256-ctr",	NULL,		0,	NULL,	TRUE, TRUE },
-  { "aes192-ctr",	NULL,		0,	NULL,	TRUE, TRUE },
-  { "aes128-ctr",	NULL,		0,	NULL,	TRUE, TRUE },
+  { "aes256-ctr",	NULL,		0, 0,	NULL,	TRUE, TRUE },
+  { "aes192-ctr",	NULL,		0, 0,	NULL,	TRUE, TRUE },
+  { "aes128-ctr",	NULL,		0, 0,	NULL,	TRUE, TRUE },
+
+#if defined(HAVE_EVP_AES_256_GCM_OPENSSL)
+  { "aes256-gcm@openssh.com", "aes-256-gcm", 16, 0, EVP_aes_256_gcm, TRUE, TRUE },
+  { "aes128-gcm@openssh.com", "aes-128-gcm", 16, 0, EVP_aes_128_gcm, TRUE, TRUE },
+#endif
 
 #if !defined(HAVE_AES_CRIPPLED_OPENSSL)
-  { "aes256-cbc",	"aes-256-cbc",	0,	EVP_aes_256_cbc, TRUE, TRUE },
-  { "aes192-cbc",	"aes-192-cbc",	0,	EVP_aes_192_cbc, TRUE, TRUE },
+  { "aes256-cbc",	"aes-256-cbc",	0, 0,	EVP_aes_256_cbc, TRUE, TRUE },
+  { "aes192-cbc",	"aes-192-cbc",	0, 0,	EVP_aes_192_cbc, TRUE, TRUE },
 #endif /* !HAVE_AES_CRIPPLED_OPENSSL */
 
-  { "aes128-cbc",	"aes-128-cbc",	0,	EVP_aes_128_cbc, TRUE, TRUE },
+  { "aes128-cbc",	"aes-128-cbc",	0, 0,	EVP_aes_128_cbc, TRUE, TRUE },
 
 #if !defined(OPENSSL_NO_BF)
 # if OPENSSL_VERSION_NUMBER < 0x30000000L
-  { "blowfish-ctr",	NULL,		0,	NULL,	FALSE, FALSE },
+  { "blowfish-ctr",	NULL,		0, 0,	NULL,	FALSE, FALSE },
 # endif /* Prior to OpenSSL 3.x */
-  { "blowfish-cbc",	"bf-cbc",	0,	EVP_bf_cbc, FALSE, FALSE },
+  { "blowfish-cbc",	"bf-cbc",	0, 0,	EVP_bf_cbc, FALSE, FALSE },
 #endif /* !OPENSSL_NO_BF */
 
 #if !defined(OPENSSL_NO_CAST)
-  { "cast128-cbc",	"cast5-cbc",	0,	EVP_cast5_cbc, TRUE, FALSE },
+  { "cast128-cbc",	"cast5-cbc",	0, 0,	EVP_cast5_cbc, TRUE, FALSE },
 #endif /* !OPENSSL_NO_CAST */
 
 #if !defined(OPENSSL_NO_RC4)
-  { "arcfour256",	"rc4",		1536,	EVP_rc4, FALSE, FALSE },
-  { "arcfour128",	"rc4",		1536,	EVP_rc4, FALSE, FALSE },
+  { "arcfour256",	"rc4",		0, 1536, EVP_rc4, FALSE, FALSE },
+  { "arcfour128",	"rc4",		0, 1536, EVP_rc4, FALSE, FALSE },
 #endif /* !OPENSSL_NO_RC4 */
 
 #if !defined(OPENSSL_NO_DES)
 # if OPENSSL_VERSION_NUMBER < 0x30000000L
-  { "3des-ctr",		NULL,		0,	NULL, TRUE, TRUE },
+  { "3des-ctr",		NULL,		0, 0,	NULL, TRUE, TRUE },
 # endif /* Prior to OpenSSL 3.x */
-  { "3des-cbc",		"des-ede3-cbc",	0,	EVP_des_ede3_cbc, TRUE, TRUE },
+  { "3des-cbc",		"des-ede3-cbc",	0, 0,	EVP_des_ede3_cbc, TRUE, TRUE },
 #endif /* !OPENSSL_NO_DES */
 
-  { "none",		"null",		0,	EVP_enc_null, FALSE, TRUE },
-  { NULL, NULL, 0, NULL, FALSE, FALSE }
+  { "none",		"null",		0, 0,	EVP_enc_null, FALSE, TRUE },
+  { NULL, NULL, 0, 0, NULL, FALSE, FALSE }
 };
 
 struct proxy_ssh_digest {
@@ -134,22 +142,30 @@ static struct proxy_ssh_digest digests[] = {
   /* The handling of NULL openssl_name and get_type fields is done in
    * proxy_ssh_crypto_get_digest(), as special cases.
    */
-#ifdef HAVE_SHA256_OPENSSL
+#if defined(HAVE_SHA256_OPENSSL)
   { "hmac-sha2-256",	"sha256",		EVP_sha256,	0, TRUE, TRUE },
+  { "hmac-sha2-256-etm@openssh.com", "sha256",	EVP_sha256,	0, TRUE, TRUE },
 #endif /* SHA256 support in OpenSSL */
-#ifdef HAVE_SHA512_OPENSSL
+#if defined(HAVE_SHA512_OPENSSL)
   { "hmac-sha2-512",	"sha512",		EVP_sha512,	0, TRUE, TRUE },
+  { "hmac-sha2-512-etm@openssh.com", "sha512",	EVP_sha512,	0, TRUE, TRUE },
 #endif /* SHA512 support in OpenSSL */
   { "hmac-sha1",	"sha1",		EVP_sha1,	0, 	TRUE, TRUE },
+  { "hmac-sha1-etm@openssh.com", "sha1",EVP_sha1,	0, 	TRUE, TRUE },
   { "hmac-sha1-96",	"sha1",		EVP_sha1,	12,	TRUE, TRUE },
+  { "hmac-sha1-96-etm@openssh.com", "sha1", EVP_sha1,	12, 	TRUE, TRUE },
   { "hmac-md5",		"md5",		EVP_md5,	0,	FALSE, FALSE },
+  { "hmac-md5-etm@openssh.com",	"md5",	EVP_md5,	0,	FALSE, FALSE },
   { "hmac-md5-96",	"md5",		EVP_md5,	12,	FALSE, FALSE },
+  { "hmac-md5-96-etm@openssh.com", "md5",EVP_md5,	12,	FALSE, FALSE },
 #if !defined(OPENSSL_NO_RIPEMD)
   { "hmac-ripemd160",	"rmd160",	EVP_ripemd160,	0,	FALSE, FALSE },
 #endif /* !OPENSSL_NO_RIPEMD */
 #if OPENSSL_VERSION_NUMBER > 0x000907000L
-  { "umac-64@openssh.com", NULL,        NULL,           8,      TRUE, FALSE },
-  { "umac-128@openssh.com", NULL,       NULL,           16,     TRUE, FALSE },
+  { "umac-64@openssh.com", NULL,	NULL,		8,	TRUE, FALSE },
+  { "umac-64-etm@openssh.com", NULL,	NULL,		8,	TRUE, FALSE },
+  { "umac-128@openssh.com", NULL,	NULL,		16,	TRUE, FALSE },
+  { "umac-128-etm@openssh.com", NULL,	NULL,		16,	TRUE, FALSE },
 #endif /* OpenSSL-0.9.7 or later */
   { "none",		"null",		EVP_md_null,	0,	FALSE, TRUE },
   { NULL, NULL, NULL, 0, FALSE, FALSE }
@@ -931,7 +947,7 @@ static const EVP_MD *get_umac128_digest(void) {
 }
 
 const EVP_CIPHER *proxy_ssh_crypto_get_cipher(const char *name, size_t *key_len,
-    size_t *discard_len) {
+    size_t *auth_len, size_t *discard_len) {
   register unsigned int i;
 
   for (i = 0; ciphers[i].name; i++) {
@@ -987,7 +1003,7 @@ const EVP_CIPHER *proxy_ssh_crypto_get_cipher(const char *name, size_t *key_len,
         cipher = ciphers[i].get_type();
       }
 
-      if (key_len) {
+      if (key_len != NULL) {
         if (strcmp(name, "arcfour256") != 0) {
           *key_len = 0;
 
@@ -1000,7 +1016,11 @@ const EVP_CIPHER *proxy_ssh_crypto_get_cipher(const char *name, size_t *key_len,
         }
       }
 
-      if (discard_len) {
+      if (auth_len != NULL) {
+        *auth_len = ciphers[i].auth_len;
+      }
+
+      if (discard_len != NULL) {
         *discard_len = ciphers[i].discard_len;
       }
 
@@ -1017,15 +1037,22 @@ const EVP_CIPHER *proxy_ssh_crypto_get_cipher(const char *name, size_t *key_len,
 const EVP_MD *proxy_ssh_crypto_get_digest(const char *name, uint32_t *mac_len) {
   register unsigned int i;
 
+  if (name == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
   for (i = 0; digests[i].name; i++) {
     if (strcmp(digests[i].name, name) == 0) {
       const EVP_MD *digest = NULL;
 
 #if OPENSSL_VERSION_NUMBER > 0x000907000L
-      if (strcmp(name, "umac-64@openssh.com") == 0) {
+      if (strcmp(name, "umac-64@openssh.com") == 0 ||
+          strcmp(name, "umac-64-etm@openssh.com") == 0) {
         digest = get_umac64_digest();
 
-      } else if (strcmp(name, "umac-128@openssh.com") == 0) {
+      } else if (strcmp(name, "umac-128@openssh.com") == 0 ||
+                 strcmp(name, "umac-128-etm@openssh.com") == 0) {
         digest = get_umac128_digest();
 #else
       if (FALSE) {
@@ -1091,7 +1118,12 @@ const char *proxy_ssh_crypto_get_kexinit_cipher_list(pool *p) {
                   strcmp(ciphers[j].name, "3des-ctr") == 0 ||
                   strcmp(ciphers[j].name, "aes256-ctr") == 0 ||
                   strcmp(ciphers[j].name, "aes192-ctr") == 0 ||
-                  strcmp(ciphers[j].name, "aes128-ctr") == 0) {
+                  strcmp(ciphers[j].name, "aes128-ctr") == 0
+#if defined(HAVE_EVP_AES_256_GCM_OPENSSL)
+                  || strcmp(ciphers[j].name, "aes128-gcm@openssh.com") == 0 ||
+                  strcmp(ciphers[j].name, "aes256-gcm@openssh.com") == 0
+#endif
+                  ) {
                 res = pstrcat(p, res, *res ? "," : "",
                   pstrdup(p, ciphers[j].name), NULL);
        
@@ -1141,7 +1173,12 @@ const char *proxy_ssh_crypto_get_kexinit_cipher_list(pool *p) {
                 strcmp(ciphers[i].name, "3des-ctr") == 0 ||
                 strcmp(ciphers[i].name, "aes256-ctr") == 0 ||
                 strcmp(ciphers[i].name, "aes192-ctr") == 0 ||
-                strcmp(ciphers[i].name, "aes128-ctr") == 0) {
+                strcmp(ciphers[i].name, "aes128-ctr") == 0
+#if defined(HAVE_EVP_AES_256_GCM_OPENSSL)
+                || strcmp(ciphers[i].name, "aes128-gcm@openssh.com") == 0 ||
+                strcmp(ciphers[i].name, "aes256-gcm@openssh.com") == 0
+#endif
+                ) {
               res = pstrcat(p, res, *res ? "," : "",
                 pstrdup(p, ciphers[i].name), NULL);
 
@@ -1208,7 +1245,9 @@ const char *proxy_ssh_crypto_get_kexinit_digest_list(pool *p) {
             } else {
               /* The umac-64/umac-128 digests are special cases. */
               if (strcmp(digests[j].name, "umac-64@openssh.com") == 0 ||
-                  strcmp(digests[j].name, "umac-128@openssh.com") == 0) {
+                  strcmp(digests[j].name, "umac-64-etm@openssh.com") == 0 ||
+                  strcmp(digests[j].name, "umac-128@openssh.com") == 0 ||
+                  strcmp(digests[j].name, "umac-128-etm@openssh.com") == 0) {
                 res = pstrcat(p, res, *res ? "," : "",
                   pstrdup(p, digests[j].name), NULL);
 
@@ -1255,7 +1294,9 @@ const char *proxy_ssh_crypto_get_kexinit_digest_list(pool *p) {
           } else {
             /* The umac-64/umac-128 digests are special cases. */
             if (strcmp(digests[i].name, "umac-64@openssh.com") == 0 ||
-                strcmp(digests[i].name, "umac-128@openssh.com") == 0) {
+                strcmp(digests[i].name, "umac-64-etm@openssh.com") == 0 ||
+                strcmp(digests[i].name, "umac-128@openssh.com") == 0 ||
+                strcmp(digests[i].name, "umac-128-etm@openssh.com") == 0) {
               res = pstrcat(p, res, *res ? "," : "",
                 pstrdup(p, digests[i].name), NULL);
 

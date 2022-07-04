@@ -1020,7 +1020,7 @@ MODRET set_proxysftpciphers(cmd_rec *cmd) {
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
   for (i = 1; i < cmd->argc; i++) {
-    if (proxy_ssh_crypto_get_cipher(cmd->argv[i], NULL, NULL) == NULL) {
+    if (proxy_ssh_crypto_get_cipher(cmd->argv[i], NULL, NULL, NULL) == NULL) {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
         "unsupported cipher algorithm: ", (char *) cmd->argv[i], NULL));
     }

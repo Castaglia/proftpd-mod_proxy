@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH key exchange (kex)
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -775,7 +775,7 @@ static int get_dh_nbits(struct proxy_ssh_kex *kex) {
   const EVP_MD *digest;
 
   algo = kex->session_names->c2s_encrypt_algo;
-  cipher = proxy_ssh_crypto_get_cipher(algo, NULL, NULL);
+  cipher = proxy_ssh_crypto_get_cipher(algo, NULL, NULL, NULL);
   if (cipher != NULL) {
     int block_size, key_len;
 
@@ -802,7 +802,7 @@ static int get_dh_nbits(struct proxy_ssh_kex *kex) {
   }
 
   algo = kex->session_names->s2c_encrypt_algo;
-  cipher = proxy_ssh_crypto_get_cipher(algo, NULL, NULL);
+  cipher = proxy_ssh_crypto_get_cipher(algo, NULL, NULL, NULL);
   if (cipher != NULL) {
     int block_size, key_len;
 
@@ -2104,24 +2104,35 @@ static int get_session_names(struct proxy_ssh_kex *kex, int *correct_guess) {
   pr_trace_msg(trace_channel, 8, "server-sent client MAC algorithms: %s",
     server_list);
 
-  shared = proxy_ssh_misc_namelist_shared(kex->pool, client_list, server_list);
-  if (shared != NULL) {
-    if (setup_c2s_mac_algo(kex, shared) < 0) {
+  /* Ignore MAC/digests when authenticated encryption algorithms are used. */
+  if (proxy_ssh_cipher_get_read_auth_size2() == 0) {
+    shared = proxy_ssh_misc_namelist_shared(kex->pool, client_list,
+      server_list);
+    if (shared != NULL) {
+      if (setup_c2s_mac_algo(kex, shared) < 0) {
+        destroy_pool(tmp_pool);
+        return -1;
+      }
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        " + Session client-to-server MAC: %s", shared);
+      pr_trace_msg(trace_channel, 20,
+        "session client-to-server MAC algorithm: %s", shared);
+
+    } else {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "no shared client-to-server MAC algorithm found (client sent '%s', "
+        "server sent '%s')", client_list, server_list);
       destroy_pool(tmp_pool);
       return -1;
     }
 
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      " + Session client-to-server MAC: %s", shared);
-    pr_trace_msg(trace_channel, 20,
-      "session client-to-server MAC algorithm: %s", shared);
-
   } else {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "no shared client-to-server MAC algorithm found (client sent '%s', "
-      "server sent '%s')", client_list, server_list);
-    destroy_pool(tmp_pool);
-    return -1;
+    pr_trace_msg(trace_channel, 8, "ignoring MAC algorithms due to use of "
+      "client-to-server authenticated cipher algorithm '%s'",
+      kex->session_names->c2s_encrypt_algo);
+    pr_trace_msg(trace_channel, 20,
+      "session client-to-server MAC algorithm: <implicit>");
   }
 
   client_list = kex->client_names->s2c_mac_algo;
@@ -2132,24 +2143,35 @@ static int get_session_names(struct proxy_ssh_kex *kex, int *correct_guess) {
   pr_trace_msg(trace_channel, 8, "server-sent server MAC algorithms: %s",
     server_list);
 
-  shared = proxy_ssh_misc_namelist_shared(kex->pool, client_list, server_list);
-  if (shared != NULL) {
-    if (setup_s2c_mac_algo(kex, shared) < 0) {
+  /* Ignore MAC/digests when authenticated encryption algorithms are used. */
+  if (proxy_ssh_cipher_get_write_auth_size2() == 0) {
+    shared = proxy_ssh_misc_namelist_shared(kex->pool, client_list,
+      server_list);
+    if (shared != NULL) {
+      if (setup_s2c_mac_algo(kex, shared) < 0) {
+        destroy_pool(tmp_pool);
+        return -1;
+      }
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        " + Session server-to-client MAC: %s", shared);
+      pr_trace_msg(trace_channel, 20,
+        "session server-to-client MAC algorithm: %s", shared);
+
+    } else {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "no shared server-to-client MAC algorithm found (client sent '%s', "
+        "server sent '%s')", client_list, server_list);
       destroy_pool(tmp_pool);
       return -1;
     }
 
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      " + Session server-to-client MAC: %s", shared);
-    pr_trace_msg(trace_channel, 20,
-      "session server-to-client MAC algorithm: %s", shared);
-
   } else {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "no shared server-to-client MAC algorithm found (client sent '%s', "
-      "server sent '%s')", client_list, server_list);
-    destroy_pool(tmp_pool);
-    return -1;
+    pr_trace_msg(trace_channel, 8, "ignoring MAC algorithms due to use of "
+      "server-to-client authenticated cipher algorithm '%s'",
+      kex->session_names->s2c_encrypt_algo);
+    pr_trace_msg(trace_channel, 20,
+      "session server-to-client MAC algorithm: <implicit>");
   }
 
   client_list = kex->client_names->c2s_comp_algo;
@@ -2514,10 +2536,23 @@ static int set_session_keys(struct proxy_ssh_kex *kex) {
     proxy_ssh_cipher_get_write_algo());
   set_env_var(session.pool, "PROXY_SSH_SERVER_CIPHER_ALGO",
     proxy_ssh_cipher_get_read_algo());
-  set_env_var(session.pool, "PROXY_SSH_CLIENT_MAC_ALGO",
-    proxy_ssh_mac_get_write_algo());
-  set_env_var(session.pool, "PROXY_SSH_SERVER_MAC_ALGO",
-    proxy_ssh_mac_get_read_algo());
+
+  if (proxy_ssh_cipher_get_read_auth_size2() == 0) {
+    set_env_var(session.pool, "PROXY_SSH_CLIENT_MAC_ALGO",
+      proxy_ssh_mac_get_write_algo());
+
+  } else {
+    set_env_var(session.pool, "PROXY_SSH_CLIENT_MAC_ALGO", "implicit");
+  }
+
+  if (proxy_ssh_cipher_get_write_auth_size2() == 0) {
+    set_env_var(session.pool, "PROXY_SSH_SERVER_MAC_ALGO",
+      proxy_ssh_mac_get_read_algo());
+
+  } else {
+    set_env_var(session.pool, "PROXY_SSH_SERVER_MAC_ALGO", "implicit");
+  }
+
   set_env_var(session.pool, "PROXY_SSH_CLIENT_COMPRESSION_ALGO",
     proxy_ssh_compress_get_write_algo());
   set_env_var(session.pool, "PROXY_SSH_SERVER_COMPRESSION_ALGO",

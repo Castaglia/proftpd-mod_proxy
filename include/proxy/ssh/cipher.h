@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH cipher API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,24 +36,33 @@ int proxy_ssh_cipher_free(void);
  * used when reading in the first bytes of a packet in order to determine
  * the packet length.  See RFC4253, Section 6, "Binary Packet Protocol".
  */
-size_t proxy_ssh_cipher_get_block_size(void);
-void proxy_ssh_cipher_set_block_size(size_t);
+size_t proxy_ssh_cipher_get_read_block_size(void);
+size_t proxy_ssh_cipher_get_write_block_size(void);
+void proxy_ssh_cipher_set_read_block_size(size_t);
+void proxy_ssh_cipher_set_write_block_size(size_t);
+
+/* Returns the cipher authenticated data size, or zero. */
+size_t proxy_ssh_cipher_get_read_auth_size(void);
+size_t proxy_ssh_cipher_get_read_auth_size2(void);
+size_t proxy_ssh_cipher_get_write_auth_size(void);
+size_t proxy_ssh_cipher_get_write_auth_size2(void);
 
 const char *proxy_ssh_cipher_get_read_algo(void);
 int proxy_ssh_cipher_set_read_algo(pool *p, const char *algo);
 int proxy_ssh_cipher_set_read_key(pool *p, const EVP_MD *md,
   const unsigned char *k, uint32_t klen, const char *h, uint32_t hlen,
   int role);
-int proxy_ssh_cipher_read_data(pool *, unsigned char *, uint32_t,
-  unsigned char **, uint32_t *);
+int proxy_ssh_cipher_read_data(struct proxy_ssh_packet *pkt,
+  unsigned char *data, uint32_t data_len, unsigned char **buf,
+  uint32_t *buflen);
 
 const char *proxy_ssh_cipher_get_write_algo(void);
 int proxy_ssh_cipher_set_write_algo(pool *p, const char *algo);
 int proxy_ssh_cipher_set_write_key(pool *p, const EVP_MD *md,
   const unsigned char *k, uint32_t klen, const char *h, uint32_t hlen,
   int role);
-int proxy_ssh_cipher_write_data(struct proxy_ssh_packet *, unsigned char *,
-  size_t *);
+int proxy_ssh_cipher_write_data(struct proxy_ssh_packet *pkt,
+  unsigned char *buf, size_t *bufsz);
 #endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_CIPHER_H */
