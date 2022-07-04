@@ -56,6 +56,10 @@
 # define CURVE25519_SIZE	32
 #endif /* PR_USE_SODIUM */
 
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+# define CURVE448_SIZE          56
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+
 /* This needs to align/match with the SFTP_ROLE_CLIENT macro from mod_sftp.h,
  * for now.
  */
@@ -118,6 +122,7 @@ struct proxy_ssh_kex {
    *  "ssh-rsa"      --> PROXY_SSH_KEY_RSA
    *  "ecdsa-sha2-*" --> PROXY_SSH_KEY_ECDSA_*
    *  "ssh-ed25519"  --> PROXY_SSH_KEY_ED25519
+   *  "ssh-ed448"    --> PROXY_SSH_KEY_ED448
    *  "rsa-sha2-256" --> PROXY_SSH_KEY_RSA_SHA256
    *  "rsa-sha2-512" --> PROXY_SSH_KEY_RSA_SHA512
    */
@@ -134,6 +139,9 @@ struct proxy_ssh_kex {
 
   /* Using Curve25519? */
   int use_curve25519;
+
+  /* Using Curve448? */
+  int use_curve448;
 
   /* Using extension negotiations? */
   int use_ext_info;
@@ -164,6 +172,11 @@ struct proxy_ssh_kex {
   unsigned char *client_curve25519_pub_key;
   unsigned char *server_curve25519_pub_key;
 #endif /* PR_USE_SODIUM and HAVE_SHA256_OPENSSL */
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+  unsigned char *client_curve448_priv_key;
+  unsigned char *client_curve448_pub_key;
+  unsigned char *server_curve448_pub_key;
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 };
 
 static struct proxy_ssh_kex *kex_first_kex = NULL;
@@ -461,6 +474,12 @@ static int verify_h(pool *p, struct proxy_ssh_kex *kex,
       pubkey_algo = "ssh-ed25519";
       break;
 #endif /* PR_USE_SODIUM */
+
+#if defined(HAVE_X448_OPENSSL)
+    case PROXY_SSH_KEY_ED448:
+      pubkey_algo = "ssh-ed448";
+      break;
+#endif /* HAVE_X448_OPENSSL */
 
     default:
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1329,6 +1348,208 @@ static int create_curve25519(struct proxy_ssh_kex *kex) {
 }
 #endif /* PR_USE_SODIUM and HAVE_SHA256_OPENSSL */
 
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+static int generate_curve448_keys(unsigned char *priv_key,
+    unsigned char *pub_key) {
+  EVP_PKEY_CTX *pctx = NULL;
+  EVP_PKEY *pkey = NULL;
+  size_t key_len = 0;
+
+  pctx = EVP_PKEY_CTX_new_id(NID_X448, NULL);
+  if (pctx == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing context for Curve448 key: %s",
+      proxy_ssh_crypto_get_errors());
+    return -1;
+  }
+
+  if (EVP_PKEY_keygen_init(pctx) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error preparing to generate Curve448 key: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    return -1;
+  }
+
+  if (EVP_PKEY_keygen(pctx, &pkey) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error generating Curve448 shared key: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    return -1;
+  }
+
+  key_len = CURVE448_SIZE;
+  if (EVP_PKEY_get_raw_private_key(pkey, priv_key, &key_len) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error obtaining Curve448 private key: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    EVP_PKEY_free(pkey);
+    return -1;
+  }
+
+  key_len = CURVE448_SIZE;
+  if (EVP_PKEY_get_raw_public_key(pkey, pub_key, &key_len) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error obtaining Curve448 public key: %s", proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    EVP_PKEY_free(pkey);
+    return -1;
+  }
+
+  EVP_PKEY_CTX_free(pctx);
+  EVP_PKEY_free(pkey);
+  return 0;
+}
+
+static int get_curve448_shared_key(unsigned char *shared_key,
+    unsigned char *pub_key, unsigned char *priv_key) {
+  EVP_PKEY_CTX *pctx = NULL;
+  EVP_PKEY *client_pkey = NULL, *server_pkey = NULL;
+  size_t shared_keylen = 0;
+
+  server_pkey = EVP_PKEY_new_raw_private_key(EVP_PKEY_X448, NULL, priv_key,
+    CURVE448_SIZE);
+  if (server_pkey == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing Curve448 server key: %s",
+      proxy_ssh_crypto_get_errors());
+    return -1;
+  }
+
+  client_pkey = EVP_PKEY_new_raw_public_key(EVP_PKEY_X448, NULL, pub_key,
+    CURVE448_SIZE);
+  if (client_pkey == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing Curve448 client key: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_free(server_pkey);
+    return -1;
+  }
+
+  pctx = EVP_PKEY_CTX_new(server_pkey, NULL);
+  if (pctx == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing context for Curve448 shared key: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_free(server_pkey);
+    EVP_PKEY_free(client_pkey);
+    return -1;
+  }
+
+  if (EVP_PKEY_derive_init(pctx) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error preparing for Curve448 shared key: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    EVP_PKEY_free(server_pkey);
+    EVP_PKEY_free(client_pkey);
+    return -1;
+  }
+
+  if (EVP_PKEY_derive_set_peer(pctx, client_pkey) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error setting peer for Curve448 shared key: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    EVP_PKEY_free(server_pkey);
+    EVP_PKEY_free(client_pkey);
+    return -1;
+  }
+
+  shared_keylen = CURVE448_SIZE;
+  if (EVP_PKEY_derive(pctx, shared_key, &shared_keylen) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error generating Curve448 shared key: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    EVP_PKEY_free(server_pkey);
+    EVP_PKEY_free(client_pkey);
+    return -1;
+  }
+
+  if (shared_keylen != CURVE448_SIZE) {
+    pr_trace_msg(trace_channel, 1,
+      "generated Curve448 shared key length (%lu bytes) is not as expected "
+      "(%lu bytes)", (unsigned long) shared_keylen,
+      (unsigned long) CURVE448_SIZE);
+  }
+
+  EVP_PKEY_CTX_free(pctx);
+  EVP_PKEY_free(server_pkey);
+  EVP_PKEY_free(client_pkey);
+
+  return CURVE448_SIZE;
+}
+
+static const unsigned char *calculate_curve448_h(pool *p,
+    struct proxy_ssh_kex *kex,
+    const unsigned char *hostkey_data, uint32_t hostkey_datalen,
+    const BIGNUM *k, uint32_t *hlen) {
+  unsigned char *buf, *ptr;
+  uint32_t buflen, bufsz, len = 0;
+
+  bufsz = buflen = 4096;
+
+  /* XXX Is this buffer large enough? Too large? */
+  ptr = buf = palloc(p, bufsz);
+
+  /* Write all of the data into the buffer in the SSH2 format, and hash it.
+   * The ordering of these fields is described in RFC5656.
+   */
+
+  /* First, the version strings */
+  len += proxy_ssh_msg_write_string(&buf, &buflen, kex->client_version);
+  len += proxy_ssh_msg_write_string(&buf, &buflen, kex->server_version);
+
+  /* Client's KEXINIT */
+  len += proxy_ssh_msg_write_int(&buf, &buflen,
+    kex->client_kexinit_payload_len + 1);
+  len += proxy_ssh_msg_write_byte(&buf, &buflen, PROXY_SSH_MSG_KEXINIT);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, kex->client_kexinit_payload,
+    kex->client_kexinit_payload_len, FALSE);
+
+  /* Server's KEXINIT */
+  len += proxy_ssh_msg_write_int(&buf, &buflen,
+    kex->server_kexinit_payload_len + 1);
+  len += proxy_ssh_msg_write_byte(&buf, &buflen, PROXY_SSH_MSG_KEXINIT);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, kex->server_kexinit_payload,
+    kex->server_kexinit_payload_len, FALSE);
+
+  /* Hostkey data */
+  len += proxy_ssh_msg_write_data(&buf, &buflen, hostkey_data, hostkey_datalen,
+    TRUE);
+
+  /* Client's key */
+  len += proxy_ssh_msg_write_data(&buf, &buflen, kex->client_curve448_pub_key,
+    CURVE448_SIZE, TRUE);
+
+  /* Server's key */
+  len += proxy_ssh_msg_write_data(&buf, &buflen, kex->server_curve448_pub_key,
+    CURVE448_SIZE, TRUE);
+
+  /* Shared secret */
+  len += proxy_ssh_msg_write_mpint(&buf, &buflen, k);
+
+  if (digest_data(kex, ptr, len, hlen) < 0) {
+    pr_memscrub(ptr, bufsz);
+    return NULL;
+  }
+
+  pr_memscrub(ptr, bufsz);
+  return kex_digest_buf;
+}
+
+static int create_curve448(struct proxy_ssh_kex *kex) {
+  kex->client_curve448_priv_key = palloc(kex_pool, CURVE448_SIZE);
+  kex->client_curve448_pub_key = palloc(kex_pool, CURVE448_SIZE);
+
+  return generate_curve448_keys(kex->client_curve448_priv_key,
+    kex->client_curve448_pub_key);
+}
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+
 /* Given a name-list, return the first (i.e. preferred) name in the list. */
 static const char *get_preferred_name(pool *p, const char *names) {
   register unsigned int i;
@@ -1362,6 +1583,9 @@ static const char *get_preferred_name(pool *p, const char *names) {
  * SFTPOption is used.
  */
 static const char *kex_exchanges[] = {
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+  "curve448-sha512",
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 #if defined(PR_USE_SODIUM) && defined(HAVE_SHA256_OPENSSL)
   "curve25519-sha256",
   "curve25519-sha256@libssh.org",
@@ -1444,10 +1668,14 @@ static const char *get_kexinit_hostkey_algo_list(pool *p) {
 
   /* Our list of supported hostkey algorithms depends on the hostkeys
    * that have been configured.  Show a preference for RSA over DSA,
-   * and ECDSA over both RSA and DSA, and ED25519 over all.
+   * and ECDSA over both RSA and DSA, and ED25519/ED448 over all.
    *
    * XXX Should this be configurable later?
    */
+
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+  list = pstrcat(p, list, *list ? "," : "", "ssh-ed448", NULL);
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 
 #if defined(PR_USE_SODIUM)
   list = pstrcat(p, list, *list ? "," : "", "ssh-ed25519", NULL);
@@ -1624,6 +1852,23 @@ static void destroy_kex(struct proxy_ssh_kex *kex) {
       kex->server_curve25519_pub_key = NULL;
     }
 #endif /* PR_USE_SODIUM and HAVE_SHA256_OPENSSL */
+
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+    if (kex->client_curve448_priv_key != NULL) {
+      pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
+      kex->client_curve448_priv_key = NULL;
+    }
+
+    if (kex->client_curve448_pub_key != NULL) {
+      pr_memscrub(kex->client_curve448_pub_key, CURVE448_SIZE);
+      kex->client_curve448_pub_key = NULL;
+    }
+
+    if (kex->server_curve448_pub_key != NULL) {
+      pr_memscrub(kex->server_curve448_pub_key, CURVE448_SIZE);
+      kex->server_curve448_pub_key = NULL;
+    }
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 
     if (kex->pool != NULL) {
       destroy_pool(kex->pool);
@@ -1809,6 +2054,22 @@ static int setup_kex_algo(struct proxy_ssh_kex *kex, const char *algo) {
   }
 #endif /* PR_USE_SODIUM and HAVE_SHA256_OPENSSL */
 
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+  if (strcmp(algo, "curve448-sha512") == 0) {
+    if (create_curve448(kex) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error using '%s' as the key exchange algorithm: %s", algo,
+        strerror(errno));
+      return -1;
+    }
+
+    kex->hash = EVP_sha512();
+    kex->session_names->kex_algo = algo;
+    kex->use_curve448 = TRUE;
+    return 0;
+  }
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+
   if (strcmp(algo, "ext-info-c") == 0 ||
       strcmp(algo, "ext-info-s") == 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1874,6 +2135,13 @@ static int setup_hostkey_algo(struct proxy_ssh_kex *kex, const char *algo) {
     return 0;
   }
 #endif /* PR_USE_SODIUM */
+
+#if defined(HAVE_X448_OPENSSL)
+  if (strcmp(algo, "ssh-ed448") == 0) {
+    kex->use_hostkey_type = PROXY_SSH_KEY_ED448;
+    return 0;
+  }
+#endif /* HAVE_X448_OPENSSL */
 
   errno = EINVAL;
   return -1;
@@ -4333,6 +4601,200 @@ static int handle_kex_curve25519(struct proxy_ssh_kex *kex, conn_t *conn) {
 }
 #endif /* PR_USE_SODIUM and HAVE_SHA256_OPENSSL */
 
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+static int write_curve448_init(struct proxy_ssh_packet *pkt,
+    struct proxy_ssh_kex *kex) {
+  unsigned char *buf, *ptr;
+  uint32_t buflen, bufsz, len = 0;
+
+  /* In our Curve448 ECDH_INIT, send 'e', our client curve448 public key. */
+
+  /* XXX Is this buffer large enough? Too large? */
+  bufsz = buflen = 2048;
+  ptr = buf = palloc(pkt->pool, bufsz);
+
+  len += proxy_ssh_msg_write_byte(&buf, &buflen, PROXY_SSH_MSG_KEX_ECDH_INIT);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, kex->client_curve448_pub_key,
+    CURVE448_SIZE, TRUE);
+
+  pkt->payload = ptr;
+  pkt->payload_len = len;
+
+  return 0;
+}
+
+static int read_curve448_reply(struct proxy_ssh_packet *pkt,
+    struct proxy_ssh_kex *kex) {
+  const unsigned char *h;
+  unsigned char zero_curve448[CURVE448_SIZE];
+  unsigned char *buf, *buf2, *server_hostkey_data = NULL, *sig = NULL;
+  uint32_t buflen, pub_keylen, server_hostkey_datalen = 0, siglen = 0, hlen = 0;
+  const BIGNUM *k = NULL;
+  int res;
+
+  buf = pkt->payload;
+  buflen = pkt->payload_len;
+
+  /* See RFC 5656, Section 4 "ECDH Key Exchange", modified by RFC 8731. */
+
+  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &server_hostkey_datalen);
+  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, server_hostkey_datalen,
+    &server_hostkey_data);
+
+  res = handle_server_hostkey(pkt->pool, kex->use_hostkey_type,
+    server_hostkey_data, server_hostkey_datalen);
+  if (res < 0) {
+    int xerrno;
+
+    xerrno = errno;
+    pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error handling server host key: %s", strerror(xerrno));
+    errno = xerrno;
+    return -1;
+  }
+
+  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &pub_keylen);
+  if (pub_keylen != CURVE448_SIZE) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "rejecting invalid length (%lu %s, wanted %d) of server Curve448 key",
+      (unsigned long) pub_keylen, pub_keylen != 1 ? "bytes" : "byte",
+      CURVE448_SIZE);
+    pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
+    return -1;
+  }
+
+  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, pub_keylen,
+    &(kex->server_curve448_pub_key));
+  if (kex->server_curve448_pub_key == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error reading ECDH_REPLY: %s", strerror(errno));
+    pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
+    return -1;
+  }
+
+  /* Watch for all-zero public keys, and reject them. */
+  memset(zero_curve448, '\0', sizeof(zero_curve448));
+  if (memcmp(kex->server_curve448_pub_key, zero_curve448, CURVE448_SIZE) == 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "rejecting invalid (all-zero) server Curve448 key");
+    pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
+    return -1;
+  }
+
+  /* Compute the shared secret */
+  buf2 = palloc(kex_pool, CURVE448_SIZE);
+
+  pr_trace_msg(trace_channel, 12, "computing Curve448 key");
+  res = get_curve448_shared_key((unsigned char *) buf2,
+    kex->server_curve448_pub_key, kex->client_curve448_priv_key);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error computing Curve448 shared secret: %s", strerror(errno));
+    pr_memscrub(buf2, CURVE448_SIZE);
+    pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
+    return -1;
+  }
+
+  k = BN_new();
+  if (k == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error allocating new BIGNUM: %s", proxy_ssh_crypto_get_errors());
+    pr_memscrub(buf2, CURVE448_SIZE);
+    pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
+    return -1;
+  }
+
+  if (BN_bin2bn(buf2, res, (BIGNUM *) k) == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error converting Curve448 shared secret to BN: %s",
+      proxy_ssh_crypto_get_errors());
+    pr_memscrub(buf2, CURVE448_SIZE);
+    pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
+    return -1;
+  }
+
+  kex->k = k;
+  pr_memscrub(buf2, CURVE448_SIZE);
+
+  /* Calculate H */
+  h = calculate_curve448_h(pkt->pool, kex, server_hostkey_data,
+    server_hostkey_datalen, k, &hlen);
+  if (h == NULL) {
+    BN_clear_free((BIGNUM *) kex->k);
+    kex->k = NULL;
+    pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
+
+    return -1;
+  }
+
+  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
+  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+
+  /* Verify H */
+  res = verify_h(pkt->pool, kex, server_hostkey_data, server_hostkey_datalen,
+    sig, siglen, h, hlen);
+  if (res < 0) {
+    BN_clear_free((BIGNUM *) kex->k);
+    kex->k = NULL;
+    pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
+
+    return -1;
+  }
+
+  kex->h = palloc(kex_pool, hlen);
+  kex->hlen = hlen;
+  memcpy((char *) kex->h, h, kex->hlen);
+
+  /* Save H as the session ID. */
+  proxy_ssh_session_set_id(session.pool, h, hlen);
+
+  /* We no longer need the private key. */
+  pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
+
+  return 0;
+}
+
+static int handle_kex_curve448(struct proxy_ssh_kex *kex, conn_t *conn) {
+  int res;
+  struct proxy_ssh_packet *pkt;
+
+  pr_trace_msg(trace_channel, 9, "writing ECDH_INIT message to server");
+  pkt = proxy_ssh_packet_create(kex_pool);
+  res = write_curve448_init(pkt, kex);
+  if (res < 0) {
+    destroy_pool(pkt->pool);
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
+
+  res = proxy_ssh_packet_write(conn, pkt);
+  if (res < 0) {
+    destroy_pool(pkt->pool);
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
+
+  destroy_pool(pkt->pool);
+
+  pr_trace_msg(trace_channel, 9, "reading ECDH_REPLY message from server");
+  pkt = read_kex_packet(kex_pool, kex, conn,
+    PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL, 1,
+    PROXY_SSH_MSG_KEX_ECDH_REPLY);
+
+  res = read_curve448_reply(pkt, kex);
+  if (res < 0) {
+    destroy_pool(pkt->pool);
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
+
+  destroy_pool(pkt->pool);
+  return 0;
+}
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+
 static int run_kex(struct proxy_ssh_kex *kex, conn_t *conn) {
   const char *algo;
 
@@ -4373,6 +4835,11 @@ static int run_kex(struct proxy_ssh_kex *kex, conn_t *conn) {
              strcmp(algo, "curve25519-sha256@libssh.org") == 0) {
     return handle_kex_curve25519(kex, conn);
 #endif /* PR_USE_SODIUM and HAVE_SHA256_OPENSSL */
+
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+  } else if (strcmp(algo, "curve448-sha512") == 0) {
+    return handle_kex_curve448(kex, conn);
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
   }
 
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,

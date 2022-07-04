@@ -88,6 +88,11 @@ my $TESTS = {
     test_class => [qw(feature_sodium forking mod_sftp reverse)],
   },
 
+  proxy_reverse_backend_ssh_kex_curve448_sha512 => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
   proxy_reverse_backend_ssh_kex_rsa1024_sha1 => {
     order => ++$order,
     test_class => [qw(forking mod_sftp reverse)],
@@ -1614,6 +1619,17 @@ sub proxy_reverse_backend_ssh_kex_curve25519_sha256 {
   my $cipher_algo = 'aes256-ctr';
   my $digest_algo = 'hmac-sha1';
   my $kex_algo = 'curve25519-sha256';
+  my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
+sub proxy_reverse_backend_ssh_kex_curve448_sha512 {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-sha1';
+  my $kex_algo = 'curve448-sha512';
   my $proxy_sftp_opts = '';
 
   ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
