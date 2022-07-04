@@ -293,7 +293,11 @@ static int write_userauth_hostbased(struct proxy_ssh_packet *pkt,
   len += proxy_ssh_msg_write_string(&buf, &buflen, pstrdup(pkt->pool,
     "hostbased"));
 
-  if (proxy_ssh_keys_have_hostkey(PROXY_SSH_KEY_ED25519) == 0) {
+  if (proxy_ssh_keys_have_hostkey(PROXY_SSH_KEY_ED448) == 0) {
+    use_hostkey_type = PROXY_SSH_KEY_ED448;
+    hostkey_algo = "ssh-ed448";
+
+  } else if (proxy_ssh_keys_have_hostkey(PROXY_SSH_KEY_ED25519) == 0) {
     use_hostkey_type = PROXY_SSH_KEY_ED25519;
     hostkey_algo = "ssh-ed25519";
 

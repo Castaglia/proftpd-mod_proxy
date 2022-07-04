@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH keys API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,7 +39,8 @@ enum proxy_ssh_key_type_e {
   PROXY_SSH_KEY_ECDSA_256,
   PROXY_SSH_KEY_ECDSA_384,
   PROXY_SSH_KEY_ECDSA_521,
-  PROXY_SSH_KEY_ED25519
+  PROXY_SSH_KEY_ED25519,
+  PROXY_SSH_KEY_ED448
 };
 
 /* Returns a string of colon-separated lowercase hex characters, representing

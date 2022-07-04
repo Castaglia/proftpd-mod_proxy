@@ -61,6 +61,9 @@
 /* Define if you have OpenSSL with SHA512 support. */
 #undef HAVE_SHA512_OPENSSL
 
+/* Define if you have OpenSSL with X448 support. */
+#undef HAVE_X448_OPENSSL
+
 /* Define if you have the sqlite3.h header.  */
 #undef HAVE_SQLITE3_H
 #if !defined(HAVE_SQLITE3_H)

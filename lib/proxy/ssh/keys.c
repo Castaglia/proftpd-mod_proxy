@@ -42,6 +42,10 @@
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+# define CURVE448_SIZE          56
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+
 extern xaset_t *server_list;
 
 /* Note: Should this size be made bigger, in light of larger hostkeys? */
@@ -57,6 +61,11 @@ struct proxy_ssh_hostkey {
   unsigned long long ed25519_public_keylen;
   unsigned char *ed25519_secret_key;
   unsigned long long ed25519_secret_keylen;
+
+  unsigned char *ed448_public_key;
+  unsigned long long ed448_public_keylen;
+  unsigned char *ed448_secret_key;
+  unsigned long long ed448_secret_keylen;
 
   const unsigned char *key_data;
   uint32_t key_datalen;
@@ -85,6 +94,10 @@ static struct proxy_ssh_hostkey *ecdsa521_hostkey = NULL;
 #if defined(PR_USE_SODIUM)
 static struct proxy_ssh_hostkey *ed25519_hostkey = NULL;
 #endif /* PR_USE_SODIUM */
+
+#if defined(HAVE_X448_OPENSSL)
+static struct proxy_ssh_hostkey *ed448_hostkey = NULL;
+#endif /* HAVE_X448_OPENSSL */
 
 static const char *passphrase_provider = NULL;
 
@@ -160,6 +173,8 @@ static struct openssh_cipher ciphers[] = {
   { NULL,          0,  0, 0, 0, NULL, NULL }
 };
 
+static int handle_ed448_hostkey(pool *p, const unsigned char *key_data,
+    uint32_t key_datalen, const char *file_path);
 static int read_openssh_private_key(pool *p, const char *path, int fd,
     const char *passphrase, enum proxy_ssh_key_type_e *key_type,
     EVP_PKEY **pkey, unsigned char **key, uint32_t *keylen);
@@ -1504,14 +1519,17 @@ static uint32_t read_pkey_from_data(pool *p, unsigned char *pkey_data,
 
 #if defined(PR_USE_SODIUM)
   } else if (strcmp(pkey_type, "ssh-ed25519") == 0) {
-    /* XXX Should we return error, if openssh_format != TRUE?  Not sure how
-     * else we would see such keys.
-     */
-
     if (key_type != NULL) {
       *key_type = PROXY_SSH_KEY_ED25519;
     }
 #endif /* PR_USE_SODIUM */
+
+#if defined(HAVE_X448_OPENSSL)
+  } else if (strcmp(pkey_type, "ssh-ed448") == 0) {
+    if (key_type != NULL) {
+      *key_type = PROXY_SSH_KEY_ED448;
+    }
+#endif /* HAVE_X448_OPENSSL */
 
   } else {
     pr_trace_msg(trace_channel, 3, "unsupported public key algorithm '%s'",
@@ -1596,6 +1614,10 @@ static const char *get_key_type_desc(enum proxy_ssh_key_type_e key_type) {
 
     case PROXY_SSH_KEY_ED25519:
       key_desc = "ED25519";
+      break;
+
+    case PROXY_SSH_KEY_ED448:
+      key_desc = "ED448";
       break;
 
     default:
@@ -1723,6 +1745,9 @@ enum proxy_ssh_key_type_e proxy_ssh_keys_get_key_type(const char *algo) {
 
   } else if (strcmp(algo, "ssh-ed25519") == 0) {
     key_type = PROXY_SSH_KEY_ED25519;
+
+  } else if (strcmp(algo, "ssh-ed448") == 0) {
+    key_type = PROXY_SSH_KEY_ED448;
   }
 
   return key_type;
@@ -1766,6 +1791,10 @@ const char *proxy_ssh_keys_get_key_type_desc(enum proxy_ssh_key_type_e key_type)
 
     case PROXY_SSH_KEY_ED25519:
       key_desc = "ssh-ed25519";
+      break;
+
+    case PROXY_SSH_KEY_ED448:
+      key_desc = "ssh-ed448";
       break;
 
     default:
@@ -2179,6 +2208,24 @@ static int ed25519_compare_keys(pool *p,
 }
 #endif /* PR_USE_SODIUM */
 
+#if defined(HAVE_X448_OPENSSL)
+static int ed448_compare_keys(pool *p,
+    unsigned char *remote_pubkey_data, uint32_t remote_pubkey_datalen,
+    unsigned char *local_pubkey_data, uint32_t local_pubkey_datalen) {
+  int res = 0;
+
+  if (remote_pubkey_datalen != local_pubkey_datalen) {
+    return -1;
+  }
+
+  if (memcmp(remote_pubkey_data, local_pubkey_data, remote_pubkey_datalen) != 0) {
+    res = -1;
+  }
+
+  return res;
+}
+#endif /* HAVE_X448_OPENSSL */
+
 /* Compare a "blob" of pubkey data sent by the server for authentication
  * with a local file pubkey (from an RFC4716 formatted file).  Returns -1 if
  * there was an error, TRUE if the keys are equals, and FALSE if not.
@@ -2278,6 +2325,18 @@ int proxy_ssh_keys_compare_keys(pool *p,
       res = FALSE;
     }
 #endif /* PR_USE_SODIUM */
+
+  } else if (remote_key_type == PROXY_SSH_KEY_ED448 &&
+             remote_key_type == local_key_type) {
+#if defined(HAVE_X448_OPENSSL)
+    if (ed448_compare_keys(p, remote_pubkey_data, remote_pubkey_datalen,
+        local_pubkey_data, local_pubkey_datalen) == 0) {
+      res = TRUE;
+
+    } else {
+      res = FALSE;
+    }
+#endif /* HAVE_X448_OPENSSL */
 
   } else {
     if (pr_trace_get_level(trace_channel) >= 17) {
@@ -2737,6 +2796,31 @@ static int handle_hostkey(pool *p, EVP_PKEY *pkey,
       break;
     }
 #endif /* PR_USE_OPENSSL_ECC */
+
+#if defined(HAVE_X448_OPENSSL)
+    case EVP_PKEY_ED448: {
+      unsigned char *privkey_data;
+      size_t privkey_datalen;
+
+      privkey_datalen = (CURVE448_SIZE * 2);
+      privkey_data = palloc(p, privkey_datalen);
+      if (EVP_PKEY_get_raw_private_key(pkey, privkey_data,
+          &privkey_datalen) != 1) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error reading ED448 private key from '%s': %s", file_path,
+          proxy_ssh_crypto_get_errors());
+        EVP_PKEY_free(pkey);
+        return -1;
+      }
+
+      if (handle_ed448_hostkey(p, privkey_data, privkey_datalen,
+          file_path) < 0) {
+        EVP_PKEY_free(pkey);
+        return -1;
+      }
+      break;
+    }
+#endif /* HAVE_X448_OPENSSL */
 
     default:
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -3440,6 +3524,67 @@ static int handle_ed25519_hostkey(pool *p, const unsigned char *key_data,
   return 0;
 }
 #endif /* PR_USE_SODIUM */
+
+#if defined(HAVE_X448_OPENSSL)
+static int handle_ed448_hostkey(pool *p, const unsigned char *key_data,
+    uint32_t key_datalen, const char *file_path) {
+  unsigned char *public_key;
+  EVP_PKEY *pkey = NULL;
+  size_t public_keylen = 0;
+
+  if (ed448_hostkey != NULL) {
+    /* If we have an existing ED448 hostkey, free it up. */
+    pr_memscrub(ed448_hostkey->ed448_secret_key,
+      ed448_hostkey->ed448_secret_keylen);
+    ed448_hostkey->ed448_secret_key = NULL;
+    ed448_hostkey->ed448_secret_keylen = 0;
+
+    pr_memscrub(ed448_hostkey->ed448_public_key,
+      ed448_hostkey->ed448_public_keylen);
+    ed448_hostkey->ed448_public_key = NULL;
+    ed448_hostkey->ed448_public_keylen = 0;
+
+    ed448_hostkey->file_path = NULL;
+    ed448_hostkey->agent_path = NULL;
+
+  } else {
+    ed448_hostkey = pcalloc(p, sizeof(struct proxy_ssh_hostkey));
+  }
+
+  ed448_hostkey->key_type = PROXY_SSH_KEY_ED448;
+  ed448_hostkey->ed448_secret_key = (unsigned char *) key_data;
+  ed448_hostkey->ed448_secret_keylen = key_datalen;
+
+  pkey = EVP_PKEY_new_raw_private_key(EVP_PKEY_ED448, NULL,
+    ed448_hostkey->ed448_secret_key, ed448_hostkey->ed448_secret_keylen);
+  if (pkey == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing Ed448 private key: %s",
+      proxy_ssh_crypto_get_errors());
+    return -1;
+  }
+
+  /* Use the secret key to get the public key. */
+  public_keylen = (CURVE448_SIZE * 2);
+  public_key = palloc(p, public_keylen);
+  if (EVP_PKEY_get_raw_public_key(pkey, public_key, &public_keylen) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error obtaining Ed448 public key: %s", proxy_ssh_crypto_get_errors());
+    EVP_PKEY_free(pkey);
+    return -1;
+  }
+
+  EVP_PKEY_free(pkey);
+
+  ed448_hostkey->ed448_public_key = public_key;
+  ed448_hostkey->ed448_public_keylen = public_keylen;
+
+  ed448_hostkey->file_path = file_path;
+  pr_trace_msg(trace_channel, 4, "using '%s' as Ed448 hostkey", file_path);
+
+  return 0;
+}
+#endif /* HAVE_X448_OPENSSL */
 
 static int load_openssh_hostkey(pool *p, const char *path, int fd) {
   const char *passphrase = NULL;
