@@ -3070,7 +3070,10 @@ static int deserialize_openssh_private_key(pool *p, const char *path,
     unsigned char **data, uint32_t *data_len,
     enum proxy_ssh_key_type_e *key_type, EVP_PKEY **pkey, unsigned char **key,
     uint32_t *keylen) {
-  uint32_t len = 0;
+  uint32_t len = 0, public_keylen = 0, secret_keylen = 0;
+  const char *pkey_type;
+  unsigned char *public_key = NULL, *secret_key = NULL;
+  int have_extra_public_key = FALSE;
 
   len = read_pkey_from_data(p, *data, *data_len, pkey, key_type, TRUE);
   if (len == 0) {
@@ -3084,39 +3087,84 @@ static int deserialize_openssh_private_key(pool *p, const char *path,
   (*data) += len;
   (*data_len) -= len;
 
-  if (*key_type == PROXY_SSH_KEY_ED25519) {
-    const char *pkey_type = "ssh-ed25519";
-    uint32_t public_keylen = 0, secret_keylen = 0;
-    unsigned char *public_key = NULL, *secret_key = NULL;
+  switch (*key_type) {
+    case PROXY_SSH_KEY_DSA:
+    case PROXY_SSH_KEY_RSA:
+    case PROXY_SSH_KEY_ECDSA_256:
+    case PROXY_SSH_KEY_ECDSA_384:
+    case PROXY_SSH_KEY_ECDSA_521:
+    case PROXY_SSH_KEY_RSA_SHA256:
+    case PROXY_SSH_KEY_RSA_SHA512:
+      return 0;
 
-    len = proxy_ssh_msg_read_int(p, data, data_len, &public_keylen);
-    len = proxy_ssh_msg_read_data(p, data, data_len, public_keylen,
-      &public_key);
-    if (public_key == NULL) {
-      pr_trace_msg(trace_channel, 2,
-        "error reading %s key: invalid/supported key format", pkey_type);
-      errno = EINVAL;
-      return -1;
-    }
+    case PROXY_SSH_KEY_ED25519:
+      pkey_type = "ssh-ed25519";
+      break;
 
-    len = proxy_ssh_msg_read_int(p, data, data_len, &secret_keylen);
-    len = proxy_ssh_msg_read_data(p, data, data_len, secret_keylen,
-      &secret_key);
-    if (secret_key == NULL) {
-      pr_trace_msg(trace_channel, 2,
-        "error reading %s key: invalid/supported key format", pkey_type);
-      errno = EINVAL;
-      return -1;
-    }
+    case PROXY_SSH_KEY_ED448:
+      pkey_type = "ssh-ed448";
+      break;
 
-    /* The Ed25519 secret key is what we need to extract. */
-    *key = secret_key;
-    *keylen = secret_keylen;
-
-  } else {
-    *key = NULL;
-    *keylen = 0;
+    case PROXY_SSH_KEY_UNKNOWN:
+    default:
+      *key = NULL;
+      *keylen = 0;
+      return 0;
   }
+
+  len = proxy_ssh_msg_read_int(p, data, data_len, &public_keylen);
+  len = proxy_ssh_msg_read_data(p, data, data_len, public_keylen,
+    &public_key);
+  if (public_key == NULL) {
+    pr_trace_msg(trace_channel, 2,
+      "error reading %s key: invalid/supported key format", pkey_type);
+    errno = EINVAL;
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_int(p, data, data_len, &secret_keylen);
+
+  /* NOTE: PuTTY's puttygen adds the public key _again_, in the second half
+   * of the secret key data, per commments in its
+   * `sshecc.c#eddsa_new_priv_openssh` function.  Thus if this secret key
+   * length is larger than expected for Ed448 keys, only use the first half of
+   * it.  Ugh.  This "divide in half" hack only works for these keys where the
+   * private and public key sizes are the same.
+   */
+  switch (*key_type) {
+    case PROXY_SSH_KEY_ED448:
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+      if (secret_keylen > (CURVE448_SIZE + 1)) {
+        have_extra_public_key = TRUE;
+        secret_keylen /= 2;
+      }
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+      break;
+
+    default:
+      break;
+  }
+
+  len = proxy_ssh_msg_read_data(p, data, data_len, secret_keylen,
+    &secret_key);
+  if (secret_key == NULL) {
+    pr_trace_msg(trace_channel, 2,
+      "error reading %s key: invalid/supported key format", pkey_type);
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (have_extra_public_key == TRUE) {
+    unsigned char *extra_data = NULL;
+
+    /* Read (and ignore) the rest of the secret data */
+    (void) proxy_ssh_msg_read_data(p, data, data_len, secret_keylen,
+      &extra_data);
+  }
+
+  /* The secret key is what we need to extract. */
+  *key = secret_key;
+  *keylen = secret_keylen;
 
   return 0;
 }
@@ -3611,6 +3659,12 @@ static int load_openssh_hostkey(pool *p, const char *path, int fd) {
       break;
 #endif /* PR_USE_SODIUM */
 
+#if defined(HAVE_X448_OPENSSL)
+    case PROXY_SSH_KEY_ED448:
+      res = handle_ed448_hostkey(p, key, keylen, path);
+      break;
+#endif /* HAVE_X448_OPENSSL */
+
     default:
       res = handle_hostkey(p, pkey, NULL, 0, path, NULL);
       break;
@@ -3862,6 +3916,20 @@ static int get_ed25519_hostkey_data(pool *p, unsigned char **buf,
 }
 #endif /* PR_USE_SODIUM */
 
+#if defined(HAVE_X448_OPENSSL)
+static int get_ed448_hostkey_data(pool *p, unsigned char **buf,
+    unsigned char **ptr, uint32_t *buflen) {
+
+  /* XXX Is this buffer large enough?  Too large? */
+  *ptr = *buf = palloc(p, *buflen);
+  proxy_ssh_msg_write_string(buf, buflen, "ssh-ed448");
+  proxy_ssh_msg_write_data(buf, buflen, ed448_hostkey->ed448_public_key,
+    ed448_hostkey->ed448_public_keylen, TRUE);
+
+  return 0;
+}
+#endif /* HAVE_X448_OPENSSL */
+
 int proxy_ssh_keys_have_hostkey(enum proxy_ssh_key_type_e key_type) {
   /* If the requested type is PROXY_SSH_KEY_UNKNOWN, the caller is asking
    * if we have any hostkeys configured at all, regardless of type.
@@ -3886,6 +3954,12 @@ int proxy_ssh_keys_have_hostkey(enum proxy_ssh_key_type_e key_type) {
       return 0;
     }
 #endif /* PR_USE_SODIUM */
+
+#if defined(HAVE_X448_OPENSSL)
+    if (ed448_hostkey != NULL) {
+      return 0;
+    }
+#endif /* HAVE_X448_OPENSSL */
 
     errno = ENOENT;
     return -1;
@@ -3933,6 +4007,14 @@ int proxy_ssh_keys_have_hostkey(enum proxy_ssh_key_type_e key_type) {
       }
       break;
 #endif /* PR_USE_SODIUM */
+
+#if defined(HAVE_X448_OPENSSL)
+    case PROXY_SSH_KEY_ED448:
+      if (ed448_hostkey != NULL) {
+        return 0;
+      }
+      break;
+#endif /* HAVE_X448_OPENSSL */
 
     default:
       break;
@@ -4022,6 +4104,17 @@ const unsigned char *proxy_ssh_keys_get_hostkey_data(pool *p,
       break;
     }
 #endif /* PR_USE_SODIUM */
+
+#if defined(HAVE_X448_OPENSSL)
+    case PROXY_SSH_KEY_ED448: {
+      res = get_ed448_hostkey_data(p, &buf, &ptr, &buflen);
+      if (res < 0) {
+        return NULL;
+      }
+
+      break;
+    }
+#endif /* HAVE_X448_OPENSSL */
 
     default:
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -4503,6 +4596,73 @@ static const unsigned char *ed25519_sign_data(pool *p,
 }
 #endif /* PR_USE_SODIUM */
 
+#if defined(HAVE_X448_OPENSSL)
+static const unsigned char *ed448_sign_data(pool *p,
+    const unsigned char *data, size_t datalen, size_t *siglen) {
+  unsigned char *buf, *ptr, *sig_buf;
+  uint32_t bufsz, buflen, sig_buflen, sig_bufsz;
+  EVP_MD_CTX *md_ctx;
+  EVP_PKEY *pkey;
+
+/* XXX TODO ED448: Test this! */
+  if (ed448_hostkey->agent_path != NULL) {
+    return agent_sign_data(p, ed448_hostkey->agent_path,
+      ed448_hostkey->ed448_public_key, ed448_hostkey->ed448_public_keylen,
+      data, datalen, siglen, 0);
+  }
+
+  sig_buflen = sig_bufsz = datalen + 256;
+  sig_buf = palloc(p, sig_bufsz);
+
+  md_ctx = EVP_MD_CTX_new();
+  pkey = EVP_PKEY_new_raw_private_key(EVP_PKEY_ED448, NULL,
+    ed448_hostkey->ed448_secret_key, ed448_hostkey->ed448_secret_keylen);
+  if (pkey == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing Ed448 private key: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_MD_CTX_free(md_ctx);
+    return NULL;
+  }
+
+  if (EVP_DigestSignInit(md_ctx, NULL, NULL, NULL, pkey) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing Ed448 signature: %s", proxy_ssh_crypto_get_errors());
+    EVP_PKEY_free(pkey);
+    EVP_MD_CTX_free(md_ctx);
+    return NULL;
+  }
+
+  if (EVP_DigestSign(md_ctx, sig_buf, (size_t *) &sig_buflen, data,
+      datalen) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "failed to sign data using Ed448: %s", proxy_ssh_crypto_get_errors());
+    EVP_PKEY_free(pkey);
+    EVP_MD_CTX_free(md_ctx);
+    return NULL;
+  }
+
+  EVP_PKEY_free(pkey);
+  EVP_MD_CTX_free(md_ctx);
+
+  /* XXX Is this buffer large enough?  Too large? */
+  buflen = bufsz = PROXY_SSH_MAX_SIG_SZ;
+  ptr = buf = palloc(p, bufsz);
+
+  /* Now build up the signature, SSH2-style */
+  proxy_ssh_msg_write_string(&buf, &buflen, "ssh-ed448");
+  proxy_ssh_msg_write_data(&buf, &buflen, sig_buf, sig_buflen, TRUE);
+  pr_memscrub(sig_buf, sig_bufsz);
+
+  /* At this point, buflen is the amount remaining in the allocated buffer.
+   * So the total length of the signed data is the buffer size, minus those
+   * remaining unused bytes.
+   */
+  *siglen = (bufsz - buflen);
+  return ptr;
+}
+#endif /* HAVE_X448_OPENSSL */
+
 const unsigned char *proxy_ssh_keys_sign_data(pool *p,
     enum proxy_ssh_key_type_e key_type, const unsigned char *data,
     size_t datalen, size_t *siglen) {
@@ -4538,6 +4698,12 @@ const unsigned char *proxy_ssh_keys_sign_data(pool *p,
       res = ed25519_sign_data(p, data, datalen, siglen);
       break;
 #endif /* PR_USE_SODIUM */
+
+#if defined(HAVE_X448_OPENSSL)
+    case PROXY_SSH_KEY_ED448:
+      res = ed448_sign_data(p, data, datalen, siglen);
+      break;
+#endif /* HAVE_X448_OPENSSL */
 
     default:
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
