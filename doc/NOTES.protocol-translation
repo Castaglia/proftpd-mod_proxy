@@ -1,7 +1,185 @@
 
-FTP to SFTP:
+FTP to SFTP (#1):
 
   http://www.bitvise.com/ftp-bridge
   http://www.enterprisedt.com/products/completeftp/doc/guide/html/gateway.html
 
   mindterm source (Java, FTPOverSFTP bridge code for mapping)
+
+For each FTP command, decompose it into SFTP request equivalents; note which
+FTP commands have no SFTP request equivalents.
+
+  USER
+  PASS
+    USERAUTH
+  ACCT
+    n/a
+
+  CWD
+  XCWD
+  CDUP
+  XCUP
+    n/a; will mod_proxy have to maintain some state about the FTP session
+    for such directory traversal commands?  Yuck.  Maybe use with REALPATH?
+
+  SMNT
+    not implemented
+
+  REIN
+    not implemented
+
+  QUIT
+    CHANNEL_CLOSE
+
+  PORT
+  EPRT
+  PASV
+  EPSV
+    n/a
+
+  TYPE
+    n/a (binary only?)
+
+  STRU
+    n/a
+
+  MODE
+
+  RANG
+  REST
+  RETR
+    OPEN + READ + CLOSE
+
+  RANG
+  REST
+  APPE
+  STOR
+    OPEN + WRITE + CLOSE
+
+  STOU
+    ???
+
+  ALLO
+    n/a
+
+  RNFR
+  RNTO
+    RENAME
+
+  ABOR
+    n/a; maybe just stop the current data transfer, send CLOSE?
+
+  DELE
+    REMOVE
+
+  MDTM
+    STAT
+
+  MKD
+  XMKD
+    MKDIR
+
+  RMD
+  XRMD
+    RMDIR
+
+  LIST
+  MLSD
+  MLST
+  NLST
+    OPENDIR + READDIR + CLOSE
+
+  MFF
+    FSETSTAT
+  MFMT
+    FSETSTAT
+
+  PWD
+  XPWD
+
+  SITE
+    n/a; support for specific SITE commands *may* be added later, e.g.
+    SITE CHMOD = SETSTAT
+    SITE CHGRP = SETSTAT
+    SITE SYMLINK = SYMLINK (from mod_site_misc)
+    SITE UTIME = SETSTAT (from mod_site_misc)
+
+  SIZE
+    STAT
+
+  SYST
+
+  STAT
+    STAT
+
+  HELP
+
+  NOOP
+  FEAT
+    n/a (SFTP extensions?)
+
+  OPTS
+  LANG
+    n/a
+
+  HOST
+    n/a
+
+  CLNT
+    n/a (would be part of SSH connect, but is too late in FTP protocol)
+
+  AUTH
+  PBSZ
+  PROT
+    n/a (provided by SSH by default!)
+
+For authentication, it will always be password authentication to the backend
+SSH server.  (Or should this overridable, e.g. password authentication to
+the proxy, but hostbased authentication from the proxy to the backend server?)
+
+What does this look like, for an FTP forward proxy configuration to an SFTP
+backend?  How would mod_proxy know that the destination server is an SFTP
+server?  I suppose it could do a probe: make the initial TCP connection,
+see whether it gets the "220 Server Ready" FTP response, or the "ssh-..."
+SSH banner...
+
+  Note: This would require that mod_proxy be built _without_ mod_sftp being
+  present!  This means that the logic regarding mod_sftp HOOKs would need
+  to be revisited.
+
+  Implementation:
+    Implement a "protocol", which handles all of the above FTP commands.
+    The default Protocol object will do what mod_proxy currently does for
+    all of the commands; this will thus be a transparent change.  These
+    Protocol objects would then have to maintain/accumulate their own state,
+    so as to implement/translate RNFR + RNTO = RENAME, *and* be responsible
+    for translating the responses.  Thus these would indeed be more than
+    just codecs (or, for some value of "codec", very complicated codecs).
+
+    Once that's done, we need to determine how to lookup a new Protocol object,
+    and when do it, and when to register it.  For cases where mod_proxy
+    knows the backend URL at connect time, this is easier.   What about for
+    the auth-time URLs?
+
+    Protocol API:
+      Suitable for plugging into mod_proxy's CMD C_ANY handler, *and*
+      its POST_CMD C_PROT handler.  Thus the API for the given protocol
+      input should be something like:
+
+        (handle_request)(void *req, int phase);
+
+      By using a `void *`, we can then cast back to `cmd_rec`, or
+      (in the future) an SSH packet.  And the `phase` parameter tells the
+      Protocol object at just which lifecycle phase mod_proxy is in, for
+      that request.  (Consider, for example, a logging-only Protocol object,
+      to demonstrate the concept?)
+
+
+SFTP to FTP (#2):
+
+  No forward proxying supported here, since SFTP doesn't have that notion;
+  mod_proxy will know (via the ProxyReversServers URL schemes) which protocol
+  to use for the backend server.
+
+SCP (#3?):
+  subset of SFTP to FTP, with no directory listing support.
