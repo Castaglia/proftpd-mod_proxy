@@ -58,19 +58,19 @@ START_TEST (conn_create_test) {
   const char *url;
 
   pconn = proxy_conn_create(NULL, NULL, 0);
-  fail_unless(pconn == NULL, "Failed to handle null arguments");
-  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+  ck_assert_msg(pconn == NULL, "Failed to handle null arguments");
+  ck_assert_msg(errno == EINVAL, "Failed to set errno to EINVAL");
 
   mark_point();
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(NULL, url, 0);
-  fail_unless(pconn == NULL, "Failed to handle null pool argument");
-  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+  ck_assert_msg(pconn == NULL, "Failed to handle null pool argument");
+  ck_assert_msg(errno == EINVAL, "Failed to set errno to EINVAL");
 
   mark_point();
   pconn = proxy_conn_create(p, NULL, 0);
-  fail_unless(pconn == NULL, "Failed to handle null URL argument");
-  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+  ck_assert_msg(pconn == NULL, "Failed to handle null URL argument");
+  ck_assert_msg(errno == EINVAL, "Failed to set errno to EINVAL");
 
   /* We're already testing URL parsing elsewhere, so we only need to
    * supply well-formed URLs in these tests.
@@ -79,20 +79,20 @@ START_TEST (conn_create_test) {
   mark_point();
   url = "http://127.0.0.1:80";
   pconn = proxy_conn_create(p, url, 0);
-  fail_unless(pconn == NULL, "Failed to handle unsupported protocol/scheme");
-  fail_unless(errno == EPERM, "Failed to set errno to EPERM");
+  ck_assert_msg(pconn == NULL, "Failed to handle unsupported protocol/scheme");
+  ck_assert_msg(errno == EPERM, "Failed to set errno to EPERM");
 
   mark_point();
   url = "ftp://foo.bar.baz";
   pconn = proxy_conn_create(p, url, 0);
-  fail_unless(pconn == NULL, "Failed to handle unresolvable host");
-  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+  ck_assert_msg(pconn == NULL, "Failed to handle unresolvable host");
+  ck_assert_msg(errno == EINVAL, "Failed to set errno to EINVAL");
 
   mark_point();
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   proxy_conn_free(pconn);
 }
@@ -105,18 +105,18 @@ START_TEST (conn_get_addr_test) {
   array_header *other_addrs = NULL;
  
   pconn_addr = proxy_conn_get_addr(NULL, NULL);
-  fail_unless(pconn_addr == NULL, "Failed to handle null argument");
-  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+  ck_assert_msg(pconn_addr == NULL, "Failed to handle null argument");
+  ck_assert_msg(errno == EINVAL, "Failed to set errno to EINVAL");
  
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   pconn_addr = proxy_conn_get_addr(pconn, &other_addrs);
-  fail_if(pconn_addr == NULL, "Failed to get address for pconn");
+  ck_assert_msg(pconn_addr != NULL, "Failed to get address for pconn");
   ipstr = pr_netaddr_get_ipstr(pconn_addr);
-  fail_unless(strcmp(ipstr, "127.0.0.1") == 0,
+  ck_assert_msg(strcmp(ipstr, "127.0.0.1") == 0,
     "Expected IP address '127.0.0.1', got '%s'", ipstr);
 
   proxy_conn_free(pconn);
@@ -128,20 +128,20 @@ START_TEST (conn_get_host_test) {
   const struct proxy_conn *pconn;
 
   host = proxy_conn_get_host(NULL);
-  fail_unless(host == NULL, "Got host from null pconn unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(host == NULL, "Got host from null pconn unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   host = proxy_conn_get_host(pconn);
-  fail_unless(host != NULL, "Failed to get host from conn: %s",
+  ck_assert_msg(host != NULL, "Failed to get host from conn: %s",
     strerror(errno));
   expected = "127.0.0.1";
-  fail_unless(strcmp(host, expected) == 0, "Expected host '%s', got '%s'",
+  ck_assert_msg(strcmp(host, expected) == 0, "Expected host '%s', got '%s'",
     expected, host);
 
   proxy_conn_free(pconn);
@@ -154,17 +154,17 @@ START_TEST (conn_get_port_test) {
   const struct proxy_conn *pconn;
 
   port = proxy_conn_get_port(NULL);
-  fail_unless(port < 0, "Got port from null pconn unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(port < 0, "Got port from null pconn unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   port = proxy_conn_get_port(pconn);
-  fail_unless(port == 21, "Expected port 21, got %d", port);
+  ck_assert_msg(port == 21, "Expected port 21, got %d", port);
 
   proxy_conn_free(pconn);
 }
@@ -175,18 +175,18 @@ START_TEST (conn_get_hostport_test) {
   const char *hostport, *url;
 
   hostport = proxy_conn_get_hostport(NULL);
-  fail_unless(hostport == NULL, "Failed to handle null argument");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(hostport == NULL, "Failed to handle null argument");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
  
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   hostport = proxy_conn_get_hostport(pconn);
-  fail_if(hostport == NULL, "Failed to get host/port for pconn");
-  fail_unless(strcmp(hostport, "127.0.0.1:21") == 0,
+  ck_assert_msg(hostport != NULL, "Failed to get host/port for pconn");
+  ck_assert_msg(strcmp(hostport, "127.0.0.1:21") == 0,
     "Expected host/port '127.0.0.1:21', got '%s'", hostport);
 
   /* Implicit/assumed ports */
@@ -194,12 +194,12 @@ START_TEST (conn_get_hostport_test) {
 
   url = "ftp://127.0.0.1";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   hostport = proxy_conn_get_hostport(pconn);
-  fail_if(hostport == NULL, "Failed to get host/port for pconn");
-  fail_unless(strcmp(hostport, "127.0.0.1:21") == 0,
+  ck_assert_msg(hostport != NULL, "Failed to get host/port for pconn");
+  ck_assert_msg(strcmp(hostport, "127.0.0.1:21") == 0,
     "Expected host/port '127.0.0.1:21', got '%s'", hostport);
 
   proxy_conn_free(pconn);
@@ -211,17 +211,17 @@ START_TEST (conn_get_uri_test) {
   const char *pconn_url, *url;
 
   pconn_url = proxy_conn_get_uri(NULL);
-  fail_unless(pconn_url == NULL, "Failed to handle null argument");
-  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+  ck_assert_msg(pconn_url == NULL, "Failed to handle null argument");
+  ck_assert_msg(errno == EINVAL, "Failed to set errno to EINVAL");
  
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   pconn_url = proxy_conn_get_uri(pconn);
-  fail_if(pconn_url == NULL, "Failed to get URL for pconn");
-  fail_unless(strcmp(pconn_url, url) == 0,
+  ck_assert_msg(pconn_url != NULL, "Failed to get URL for pconn");
+  ck_assert_msg(strcmp(pconn_url, url) == 0,
     "Expected URL '%s', got '%s'", url, pconn_url);
 
   proxy_conn_free(pconn);
@@ -233,28 +233,28 @@ START_TEST (conn_get_username_test) {
   const struct proxy_conn *pconn;
 
   username = proxy_conn_get_username(NULL);
-  fail_unless(username == NULL, "Got username from null pconn unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(username == NULL, "Got username from null pconn unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   username = proxy_conn_get_username(pconn);
-  fail_unless(username == NULL, "Got username unexpectedly");
+  ck_assert_msg(username == NULL, "Got username unexpectedly");
   proxy_conn_free(pconn);
 
   url = "ftp://user:passwd@127.0.0.1:2121";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   username = proxy_conn_get_username(pconn);
-  fail_unless(username != NULL, "Expected username from conn");
+  ck_assert_msg(username != NULL, "Expected username from conn");
   expected = "user";
-  fail_unless(strcmp(username, expected) == 0,
+  ck_assert_msg(strcmp(username, expected) == 0,
     "Expected username '%s', got '%s'", expected, username);
 
   proxy_conn_free(pconn);
@@ -266,40 +266,40 @@ START_TEST (conn_get_password_test) {
   const struct proxy_conn *pconn;
 
   passwd = proxy_conn_get_password(NULL);
-  fail_unless(passwd == NULL, "Got password from null pconn unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(passwd == NULL, "Got password from null pconn unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   passwd = proxy_conn_get_password(pconn);
-  fail_unless(passwd == NULL, "Got password unexpectedly");
+  ck_assert_msg(passwd == NULL, "Got password unexpectedly");
   proxy_conn_free(pconn);
 
   url = "ftp://user:passwd@127.0.0.1:2121";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   passwd = proxy_conn_get_password(pconn);
-  fail_unless(passwd != NULL, "Expected password from conn");
+  ck_assert_msg(passwd != NULL, "Expected password from conn");
   expected = "passwd";
-  fail_unless(strcmp(passwd, expected) == 0,
+  ck_assert_msg(strcmp(passwd, expected) == 0,
     "Expected password '%s', got '%s'", expected, passwd);
   proxy_conn_free(pconn);
 
   url = "ftp://user:@127.0.0.1:2121";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   passwd = proxy_conn_get_password(pconn);
-  fail_unless(passwd != NULL, "Expected password from conn");
+  ck_assert_msg(passwd != NULL, "Expected password from conn");
   expected = "";
-  fail_unless(strcmp(passwd, expected) == 0,
+  ck_assert_msg(strcmp(passwd, expected) == 0,
     "Expected password '%s', got '%s'", expected, passwd);
 
   proxy_conn_free(pconn);
@@ -313,102 +313,102 @@ START_TEST (conn_get_tls_test) {
 
   mark_point();
   tls = proxy_conn_get_tls(NULL);
-  fail_unless(tls < 0, "Got TLS from null pconn unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(tls < 0, "Got TLS from null pconn unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   mark_point();
   tls = proxy_conn_get_tls(pconn);
-  fail_unless(tls == PROXY_TLS_ENGINE_AUTO, "Expected TLS auto, got %d", tls);
+  ck_assert_msg(tls == PROXY_TLS_ENGINE_AUTO, "Expected TLS auto, got %d", tls);
   proxy_conn_free(pconn);
 
   mark_point();
   url = "ftp+srv://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   mark_point();
   tls = proxy_conn_get_tls(pconn);
-  fail_unless(tls == PROXY_TLS_ENGINE_AUTO, "Expected TLS auto, got %d", tls);
+  ck_assert_msg(tls == PROXY_TLS_ENGINE_AUTO, "Expected TLS auto, got %d", tls);
   proxy_conn_free(pconn);
 
   mark_point();
   url = "ftp+txt://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   mark_point();
   tls = proxy_conn_get_tls(pconn);
-  fail_unless(tls == PROXY_TLS_ENGINE_AUTO, "Expected TLS auto, got %d", tls);
+  ck_assert_msg(tls == PROXY_TLS_ENGINE_AUTO, "Expected TLS auto, got %d", tls);
   proxy_conn_free(pconn);
 
   mark_point();
   url = "ftps://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   tls = proxy_conn_get_tls(pconn);
-  fail_unless(tls == PROXY_TLS_ENGINE_ON, "Expected TLS on, got %d", tls);
+  ck_assert_msg(tls == PROXY_TLS_ENGINE_ON, "Expected TLS on, got %d", tls);
   proxy_conn_free(pconn);
 
   mark_point();
   url = "ftps+srv://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   tls = proxy_conn_get_tls(pconn);
-  fail_unless(tls == PROXY_TLS_ENGINE_ON, "Expected TLS on, got %d", tls);
+  ck_assert_msg(tls == PROXY_TLS_ENGINE_ON, "Expected TLS on, got %d", tls);
   proxy_conn_free(pconn);
 
   mark_point();
   url = "ftps+txt://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   tls = proxy_conn_get_tls(pconn);
-  fail_unless(tls == PROXY_TLS_ENGINE_ON, "Expected TLS on, got %d", tls);
+  ck_assert_msg(tls == PROXY_TLS_ENGINE_ON, "Expected TLS on, got %d", tls);
   proxy_conn_free(pconn);
 
   mark_point();
   url = "ftps://127.0.0.1:990";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   tls = proxy_conn_get_tls(pconn);
-  fail_unless(tls == PROXY_TLS_ENGINE_IMPLICIT,
+  ck_assert_msg(tls == PROXY_TLS_ENGINE_IMPLICIT,
     "Expected TLS implicit, got %d", tls);
   proxy_conn_free(pconn);
 
   mark_point();
   url = "ftps+srv://127.0.0.1:990";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   tls = proxy_conn_get_tls(pconn);
-  fail_unless(tls == PROXY_TLS_ENGINE_ON, "Expected TLS on, got %d", tls);
+  ck_assert_msg(tls == PROXY_TLS_ENGINE_ON, "Expected TLS on, got %d", tls);
   proxy_conn_free(pconn);
 
   mark_point();
   url = "ftps+txt://127.0.0.1:990";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   tls = proxy_conn_get_tls(pconn);
-  fail_unless(tls == PROXY_TLS_ENGINE_ON, "Expected TLS on, got %d", tls);
+  ck_assert_msg(tls == PROXY_TLS_ENGINE_ON, "Expected TLS on, got %d", tls);
   proxy_conn_free(pconn);
 }
 END_TEST
@@ -420,53 +420,53 @@ START_TEST (conn_use_dns_srv_test) {
 
   mark_point();
   use_dns_srv = proxy_conn_use_dns_srv(NULL);
-  fail_unless(use_dns_srv < 0, "Got DNS SRV from null pconn unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(use_dns_srv < 0, "Got DNS SRV from null pconn unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   mark_point();
   use_dns_srv = proxy_conn_use_dns_srv(pconn);
-  fail_unless(use_dns_srv == FALSE, "Expected DNS SRV = false, got %d",
+  ck_assert_msg(use_dns_srv == FALSE, "Expected DNS SRV = false, got %d",
     use_dns_srv);
   proxy_conn_free(pconn);
 
   mark_point();
   url = "ftp+srv://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   mark_point();
   use_dns_srv = proxy_conn_use_dns_srv(pconn);
-  fail_unless(use_dns_srv == TRUE, "Expected DNS SRV = true, got %d",
+  ck_assert_msg(use_dns_srv == TRUE, "Expected DNS SRV = true, got %d",
     use_dns_srv);
   proxy_conn_free(pconn);
 
   mark_point();
   url = "ftps://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   use_dns_srv = proxy_conn_use_dns_srv(pconn);
-  fail_unless(use_dns_srv == FALSE, "Expected DNS SRV = false, got %d",
+  ck_assert_msg(use_dns_srv == FALSE, "Expected DNS SRV = false, got %d",
     use_dns_srv);
   proxy_conn_free(pconn);
 
   mark_point();
   url = "ftps+srv://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   use_dns_srv = proxy_conn_use_dns_srv(pconn);
-  fail_unless(use_dns_srv == TRUE, "Expected DNS SRV = true, got %d",
+  ck_assert_msg(use_dns_srv == TRUE, "Expected DNS SRV = true, got %d",
     use_dns_srv);
   proxy_conn_free(pconn);
 }
@@ -479,53 +479,53 @@ START_TEST (conn_use_dns_txt_test) {
 
   mark_point();
   use_dns_txt = proxy_conn_use_dns_txt(NULL);
-  fail_unless(use_dns_txt < 0, "Got DNS TXT from null pconn unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(use_dns_txt < 0, "Got DNS TXT from null pconn unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   mark_point();
   use_dns_txt = proxy_conn_use_dns_txt(pconn);
-  fail_unless(use_dns_txt == FALSE, "Expected DNS TXT = false, got %d",
+  ck_assert_msg(use_dns_txt == FALSE, "Expected DNS TXT = false, got %d",
     use_dns_txt);
   proxy_conn_free(pconn);
 
   mark_point();
   url = "ftp+txt://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   mark_point();
   use_dns_txt = proxy_conn_use_dns_txt(pconn);
-  fail_unless(use_dns_txt == TRUE, "Expected DNS TXT = true, got %d",
+  ck_assert_msg(use_dns_txt == TRUE, "Expected DNS TXT = true, got %d",
     use_dns_txt);
   proxy_conn_free(pconn);
 
   mark_point();
   url = "ftps://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   use_dns_txt = proxy_conn_use_dns_txt(pconn);
-  fail_unless(use_dns_txt == FALSE, "Expected DNS TXT = false, got %d",
+  ck_assert_msg(use_dns_txt == FALSE, "Expected DNS TXT = false, got %d",
     use_dns_txt);
   proxy_conn_free(pconn);
 
   mark_point();
   url = "ftps+txt://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   use_dns_txt = proxy_conn_use_dns_txt(pconn);
-  fail_unless(use_dns_txt == TRUE, "Expected DNS TXT = true, got %d",
+  ck_assert_msg(use_dns_txt == TRUE, "Expected DNS TXT = true, got %d",
     use_dns_txt);
   proxy_conn_free(pconn);
 }
@@ -538,42 +538,42 @@ START_TEST (conn_get_dns_ttl_test) {
 
   mark_point();
   res = proxy_conn_get_dns_ttl(NULL);
-  fail_unless(res < 0, "Failed to handle null argument");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null argument");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   url = "ftp://www.google.com";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   res = proxy_conn_get_dns_ttl(pconn);
-  fail_unless(res < 0, "Failed to handle non-TTL URL");
-  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+  ck_assert_msg(res < 0, "Failed to handle non-TTL URL");
+  ck_assert_msg(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
     strerror(errno), errno);
   proxy_conn_free(pconn);
 
   mark_point();
   url = "ftp+srv://127.0.0.1";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   res = proxy_conn_get_dns_ttl(pconn);
-  fail_unless(res < 0, "Failed to handle SRV URL");
-  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
+  ck_assert_msg(res < 0, "Failed to handle SRV URL");
+  ck_assert_msg(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
     strerror(errno), errno);
   proxy_conn_free(pconn);
 
   url = "ftps+txt://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   res = proxy_conn_get_dns_ttl(pconn);
-  fail_unless(res < 0, "Failed to handle TXT URL");
-  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+  ck_assert_msg(res < 0, "Failed to handle TXT URL");
+  ck_assert_msg(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
     strerror(errno), errno);
   proxy_conn_free(pconn);
 }
@@ -593,11 +593,11 @@ START_TEST (conn_clear_username_test) {
 
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   username = proxy_conn_get_username(pconn);
-  fail_unless(username == NULL, "Got username unexpectedly");
+  ck_assert_msg(username == NULL, "Got username unexpectedly");
 
   mark_point();
   proxy_conn_clear_username(pconn);
@@ -605,20 +605,20 @@ START_TEST (conn_clear_username_test) {
 
   url = "ftp://user:passwd@127.0.0.1:2121";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   username = proxy_conn_get_username(pconn);
-  fail_unless(username != NULL, "Expected username from conn");
+  ck_assert_msg(username != NULL, "Expected username from conn");
   expected = "user";
-  fail_unless(strcmp(username, expected) == 0,
+  ck_assert_msg(strcmp(username, expected) == 0,
     "Expected username '%s', got '%s'", expected, username);
 
   mark_point();
   proxy_conn_clear_username(pconn);
 
   username = proxy_conn_get_username(pconn);
-  fail_unless(username == NULL, "Expected null username, got '%s'", username);
+  ck_assert_msg(username == NULL, "Expected null username, got '%s'", username);
 
   proxy_conn_free(pconn);
 }
@@ -633,11 +633,11 @@ START_TEST (conn_clear_password_test) {
 
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   passwd = proxy_conn_get_password(pconn);
-  fail_unless(passwd == NULL, "Got password unexpectedly");
+  ck_assert_msg(passwd == NULL, "Got password unexpectedly");
 
   mark_point();
   proxy_conn_clear_password(pconn);
@@ -645,20 +645,20 @@ START_TEST (conn_clear_password_test) {
 
   url = "ftp://user:passwd@127.0.0.1:2121";
   pconn = proxy_conn_create(p, url, 0);
-  fail_if(pconn == NULL, "Failed to create pconn for URL '%s' as expected",
-    url);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
 
   passwd = proxy_conn_get_password(pconn);
-  fail_unless(passwd != NULL, "Expected password from conn");
+  ck_assert_msg(passwd != NULL, "Expected password from conn");
   expected = "passwd";
-  fail_unless(strcmp(passwd, expected) == 0,
+  ck_assert_msg(strcmp(passwd, expected) == 0,
     "Expected password '%s', got '%s'", expected, passwd);
 
   mark_point();
   proxy_conn_clear_password(pconn);
 
   passwd = proxy_conn_get_password(pconn);
-  fail_unless(passwd == NULL, "Expected null password, got '%s'", passwd);
+  ck_assert_msg(passwd == NULL, "Expected null password, got '%s'", passwd);
 
   proxy_conn_free(pconn);
 }
@@ -672,23 +672,23 @@ START_TEST (conn_timeout_cb_test) {
   session.notes = pr_table_alloc(p, 0);
 
   proxy_sess = (struct proxy_session *) proxy_session_alloc(p);
-  fail_unless(proxy_sess != NULL, "Failed to allocate proxy session: %s",
+  ck_assert_msg(proxy_sess != NULL, "Failed to allocate proxy session: %s",
     strerror(errno));
   pr_table_add(session.notes, "mod_proxy.proxy-session", proxy_sess,
     sizeof(struct proxy_session));
 
   addr = pr_netaddr_get_addr(p, "1.2.3.4", NULL);
-  fail_unless(addr != NULL, "Failed to resolve '1.2.3.4': %s", strerror(errno));
+  ck_assert_msg(addr != NULL, "Failed to resolve '1.2.3.4': %s", strerror(errno));
   pr_table_add(session.notes, "mod_proxy.proxy-connect-address", addr,
     sizeof(pr_netaddr_t));
 
   proxy_sess->connect_timeout = 1;
   res = proxy_conn_connect_timeout_cb(0, 0, 0, NULL);
-  fail_unless(res == 0, "Failed to handle timeout: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to handle timeout: %s", strerror(errno));
 
   proxy_sess->connect_timeout = 2;
   res = proxy_conn_connect_timeout_cb(0, 0, 0, NULL);
-  fail_unless(res == 0, "Failed to handle timeout: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to handle timeout: %s", strerror(errno));
 
   session.notes = NULL;
   proxy_session_free(p, proxy_sess);
@@ -700,13 +700,13 @@ START_TEST (conn_send_proxy_v1_test) {
   conn_t *conn;
 
   res = proxy_conn_send_proxy_v1(NULL, NULL);
-  fail_unless(res < 0, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   res = proxy_conn_send_proxy_v1(p, NULL);
-  fail_unless(res < 0, "Failed to handle null conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
@@ -717,8 +717,8 @@ START_TEST (conn_send_proxy_v1_test) {
 
   mark_point();
   res = proxy_conn_send_proxy_v1(p, conn);
-  fail_unless(res < 0, "Failed to handle invalid conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle invalid conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   session.c->local_addr = session.c->remote_addr = pr_netaddr_get_addr(p,
@@ -726,8 +726,8 @@ START_TEST (conn_send_proxy_v1_test) {
 
   mark_point();
   res = proxy_conn_send_proxy_v1(p, conn);
-  fail_unless(res < 0, "Failed to handle invalid conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle invalid conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   session.c->local_addr = pr_netaddr_get_addr(p, "::1", FALSE);
@@ -735,8 +735,8 @@ START_TEST (conn_send_proxy_v1_test) {
 
   mark_point();
   res = proxy_conn_send_proxy_v1(p, conn);
-  fail_unless(res < 0, "Failed to handle invalid conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle invalid conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   session.c->remote_addr = pr_netaddr_get_addr(p, "::1", FALSE);
@@ -744,16 +744,16 @@ START_TEST (conn_send_proxy_v1_test) {
 
   mark_point();
   res = proxy_conn_send_proxy_v1(p, conn);
-  fail_unless(res < 0, "Failed to handle invalid conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle invalid conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   conn->remote_addr = pr_netaddr_get_addr(p, "127.0.0.1", FALSE);
 
   mark_point();
   res = proxy_conn_send_proxy_v1(p, conn);
-  fail_unless(res < 0, "Failed to handle invalid conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle invalid conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   pr_inet_close(p, conn);
@@ -767,13 +767,13 @@ START_TEST (conn_send_proxy_v2_test) {
   conn_t *conn;
 
   res = proxy_conn_send_proxy_v2(NULL, NULL);
-  fail_unless(res < 0, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   res = proxy_conn_send_proxy_v2(p, NULL);
-  fail_unless(res < 0, "Failed to handle null conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
@@ -784,8 +784,8 @@ START_TEST (conn_send_proxy_v2_test) {
 
   mark_point();
   res = proxy_conn_send_proxy_v2(p, conn);
-  fail_unless(res < 0, "Failed to handle invalid conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle invalid conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   session.c->local_addr = session.c->remote_addr = pr_netaddr_get_addr(p,
@@ -793,8 +793,8 @@ START_TEST (conn_send_proxy_v2_test) {
 
   mark_point();
   res = proxy_conn_send_proxy_v2(p, conn);
-  fail_unless(res < 0, "Failed to handle invalid conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle invalid conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   session.c->local_addr = pr_netaddr_get_addr(p, "::1", FALSE);
@@ -802,8 +802,8 @@ START_TEST (conn_send_proxy_v2_test) {
 
   mark_point();
   res = proxy_conn_send_proxy_v2(p, conn);
-  fail_unless(res < 0, "Failed to handle invalid conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle invalid conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   session.c->remote_addr = pr_netaddr_get_addr(p, "::1", FALSE);
@@ -811,16 +811,16 @@ START_TEST (conn_send_proxy_v2_test) {
 
   mark_point();
   res = proxy_conn_send_proxy_v2(p, conn);
-  fail_unless(res < 0, "Failed to handle invalid conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle invalid conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   conn->remote_addr = pr_netaddr_get_addr(p, "127.0.0.1", FALSE);
 
   mark_point();
   res = proxy_conn_send_proxy_v2(p, conn);
-  fail_unless(res < 0, "Failed to handle invalid conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle invalid conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   pr_inet_close(p, conn);

@@ -57,27 +57,27 @@ START_TEST (dns_resolve_einval_test) {
 
   mark_point();
   res = proxy_dns_resolve(NULL, NULL, dns_type, NULL, NULL);
-  fail_unless(res < 0, "Failed to handle null pool argument");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null pool argument");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_dns_resolve(p, NULL, dns_type, NULL, NULL);
-  fail_unless(res < 0, "Failed to handle null name argument");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null name argument");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   name = "www.google.com";
   res = proxy_dns_resolve(p, name, dns_type, NULL, NULL);
-  fail_unless(res < 0, "Failed to handle null resp argument");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null resp argument");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_dns_resolve(p, name, dns_type, &resp, NULL);
-  fail_unless(res < 0, "Failed to handle UNKNOWN type argument");
-  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+  ck_assert_msg(res < 0, "Failed to handle UNKNOWN type argument");
+  ck_assert_msg(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
     strerror(errno), errno);
 }
 END_TEST
@@ -94,27 +94,27 @@ START_TEST (dns_resolve_bad_response_test) {
   mark_point();
   name = "foobarbaz";
   res = proxy_dns_resolve(p, name, dns_type, &resp, NULL);
-  fail_unless(res < 0, "Failed to handle no SRV records for '%s'", name);
-  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
+  ck_assert_msg(res < 0, "Failed to handle no SRV records for '%s'", name);
+  ck_assert_msg(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
     strerror(errno), errno);
-  fail_unless(resp == NULL, "Expected null responses");
+  ck_assert_msg(resp == NULL, "Expected null responses");
 
   mark_point();
   name = "  ";
   res = proxy_dns_resolve(p, name, dns_type, &resp, NULL);
-  fail_unless(res < 0, "Failed to handle no SRV records for '%s'", name);
-  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
+  ck_assert_msg(res < 0, "Failed to handle no SRV records for '%s'", name);
+  ck_assert_msg(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
     strerror(errno), errno);
-  fail_unless(resp == NULL, "Expected null responses");
+  ck_assert_msg(resp == NULL, "Expected null responses");
 
   mark_point();
   name = ".";
   res = proxy_dns_resolve(p, name, dns_type, &resp, NULL);
-  fail_unless(res < 0, "Failed to handle no SRV records for '%s'", name);
-  fail_unless(errno == ENOENT || errno == EPERM,
+  ck_assert_msg(res < 0, "Failed to handle no SRV records for '%s'", name);
+  ck_assert_msg(errno == ENOENT || errno == EPERM,
     "Expected EPERM (%d) or ENOENT (%d), got %s (%d)", EPERM, ENOENT,
     strerror(errno), errno);
-  fail_unless(resp == NULL, "Expected null responses");
+  ck_assert_msg(resp == NULL, "Expected null responses");
 
   /* TXT */
   dns_type = PROXY_DNS_TXT;
@@ -122,34 +122,34 @@ START_TEST (dns_resolve_bad_response_test) {
   mark_point();
   name = "foobarbaz";
   res = proxy_dns_resolve(p, name, dns_type, &resp, NULL);
-  fail_unless(res < 0, "Failed to handle no TXT records for '%s'", name);
-  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
+  ck_assert_msg(res < 0, "Failed to handle no TXT records for '%s'", name);
+  ck_assert_msg(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
     strerror(errno), errno);
-  fail_unless(resp == NULL, "Expected null responses");
+  ck_assert_msg(resp == NULL, "Expected null responses");
 
   mark_point();
   name = "  ";
   res = proxy_dns_resolve(p, name, dns_type, &resp, NULL);
-  fail_unless(res < 0, "Failed to handle no TXT records for '%s'", name);
-  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
+  ck_assert_msg(res < 0, "Failed to handle no TXT records for '%s'", name);
+  ck_assert_msg(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
     strerror(errno), errno);
-  fail_unless(resp == NULL, "Expected null responses");
+  ck_assert_msg(resp == NULL, "Expected null responses");
 
   mark_point();
   name = ".";
   res = proxy_dns_resolve(p, name, dns_type, &resp, NULL);
-  fail_unless(res < 0, "Failed to handle no TXT records for '%s'", name);
-  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
+  ck_assert_msg(res < 0, "Failed to handle no TXT records for '%s'", name);
+  ck_assert_msg(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
     strerror(errno), errno);
-  fail_unless(resp == NULL, "Expected null responses");
+  ck_assert_msg(resp == NULL, "Expected null responses");
 
   mark_point();
   name = "+";
   res = proxy_dns_resolve(p, name, dns_type, &resp, NULL);
-  fail_unless(res < 0, "Failed to handle no TXT records for '%s'", name);
-  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
+  ck_assert_msg(res < 0, "Failed to handle no TXT records for '%s'", name);
+  ck_assert_msg(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
     strerror(errno), errno);
-  fail_unless(resp == NULL, "Expected null responses");
+  ck_assert_msg(resp == NULL, "Expected null responses");
 }
 END_TEST
 
@@ -163,25 +163,25 @@ START_TEST (dns_resolve_type_srv_test) {
   mark_point();
   name = "_ftps._tcp.castaglia.org";
   res = proxy_dns_resolve(p, name, dns_type, &resp, &ttl);
-  fail_unless(res < 0, "Failed to handle no SRV records for '%s'", name);
-  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
+  ck_assert_msg(res < 0, "Failed to handle no SRV records for '%s'", name);
+  ck_assert_msg(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
     strerror(errno), errno);
-  fail_unless(resp == NULL, "Expected null responses");
+  ck_assert_msg(resp == NULL, "Expected null responses");
 
   mark_point();
   name = "_imap._tcp.gmail.com";
   res = proxy_dns_resolve(p, name, dns_type, &resp, &ttl);
-  fail_unless(res < 0, "Failed to handle explicit 'no service' for '%s'", name);
-  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
+  ck_assert_msg(res < 0, "Failed to handle explicit 'no service' for '%s'", name);
+  ck_assert_msg(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
     strerror(errno), errno);
-  fail_unless(resp == NULL, "Expected null responses");
+  ck_assert_msg(resp == NULL, "Expected null responses");
 
   mark_point();
   name = "_imaps._tcp.gmail.com";
   res = proxy_dns_resolve(p, name, dns_type, &resp, &ttl);
-  fail_unless(res > 0, "Failed to resolve SRV records for '%s': %s", name,
+  ck_assert_msg(res > 0, "Failed to resolve SRV records for '%s': %s", name,
     strerror(errno));
-  fail_unless(resp != NULL, "Expected non-null responses");
+  ck_assert_msg(resp != NULL, "Expected non-null responses");
 
   mark_point();
   name = "_ldap._tcp.ru.ac.za";
@@ -190,9 +190,9 @@ START_TEST (dns_resolve_type_srv_test) {
   /* This particular DNS record may not always be there... */
   if (res < 0 &&
       errno != ENOENT) {
-    fail_unless(res > 0, "Failed to resolve SRV records for '%s': %s", name,
+    ck_assert_msg(res > 0, "Failed to resolve SRV records for '%s': %s", name,
       strerror(errno));
-    fail_unless(resp != NULL, "Expected non-null responses");
+    ck_assert_msg(resp != NULL, "Expected non-null responses");
   }
 }
 END_TEST
@@ -211,9 +211,9 @@ START_TEST (dns_resolve_type_txt_test) {
   res = proxy_dns_resolve(p, name, dns_type, &resp, &ttl);
 
   if (getenv("CI") == NULL) {
-    fail_unless(res > 0, "Failed to resolve TXT records for '%s': %s", name,
+    ck_assert_msg(res > 0, "Failed to resolve TXT records for '%s': %s", name,
       strerror(errno));
-    fail_unless(resp != NULL, "Expected non-null responses");
+    ck_assert_msg(resp != NULL, "Expected non-null responses");
   }
 
   mark_point();
@@ -221,9 +221,9 @@ START_TEST (dns_resolve_type_txt_test) {
   res = proxy_dns_resolve(p, name, dns_type, &resp, &ttl);
 
   if (getenv("CI") == NULL) {
-    fail_unless(res > 0, "Failed to resolve TXT records for '%s': %s", name,
+    ck_assert_msg(res > 0, "Failed to resolve TXT records for '%s': %s", name,
       strerror(errno));
-    fail_unless(resp != NULL, "Expected non-null responses");
+    ck_assert_msg(resp != NULL, "Expected non-null responses");
   }
 }
 END_TEST

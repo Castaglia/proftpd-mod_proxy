@@ -46,11 +46,11 @@ static int create_test_dir(void) {
 
   perms = 0770;
   res = mkdir(test_dir, perms);
-  fail_unless(res == 0, "Failed to create tmp directory '%s': %s", test_dir,
+  ck_assert_msg(res == 0, "Failed to create tmp directory '%s': %s", test_dir,
     strerror(errno));
 
   res = chmod(test_dir, perms);
-  fail_unless(res == 0, "Failed to set perms %04o on directory '%s': %s",
+  ck_assert_msg(res == 0, "Failed to set perms %04o on directory '%s': %s",
     perms, test_dir, strerror(errno));
 
   return 0;
@@ -123,7 +123,7 @@ START_TEST (forward_free_test) {
   int res;
 
   res = proxy_forward_free(NULL);
-  fail_unless(res == 0, "Failed to free Forward API resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Forward API resources: %s",
     strerror(errno));
 }
 END_TEST
@@ -132,7 +132,7 @@ START_TEST (forward_init_test) {
   int res;
 
   res = proxy_forward_init(NULL, NULL);
-  fail_unless(res == 0, "Failed to init Forward API resources: %s",
+  ck_assert_msg(res == 0, "Failed to init Forward API resources: %s",
     strerror(errno));
 }
 END_TEST
@@ -141,7 +141,7 @@ START_TEST (forward_sess_free_test) {
   int res;
 
   res = proxy_forward_sess_free(NULL, NULL);
-  fail_unless(res == 0, "Failed to free Forward API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Forward API session resources: %s",
     strerror(errno));
 }
 END_TEST
@@ -150,34 +150,34 @@ START_TEST (forward_sess_init_test) {
   int res;
 
   session.c = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
-  fail_unless(session.c != NULL,
+  ck_assert_msg(session.c != NULL,
     "Failed to open session control conn: %s", strerror(errno));
 
   session.c->local_addr = session.c->remote_addr = pr_netaddr_get_addr(p,
     "127.0.0.1", NULL);
-  fail_unless(session.c->remote_addr != NULL, "Failed to get address: %s",
+  ck_assert_msg(session.c->remote_addr != NULL, "Failed to get address: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_forward_sess_init(p, test_dir, NULL);
-  fail_unless(res < 0,
+  ck_assert_msg(res < 0,
     "Initialized Forward API session resources unexpectedly");
-  fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
+  ck_assert_msg(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
     strerror(errno), errno);
 
   /* Make the connections look like they're from an RFC1918 address. */
   session.c->local_addr = session.c->remote_addr = pr_netaddr_get_addr(p,
     "192.168.0.1", NULL);
-  fail_unless(session.c->remote_addr != NULL, "Failed to get address: %s",
+  ck_assert_msg(session.c->remote_addr != NULL, "Failed to get address: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_forward_sess_init(p, test_dir, NULL);
-  fail_unless(res == 0, "Failed to init Forward API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to init Forward API session resources: %s",
     strerror(errno));
 
   res = proxy_forward_sess_free(p, NULL);
-  fail_unless(res == 0, "Failed to free Forward API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Forward API session resources: %s",
     strerror(errno));
 }
 END_TEST
@@ -187,29 +187,29 @@ START_TEST (forward_get_method_test) {
   const char *method;
 
   res = proxy_forward_get_method(NULL);
-  fail_unless(res < 0, "Failed to handle null argument");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null argument");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   method = "foo";
   res = proxy_forward_get_method(method);
-  fail_unless(res < 0, "Failed to handle unsupported method '%s'", method);
-  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
+  ck_assert_msg(res < 0, "Failed to handle unsupported method '%s'", method);
+  ck_assert_msg(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
     strerror(errno), errno);
 
   method = "proxyuser,user@host";
   res = proxy_forward_get_method(method);
-  fail_unless(res == PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH,
+  ck_assert_msg(res == PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH,
     "Failed to handle method '%s'", method);
 
   method = "user@host";
   res = proxy_forward_get_method(method);
-  fail_unless(res == PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH,
+  ck_assert_msg(res == PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH,
     "Failed to handle method '%s'", method);
 
   method = "proxyuser@host,user";
   res = proxy_forward_get_method(method);
-  fail_unless(res == PROXY_FORWARD_METHOD_PROXY_USER_WITH_PROXY_AUTH,
+  ck_assert_msg(res == PROXY_FORWARD_METHOD_PROXY_USER_WITH_PROXY_AUTH,
     "Failed to handle method '%s'", method);
 }
 END_TEST
@@ -218,7 +218,7 @@ START_TEST (forward_use_proxy_auth_test) {
   int res;
 
   res = proxy_forward_use_proxy_auth();
-  fail_unless(res == TRUE, "Expected true, got %d", res);
+  ck_assert_msg(res == TRUE, "Expected true, got %d", res);
 }
 END_TEST
 
@@ -227,7 +227,7 @@ START_TEST (forward_have_authenticated_test) {
   cmd_rec *cmd = NULL;
 
   res = proxy_forward_have_authenticated(cmd);
-  fail_unless(res == FALSE, "Expected false, got %d", res);
+  ck_assert_msg(res == FALSE, "Expected false, got %d", res);
 }
 END_TEST
 
@@ -271,7 +271,7 @@ START_TEST (forward_handle_user_noproxyauth_test) {
   struct proxy_session *proxy_sess;
 
   res = forward_sess_init(PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH);
-  fail_unless(res == 0, "Failed to init Forward API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to init Forward API session resources: %s",
     strerror(errno));
 
   proxy_sess = forward_get_proxy_sess();
@@ -283,8 +283,8 @@ START_TEST (forward_handle_user_noproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res < 0, "Handled USER command unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Handled USER command unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   /* Invalid host (no port) in USER command. */
@@ -294,8 +294,8 @@ START_TEST (forward_handle_user_noproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res < 0, "Handled USER command unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Handled USER command unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   /* Valid host (no port) in USER command. */
@@ -305,8 +305,8 @@ START_TEST (forward_handle_user_noproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res == 1, "Failed to handle USER command: %s", strerror(errno));
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == 1, "Failed to handle USER command: %s", strerror(errno));
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   cmd = pr_cmd_alloc(p, 2, "USER", "test@192.168.0.1");
@@ -315,8 +315,8 @@ START_TEST (forward_handle_user_noproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res == 1, "Failed to handle USER command: %s", strerror(errno));
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == 1, "Failed to handle USER command: %s", strerror(errno));
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   /* Destination host (WITH bad port syntax) in USER command. */
@@ -326,8 +326,8 @@ START_TEST (forward_handle_user_noproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res < 0, "Handled USER command unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Handled USER command unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   /* Destination host (WITH invalid port) in USER command. */
@@ -337,8 +337,8 @@ START_TEST (forward_handle_user_noproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res < 0, "Handled USER command unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Handled USER command unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   /* Destination host (WITH port) in USER command. */
@@ -348,8 +348,8 @@ START_TEST (forward_handle_user_noproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res == 1, "Failed to handle USER command: %s", strerror(errno));
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == 1, "Failed to handle USER command: %s", strerror(errno));
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   /* Valid external host (with port) in USER command. */
@@ -359,12 +359,12 @@ START_TEST (forward_handle_user_noproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res == 1, "Failed to handle USER command: %s", strerror(errno));
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == 1, "Failed to handle USER command: %s", strerror(errno));
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   res = proxy_forward_sess_free(p, NULL);
-  fail_unless(res == 0, "Failed to free Forward API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Forward API session resources: %s",
     strerror(errno));
 
   proxy_session_free(p, proxy_sess);
@@ -377,7 +377,7 @@ START_TEST (forward_handle_user_userwithproxyauth_test) {
   struct proxy_session *proxy_sess;
 
   res = forward_sess_init(PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH);
-  fail_unless(res == 0, "Failed to init Forward API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to init Forward API session resources: %s",
     strerror(errno));
 
   proxy_sess = forward_get_proxy_sess();
@@ -388,8 +388,8 @@ START_TEST (forward_handle_user_userwithproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res == 0, "Failed to handle USER command: %s", strerror(errno));
-  fail_unless(block_responses == FALSE, "Expected false, got %d",
+  ck_assert_msg(res == 0, "Failed to handle USER command: %s", strerror(errno));
+  ck_assert_msg(block_responses == FALSE, "Expected false, got %d",
     block_responses);
 
   proxy_sess_state |= PROXY_SESS_STATE_PROXY_AUTHENTICATED;
@@ -397,14 +397,14 @@ START_TEST (forward_handle_user_userwithproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res == 1, "Failed to handle USER command: %s", strerror(errno));
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == 1, "Failed to handle USER command: %s", strerror(errno));
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   proxy_sess_state &= ~PROXY_SESS_STATE_PROXY_AUTHENTICATED;
 
   res = proxy_forward_sess_free(p, NULL);
-  fail_unless(res == 0, "Failed to free Forward API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Forward API session resources: %s",
     strerror(errno));
 
   proxy_session_free(p, proxy_sess);
@@ -417,7 +417,7 @@ START_TEST (forward_handle_user_proxyuserwithproxyauth_test) {
   struct proxy_session *proxy_sess;
 
   res = forward_sess_init(PROXY_FORWARD_METHOD_PROXY_USER_WITH_PROXY_AUTH);
-  fail_unless(res == 0, "Failed to init Forward API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to init Forward API session resources: %s",
     strerror(errno));
 
   proxy_sess = forward_get_proxy_sess();
@@ -428,8 +428,8 @@ START_TEST (forward_handle_user_proxyuserwithproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res == 0, "Failed to handle USER command: %s", strerror(errno));
-  fail_unless(block_responses == FALSE, "Expected false, got %d",
+  ck_assert_msg(res == 0, "Failed to handle USER command: %s", strerror(errno));
+  ck_assert_msg(block_responses == FALSE, "Expected false, got %d",
     block_responses);
 
   proxy_sess_state |= PROXY_SESS_STATE_PROXY_AUTHENTICATED;
@@ -437,14 +437,14 @@ START_TEST (forward_handle_user_proxyuserwithproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res == 1, "Failed to handle USER command: %s", strerror(errno));
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == 1, "Failed to handle USER command: %s", strerror(errno));
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   proxy_sess_state &= ~PROXY_SESS_STATE_PROXY_AUTHENTICATED;
 
   res = proxy_forward_sess_free(p, NULL);
-  fail_unless(res == 0, "Failed to free Forward API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Forward API session resources: %s",
     strerror(errno));
 
   proxy_session_free(p, proxy_sess);
@@ -466,7 +466,7 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
   }
 
   res = forward_sess_init(PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH);
-  fail_unless(res == 0, "Failed to init Forward API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to init Forward API session resources: %s",
     strerror(errno));
 
   proxy_sess = forward_get_proxy_sess();
@@ -478,8 +478,8 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_pass(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res < 0, "Handled PASS command unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Handled PASS command unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
 /* XXX TODO: Use a file fd for the "backend control conn" fd (/dev/null?) */
@@ -491,8 +491,8 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res == 1, "Failed to handle USER command: %s", strerror(errno));
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == 1, "Failed to handle USER command: %s", strerror(errno));
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   if (getenv("CI") == NULL &&
@@ -503,8 +503,8 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
     mark_point();
     res = proxy_forward_handle_pass(cmd, proxy_sess, &successful,
       &block_responses);
-    fail_unless(res == 1, "Failed to handle PASS command: %s", strerror(errno));
-    fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    ck_assert_msg(res == 1, "Failed to handle PASS command: %s", strerror(errno));
+    ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
       strerror(errno), errno);
   }
 
@@ -516,7 +516,7 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
     sizeof(struct proxy_session));
 
   res = proxy_tls_init(p, test_dir, PROXY_DB_OPEN_FL_SKIP_VACUUM);
-  fail_unless(res == 0, "Failed to init TLS API resources: %s",
+  ck_assert_msg(res == 0, "Failed to init TLS API resources: %s",
     strerror(errno));
 
   c = add_config_param("ProxyTLSEngine", 1, NULL);
@@ -536,7 +536,7 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
  */
 
   res = proxy_tls_sess_init(p, proxy_sess, PROXY_DB_OPEN_FL_SKIP_VACUUM);
-  fail_unless(res == 0, "Failed to init TLS API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to init TLS API session resources: %s",
     strerror(errno));
 
   /* Valid external host (with port) in USER command. */
@@ -552,19 +552,19 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
     /* Once you've performed a TLS handshake with ftp.cisco.com, it does not
      * accept anonymous logins.  Fine.
      */
-    fail_if(res == 1, "Handled USER command unexpectedly");
-    fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+    ck_assert_msg(res != 1, "Handled USER command unexpectedly");
+    ck_assert_msg(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
       strerror(errno), errno);
   }
 
   mark_point();
   res = proxy_tls_sess_free(p);
-  fail_unless(res == 0, "Failed to free TLS API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to free TLS API session resources: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_tls_free(p);
-  fail_unless(res == 0, "Failed to free TLS API resources: %s",
+  ck_assert_msg(res == 0, "Failed to free TLS API resources: %s",
     strerror(errno));
 
   mark_point();
@@ -573,7 +573,7 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
 
   mark_point();
   res = proxy_forward_sess_free(p, NULL);
-  fail_unless(res == 0, "Failed to free Forward API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Forward API session resources: %s",
     strerror(errno));
 
   proxy_session_free(p, proxy_sess);
@@ -586,7 +586,7 @@ START_TEST (forward_handle_pass_userwithproxyauth_test) {
   struct proxy_session *proxy_sess;
 
   res = forward_sess_init(PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH);
-  fail_unless(res == 0, "Failed to init Forward API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to init Forward API session resources: %s",
     strerror(errno));
 
   proxy_sess = forward_get_proxy_sess();
@@ -598,14 +598,14 @@ START_TEST (forward_handle_pass_userwithproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_pass(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res < 0, "Handled PASS command unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Handled PASS command unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
 /* XXX TODO: Use a file fd for the "backend control conn" fd (/dev/null?) */
 
   res = proxy_forward_sess_free(p, NULL);
-  fail_unless(res == 0, "Failed to free Forward API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Forward API session resources: %s",
     strerror(errno));
 
   proxy_session_free(p, proxy_sess);
@@ -618,7 +618,7 @@ START_TEST (forward_handle_pass_proxyuserwithproxyauth_test) {
   struct proxy_session *proxy_sess;
 
   res = forward_sess_init(PROXY_FORWARD_METHOD_PROXY_USER_WITH_PROXY_AUTH);
-  fail_unless(res == 0, "Failed to init Forward API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to init Forward API session resources: %s",
     strerror(errno));
 
   proxy_sess = forward_get_proxy_sess();
@@ -630,14 +630,14 @@ START_TEST (forward_handle_pass_proxyuserwithproxyauth_test) {
   mark_point();
   res = proxy_forward_handle_pass(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res < 0, "Handled PASS command unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Handled PASS command unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
 /* XXX TODO: Use a file fd for the "backend control conn" fd (/dev/null?) */
 
   res = proxy_forward_sess_free(p, NULL);
-  fail_unless(res == 0, "Failed to free Forward API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Forward API session resources: %s",
     strerror(errno));
 
   proxy_session_free(p, proxy_sess);

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2020 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2020-2022 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -58,14 +58,14 @@ START_TEST (init_test) {
 
   mark_point();
   res = proxy_ftp_dirlist_init(NULL, NULL);
-  fail_unless(res < 0, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_dirlist_init(p, NULL);
-  fail_unless(res < 0, "Failed to handle null proxy_sess");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null proxy_sess");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 }
 END_TEST
@@ -75,8 +75,8 @@ START_TEST (finish_test) {
 
   mark_point();
   res = proxy_ftp_dirlist_finish(NULL);
-  fail_unless(res < 0, "Failed to handle null proxy_sess");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null proxy_sess");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 }
 END_TEST
@@ -88,30 +88,30 @@ START_TEST (from_dos_test) {
 
   mark_point();
   res = proxy_ftp_dirlist_fileinfo_from_dos(NULL, NULL, 0, 0);
-  fail_unless(res == NULL, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_dirlist_fileinfo_from_dos(p, NULL, 0, 0);
-  fail_unless(res == NULL, "Failed to handle null text");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null text");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   text = "foo bar baz";
 
   mark_point();
   res = proxy_ftp_dirlist_fileinfo_from_dos(p, text, 0, 0);
-  fail_unless(res == NULL, "Failed to handle zero text len");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle zero text len");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   textlen = strlen(text);
 
   mark_point();
   res = proxy_ftp_dirlist_fileinfo_from_dos(p, text, textlen, 0);
-  fail_unless(res == NULL, "Failed to handle bad text");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle bad text");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 }
 END_TEST
@@ -125,30 +125,30 @@ START_TEST (from_unix_test) {
 
   mark_point();
   res = proxy_ftp_dirlist_fileinfo_from_unix(NULL, NULL, 0, NULL, 0);
-  fail_unless(res == NULL, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_dirlist_fileinfo_from_unix(p, NULL, 0, NULL, 0);
-  fail_unless(res == NULL, "Failed to handle null text");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null text");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   text = "foo bar baz";
 
   mark_point();
   res = proxy_ftp_dirlist_fileinfo_from_unix(p, text, 0, NULL, 0);
-  fail_unless(res == NULL, "Failed to handle zero text len");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle zero text len");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   textlen = strlen(text);
 
   mark_point();
   res = proxy_ftp_dirlist_fileinfo_from_unix(p, text, textlen, NULL, 0);
-  fail_unless(res == NULL, "Failed to handle null tm");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null tm");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   time(&now);
@@ -156,8 +156,8 @@ START_TEST (from_unix_test) {
 
   mark_point();
   res = proxy_ftp_dirlist_fileinfo_from_unix(p, text, textlen, tm, 0);
-  fail_unless(res == NULL, "Failed to handle bad text");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle bad text");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 }
 END_TEST
@@ -172,30 +172,30 @@ START_TEST (from_text_test) {
 
   mark_point();
   res = proxy_ftp_dirlist_fileinfo_from_text(NULL, NULL, 0, NULL, NULL, 0);
-  fail_unless(res == NULL, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_dirlist_fileinfo_from_text(p, NULL, 0, NULL, NULL, 0);
-  fail_unless(res == NULL, "Failed to handle null text");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null text");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   text = "foo bar baz";
 
   mark_point();
   res = proxy_ftp_dirlist_fileinfo_from_text(p, text, 0, NULL, NULL, 0);
-  fail_unless(res == NULL, "Failed to handle zero text len");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle zero text len");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   textlen = strlen(text);
 
   mark_point();
   res = proxy_ftp_dirlist_fileinfo_from_text(p, text, textlen, NULL, NULL, 0);
-  fail_unless(res == NULL, "Failed to handle null tm");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null tm");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   time(&now);
@@ -203,19 +203,19 @@ START_TEST (from_text_test) {
 
   mark_point();
   res = proxy_ftp_dirlist_fileinfo_from_text(p, text, textlen, tm, NULL, 0);
-  fail_unless(res == NULL, "Failed to handle null userdata");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null userdata");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   proxy_sess = (struct proxy_session *) proxy_session_alloc(p);
-  fail_unless(proxy_sess != NULL, "Failed to allocate proxy session: %s",
+  ck_assert_msg(proxy_sess != NULL, "Failed to allocate proxy session: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_ftp_dirlist_fileinfo_from_text(p, text, textlen, tm, proxy_sess,
     0);
-  fail_unless(res == NULL, "Failed to handle null proxy_sess->dirlist_ctx");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null proxy_sess->dirlist_ctx");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
@@ -229,22 +229,22 @@ START_TEST (to_facts_test) {
 
   mark_point();
   text = proxy_ftp_dirlist_fileinfo_to_facts(NULL, NULL, NULL);
-  fail_unless(text == NULL, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(text == NULL, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   text = proxy_ftp_dirlist_fileinfo_to_facts(p, NULL, NULL);
-  fail_unless(text == NULL, "Failed to handle null fileinfo");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(text == NULL, "Failed to handle null fileinfo");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   pdf = pcalloc(p, sizeof(struct proxy_dirlist_fileinfo));
 
   mark_point();
   text = proxy_ftp_dirlist_fileinfo_to_facts(p, pdf, NULL);
-  fail_unless(text == NULL, "Failed to handle null textlen");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(text == NULL, "Failed to handle null textlen");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 }
 END_TEST
@@ -257,63 +257,63 @@ START_TEST (to_text_test) {
 
   mark_point();
   res = proxy_ftp_dirlist_to_text(NULL, NULL, 0, 0, NULL, NULL, NULL);
-  fail_unless(res < 0, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
   
   mark_point();
   res = proxy_ftp_dirlist_to_text(p, NULL, 0, 0, NULL, NULL, NULL);
-  fail_unless(res < 0, "Failed to handle null buf");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null buf");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   buf = "foo bar baz";
 
   mark_point();
   res = proxy_ftp_dirlist_to_text(p, buf, 0, 0, NULL, NULL, NULL);
-  fail_unless(res < 0, "Failed to handle zero buflen");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle zero buflen");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   buflen = strlen(buf);
 
   mark_point();
   res = proxy_ftp_dirlist_to_text(p, buf, buflen, 0, NULL, NULL, NULL);
-  fail_unless(res < 0, "Failed to handle zero max textsz");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle zero max textsz");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   maxlen = 1024;
 
   mark_point();
   res = proxy_ftp_dirlist_to_text(p, buf, buflen, maxlen, NULL, NULL, NULL);
-  fail_unless(res < 0, "Failed to handle null output text");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null output text");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_dirlist_to_text(p, buf, buflen, maxlen, &output_text, NULL,
     NULL);
-  fail_unless(res < 0, "Failed to handle null output textlen");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null output textlen");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_dirlist_to_text(p, buf, buflen, maxlen, &output_text,
     &output_textlen, NULL);
-  fail_unless(res < 0, "Failed to handle null userdata");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null userdata");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   proxy_sess = (struct proxy_session *) proxy_session_alloc(p);
-  fail_unless(proxy_sess != NULL, "Failed to allocate proxy session: %s",
+  ck_assert_msg(proxy_sess != NULL, "Failed to allocate proxy session: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_ftp_dirlist_to_text(p, buf, buflen, maxlen, &output_text,
     &output_textlen, proxy_sess);
-  fail_unless(res < 0, "Failed to handle null proxy_sess->dirlist_ctx");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null proxy_sess->dirlist_ctx");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2020 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2020-2022 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -48,48 +48,48 @@ START_TEST (strnstr_test) {
 
   mark_point();
   res = proxy_strnstr(NULL, NULL, 0);
-  fail_unless(res == NULL, "Failed to handle null s1");
+  ck_assert_msg(res == NULL, "Failed to handle null s1");
 
   mark_point();
   s1 = "haystack";
   res = proxy_strnstr(s1, NULL, 0);
-  fail_unless(res == NULL, "Failed to handle null s2");
+  ck_assert_msg(res == NULL, "Failed to handle null s2");
 
   mark_point();
   s2 = "needle";
   res = proxy_strnstr(s1, s2, 0);
-  fail_unless(res == NULL, "Failed to handle zero len");
+  ck_assert_msg(res == NULL, "Failed to handle zero len");
 
   mark_point();
   len = 2;
   res = proxy_strnstr(s1, s2, len);
-  fail_unless(res == NULL, "Expected null, got %p for len %lu", res,
+  ck_assert_msg(res == NULL, "Expected null, got %p for len %lu", res,
     (unsigned long) len);
 
   mark_point();
   s1 = "  ";
   res = proxy_strnstr(s1, s2, len);
-  fail_unless(res == NULL, "Expected null, got %p for s1 spaces", res);
+  ck_assert_msg(res == NULL, "Expected null, got %p for s1 spaces", res);
 
   mark_point();
   s1 = "haystack";
   s2 = "";
   res = proxy_strnstr(s1, s2, len);
-  fail_unless(res == NULL, "Expected null, got %p for s2 empty", res);
+  ck_assert_msg(res == NULL, "Expected null, got %p for s2 empty", res);
 
   mark_point();
   s1 = "haystack";
   s2 = "haystack";
   len = 8;
   res = proxy_strnstr(s1, s2, len);
-  fail_unless(res != NULL, "Expected %p, got %p for s1 == s2", s1, res);
+  ck_assert_msg(res != NULL, "Expected %p, got %p for s1 == s2", s1, res);
 
   mark_point();
   s1 = "haystack";
   s2 = "sta";
   len = 7;
   res = proxy_strnstr(s1, s2, len);
-  fail_unless(res != NULL, "Expected %p, got %p", s1 + 3, res);
+  ck_assert_msg(res != NULL, "Expected %p, got %p", s1 + 3, res);
 }
 END_TEST
 
