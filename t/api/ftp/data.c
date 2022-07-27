@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2016 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2016-2022 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -65,39 +65,39 @@ START_TEST (recv_test) {
 
   mark_point();
   pbuf = proxy_ftp_data_recv(NULL, NULL, FALSE);
-  fail_unless(pbuf == NULL, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(pbuf == NULL, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   pbuf = proxy_ftp_data_recv(p, NULL, FALSE);
-  fail_unless(pbuf == NULL, "Failed to handle null conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(pbuf == NULL, "Failed to handle null conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   conn = pr_inet_create_conn(p, -2, NULL, INPORT_ANY, FALSE);
-  fail_unless(conn != NULL, "Failed to create conn: %s", strerror(errno));
+  ck_assert_msg(conn != NULL, "Failed to create conn: %s", strerror(errno));
 
   mark_point();
   pbuf = proxy_ftp_data_recv(p, conn, FALSE);
-  fail_unless(pbuf == NULL, "Failed to handle missing instream");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(pbuf == NULL, "Failed to handle missing instream");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   conn->instrm = pr_netio_open(p, PR_NETIO_STRM_DATA, -1, PR_NETIO_IO_RD);
-  fail_unless(conn->instrm != NULL, "Failed open data stream: %s",
+  ck_assert_msg(conn->instrm != NULL, "Failed open data stream: %s",
     strerror(errno));
 
   mark_point();
   pbuf = proxy_ftp_data_recv(p, conn, FALSE);
-  fail_unless(pbuf == NULL, "Failed to handle bad instream fd");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got %s (%d)", EBADF,
+  ck_assert_msg(pbuf == NULL, "Failed to handle bad instream fd");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got %s (%d)", EBADF,
     strerror(errno), errno);
 
   mark_point();
   pbuf = proxy_ftp_data_recv(p, conn, TRUE);
-  fail_unless(pbuf == NULL, "Failed to handle bad instream fd");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got %s (%d)", EBADF,
+  ck_assert_msg(pbuf == NULL, "Failed to handle bad instream fd");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got %s (%d)", EBADF,
     strerror(errno), errno);
 
 /* Fill in the instrm fd with an fd to an empty file */
@@ -115,33 +115,33 @@ START_TEST (send_test) {
 
   mark_point();
   res = proxy_ftp_data_send(NULL, NULL, NULL, FALSE);
-  fail_unless(res < 0, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_data_send(p, NULL, NULL, FALSE);
-  fail_unless(res < 0, "Failed to handle null conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   conn = pr_inet_create_conn(p, -2, NULL, INPORT_ANY, FALSE);
-  fail_unless(conn != NULL, "Failed to create conn: %s", strerror(errno));
+  ck_assert_msg(conn != NULL, "Failed to create conn: %s", strerror(errno));
 
   mark_point();
   res = proxy_ftp_data_send(p, conn, NULL, FALSE);
-  fail_unless(res < 0, "Failed to handle null buffer");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null buffer");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   conn->outstrm = pr_netio_open(p, PR_NETIO_STRM_DATA, -1, PR_NETIO_IO_WR);
-  fail_unless(conn->outstrm != NULL, "Failed open data stream: %s",
+  ck_assert_msg(conn->outstrm != NULL, "Failed open data stream: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_ftp_data_send(p, conn, NULL, FALSE);
-  fail_unless(res < 0, "Failed to handle null buffer");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null buffer");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   pbuf = pcalloc(p, sizeof(pr_buffer_t));
@@ -151,14 +151,14 @@ START_TEST (send_test) {
 
   mark_point();
   res = proxy_ftp_data_send(p, conn, pbuf, FALSE);
-  fail_unless(res < 0, "Sent data unexpectedly");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got %s (%d)", EBADF,
+  ck_assert_msg(res < 0, "Sent data unexpectedly");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got %s (%d)", EBADF,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_data_send(p, conn, pbuf, TRUE);
-  fail_unless(res < 0, "Sent data unexpectedly");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got %s (%d)", EBADF,
+  ck_assert_msg(res < 0, "Sent data unexpectedly");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got %s (%d)", EBADF,
     strerror(errno), errno);
 
   pr_inet_close(p, conn);

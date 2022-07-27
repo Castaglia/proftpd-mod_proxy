@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2013-2016 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2013-2022 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -58,8 +58,10 @@ START_TEST (random_next_range_10_test) {
     long num;
 
     num = proxy_random_next(min, max);
-    fail_if(num < min, "random number %ld less than minimum %ld", num, min);
-    fail_if(num > max, "random number %ld greater than maximum %ld", num, max);
+    ck_assert_msg(num >= min, "random number %ld less than minimum %ld", num,
+      min);
+    ck_assert_msg(num <= max, "random number %ld greater than maximum %ld", num,
+      max);
   }
 }
 END_TEST
@@ -78,8 +80,10 @@ START_TEST (random_next_range_1000_test) {
     long num;
 
     num = proxy_random_next(min, max);
-    fail_if(num < min, "random number %ld less than minimum %ld", num, min);
-    fail_if(num > max, "random number %ld greater than maximum %ld", num, max);
+    ck_assert_msg(num >= min, "random number %ld less than minimum %ld", num,
+      min);
+    ck_assert_msg(num <= max, "random number %ld greater than maximum %ld", num,
+      max);
 
     seen[num] = 1;
   }
@@ -88,7 +92,7 @@ START_TEST (random_next_range_1000_test) {
    * good, right?
    */
   for (i = 0; i < count; i++) {
-    fail_unless(seen[i] == 1, "Expected to have generated number %d", i);
+    ck_assert_msg(seen[i] == 1, "Expected to have generated number %d", i);
   }
 }
 END_TEST

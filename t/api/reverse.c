@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2013-2021 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2013-2022 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -56,21 +56,21 @@ static FILE *test_prep(void) {
   res = mkdir(test_dir, perms);
   if (res < 0 &&
       errno != EEXIST) {
-    fail_unless(res == 0, "Failed to create tmp directory '%s': %s", test_dir,
+    ck_assert_msg(res == 0, "Failed to create tmp directory '%s': %s", test_dir,
       strerror(errno));
   }
 
   res = chmod(test_dir, perms);
-  fail_unless(res == 0, "Failed to set perms %04o on directory '%s': %s",
+  ck_assert_msg(res == 0, "Failed to set perms %04o on directory '%s': %s",
     perms, test_dir, strerror(errno));
 
   fh = fopen(test_file, "w+");
-  fail_if(fh == NULL, "Failed to create tmp file '%s': %s", test_file,
+  ck_assert_msg(fh != NULL, "Failed to create tmp file '%s': %s", test_file,
     strerror(errno));
 
   perms = 0660;
   res = chmod(test_file, perms);
-  fail_unless(res == 0, "Failed to set perms %04o on file '%s': %s",
+  ck_assert_msg(res == 0, "Failed to set perms %04o on file '%s': %s",
     perms, test_file, strerror(errno));
 
   return fh;
@@ -144,12 +144,12 @@ START_TEST (reverse_free_test) {
   int res;
 
   res = proxy_reverse_free(NULL);
-  fail_unless(res < 0, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   res = proxy_reverse_free(p);
-  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
 }
 END_TEST
@@ -159,13 +159,13 @@ START_TEST (reverse_init_test) {
   FILE *fh;
 
   res = proxy_reverse_init(NULL, NULL, flags);
-  fail_unless(res < 0, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   res = proxy_reverse_init(p, NULL, flags);
-  fail_unless(res < 0, "Failed to handle null tables dir");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null tables dir");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   fh = test_prep();
@@ -173,11 +173,11 @@ START_TEST (reverse_init_test) {
 
   mark_point();
   res = proxy_reverse_init(p, test_dir, flags);
-  fail_unless(res == 0, "Failed to init Reverse API resources: %s",
+  ck_assert_msg(res == 0, "Failed to init Reverse API resources: %s",
     strerror(errno));
 
   res = proxy_reverse_free(p);
-  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
 
   test_cleanup(p);
@@ -189,7 +189,7 @@ START_TEST (reverse_sess_free_test) {
 
   mark_point();
   res = proxy_reverse_sess_free(p, NULL);
-  fail_unless(res == 0, "Failed to free Reverse API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Reverse API session resources: %s",
     strerror(errno));
 }
 END_TEST
@@ -203,14 +203,14 @@ START_TEST (reverse_sess_init_test) {
 
   mark_point();
   res = proxy_reverse_sess_init(NULL, NULL, NULL, flags);
-  fail_unless(res < 0, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_reverse_sess_init(p, NULL, NULL, flags);
-  fail_unless(res < 0, "Unexpectedly init'd Reverse API session resources");
-  fail_unless(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
+  ck_assert_msg(res < 0, "Unexpectedly init'd Reverse API session resources");
+  ck_assert_msg(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
     strerror(errno), errno);
 
   c = add_config_param("ProxyReverseServers", 2, NULL, NULL);
@@ -229,13 +229,13 @@ START_TEST (reverse_sess_init_test) {
 
   mark_point();
   res = proxy_reverse_sess_init(NULL, NULL, NULL, flags);
-  fail_unless(res < 0, "Unexpectedly init'd Reverse API session resources");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Unexpectedly init'd Reverse API session resources");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_reverse_sess_free(p, NULL);
-  fail_unless(res == 0, "Failed to free Reverse API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Reverse API session resources: %s",
     strerror(errno));
 }
 END_TEST
@@ -288,16 +288,16 @@ START_TEST (reverse_connect_policy_random_test) {
   int res;
 
   res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_RANDOM, NULL);
-  fail_unless(res == 0, "Failed to test ReverseConnectPolicy Random: %s",
+  ck_assert_msg(res == 0, "Failed to test ReverseConnectPolicy Random: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_reverse_sess_exit(p);
-  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to exit session: %s", strerror(errno));
 
   mark_point();
   res = proxy_reverse_free(p);
-  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
 
   test_cleanup(p);
@@ -308,16 +308,16 @@ START_TEST (reverse_connect_policy_roundrobin_test) {
   int res;
 
   res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN, NULL);
-  fail_unless(res == 0, "Failed to test ReverseConnectPolicy RoundRobin: %s",
+  ck_assert_msg(res == 0, "Failed to test ReverseConnectPolicy RoundRobin: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_reverse_sess_exit(p);
-  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to exit session: %s", strerror(errno));
 
   mark_point();
   res = proxy_reverse_free(p);
-  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
 
   test_cleanup(p);
@@ -328,16 +328,16 @@ START_TEST (reverse_connect_policy_leastconns_test) {
   int res;
 
   res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS, NULL);
-  fail_unless(res == 0, "Failed to test ReverseConnectPolicy LeastConns: %s",
+  ck_assert_msg(res == 0, "Failed to test ReverseConnectPolicy LeastConns: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_reverse_sess_exit(p);
-  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to exit session: %s", strerror(errno));
 
   mark_point();
   res = proxy_reverse_free(p);
-  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
 
   test_cleanup(p);
@@ -349,17 +349,17 @@ START_TEST (reverse_connect_policy_leastresponsetime_test) {
 
   res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME,
     NULL);
-  fail_unless(res == 0,
+  ck_assert_msg(res == 0,
     "Failed to test ReverseConnectPolicy LeastResponseTime: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_reverse_sess_exit(p);
-  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to exit session: %s", strerror(errno));
 
   mark_point();
   res = proxy_reverse_free(p);
-  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
 
   test_cleanup(p);
@@ -370,16 +370,16 @@ START_TEST (reverse_connect_policy_shuffle_test) {
   int res;
 
   res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_SHUFFLE, NULL);
-  fail_unless(res == 0, "Failed to test ReverseConnectPolicy Shuffle: %s",
+  ck_assert_msg(res == 0, "Failed to test ReverseConnectPolicy Shuffle: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_reverse_sess_exit(p);
-  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to exit session: %s", strerror(errno));
 
   mark_point();
   res = proxy_reverse_free(p);
-  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
 
   test_cleanup(p);
@@ -390,16 +390,16 @@ START_TEST (reverse_connect_policy_peruser_test) {
   int res;
 
   res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_PER_USER, NULL);
-  fail_unless(res == 0, "Failed to test ReverseConnectPolicy PerUser: %s",
+  ck_assert_msg(res == 0, "Failed to test ReverseConnectPolicy PerUser: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_reverse_sess_exit(p);
-  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to exit session: %s", strerror(errno));
 
   mark_point();
   res = proxy_reverse_free(p);
-  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
 
   test_cleanup(p);
@@ -413,17 +413,17 @@ START_TEST (reverse_connect_policy_pergroup_test) {
    * enabled.
    */
   res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_PER_GROUP, NULL);
-  fail_unless(res < 0, "Expected ReverseConnectPolicy PerGroup to fail");
-  fail_unless(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
+  ck_assert_msg(res < 0, "Expected ReverseConnectPolicy PerGroup to fail");
+  ck_assert_msg(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_reverse_sess_exit(p);
-  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to exit session: %s", strerror(errno));
 
   mark_point();
   res = proxy_reverse_free(p);
-  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
 
   test_cleanup(p);
@@ -434,16 +434,16 @@ START_TEST (reverse_connect_policy_perhost_test) {
   int res;
 
   res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_PER_HOST, NULL);
-  fail_unless(res == 0, "Failed to test ReverseConnectPolicy PerHost: %s",
+  ck_assert_msg(res == 0, "Failed to test ReverseConnectPolicy PerHost: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_reverse_sess_exit(p);
-  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to exit session: %s", strerror(errno));
 
   mark_point();
   res = proxy_reverse_free(p);
-  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
 
   test_cleanup(p);
@@ -462,7 +462,7 @@ static void test_handle_user_pass(int policy_id, array_header *src_backends) {
 
   mark_point();
   res = test_connect_policy(PROXY_REVERSE_CONNECT_POLICY_RANDOM, src_backends);
-  fail_unless(res == 0, "Failed to test ReverseConnectPolicy Random: %s",
+  ck_assert_msg(res == 0, "Failed to test ReverseConnectPolicy Random: %s",
     strerror(errno));
 
   proxy_sess = (struct proxy_session *) proxy_session_alloc(p);
@@ -472,17 +472,17 @@ static void test_handle_user_pass(int policy_id, array_header *src_backends) {
     sizeof(struct proxy_session));
 
   session.c = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
-  fail_unless(session.c != NULL,
+  ck_assert_msg(session.c != NULL,
     "Failed to open session control conn: %s", strerror(errno));
 
   session.c->local_addr = session.c->remote_addr = pr_netaddr_get_addr(p,
     "127.0.0.1", NULL);
-  fail_unless(session.c->remote_addr != NULL, "Failed to get address: %s",
+  ck_assert_msg(session.c->remote_addr != NULL, "Failed to get address: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_reverse_sess_init(p, test_dir, proxy_sess, flags);
-  fail_unless(res == 0, "Failed to init Reverse API session resources: %s",
+  ck_assert_msg(res == 0, "Failed to init Reverse API session resources: %s",
     strerror(errno));
 
   cmd = pr_cmd_alloc(p, 2, "USER", "anonymous");
@@ -491,7 +491,7 @@ static void test_handle_user_pass(int policy_id, array_header *src_backends) {
   mark_point();
   res = proxy_reverse_handle_user(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_if(res != 1, "Failed to handle USER");
+  ck_assert_msg(res == 1, "Failed to handle USER");
 
   cmd = pr_cmd_alloc(p, 2, "PASS", "ftp@nospam.org");
   cmd->arg = pstrdup(p, "ftp@nospam.org");
@@ -499,17 +499,17 @@ static void test_handle_user_pass(int policy_id, array_header *src_backends) {
   mark_point();
   res = proxy_reverse_handle_pass(cmd, proxy_sess, &successful,
     &block_responses);
-  fail_unless(res < 0, "Handled PASS unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Handled PASS unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_reverse_sess_exit(p);
-  fail_unless(res == 0, "Failed to exit session: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to exit session: %s", strerror(errno));
 
   mark_point();
   res = proxy_reverse_free(p);
-  fail_unless(res == 0, "Failed to free Reverse API resources: %s",
+  ck_assert_msg(res == 0, "Failed to free Reverse API resources: %s",
     strerror(errno));
 
   proxy_session_free(p, proxy_sess);
@@ -731,17 +731,17 @@ START_TEST (reverse_json_parse_uris_args_test) {
   const char *path;
 
   uris = proxy_reverse_json_parse_uris(NULL, NULL, 0);
-  fail_unless(uris == NULL, "Failed to handle null arguments");
-  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+  ck_assert_msg(uris == NULL, "Failed to handle null arguments");
+  ck_assert_msg(errno == EINVAL, "Failed to set errno to EINVAL");
 
   uris = proxy_reverse_json_parse_uris(p, NULL, 0);
-  fail_unless(uris == NULL, "Failed to handle null path argument");
-  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+  ck_assert_msg(uris == NULL, "Failed to handle null path argument");
+  ck_assert_msg(errno == EINVAL, "Failed to set errno to EINVAL");
 
   path = "/tmp/test.dat";
   uris = proxy_reverse_json_parse_uris(NULL, path, 0);
-  fail_unless(uris == NULL, "Failed to handle null pool argument");
-  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+  ck_assert_msg(uris == NULL, "Failed to handle null pool argument");
+  ck_assert_msg(errno == EINVAL, "Failed to set errno to EINVAL");
 }
 END_TEST
 
@@ -754,20 +754,20 @@ START_TEST (reverse_json_parse_uris_isreg_test) {
 
   path = "servers.json";
   uris = proxy_reverse_json_parse_uris(p, path, 0);
-  fail_unless(uris == NULL, "Failed to handle relative path '%s'", path);
-  fail_unless(errno == EINVAL, "Failed to set errno to EINVAL");
+  ck_assert_msg(uris == NULL, "Failed to handle relative path '%s'", path);
+  ck_assert_msg(errno == EINVAL, "Failed to set errno to EINVAL");
 
   path = test_file;
   uris = proxy_reverse_json_parse_uris(p, path, 0);
-  fail_unless(uris == NULL, "Failed to handle nonexistent file '%s'", path);
-  fail_unless(errno == ENOENT, "Failed to set errno to ENOENT");
+  ck_assert_msg(uris == NULL, "Failed to handle nonexistent file '%s'", path);
+  ck_assert_msg(errno == ENOENT, "Failed to set errno to ENOENT");
 
   res = mkdir(test_dir, 0777);
-  fail_unless(res == 0, "Failed to create tmp directory '%s': %s", test_dir,
+  ck_assert_msg(res == 0, "Failed to create tmp directory '%s': %s", test_dir,
     strerror(errno));
   uris = proxy_reverse_json_parse_uris(p, test_dir, 0);
-  fail_unless(uris == NULL, "Failed to handle directory path '%s'", test_dir);
-  fail_unless(errno == EISDIR, "Failed to set errno to EISDIR");
+  ck_assert_msg(uris == NULL, "Failed to handle directory path '%s'", test_dir);
+  ck_assert_msg(errno == EISDIR, "Failed to set errno to EISDIR");
 
   test_cleanup(p);
 }
@@ -785,28 +785,28 @@ START_TEST (reverse_json_parse_uris_perms_test) {
 
   perms = 0777;
   res = mkdir(test_dir, perms);
-  fail_unless(res == 0, "Failed to create tmp directory '%s': %s", test_dir,
+  ck_assert_msg(res == 0, "Failed to create tmp directory '%s': %s", test_dir,
     strerror(errno));
 
   res = chmod(test_dir, perms);
-  fail_unless(res == 0, "Failed to set perms %04o on directory '%s': %s",
+  ck_assert_msg(res == 0, "Failed to set perms %04o on directory '%s': %s",
     perms, test_dir, strerror(errno));
 
   /* First, make a world-writable file. */
   perms = 0666;
   fd = open(test_file, O_WRONLY|O_CREAT, perms);
-  fail_if(fd < 0, "Failed to create tmp file '%s': %s", test_file,
+  ck_assert_msg(fd >= 0, "Failed to create tmp file '%s': %s", test_file,
     strerror(errno));
 
   res = fchmod(fd, perms);
-  fail_unless(res == 0, "Failed to set perms %04o on file '%s': %s",
+  ck_assert_msg(res == 0, "Failed to set perms %04o on file '%s': %s",
     perms, test_file, strerror(errno));
 
   path = test_file;
   uris = proxy_reverse_json_parse_uris(p, path, 0);
-  fail_unless(uris == NULL, "Failed to handle world-writable file '%s'",
+  ck_assert_msg(uris == NULL, "Failed to handle world-writable file '%s'",
     path);
-  fail_unless(errno == EPERM, "Failed to set errno to EPERM, got %d (%s)",
+  ck_assert_msg(errno == EPERM, "Failed to set errno to EPERM, got %d (%s)",
     errno, strerror(errno));
 
   /* Now make the file user/group-writable only, but leave the parent
@@ -815,13 +815,13 @@ START_TEST (reverse_json_parse_uris_perms_test) {
 
   perms = 0660;
   res = fchmod(fd, perms);
-  fail_unless(res == 0, "Failed to set perms %04o on file '%s': %s",
+  ck_assert_msg(res == 0, "Failed to set perms %04o on file '%s': %s",
     perms, test_file, strerror(errno));
 
   uris = proxy_reverse_json_parse_uris(p, path, 0);
-  fail_unless(uris == NULL, "Failed to handle world-writable directory '%s'",
+  ck_assert_msg(uris == NULL, "Failed to handle world-writable directory '%s'",
     test_file);
-  fail_unless(errno == EPERM, "Failed to set errno to EPERM, got %d (%s)",
+  ck_assert_msg(errno == EPERM, "Failed to set errno to EPERM, got %d (%s)",
     errno, strerror(errno));
 
   (void) close(fd);
@@ -839,14 +839,14 @@ START_TEST (reverse_json_parse_uris_empty_test) {
 
   /* Write a file with no lines. */
   res = fclose(fh);
-  fail_if(res < 0, "Failed to write file '%s': %s", test_file,
+  ck_assert_msg(res >= 0, "Failed to write file '%s': %s", test_file,
     strerror(errno));
 
   mark_point();
 
   uris = proxy_reverse_json_parse_uris(p, test_file, 0);
-  fail_unless(uris != NULL, "Did not receive parsed list as expected");
-  fail_unless(uris->nelts == 0, "Expected zero elements, found %d",
+  ck_assert_msg(uris != NULL, "Did not receive parsed list as expected");
+  ck_assert_msg(uris->nelts == 0, "Expected zero elements, found %d",
     uris->nelts);
 
   test_cleanup(p);
@@ -866,14 +866,14 @@ START_TEST (reverse_json_parse_uris_malformed_test) {
   fprintf(fh, "\"ftp://foo.bar.baz:21\" ]\n");
 
   res = fclose(fh);
-  fail_if(res < 0, "Failed to write file '%s': %s", test_file,
+  ck_assert_msg(res >= 0, "Failed to write file '%s': %s", test_file,
     strerror(errno));
 
   mark_point();
 
   uris = proxy_reverse_json_parse_uris(p, test_file, 0);
-  fail_unless(uris != NULL, "Did not receive parsed list as expected");
-  fail_unless(uris->nelts == 0, "Expected zero elements, found %d",
+  ck_assert_msg(uris != NULL, "Did not receive parsed list as expected");
+  ck_assert_msg(uris->nelts == 0, "Expected zero elements, found %d",
     uris->nelts);
 
   test_cleanup(p);
@@ -895,16 +895,16 @@ START_TEST (reverse_json_parse_uris_usable_test) {
   fprintf(fh, "\"ftp://[::1]:21212\" ]\n");
 
   res = fclose(fh);
-  fail_if(res < 0, "Failed to write file '%s': %s", test_file,
+  ck_assert_msg(res >= 0, "Failed to write file '%s': %s", test_file,
     strerror(errno));
 
   mark_point();
 
   uris = proxy_reverse_json_parse_uris(p, test_file, 0);
-  fail_unless(uris != NULL, "Did not receive parsed list as expected");
+  ck_assert_msg(uris != NULL, "Did not receive parsed list as expected");
 
   expected = 3;
-  fail_unless(uris->nelts == expected, "Expected %d elements, found %d",
+  ck_assert_msg(uris->nelts == expected, "Expected %d elements, found %d",
     expected, uris->nelts);
 
   test_cleanup(p);
@@ -916,60 +916,60 @@ START_TEST (reverse_connect_get_policy_id_test) {
   const char *policy;
 
   res = proxy_reverse_connect_get_policy_id(NULL);
-  fail_unless(res < 0, "Failed to handle null argument");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null argument");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   policy = "foo";
   res = proxy_reverse_connect_get_policy_id(policy);
-  fail_unless(res < 0, "Failed to handle unsupported policy '%s'", policy);
-  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
+  ck_assert_msg(res < 0, "Failed to handle unsupported policy '%s'", policy);
+  ck_assert_msg(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
     strerror(errno), errno);
 
   policy = "random2";
   res = proxy_reverse_connect_get_policy_id(policy);
-  fail_unless(res < 0, "Failed to handle unsupported policy '%s'", policy);
-  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
+  ck_assert_msg(res < 0, "Failed to handle unsupported policy '%s'", policy);
+  ck_assert_msg(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
     strerror(errno), errno);
 
   policy = "random";
   res = proxy_reverse_connect_get_policy_id(policy);
-  fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_RANDOM,
+  ck_assert_msg(res == PROXY_REVERSE_CONNECT_POLICY_RANDOM,
     "Failed to handle supported policy '%s'", policy);
 
   policy = "roundrobin";
   res = proxy_reverse_connect_get_policy_id(policy);
-  fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN,
+  ck_assert_msg(res == PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN,
     "Failed to handle supported policy '%s'", policy);
 
   policy = "shuffle";
   res = proxy_reverse_connect_get_policy_id(policy);
-  fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_SHUFFLE,
+  ck_assert_msg(res == PROXY_REVERSE_CONNECT_POLICY_SHUFFLE,
     "Failed to handle supported policy '%s'", policy);
 
   policy = "leastconns";
   res = proxy_reverse_connect_get_policy_id(policy);
-  fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS,
+  ck_assert_msg(res == PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS,
     "Failed to handle supported policy '%s'", policy);
 
   policy = "peruser";
   res = proxy_reverse_connect_get_policy_id(policy);
-  fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_PER_USER,
+  ck_assert_msg(res == PROXY_REVERSE_CONNECT_POLICY_PER_USER,
     "Failed to handle supported policy '%s'", policy);
 
   policy = "pergroup";
   res = proxy_reverse_connect_get_policy_id(policy);
-  fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_PER_GROUP,
+  ck_assert_msg(res == PROXY_REVERSE_CONNECT_POLICY_PER_GROUP,
     "Failed to handle supported policy '%s'", policy);
 
   policy = "perhost";
   res = proxy_reverse_connect_get_policy_id(policy);
-  fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_PER_HOST,
+  ck_assert_msg(res == PROXY_REVERSE_CONNECT_POLICY_PER_HOST,
     "Failed to handle supported policy '%s'", policy);
 
   policy = "leastresponsetime";
   res = proxy_reverse_connect_get_policy_id(policy);
-  fail_unless(res == PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME,
+  ck_assert_msg(res == PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME,
     "Failed to handle supported policy '%s'", policy);
 }
 END_TEST
@@ -978,7 +978,7 @@ START_TEST (reverse_use_proxy_auth_test) {
   int res;
 
   res = proxy_reverse_use_proxy_auth();
-  fail_unless(res == FALSE, "Expected false, got %d", res);
+  ck_assert_msg(res == FALSE, "Expected false, got %d", res);
 }
 END_TEST
 
@@ -987,11 +987,11 @@ START_TEST (reverse_have_authenticated_test) {
   cmd_rec *cmd = NULL;
 
   res = proxy_reverse_have_authenticated(cmd);
-  fail_unless(res == FALSE, "Expected false, got %d", res);
+  ck_assert_msg(res == FALSE, "Expected false, got %d", res);
 
   proxy_sess_state |= PROXY_SESS_STATE_BACKEND_AUTHENTICATED;
   res = proxy_reverse_have_authenticated(cmd);
-  fail_unless(res == TRUE, "Expected true, got %d", res);
+  ck_assert_msg(res == TRUE, "Expected true, got %d", res);
 
   proxy_sess_state &= ~PROXY_SESS_STATE_BACKEND_AUTHENTICATED;
 }

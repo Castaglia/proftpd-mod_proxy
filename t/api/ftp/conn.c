@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2016-2021 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2016-2022 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -103,55 +103,55 @@ START_TEST (accept_test) {
   conn_t *res, *ctrl_conn = NULL, *data_conn = NULL;
 
   res = proxy_ftp_conn_accept(NULL, NULL, NULL, FALSE);
-  fail_unless(res == NULL, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   res = proxy_ftp_conn_accept(p, NULL, NULL, FALSE);
-  fail_unless(res == NULL, "Failed to handle null data conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null data conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   data_conn = pr_inet_create_conn(p, -2, NULL, INPORT_ANY, FALSE);
-  fail_unless(data_conn != NULL, "Failed to create conn: %s",
+  ck_assert_msg(data_conn != NULL, "Failed to create conn: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_ftp_conn_accept(p, data_conn, NULL, FALSE);
-  fail_unless(res == NULL, "Failed to handle null ctrl conn");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null ctrl conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   ctrl_conn = pr_inet_create_conn(p, -2, NULL, INPORT_ANY, FALSE);
-  fail_unless(ctrl_conn != NULL, "Failed to create conn: %s",
+  ck_assert_msg(ctrl_conn != NULL, "Failed to create conn: %s",
     strerror(errno));
 
   session.xfer.direction = PR_NETIO_IO_RD;
 
   mark_point();
   res = proxy_ftp_conn_accept(p, data_conn, ctrl_conn, FALSE);
-  fail_unless(res == NULL, "Failed to handle null ctrl conn");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res == NULL, "Failed to handle null ctrl conn");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_conn_accept(p, data_conn, ctrl_conn, TRUE);
-  fail_unless(res == NULL, "Failed to handle null ctrl conn");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res == NULL, "Failed to handle null ctrl conn");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 
   session.xfer.direction = PR_NETIO_IO_WR;
 
   mark_point();
   res = proxy_ftp_conn_accept(p, data_conn, ctrl_conn, FALSE);
-  fail_unless(res == NULL, "Failed to handle null ctrl conn");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res == NULL, "Failed to handle null ctrl conn");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_conn_accept(p, data_conn, ctrl_conn, TRUE);
-  fail_unless(res == NULL, "Failed to handle null ctrl conn");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res == NULL, "Failed to handle null ctrl conn");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 
   pr_inet_close(p, ctrl_conn);
@@ -164,17 +164,17 @@ START_TEST (connect_test) {
   const pr_netaddr_t *remote_addr = NULL;
 
   res = proxy_ftp_conn_connect(NULL, NULL, NULL, FALSE);
-  fail_unless(res == NULL, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   res = proxy_ftp_conn_connect(p, NULL, NULL, FALSE);
-  fail_unless(res == NULL, "Failed to handle null remote addr");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null remote addr");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   remote_addr = pr_netaddr_get_addr(p, "127.0.0.1", NULL);
-  fail_unless(remote_addr != NULL, "Failed to address for 127.0.0.1: %s",
+  ck_assert_msg(remote_addr != NULL, "Failed to address for 127.0.0.1: %s",
     strerror(errno));
   pr_netaddr_set_port((pr_netaddr_t *) remote_addr, htons(6555));
 
@@ -182,45 +182,45 @@ START_TEST (connect_test) {
 
   mark_point();
   res = proxy_ftp_conn_connect(p, NULL, remote_addr, FALSE);
-  fail_unless(res == NULL, "Failed to handle bad address family");
-  fail_unless(errno == ECONNREFUSED, "Expected ECONNREFUSED (%d), got %s (%d)",
+  ck_assert_msg(res == NULL, "Failed to handle bad address family");
+  ck_assert_msg(errno == ECONNREFUSED, "Expected ECONNREFUSED (%d), got %s (%d)",
     ECONNREFUSED, strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_conn_connect(p, NULL, remote_addr, TRUE);
-  fail_unless(res == NULL, "Failed to handle bad address family");
-  fail_unless(errno == ECONNREFUSED, "Expected ECONNREFUSED (%d), got %s (%d)",
+  ck_assert_msg(res == NULL, "Failed to handle bad address family");
+  ck_assert_msg(errno == ECONNREFUSED, "Expected ECONNREFUSED (%d), got %s (%d)",
     ECONNREFUSED, strerror(errno), errno);
 
   session.xfer.direction = PR_NETIO_IO_WR;
 
   mark_point();
   res = proxy_ftp_conn_connect(p, NULL, remote_addr, FALSE);
-  fail_unless(res == NULL, "Failed to handle bad address family");
-  fail_unless(errno == ECONNREFUSED, "Expected ECONNREFUSED (%d), got %s (%d)",
+  ck_assert_msg(res == NULL, "Failed to handle bad address family");
+  ck_assert_msg(errno == ECONNREFUSED, "Expected ECONNREFUSED (%d), got %s (%d)",
     ECONNREFUSED, strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_conn_connect(p, NULL, remote_addr, TRUE);
-  fail_unless(res == NULL, "Failed to handle bad address family");
-  fail_unless(errno == ECONNREFUSED, "Expected ECONNREFUSED (%d), got %s (%d)",
+  ck_assert_msg(res == NULL, "Failed to handle bad address family");
+  ck_assert_msg(errno == ECONNREFUSED, "Expected ECONNREFUSED (%d), got %s (%d)",
     ECONNREFUSED, strerror(errno), errno);
 
   /* Try connecting to Google's DNS server. */
 
   remote_addr = pr_netaddr_get_addr(p, "8.8.8.8", NULL);
-  fail_unless(remote_addr != NULL, "Failed to resolve '8.8.8.8': %s",
+  ck_assert_msg(remote_addr != NULL, "Failed to resolve '8.8.8.8': %s",
     strerror(errno));
   pr_netaddr_set_port((pr_netaddr_t *) remote_addr, htons(53));
 
   mark_point();
   res = proxy_ftp_conn_connect(p, NULL, remote_addr, FALSE);
-  fail_unless(res != NULL, "Failed to connect: %s", strerror(errno));
+  ck_assert_msg(res != NULL, "Failed to connect: %s", strerror(errno));
   pr_inet_close(p, res);
 
   mark_point();
   res = proxy_ftp_conn_connect(p, NULL, remote_addr, TRUE);
-  fail_unless(res != NULL, "Failed to connect: %s", strerror(errno));
+  ck_assert_msg(res != NULL, "Failed to connect: %s", strerror(errno));
   pr_inet_close(p, res);
 }
 END_TEST
@@ -230,28 +230,28 @@ START_TEST (listen_test) {
   const pr_netaddr_t *bind_addr = NULL;
 
   res = proxy_ftp_conn_listen(NULL, NULL, FALSE);
-  fail_unless(res == NULL, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   res = proxy_ftp_conn_listen(p, NULL, FALSE);
-  fail_unless(res == NULL, "Failed to handle null bind address");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res == NULL, "Failed to handle null bind address");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   bind_addr = pr_netaddr_get_addr(p, "127.0.0.1", NULL);
-  fail_unless(bind_addr != NULL, "Failed to address for 127.0.0.1: %s",
+  ck_assert_msg(bind_addr != NULL, "Failed to address for 127.0.0.1: %s",
     strerror(errno));
   pr_netaddr_set_port((pr_netaddr_t *) bind_addr, htons(0));
 
   mark_point();
   res = proxy_ftp_conn_listen(p, bind_addr, FALSE);
-  fail_unless(res != NULL, "Failed to listen: %s", strerror(errno));
+  ck_assert_msg(res != NULL, "Failed to listen: %s", strerror(errno));
   pr_inet_close(p, res);
 
   mark_point();
   res = proxy_ftp_conn_listen(p, bind_addr, TRUE);
-  fail_unless(res != NULL, "Failed to listen: %s", strerror(errno));
+  ck_assert_msg(res != NULL, "Failed to listen: %s", strerror(errno));
   pr_inet_close(p, res);
 }
 END_TEST

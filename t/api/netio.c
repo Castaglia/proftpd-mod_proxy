@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2015-2020 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2015-2022 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -61,8 +61,8 @@ START_TEST (netio_close_test) {
   int res;
 
   res = proxy_netio_close(NULL);
-  fail_unless(res < 0, "Failed to handle null stream");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null stream");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 }
 END_TEST
@@ -72,22 +72,22 @@ START_TEST (netio_open_test) {
   pr_netio_stream_t *nstrm;
 
   nstrm = proxy_netio_open(NULL, 0, -1, PR_NETIO_IO_RD);
-  fail_unless(nstrm == NULL, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(nstrm == NULL, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   nstrm = proxy_netio_open(p, 77, -1, PR_NETIO_IO_RD);
-  fail_unless(nstrm == NULL, "Failed to handle unsupported stream type");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(nstrm == NULL, "Failed to handle unsupported stream type");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
-  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+  ck_assert_msg(nstrm != NULL, "Failed to handle othr stream type: %s",
     strerror(errno));
 
   res = proxy_netio_close(nstrm);
-  fail_unless(res < 0, "Successfully closed stream unexpectedly");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res < 0, "Successfully closed stream unexpectedly");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 }
 END_TEST
@@ -97,22 +97,22 @@ START_TEST (netio_poll_test) {
   pr_netio_stream_t *nstrm;
 
   res = proxy_netio_poll(NULL);
-  fail_unless(res < 0, "Failed to handle null stream");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null stream");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
-  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+  ck_assert_msg(nstrm != NULL, "Failed to handle othr stream type: %s",
     strerror(errno));
 
   res = proxy_netio_poll(nstrm);
-  fail_unless(res < 0, "Polled stream unexpectedly");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res < 0, "Polled stream unexpectedly");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 
   res = proxy_netio_close(nstrm);
-  fail_unless(res < 0, "Successfully closed stream unexpectedly");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res < 0, "Successfully closed stream unexpectedly");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 }
 END_TEST
@@ -122,20 +122,20 @@ START_TEST (netio_postopen_test) {
   pr_netio_stream_t *nstrm;
 
   res = proxy_netio_postopen(NULL);
-  fail_unless(res < 0, "Failed to handle null stream");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null stream");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
-  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+  ck_assert_msg(nstrm != NULL, "Failed to handle othr stream type: %s",
     strerror(errno));
 
   res = proxy_netio_postopen(nstrm);
-  fail_unless(res == 0, "Failed to postopen stream: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to postopen stream: %s", strerror(errno));
 
   res = proxy_netio_close(nstrm);
-  fail_unless(res < 0, "Successfully closed stream unexpectedly");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res < 0, "Successfully closed stream unexpectedly");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 }
 END_TEST
@@ -145,22 +145,22 @@ START_TEST (netio_printf_test) {
   pr_netio_stream_t *nstrm;
 
   res = proxy_netio_printf(NULL, "%s", "foo");
-  fail_unless(res < 0, "Failed to handle null stream");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null stream");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
-  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+  ck_assert_msg(nstrm != NULL, "Failed to handle othr stream type: %s",
     strerror(errno));
 
   res = proxy_netio_printf(nstrm, "%d", 7);
-  fail_unless(res < 0, "Failed to handle null stream");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res < 0, "Failed to handle null stream");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 
   res = proxy_netio_close(nstrm);
-  fail_unless(res < 0, "Successfully closed stream unexpectedly");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res < 0, "Successfully closed stream unexpectedly");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 }
 END_TEST
@@ -176,23 +176,23 @@ START_TEST (netio_read_test) {
 
   mark_point();
   res = proxy_netio_read(NULL, buf, bufsz, 1);
-  fail_unless(res < 0, "Failed to handle null stream");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null stream");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
-  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+  ck_assert_msg(nstrm != NULL, "Failed to handle othr stream type: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_netio_read(nstrm, buf, bufsz, 1);
-  fail_unless(res < 0, "Successfully read from stream unexpectedly");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res < 0, "Successfully read from stream unexpectedly");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 
   res = proxy_netio_close(nstrm);
-  fail_unless(res < 0, "Successfully closed stream unexpectedly");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res < 0, "Successfully closed stream unexpectedly");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 }
 END_TEST
@@ -205,15 +205,15 @@ START_TEST (netio_reset_poll_interval_test) {
   proxy_netio_reset_poll_interval(NULL);
 
   nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
-  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+  ck_assert_msg(nstrm != NULL, "Failed to handle othr stream type: %s",
     strerror(errno));
 
   mark_point();
   proxy_netio_reset_poll_interval(nstrm);
 
   res = proxy_netio_close(nstrm);
-  fail_unless(res < 0, "Successfully closed stream unexpectedly");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res < 0, "Successfully closed stream unexpectedly");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 }
 END_TEST
@@ -226,15 +226,15 @@ START_TEST (netio_set_poll_interval_test) {
   proxy_netio_set_poll_interval(NULL, 1);
 
   nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
-  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+  ck_assert_msg(nstrm != NULL, "Failed to handle othr stream type: %s",
     strerror(errno));
 
   mark_point();
   proxy_netio_set_poll_interval(nstrm, 1);
 
   res = proxy_netio_close(nstrm);
-  fail_unless(res < 0, "Successfully closed stream unexpectedly");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res < 0, "Successfully closed stream unexpectedly");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 }
 END_TEST
@@ -245,23 +245,23 @@ START_TEST (netio_shutdown_test) {
 
   mark_point();
   res = proxy_netio_shutdown(NULL, 0);
-  fail_unless(res < 0, "Failed to handle null stream");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null stream");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
-  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+  ck_assert_msg(nstrm != NULL, "Failed to handle othr stream type: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_netio_shutdown(nstrm, 0);
-  fail_unless(res < 0, "Successfully shutdown stream unexpectedly");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res < 0, "Successfully shutdown stream unexpectedly");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 
   res = proxy_netio_close(nstrm);
-  fail_unless(res < 0, "Successfully closed stream unexpectedly");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res < 0, "Successfully closed stream unexpectedly");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 }
 END_TEST
@@ -272,23 +272,23 @@ START_TEST (netio_write_test) {
 
   mark_point();
   res = proxy_netio_write(NULL, "foo", 3);
-  fail_unless(res < 0, "Failed to handle null stream");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null stream");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_RD);
-  fail_unless(nstrm != NULL, "Failed to handle othr stream type: %s",
+  ck_assert_msg(nstrm != NULL, "Failed to handle othr stream type: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_netio_write(nstrm, "foo", 1);
-  fail_unless(res < 0, "Wrote to stream unexpectedly");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res < 0, "Wrote to stream unexpectedly");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 
   res = proxy_netio_close(nstrm);
-  fail_unless(res < 0, "Successfully closed stream unexpectedly");
-  fail_unless(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
+  ck_assert_msg(res < 0, "Successfully closed stream unexpectedly");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got '%s' (%d)", EBADF,
     strerror(errno), errno);
 }
 END_TEST
@@ -298,55 +298,55 @@ START_TEST (netio_set_test) {
   int res, strm_type = PR_NETIO_STRM_OTHR;
 
   netio = proxy_netio_unset(strm_type, NULL);
-  fail_unless(netio == NULL, "Failed to handle null function string");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(netio == NULL, "Failed to handle null function string");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   netio = proxy_netio_unset(strm_type, "foo");
-  fail_unless(netio == NULL, "Expected null othr NetIO, got %p", netio);
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(netio == NULL, "Expected null othr NetIO, got %p", netio);
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   res = proxy_netio_set(strm_type, netio);
-  fail_unless(res == 0, "Failed to set null othr netio: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to set null othr netio: %s", strerror(errno));
 
   strm_type = PR_NETIO_STRM_CTRL;
   res = proxy_netio_set(strm_type, netio);
-  fail_unless(res == 0, "Failed to set null ctrl netio: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to set null ctrl netio: %s", strerror(errno));
 
   res = proxy_netio_set(strm_type, netio);
-  fail_unless(res == 0, "Failed to set null ctrl netio again: %s",
+  ck_assert_msg(res == 0, "Failed to set null ctrl netio again: %s",
     strerror(errno));
 
   netio = pr_alloc_netio2(p, NULL, "testsuite");
   res = proxy_netio_set(strm_type, netio);
-  fail_unless(res == 0, "Failed to set ctrl netio: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to set ctrl netio: %s", strerror(errno));
 
   res = proxy_netio_set(strm_type, netio);
-  fail_unless(res == 0, "Failed to set ctrl netio again: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to set ctrl netio again: %s", strerror(errno));
 
   netio = proxy_netio_unset(strm_type, "testcase");
-  fail_unless(netio != NULL, "Failed to unset ctrl netio: %s", strerror(errno));
+  ck_assert_msg(netio != NULL, "Failed to unset ctrl netio: %s", strerror(errno));
 
   strm_type = PR_NETIO_STRM_DATA;
   netio = NULL;
 
   res = proxy_netio_set(strm_type, netio);
-  fail_unless(res == 0, "Failed to set null data netio: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to set null data netio: %s", strerror(errno));
 
   res = proxy_netio_set(strm_type, netio);
-  fail_unless(res == 0, "Failed to set null data netio again: %s",
+  ck_assert_msg(res == 0, "Failed to set null data netio again: %s",
     strerror(errno));
 
   netio = pr_alloc_netio2(p, NULL, "testsuite");
   res = proxy_netio_set(strm_type, netio);
-  fail_unless(res == 0, "Failed to set data netio: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to set data netio: %s", strerror(errno));
 
   res = proxy_netio_set(strm_type, netio);
-  fail_unless(res == 0, "Failed to set data netio again: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to set data netio again: %s", strerror(errno));
 
   netio = proxy_netio_unset(strm_type, "testcase");
-  fail_unless(netio != NULL, "Failed to unset data netio: %s", strerror(errno));
+  ck_assert_msg(netio != NULL, "Failed to unset data netio: %s", strerror(errno));
 }
 END_TEST
 
@@ -355,46 +355,46 @@ START_TEST (netio_use_test) {
   int res, strm_type = PR_NETIO_STRM_OTHR;
 
   res = proxy_netio_using(strm_type, NULL);
-  fail_unless(res < 0, "Failed to handle null argument");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null argument");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   res = proxy_netio_using(strm_type, &netio);
-  fail_unless(res < 0, "Failed to handle othr stream type");
-  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
+  ck_assert_msg(res < 0, "Failed to handle othr stream type");
+  ck_assert_msg(errno == ENOENT, "Expected ENOENT (%d), got '%s' (%d)", ENOENT,
     strerror(errno), errno);
 
   res = proxy_netio_using(PR_NETIO_STRM_CTRL, &netio);
-  fail_unless(res == 0, "Failed to handle ctrl stream type: %s",
+  ck_assert_msg(res == 0, "Failed to handle ctrl stream type: %s",
     strerror(errno));
-  fail_unless(netio == NULL, "Expected null ctrl netio, got %p", netio);
+  ck_assert_msg(netio == NULL, "Expected null ctrl netio, got %p", netio);
 
   res = proxy_netio_using(PR_NETIO_STRM_DATA, &netio);
-  fail_unless(res == 0, "Failed to handle data stream type: %s",
+  ck_assert_msg(res == 0, "Failed to handle data stream type: %s",
     strerror(errno));
-  fail_unless(netio == NULL, "Expected null data netio, got %p", netio);
+  ck_assert_msg(netio == NULL, "Expected null data netio, got %p", netio);
 
   res = proxy_netio_use(strm_type, NULL);
-  fail_unless(res < 0, "Failed to handle othr stream type");
-  fail_unless(errno == ENOSYS, "Expected ENOSYS (%d), got '%s' (%d)", ENOSYS,
+  ck_assert_msg(res < 0, "Failed to handle othr stream type");
+  ck_assert_msg(errno == ENOSYS, "Expected ENOSYS (%d), got '%s' (%d)", ENOSYS,
     strerror(errno), errno);
 
   res = proxy_netio_use(PR_NETIO_STRM_CTRL, NULL);
-  fail_unless(res == 0, "Failed to handle ctrl stream type: %s",
+  ck_assert_msg(res == 0, "Failed to handle ctrl stream type: %s",
     strerror(errno));
 
   netio = proxy_netio_unset(PR_NETIO_STRM_CTRL, "testcase");
-  fail_unless(netio == NULL, "Unset ctrl stream unexpectedly");
-  fail_unless(errno == ENOSYS, "Expected ENOSYS (%d), got '%s' (%d)", ENOSYS,
+  ck_assert_msg(netio == NULL, "Unset ctrl stream unexpectedly");
+  ck_assert_msg(errno == ENOSYS, "Expected ENOSYS (%d), got '%s' (%d)", ENOSYS,
     strerror(errno), errno);
 
   res = proxy_netio_use(PR_NETIO_STRM_DATA, NULL);
-  fail_unless(res == 0, "Failed to handle data stream type: %s",
+  ck_assert_msg(res == 0, "Failed to handle data stream type: %s",
     strerror(errno));
 
   netio = proxy_netio_unset(PR_NETIO_STRM_DATA, "testcase");
-  fail_unless(netio == NULL, "Unset data stream unexpectedly");
-  fail_unless(errno == ENOSYS, "Expected ENOSYS (%d), got '%s' (%d)", ENOSYS,
+  ck_assert_msg(netio == NULL, "Unset data stream unexpectedly");
+  ck_assert_msg(errno == ENOSYS, "Expected ENOSYS (%d), got '%s' (%d)", ENOSYS,
     strerror(errno), errno);
 
 }

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2016 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2016-2022 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -60,21 +60,21 @@ START_TEST (get_feat_test) {
   const struct proxy_session *proxy_sess = NULL;
 
   res = proxy_ftp_sess_get_feat(NULL, NULL);
-  fail_unless(res < 0, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   res = proxy_ftp_sess_get_feat(p, NULL);
-  fail_unless(res < 0, "Failed to handle null proxy session");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null proxy session");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
  
   proxy_sess = proxy_session_alloc(p);
 
   mark_point();
   res = proxy_ftp_sess_get_feat(p, proxy_sess);
-  fail_unless(res < 0, "Failed to handle null proxy session");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null proxy session");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
  
   proxy_session_free(p, proxy_sess);
@@ -86,13 +86,13 @@ START_TEST (send_auth_tls_test) {
   const struct proxy_session *proxy_sess = NULL;
 
   res = proxy_ftp_sess_send_auth_tls(NULL, NULL);
-  fail_unless(res < 0, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   res = proxy_ftp_sess_send_auth_tls(p, NULL);
-  fail_unless(res < 0, "Failed to handle null proxy session");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null proxy session");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   proxy_sess = proxy_session_alloc(p);
@@ -100,8 +100,8 @@ START_TEST (send_auth_tls_test) {
   mark_point();
   res = proxy_ftp_sess_send_auth_tls(p, proxy_sess);
 #ifdef PR_USE_OPENSSL
-  fail_unless(res < 0, "Sent AUTH TLS unexpectedly");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Sent AUTH TLS unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 #endif /* PR_USE_OPENSSL */
 
@@ -114,20 +114,20 @@ START_TEST (send_host_test) {
   const struct proxy_session *proxy_sess = NULL;
 
   res = proxy_ftp_sess_send_host(NULL, NULL);
-  fail_unless(res < 0, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   res = proxy_ftp_sess_send_host(p, NULL);
-  fail_unless(res < 0, "Failed to handle null proxy session");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null proxy session");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   proxy_sess = proxy_session_alloc(p);
 
   mark_point();
   res = proxy_ftp_sess_send_host(p, proxy_sess);
-  fail_unless(res == 0, "Failed to (maybe) send HOST: %s", strerror(errno));
+  ck_assert_msg(res == 0, "Failed to (maybe) send HOST: %s", strerror(errno));
 
   proxy_session_free(p, proxy_sess);
 }
@@ -138,20 +138,20 @@ START_TEST (send_pbsz_prot_test) {
   const struct proxy_session *proxy_sess = NULL;
 
   res = proxy_ftp_sess_send_pbsz_prot(NULL, NULL);
-  fail_unless(res < 0, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   res = proxy_ftp_sess_send_pbsz_prot(p, NULL);
-  fail_unless(res < 0, "Failed to handle null proxy session");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null proxy session");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   proxy_sess = proxy_session_alloc(p);
 
   mark_point();
   res = proxy_ftp_sess_send_pbsz_prot(p, proxy_sess);
-  fail_unless(res == 0, "Failed to (maybe) send PBSZ/PROT: %s",
+  ck_assert_msg(res == 0, "Failed to (maybe) send PBSZ/PROT: %s",
     strerror(errno));
 
   proxy_session_free(p, proxy_sess);

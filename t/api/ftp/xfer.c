@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy testsuite
- * Copyright (c) 2016 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2016-2022 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -95,48 +95,48 @@ START_TEST (prepare_active_test) {
   struct proxy_session *proxy_sess = NULL;
 
   res = proxy_ftp_xfer_prepare_active(0, NULL, NULL, NULL, 0);
-  fail_unless(res < 0, "Failed to handle null command");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null command");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   cmd = pr_cmd_alloc(p, 1, "FOO");
 
   res = proxy_ftp_xfer_prepare_active(0, cmd, NULL, NULL, 0);
-  fail_unless(res < 0, "Failed to handle null error code");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null error code");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   res = proxy_ftp_xfer_prepare_active(0, cmd, "500", NULL, 0);
-  fail_unless(res < 0, "Failed to handle null proxy session");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null proxy session");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   proxy_sess = (struct proxy_session *) proxy_session_alloc(p);
 
   mark_point();
   res = proxy_ftp_xfer_prepare_active(0, cmd, "500", proxy_sess, 0);
-  fail_unless(res < 0, "Failed to handle null proxy session");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null proxy session");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   proxy_sess->backend_ctrl_conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY,
     FALSE);
-  fail_unless(proxy_sess->backend_ctrl_conn != NULL,
+  ck_assert_msg(proxy_sess->backend_ctrl_conn != NULL,
     "Failed to open backend control conn: %s", strerror(errno));
 
   session.c = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
-  fail_unless(session.c != NULL,
+  ck_assert_msg(session.c != NULL,
     "Failed to open session control conn: %s", strerror(errno));
 
   session.c->local_addr = session.c->remote_addr = pr_netaddr_get_addr(p,
     "127.0.0.1", NULL);
-  fail_unless(session.c->remote_addr != NULL, "Failed to get address: %s",
+  ck_assert_msg(session.c->remote_addr != NULL, "Failed to get address: %s",
     strerror(errno));
 
   mark_point();
   res = proxy_ftp_xfer_prepare_active(0, cmd, "500", proxy_sess, 0);
-  fail_unless(res < 0, "Failed to handle illegal FTP command");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle illegal FTP command");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   /* Prevent NULL pointer dereferences which would only happen during
@@ -147,31 +147,31 @@ START_TEST (prepare_active_test) {
   mark_point();
   res = proxy_ftp_xfer_prepare_active(PR_CMD_PORT_ID, cmd, "500", proxy_sess,
     0);
-  fail_unless(res < 0, "Failed to handle bad PORT command");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle bad PORT command");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   res = proxy_ftp_xfer_prepare_active(PR_CMD_EPRT_ID, cmd, "500", proxy_sess,
     0);
-  fail_unless(res < 0, "Failed to handle bad EPRT command");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle bad EPRT command");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   cmd = pr_cmd_alloc(p, 1, "EPRT");
 
   mark_point();
   res = proxy_ftp_xfer_prepare_active(0, cmd, "500", proxy_sess, 0);
-  fail_unless(res < 0, "Failed to handle bad EPRT command");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle bad EPRT command");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   cmd = pr_cmd_alloc(p, 1, "PORT");
 
   mark_point();
   res = proxy_ftp_xfer_prepare_active(0, cmd, "500", proxy_sess, 0);
-  fail_unless(res < 0, "Failed to handle bad PORT command");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle bad PORT command");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   pr_inet_close(p, session.c);
@@ -185,48 +185,48 @@ START_TEST (prepare_passive_test) {
   struct proxy_session *proxy_sess;
 
   addr = proxy_ftp_xfer_prepare_passive(0, NULL, NULL, NULL, 0);
-  fail_unless(addr == NULL, "Failed to handle null command");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(addr == NULL, "Failed to handle null command");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   cmd = pr_cmd_alloc(p, 1, "FOO");
 
   addr = proxy_ftp_xfer_prepare_passive(0, cmd, NULL, NULL, 0);
-  fail_unless(addr == NULL, "Failed to handle null error code");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(addr == NULL, "Failed to handle null error code");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   addr = proxy_ftp_xfer_prepare_passive(0, cmd, "500", NULL, 0);
-  fail_unless(addr == NULL, "Failed to handle null proxy session");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(addr == NULL, "Failed to handle null proxy session");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   proxy_sess = (struct proxy_session *) proxy_session_alloc(p);
 
   mark_point();
   addr = proxy_ftp_xfer_prepare_passive(0, cmd, "500", proxy_sess, 0);
-  fail_unless(addr == NULL, "Failed to handle null proxy session");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(addr == NULL, "Failed to handle null proxy session");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   proxy_sess->backend_ctrl_conn = pr_inet_create_conn(p, -1, NULL, INPORT_ANY,
     FALSE);
-  fail_unless(proxy_sess->backend_ctrl_conn != NULL,
+  ck_assert_msg(proxy_sess->backend_ctrl_conn != NULL,
     "Failed to open backend control conn: %s", strerror(errno));
   
   session.c = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
-  fail_unless(session.c != NULL,
+  ck_assert_msg(session.c != NULL,
     "Failed to open session control conn: %s", strerror(errno));
 
   session.c->local_addr = session.c->remote_addr = pr_netaddr_get_addr(p,
     "127.0.0.1", NULL);
-  fail_unless(session.c->remote_addr != NULL, "Failed to get address: %s",
+  ck_assert_msg(session.c->remote_addr != NULL, "Failed to get address: %s",
     strerror(errno));
 
   mark_point();
   addr = proxy_ftp_xfer_prepare_passive(0, cmd, "500", proxy_sess, 0);
-  fail_unless(addr == NULL, "Failed to handle illegal FTP command");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(addr == NULL, "Failed to handle illegal FTP command");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   /* Prevent NULL pointer dereferences which would only happen during
@@ -237,31 +237,31 @@ START_TEST (prepare_passive_test) {
   mark_point();
   addr = proxy_ftp_xfer_prepare_passive(PR_CMD_PASV_ID, cmd, "500", proxy_sess,
     0);
-  fail_unless(addr == NULL, "Failed to handle bad PASV command");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(addr == NULL, "Failed to handle bad PASV command");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
   addr = proxy_ftp_xfer_prepare_passive(PR_CMD_EPSV_ID, cmd, "500", proxy_sess,
     0);
-  fail_unless(addr == NULL, "Failed to handle bad EPSV command");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(addr == NULL, "Failed to handle bad EPSV command");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   cmd = pr_cmd_alloc(p, 1, "EPSV");
 
   mark_point();
   addr = proxy_ftp_xfer_prepare_passive(0, cmd, "500", proxy_sess, 0);
-  fail_unless(addr == NULL, "Failed to handle bad EPSV command");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(addr == NULL, "Failed to handle bad EPSV command");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   cmd = pr_cmd_alloc(p, 1, "PASV");
 
   mark_point();
   addr = proxy_ftp_xfer_prepare_passive(0, cmd, "500", proxy_sess, 0);
-  fail_unless(addr == NULL, "Failed to handle bad PASV command");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+  ck_assert_msg(addr == NULL, "Failed to handle bad PASV command");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   pr_inet_close(p, session.c);
