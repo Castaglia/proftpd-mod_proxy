@@ -549,6 +549,9 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
         errno = EINVAL;
         return -1;
       }
+      /* Change the command so that it no longer includes the proxy info. */
+      user_cmd = pr_cmd_alloc(cmd->pool, 2, C_USER, user);
+      user_cmd->arg = user;
     } else {
       res = forward_cmd_sni_dst(cmd->tmp_pool, &pconn);
       if (res < 0) {
@@ -580,9 +583,6 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
     proxy_sess->other_addrs = other_addrs;
     proxy_sess->dst_pconn = pconn;
 
-    /* Change the command so that it no longer includes the proxy info. */
-    user_cmd = pr_cmd_alloc(cmd->pool, 2, C_USER, user);
-    user_cmd->arg = user;
 
   } else {
     user_cmd = cmd;
