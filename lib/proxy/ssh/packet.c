@@ -1711,6 +1711,14 @@ int proxy_ssh_packet_send(conn_t *conn, struct proxy_ssh_packet *pkt) {
 }
 
 int proxy_ssh_packet_write(conn_t *conn, struct proxy_ssh_packet *pkt) {
+  /* Make sure that any frontend AAD ciphers/data are not leaked through to
+   * the backend IO routines.
+   */
+  if (pkt->aad_len > 0) {
+    pkt->aad_len = 0;
+    pkt->aad = NULL;
+  }
+
   return proxy_ssh_packet_send(conn, pkt);
 }
 
