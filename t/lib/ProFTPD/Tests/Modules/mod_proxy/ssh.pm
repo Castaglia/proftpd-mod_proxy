@@ -408,6 +408,16 @@ my $TESTS = {
     test_class => [qw(flaky forking mod_rewrite mod_sftp reverse)],
   },
 
+  proxy_reverse_backend_ssh_auth_publickey_useproxyauth => {
+    order => ++$order,
+    test_class => [qw(flaky forking mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_auth_publickey_useproxyauth_peruser => {
+    order => ++$order,
+    test_class => [qw(flaky forking mod_sftp reverse)],
+  },
+
   proxy_reverse_backend_ssh_auth_chain_password_kbdint => {
     order => ++$order,
     test_class => [qw(forking mod_auth_otp mod_sftp reverse)],
@@ -559,7 +569,12 @@ my $TESTS = {
     test_class => [qw(forking mod_sftp reverse)],
   },
 
-  proxy_reverse_backend_ssh_connect_policy_per_group => {
+  proxy_reverse_backend_ssh_connect_policy_per_group_password_auth => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_connect_policy_per_group_publickey_auth => {
     order => ++$order,
     test_class => [qw(forking mod_sftp reverse)],
   },
@@ -3769,6 +3784,407 @@ EOC
       }
 
       unless ($ssh2->auth_publickey(uc($setup->{user}), $rsa_pub_key,
+          $rsa_priv_key)) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      my $sftp_start_ts = [gettimeofday()];
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "Opening SFTP channel...\n";
+      }
+
+      my $sftp = $ssh2->sftp();
+      unless ($sftp) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't use SFTP on SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      my $sftp_start_elapsed = tv_interval($sftp_start_ts);
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "Sending SFTP STAT request ($sftp_start_elapsed since SFTP channel opened)...\n";
+      }
+
+      my $path = 'proxy.conf';
+      unless ($sftp->stat($path, 1)) {
+        my ($err_code, $err_name) = $sftp->error();
+        die("STAT $path failed: [$err_name] ($err_code)");
+      }
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "Closing SFTP channel...\n";
+      }
+
+      # To close the SFTP channel, we have to explicitly destroy the object
+      $sftp = undef;
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "Disconnecting SSH...\n";
+      }
+
+      $ssh2->disconnect();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, 30) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_backend_ssh_auth_publickey_useproxyauth {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-sha1';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyOptions} = 'UseReverseProxyAuth';
+  $proxy_config->{ProxySFTPCiphers} = $cipher_algo;
+  $proxy_config->{ProxySFTPDigests} = $digest_algo;
+  $proxy_config->{ProxySFTPKeyExchanges} = $kex_algo;
+
+  my $rsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_rsa_key");
+
+  # For publickey authentication
+  my $rsa_priv_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/test_rsa_key");
+  my $rsa_pub_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/test_rsa_key.pub");
+
+  # For hostbased authentication
+  my $rsa_rfc4716_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/authorized_rsa_keys");
+
+  my $authorized_keys = File::Spec->rel2abs("$tmpdir/.authorized_keys");
+  unless (copy($rsa_rfc4716_key, $authorized_keys)) {
+    die("Can't copy $rsa_rfc4716_key to $authorized_keys: $!");
+  }
+
+  unless (chmod(0400, $rsa_priv_key)) {
+    die("Can't set perms on $rsa_priv_key: $!");
+  }
+
+  $proxy_config->{ProxySFTPHostKey} = $rsa_priv_key;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'event:20 proxy:20 proxy.reverse:20 proxy.ssh:20 proxy.ssh.auth:20 proxy.ssh.disconnect:20 proxy.ssh.packet:20 proxy.ssh.kex:20 ssh2:20 sftp:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_sftp.c' => [
+        'SFTPEngine on',
+        "SFTPLog $setup->{log_file}",
+        "SFTPHostKey $rsa_host_key",
+        'SFTPAuthorizedUserKeys file:~/.authorized_keys',
+      ],
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+
+  <IfModule mod_sftp.c>
+    SFTPEngine on
+    SFTPLog $setup->{log_file}
+    SFTPHostKey $rsa_host_key
+
+    SFTPCiphers $cipher_algo
+    SFTPDigests $digest_algo
+    SFTPKeyExchanges $kex_algo
+
+    SFTPAuthorizedHostKeys file:~/.authorized_keys
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  require Net::SSH2;
+  my $ex;
+
+  # Ignore SIGPIPE
+  local $SIG{PIPE} = sub { };
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Give the server a chance to start up
+      sleep(2);
+
+      my $ssh2 = Net::SSH2->new();
+
+      unless ($ssh2->connect('127.0.0.1', $port)) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      unless ($ssh2->auth_publickey($setup->{user}, $rsa_pub_key,
+          $rsa_priv_key)) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      my $sftp_start_ts = [gettimeofday()];
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "Opening SFTP channel...\n";
+      }
+
+      my $sftp = $ssh2->sftp();
+      unless ($sftp) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't use SFTP on SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      my $sftp_start_elapsed = tv_interval($sftp_start_ts);
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "Sending SFTP STAT request ($sftp_start_elapsed since SFTP channel opened)...\n";
+      }
+
+      my $path = 'proxy.conf';
+      unless ($sftp->stat($path, 1)) {
+        my ($err_code, $err_name) = $sftp->error();
+        die("STAT $path failed: [$err_name] ($err_code)");
+      }
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "Closing SFTP channel...\n";
+      }
+
+      # To close the SFTP channel, we have to explicitly destroy the object
+      $sftp = undef;
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "Disconnecting SSH...\n";
+      }
+
+      $ssh2->disconnect();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, 30) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_backend_ssh_auth_publickey_useproxyauth_peruser {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-sha1';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyReverseConnectPolicy} = 'PerUser';
+  $proxy_config->{ProxyOptions} = 'UseReverseProxyAuth';
+  $proxy_config->{ProxySFTPCiphers} = $cipher_algo;
+  $proxy_config->{ProxySFTPDigests} = $digest_algo;
+  $proxy_config->{ProxySFTPKeyExchanges} = $kex_algo;
+
+  my $rsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_rsa_key");
+
+  # For publickey authentication
+  my $rsa_priv_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/test_rsa_key");
+  my $rsa_pub_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/test_rsa_key.pub");
+
+  # For hostbased authentication
+  my $rsa_rfc4716_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/authorized_rsa_keys");
+
+  my $authorized_keys = File::Spec->rel2abs("$tmpdir/.authorized_keys");
+  unless (copy($rsa_rfc4716_key, $authorized_keys)) {
+    die("Can't copy $rsa_rfc4716_key to $authorized_keys: $!");
+  }
+
+  unless (chmod(0400, $rsa_priv_key)) {
+    die("Can't set perms on $rsa_priv_key: $!");
+  }
+
+  $proxy_config->{ProxySFTPHostKey} = $rsa_priv_key;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'event:20 proxy:20 proxy.reverse:20 proxy.ssh:20 proxy.ssh.auth:20 proxy.ssh.disconnect:20 proxy.ssh.packet:20 proxy.ssh.kex:20 ssh2:20 sftp:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_sftp.c' => [
+        'SFTPEngine on',
+        "SFTPLog $setup->{log_file}",
+        "SFTPHostKey $rsa_host_key",
+        'SFTPAuthorizedUserKeys file:~/.authorized_keys',
+      ],
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+
+  <IfModule mod_sftp.c>
+    SFTPEngine on
+    SFTPLog $setup->{log_file}
+    SFTPHostKey $rsa_host_key
+
+    SFTPCiphers $cipher_algo
+    SFTPDigests $digest_algo
+    SFTPKeyExchanges $kex_algo
+
+    SFTPAuthorizedHostKeys file:~/.authorized_keys
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  require Net::SSH2;
+  my $ex;
+
+  # Ignore SIGPIPE
+  local $SIG{PIPE} = sub { };
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Give the server a chance to start up
+      sleep(2);
+
+      my $ssh2 = Net::SSH2->new();
+
+      unless ($ssh2->connect('127.0.0.1', $port)) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      unless ($ssh2->auth_publickey($setup->{user}, $rsa_pub_key,
           $rsa_priv_key)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
@@ -9388,7 +9804,7 @@ EOC
   test_cleanup($setup->{log_file}, $ex);
 }
 
-sub proxy_reverse_backend_ssh_connect_policy_per_group {
+sub proxy_reverse_backend_ssh_connect_policy_per_group_password_auth {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
@@ -9548,6 +9964,232 @@ EOC
         }
 
         unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
+          my ($err_code, $err_name, $err_str) = $ssh2->error();
+          die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
+        }
+
+        my $sftp_start_ts = [gettimeofday()];
+        if ($ENV{TEST_VERBOSE}) {
+          print STDERR "Opening SFTP channel...\n";
+        }
+
+        my $sftp = $ssh2->sftp();
+        unless ($sftp) {
+          my ($err_code, $err_name, $err_str) = $ssh2->error();
+          die("Can't use SFTP on SSH2 server: [$err_name] ($err_code) $err_str");
+        }
+
+        my $sftp_start_elapsed = tv_interval($sftp_start_ts);
+        if ($ENV{TEST_VERBOSE}) {
+          print STDERR "Sending SFTP STAT request ($sftp_start_elapsed since SFTP channel opened)...\n";
+        }
+
+        my $path = 'proxy.conf';
+        unless ($sftp->stat($path, 1)) {
+          my ($err_code, $err_name) = $sftp->error();
+          die("STAT $path failed: [$err_name] ($err_code)");
+        }
+
+        if ($ENV{TEST_VERBOSE}) {
+          print STDERR "Closing SFTP channel...\n";
+        }
+
+        # To close the SFTP channel, we have to explicitly destroy the object
+        $sftp = undef;
+
+        if ($ENV{TEST_VERBOSE}) {
+          print STDERR "Disconnecting SSH...\n";
+        }
+
+        $ssh2->disconnect();
+      }
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, 30) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_backend_ssh_connect_policy_per_group_publickey_auth {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+  my $vhost_port2 = $vhost_port - 7;
+
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-sha1';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyReverseConnectPolicy} = 'PerGroup';
+  $proxy_config->{ProxyOptions} = 'UseReverseProxyAuth';
+  $proxy_config->{ProxySFTPCiphers} = $cipher_algo;
+  $proxy_config->{ProxySFTPDigests} = $digest_algo;
+  $proxy_config->{ProxySFTPKeyExchanges} = $kex_algo;
+  $proxy_config->{ProxyReverseServers} = "sftp://127.0.0.1:$vhost_port sftp://127.0.0.1:$vhost_port2",
+
+  my $rsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_rsa_key");
+
+  # For hostbased authentication
+  my $rsa_priv_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/test_rsa_key");
+  my $rsa_pub_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/test_rsa_key.pub");
+  my $rsa_rfc4716_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/authorized_rsa_keys");
+
+  my $authorized_keys = File::Spec->rel2abs("$tmpdir/.authorized_keys");
+  unless (copy($rsa_rfc4716_key, $authorized_keys)) {
+    die("Can't copy $rsa_rfc4716_key to $authorized_keys: $!");
+  }
+
+  unless (chmod(0400, $rsa_priv_key)) {
+    die("Can't set perms on $rsa_priv_key: $!");
+  }
+
+  $proxy_config->{ProxySFTPHostKey} = $rsa_priv_key;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'event:20 proxy:20 proxy.reverse:20 proxy.ssh:20 proxy.ssh.auth:20 proxy.ssh.disconnect:20 proxy.ssh.packet:20 proxy.ssh.kex:20 ssh2:20 sftp:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_sftp.c' => [
+        'SFTPEngine on',
+        "SFTPLog $setup->{log_file}",
+        "SFTPHostKey $rsa_host_key",
+        'SFTPAuthorizedUserKeys file:~/.authorized_keys',
+      ],
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+
+  <IfModule mod_sftp.c>
+    SFTPEngine on
+    SFTPLog $setup->{log_file}
+    SFTPHostKey $rsa_host_key
+
+    SFTPCiphers $cipher_algo
+    SFTPDigests $digest_algo
+    SFTPKeyExchanges $kex_algo
+    SFTPAuthorizedHostKeys file:~/.authorized_keys
+  </IfModule>
+</VirtualHost>
+
+<VirtualHost 127.0.0.1>
+  Port $vhost_port2
+  ServerName "Other Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+
+  <IfModule mod_sftp.c>
+    SFTPEngine on
+    SFTPLog $setup->{log_file}
+    SFTPHostKey $rsa_host_key
+
+    SFTPCiphers $cipher_algo
+    SFTPDigests $digest_algo
+    SFTPKeyExchanges $kex_algo
+    SFTPAuthorizedHostKeys file:~/.authorized_keys
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  require Net::SSH2;
+  my $ex;
+
+  # Ignore SIGPIPE
+  local $SIG{PIPE} = sub { };
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Give the server a chance to start up
+      sleep(2);
+
+      for (my $i = 0; $i < 3; $i++) {
+        my $ssh2 = Net::SSH2->new();
+
+        unless ($ssh2->connect('127.0.0.1', $port)) {
+          my ($err_code, $err_name, $err_str) = $ssh2->error();
+          die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
+        }
+
+        unless ($ssh2->auth_publickey($setup->{user}, $rsa_pub_key,
+            $rsa_priv_key)) {
           my ($err_code, $err_name, $err_str) = $ssh2->error();
           die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
         }
