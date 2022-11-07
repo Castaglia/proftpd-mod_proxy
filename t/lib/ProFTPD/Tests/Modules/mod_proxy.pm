@@ -28288,38 +28288,7 @@ EOC
 sub proxy_forward_proxyuserwithproxyauth_login_user_incl_at_symbol {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vhost.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vhost.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'proxy');
 
   # Have separate Auth files for the proxy
   my $proxy_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
@@ -28328,21 +28297,23 @@ sub proxy_forward_proxyuserwithproxyauth_login_user_incl_at_symbol {
   my $proxy_user = 'proxy-user@proftpd.org';
   my $proxy_passwd = 'proxy-test';
 
-  auth_user_write($proxy_user_file, $proxy_user, $proxy_passwd, $uid, $gid,
-    $home_dir, '/bin/bash');
-  auth_group_write($proxy_group_file, $group, $gid, $proxy_user);
+  auth_user_write($proxy_user_file, $proxy_user, $proxy_passwd, $setup->{uid},
+    $setup->{gid}, $setup->{home_dir}, '/bin/bash');
+  auth_group_write($proxy_group_file, $setup->{group}, $setup->{gid},
+    $proxy_user);
 
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 17;
 
-  my $proxy_config = get_forward_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_forward_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
   $proxy_config->{ProxyForwardMethod} = 'proxyuser@host,user';
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.uri:20 proxy.forward:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
     AuthUserFile => $proxy_user_file,
@@ -28361,16 +28332,17 @@ sub proxy_forward_proxyuserwithproxyauth_login_user_incl_at_symbol {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
   ServerName "Real Server"
 
-  AuthUserFile $auth_user_file
-  AuthGroupFile $auth_group_file
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
   AuthOrder mod_auth_file.c
 
   AllowOverride off
@@ -28379,11 +28351,11 @@ sub proxy_forward_proxyuserwithproxyauth_login_user_incl_at_symbol {
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   # Open pipes, for use between the parent and child processes.  Specifically,
@@ -28401,13 +28373,14 @@ EOC
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
+      # Allow for server startup
       sleep(1);
+
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
       $client->login("$proxy_user\@127.0.0.1:$vhost_port", $proxy_passwd);
-      $client->login($user, $passwd);
+      $client->login($setup->{user}, $setup->{passwd});
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -28416,7 +28389,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -28426,18 +28399,10 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
-
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_forward_proxyuserwithproxyauth_login_failed_bad_dst_addr {
