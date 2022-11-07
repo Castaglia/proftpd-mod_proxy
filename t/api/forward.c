@@ -352,17 +352,6 @@ START_TEST (forward_handle_user_noproxyauth_test) {
   ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
-  /* Valid external host (with port) in USER command. */
-  cmd = pr_cmd_alloc(p, 2, "USER", "anonymous@ftp.cisco.com:21");
-  cmd->arg = pstrdup(p, "anonymous@ftp.cisco.com");
-
-  mark_point();
-  res = proxy_forward_handle_user(cmd, proxy_sess, &successful,
-    &block_responses);
-  ck_assert_msg(res == 1, "Failed to handle USER command: %s", strerror(errno));
-  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
-    strerror(errno), errno);
-
   res = proxy_forward_sess_free(p, NULL);
   ck_assert_msg(res == 0, "Failed to free Forward API session resources: %s",
     strerror(errno));
