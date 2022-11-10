@@ -395,6 +395,20 @@ The currently supported methods are:
     portion of the <code>USER</code> command before proxying it to the
     destination server.
   </li>
+
+  <p>
+  <li><code>user@sni</code>
+    <p>
+    This methods indicates that <i>no proxy authentication</i> is used.  The
+    client indicates the destination address (and optionally port) of the
+    server as part of a TLS SNI (Server Name Indication) portion of a TLS
+    session:
+<pre>
+  AUTH TLS <em>handshake with SNI</em>
+  USER <em>real-user</em>
+  PASS <em>real-passwd</em>
+</pre>
+  </li>
 </ul>
 
 <p>
@@ -432,6 +446,13 @@ The optional <em>flags</em> parameter, if present, modifies how the given
 clients can request forward proxying; by contrast,
 <a href="#ProxyForwardEnabled"><code>ProxyForwardEnabled</code></a> controls
 forward proxying based on where clients connect <b>from</b>.
+
+<p>
+Example:
+<pre>
+  # Limit forward proxying to specific host and port
+  ProxyForwardTo ^ftp.example.com:21$
+</pre>
 
 <p>
 <hr>

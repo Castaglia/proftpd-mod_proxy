@@ -211,6 +211,11 @@ START_TEST (forward_get_method_test) {
   res = proxy_forward_get_method(method);
   ck_assert_msg(res == PROXY_FORWARD_METHOD_PROXY_USER_WITH_PROXY_AUTH,
     "Failed to handle method '%s'", method);
+
+  method = "user@sni";
+  res = proxy_forward_get_method(method);
+  ck_assert_msg(res == PROXY_FORWARD_METHOD_USER_SNI_NO_PROXY_AUTH,
+    "Failed to handle method '%s'", method);
 }
 END_TEST
 
