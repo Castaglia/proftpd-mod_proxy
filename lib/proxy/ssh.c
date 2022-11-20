@@ -551,7 +551,37 @@ static void ssh_ssh2_kex_completed_ev(const void *event_data, void *user_data) {
   /* Connecting to the selected backend server happened earlier (right?),
    * in proxy_reverse_sess_init().  So now we start our SSH session with
    * the selected backend host.
+   *
+   * Note, though, that if the UseReverseProxyAuth ProxyOption was configured,
+   * we may not have connected to the backend server yet, as the frontend
+   * client might not have authenticated; we have only completed the frontend
+   * KEX at this point.  So how do we knkow if we need to connect to the
+   * backend server here?
+   *
+   *  ProxyOptions UseReverseProxyAuth
+   *  ProxyReverseConnectPolicy NOT PerUser/PerGroup
    */
+  if (!(proxy_sess_state & PROXY_SESS_STATE_CONNECTED) &&
+      proxy_reverse_use_proxy_auth() == TRUE) {
+    int connect_policy_id;
+
+    connect_policy_id = proxy_reverse_get_connect_policy();
+    switch (connect_policy_id) {
+      case PROXY_REVERSE_CONNECT_POLICY_PER_GROUP:
+      case PROXY_REVERSE_CONNECT_POLICY_PER_USER:
+        break;
+
+      default: {
+        res = proxy_reverse_connect(proxy_pool, proxy_sess, NULL);
+        if (res < 0) {
+          destroy_pool(tmp_pool);
+          pr_session_disconnect(&proxy_module,
+            PR_SESS_DISCONNECT_BY_APPLICATION, NULL);
+        }
+      }
+    }
+  }
+
   res = ssh_handle_kexinit(tmp_pool, proxy_sess);
   if (res < 0) {
     destroy_pool(tmp_pool);
