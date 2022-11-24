@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy forward proxy implementation
- * Copyright (c) 2012-2021 TJ Saunders
+ * Copyright (c) 2012-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,12 +38,18 @@ static int forward_retry_count = PROXY_DEFAULT_RETRY_COUNT;
 /* handle_user_passthru flags */
 #define PROXY_FORWARD_USER_PASSTHRU_FL_PARSE_DSTADDR	0x001
 #define PROXY_FORWARD_USER_PASSTHRU_FL_CONNECT_DSTADDR	0x002
+#define PROXY_FORWARD_USER_PASSTHRU_FL_SNI_DSTADDR	0x004
 
 static const char *trace_channel = "proxy.forward";
 
 int proxy_forward_use_proxy_auth(void) {
-  if (proxy_method == PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH) {
-    return FALSE;
+  switch (proxy_method) {
+    case PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH:
+    case PROXY_FORWARD_METHOD_USER_SNI_NO_PROXY_AUTH:
+      return FALSE;
+
+    default:
+      break;
   }
 
   return TRUE;
@@ -405,7 +411,7 @@ static int forward_cmd_parse_dst(pool *p, const char *arg, char **name,
     *port, *uri = NULL;
   char *host = NULL, *hostport = NULL, *host_ptr = NULL, *port_ptr = NULL;
 
-  /* TODO: Revisit theses default once we start supporting other protocols. */
+  /* TODO: Revisit these defaults once we start supporting other protocols. */
   default_proto = "ftp";
   default_port = "21";
 
@@ -484,6 +490,51 @@ static int forward_cmd_parse_dst(pool *p, const char *arg, char **name,
   return 0;
 }
 
+static int forward_cmd_parse_sni(pool *p, const struct proxy_conn **pconn) {
+  const char *sni = NULL;
+  char *hostport = NULL, *port_ptr = NULL, *uri = NULL;
+
+  sni = pr_table_get(session.notes, "mod_tls.sni", NULL);
+  if (sni == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to use ProxyForwardMethod 'user@sni' due to missing TLS SNI");
+    errno = EPERM;
+    return -1;
+  }
+
+  port_ptr = strrchr(sni, ':');
+  if (port_ptr == NULL) {
+    hostport = pstrcat(p, sni, ":21", NULL);
+
+  } else {
+    /* In this case, the SNI already includes a port; no need to add one. */
+    hostport = pstrdup(p, sni);
+  }
+
+  if (forward_dst_filter(p, hostport) < 0) {
+    return -1;
+  }
+
+  uri = pstrcat(p, "ftp://", hostport, NULL);
+
+  /* Note: We deliberately use proxy_pool, rather than the given pool, here
+   * so that the created structure (especially the pr_netaddr_t) are
+   * longer-lived.
+   */
+  *pconn = proxy_conn_create(proxy_pool, uri, 0);
+  if (*pconn == NULL) {
+    int xerrno = errno;
+
+    pr_trace_msg(trace_channel, 1,
+      "error handling URI '%.100s': %s", uri, strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  return 0;
+}
+
 static int forward_handle_user_passthru(cmd_rec *cmd,
     struct proxy_session *proxy_sess, int *successful, int flags) {
   int res, xerrno;
@@ -492,12 +543,19 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
   pr_response_t *resp = NULL;
   unsigned int resp_nlines = 0;
 
-  if (flags & PROXY_FORWARD_USER_PASSTHRU_FL_PARSE_DSTADDR) {
+  if ((flags & PROXY_FORWARD_USER_PASSTHRU_FL_PARSE_DSTADDR) ||
+      (flags & PROXY_FORWARD_USER_PASSTHRU_FL_SNI_DSTADDR)) {
     const struct proxy_conn *pconn = NULL;
     const pr_netaddr_t *remote_addr = NULL;
     array_header *other_addrs = NULL;
 
-    res = forward_cmd_parse_dst(cmd->tmp_pool, cmd->arg, &user, &pconn);
+    if (flags & PROXY_FORWARD_USER_PASSTHRU_FL_PARSE_DSTADDR) {
+      res = forward_cmd_parse_dst(cmd->tmp_pool, cmd->arg, &user, &pconn);
+
+    } else {
+      res = forward_cmd_parse_sni(cmd->tmp_pool, &pconn);
+    }
+
     if (res < 0) {
       errno = EINVAL;
       return -1;
@@ -525,9 +583,14 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
     proxy_sess->other_addrs = other_addrs;
     proxy_sess->dst_pconn = pconn;
 
-    /* Change the command so that it no longer includes the proxy info. */
-    user_cmd = pr_cmd_alloc(cmd->pool, 2, C_USER, user);
-    user_cmd->arg = user;
+    if (flags & PROXY_FORWARD_USER_PASSTHRU_FL_PARSE_DSTADDR) {
+      /* Change the command so that it no longer includes the proxy info. */
+      user_cmd = pr_cmd_alloc(cmd->pool, 2, C_USER, user);
+      user_cmd->arg = user;
+
+    } else {
+      user_cmd = cmd;
+    }
 
   } else {
     user_cmd = cmd;
@@ -700,6 +763,26 @@ int proxy_forward_handle_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
       break;
     }
 
+    case PROXY_FORWARD_METHOD_USER_SNI_NO_PROXY_AUTH: {
+      int flags = PROXY_FORWARD_USER_PASSTHRU_FL_SNI_DSTADDR|PROXY_FORWARD_USER_PASSTHRU_FL_CONNECT_DSTADDR;
+
+      /* This method requires use of TLS with SNI; make sure that that is
+       * actually the case for this session.
+       */
+      if (session.rfc2228_mech != NULL &&
+          strcmp(session.rfc2228_mech, "TLS") == 0) {
+        res = forward_handle_user_passthru(cmd, proxy_sess, successful, flags);
+
+      } else {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "unable to use ProxyForwardMethod 'user@sni' due to lack of TLS");
+        errno = EINVAL;
+        res = -1;
+      }
+
+      break;
+    }
+
     case PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH:
       res = forward_handle_user_userwithproxyauth(cmd, proxy_sess,
         successful, block_responses);
@@ -825,6 +908,7 @@ int proxy_forward_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
   /* Look at our proxy method to see what we should do here. */
   switch (proxy_method) {
     case PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH:
+    case PROXY_FORWARD_METHOD_USER_SNI_NO_PROXY_AUTH:
       res = forward_handle_pass_passthru(cmd, proxy_sess, successful);
       xerrno = errno;
       if (res == 1) {
@@ -873,6 +957,9 @@ int proxy_forward_get_method(const char *method) {
 
   } else if (strcasecmp(method, "proxyuser@host,user") == 0) {
     return PROXY_FORWARD_METHOD_PROXY_USER_WITH_PROXY_AUTH;
+
+  } else if (strcasecmp(method, "user@sni") == 0) {
+    return PROXY_FORWARD_METHOD_USER_SNI_NO_PROXY_AUTH;
   }
 
   errno = ENOENT;

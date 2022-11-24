@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy forward-proxy API
- * Copyright (c) 2012-2016 TJ Saunders
+ * Copyright (c) 2012-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -48,6 +48,7 @@ int proxy_forward_handle_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
 #define PROXY_FORWARD_METHOD_USER_WITH_PROXY_AUTH		1
 #define PROXY_FORWARD_METHOD_USER_NO_PROXY_AUTH			2
 #define PROXY_FORWARD_METHOD_PROXY_USER_WITH_PROXY_AUTH		3
+#define PROXY_FORWARD_METHOD_USER_SNI_NO_PROXY_AUTH		4
 
 /* Return the method ID for the given string, or -1 if the given method
  * is not recognized/supported.
