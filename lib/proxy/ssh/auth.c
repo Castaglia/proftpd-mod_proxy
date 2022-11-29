@@ -61,6 +61,8 @@ static int dispatch_user_cmd(pool *p, const char *orig_user,
   user_cmd->cmd_class = CL_AUTH|CL_SSH;
   user_cmd->arg = (char *) orig_user;
 
+  pr_response_set_pool(user_cmd->pool);
+
   /* Dispatch these as PRE_CMDs, so that mod_delay's tactics can be used
    * to ameliorate any timing-based attacks.
    */
@@ -71,6 +73,8 @@ static int dispatch_user_cmd(pool *p, const char *orig_user,
 
     dispatch_cmd_err(user_cmd);
     destroy_pool(user_cmd->pool);
+    pr_response_set_pool(NULL);
+
     return -1;
   }
 
@@ -84,6 +88,8 @@ static int dispatch_user_cmd(pool *p, const char *orig_user,
   pr_response_clear(&resp_list);
 
   destroy_pool(user_cmd->pool);
+  pr_response_set_pool(NULL);
+
   return 0;
 }
 
@@ -93,6 +99,8 @@ static int dispatch_pass_cmd(pool *p, int success) {
   pass_cmd = pr_cmd_alloc(p, 1, pstrdup(p, C_PASS));
   pass_cmd->cmd_class = CL_AUTH|CL_SSH;
   pass_cmd->arg = pstrdup(pass_cmd->pool, "(hidden)");
+
+  pr_response_set_pool(pass_cmd->pool);
 
   if (success == TRUE) {
     pr_cmd_dispatch_phase(pass_cmd, POST_CMD, 0);
@@ -104,7 +112,9 @@ static int dispatch_pass_cmd(pool *p, int success) {
   }
 
   pr_response_clear(&resp_list);
+
   destroy_pool(pass_cmd->pool);
+  pr_response_set_pool(NULL);
   return 0;
 }
 

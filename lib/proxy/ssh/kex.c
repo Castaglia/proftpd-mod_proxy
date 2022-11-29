@@ -1872,7 +1872,6 @@ static void destroy_kex(struct proxy_ssh_kex *kex) {
 
     if (kex->pool != NULL) {
       destroy_pool(kex->pool);
-      kex->pool = NULL;
     }
   }
 
@@ -3207,7 +3206,7 @@ static int read_dh_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  kex->h = palloc(kex_pool, hlen);
+  kex->h = palloc(kex->pool, hlen);
   kex->hlen = hlen;
   memcpy((char *) kex->h, h, kex->hlen);
 
@@ -3585,7 +3584,7 @@ static int read_dh_gex_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  kex->h = palloc(kex_pool, hlen);
+  kex->h = palloc(kex->pool, hlen);
   kex->hlen = hlen;
   memcpy((char *) kex->h, h, kex->hlen);
 
@@ -4024,7 +4023,7 @@ static int read_ecdh_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  kex->h = palloc(kex_pool, hlen);
+  kex->h = palloc(kex->pool, hlen);
   kex->hlen = hlen;
   memcpy((char *) kex->h, h, kex->hlen);
 
@@ -4334,7 +4333,7 @@ static int read_kexrsa_done(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  kex->h = palloc(kex_pool, hlen);
+  kex->h = palloc(kex->pool, hlen);
   kex->hlen = hlen;
   memcpy((char *) kex->h, h, kex->hlen);
 
@@ -4549,7 +4548,7 @@ static int read_curve25519_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  kex->h = palloc(kex_pool, hlen);
+  kex->h = palloc(kex->pool, hlen);
   kex->hlen = hlen;
   memcpy((char *) kex->h, h, kex->hlen);
 
@@ -4665,7 +4664,10 @@ static int read_curve448_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, pub_keylen,
+  /* Note that we use `kex->pool` here, since we are storing the key in the
+   * `kex` structure.
+   */
+  proxy_ssh_msg_read_data(kex->pool, &buf, &buflen, pub_keylen,
     &(kex->server_curve448_pub_key));
   if (kex->server_curve448_pub_key == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -4684,7 +4686,7 @@ static int read_curve448_reply(struct proxy_ssh_packet *pkt,
   }
 
   /* Compute the shared secret */
-  buf2 = palloc(kex_pool, CURVE448_SIZE);
+  buf2 = palloc(kex->pool, CURVE448_SIZE);
 
   pr_trace_msg(trace_channel, 12, "computing Curve448 key");
   res = get_curve448_shared_key((unsigned char *) buf2,
@@ -4743,7 +4745,7 @@ static int read_curve448_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  kex->h = palloc(kex_pool, hlen);
+  kex->h = palloc(kex->pool, hlen);
   kex->hlen = hlen;
   memcpy((char *) kex->h, h, kex->hlen);
 
