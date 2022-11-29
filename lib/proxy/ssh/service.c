@@ -48,8 +48,8 @@ int proxy_ssh_service_handle(struct proxy_ssh_packet *pkt,
   proxy_ssh_packet_get_poll_attempts(&poll_attempts);
   proxy_ssh_packet_get_poll_timeout(&poll_timeout_secs, &poll_timeout_ms);
 
-  proxy_ssh_packet_set_poll_attempts(1);
-  proxy_ssh_packet_set_poll_timeout(0, 50);
+  proxy_ssh_packet_set_poll_attempts(3);
+  proxy_ssh_packet_set_poll_timeout(0, 250);
 
   while (TRUE) {
     pr_signals_handle();

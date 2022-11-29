@@ -129,8 +129,8 @@ static struct proxy_ssh_packet *read_auth_packet(pool *p,
   proxy_ssh_packet_get_poll_attempts(&poll_attempts);
   proxy_ssh_packet_get_poll_timeout(&poll_timeout_secs, &poll_timeout_ms);
 
-  proxy_ssh_packet_set_poll_attempts(1);
-  proxy_ssh_packet_set_poll_timeout(0, 50);
+  proxy_ssh_packet_set_poll_attempts(3);
+  proxy_ssh_packet_set_poll_timeout(0, 250);
 
   pkt = proxy_ssh_packet_create(p);
   res = proxy_ssh_packet_read(proxy_sess->backend_ctrl_conn, pkt);

@@ -4469,7 +4469,7 @@ static int read_curve25519_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, pub_keylen,
+  proxy_ssh_msg_read_data(kex->pool, &buf, &buflen, pub_keylen,
     &(kex->server_curve25519_pub_key));
   if (kex->server_curve25519_pub_key == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -4489,7 +4489,7 @@ static int read_curve25519_reply(struct proxy_ssh_packet *pkt,
   }
 
   /* Compute the shared secret */
-  buf2 = palloc(kex_pool, CURVE25519_SIZE);
+  buf2 = palloc(kex->pool, CURVE25519_SIZE);
 
   pr_trace_msg(trace_channel, 12, "computing Curve25519 key");
   res = get_curve25519_shared_key((unsigned char *) buf2,
