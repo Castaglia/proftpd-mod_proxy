@@ -91,9 +91,12 @@ static uint8_t proxy_protocol_v2_sig[PROXY_PROTOCOL_V2_SIGLEN] = "\x0D\x0A\x0D\x
 #define PROXY_PROTOCOL_V2_TLV_ALPN		0x01
 #define PROXY_PROTOCOL_V2_TLV_AUTHORITY		0x02
 #define PROXY_PROTOCOL_V2_TLV_UNIQUE_ID		0x05
-#define PROXY_PROTOCOL_V2_TLV_SSL		0x20
-#define PROXY_PROTOCOL_V2_TLV_SSL_VERSION	0x21
-#define PROXY_PROTOCOL_V2_TLV_SSL_CIPHER	0x23
+#define PROXY_PROTOCOL_V2_TLV_TLS		0x20
+#define PROXY_PROTOCOL_V2_TLV_TLS_VERSION	0x21
+#define PROXY_PROTOCOL_V2_TLV_TLS_CN		0x22
+#define PROXY_PROTOCOL_V2_TLV_TLS_CIPHER	0x23
+#define PROXY_PROTOCOL_V2_TLV_TLS_SIG_ALGO	0x24
+#define PROXY_PROTOCOL_V2_TLV_TLS_KEY_ALGO	0x25
 
 static const char *trace_channel = "proxy.conn";
 
@@ -1222,7 +1225,7 @@ static uint16_t add_v2_tlv_ssl(pool *p, struct iovec *v2_iov,
   void *tlv_val;
   size_t tlv_valsz = 0, valsz = 0;
   unsigned int niov;
-  const char *proto, *tls_version, *tls_cipher;
+  const char *proto, *tls_version, *tls_common_name, *tls_cipher, *tls_sig_algo, *tls_key_algo;
 
   /* Only add the SSL TLV if FTPS is in use. */
   proto = pr_session_get_protocol(0);
@@ -1231,12 +1234,15 @@ static uint16_t add_v2_tlv_ssl(pool *p, struct iovec *v2_iov,
   }
 
   tlv_type = pcalloc(p, sizeof(uint8_t));
-  *tlv_type = PROXY_PROTOCOL_V2_TLV_SSL;
+  *tlv_type = PROXY_PROTOCOL_V2_TLV_TLS;
 
-  /* This is more complicated, due to the nested nature of SSL sub-TLVs. */
+  /* This is more complicated, due to the nested nature of TLS sub-TLVs. */
 
   tls_version = pr_table_get(session.notes, "TLS_PROTOCOL", NULL);
+  tls_common_name = pr_table_get(session.notes, "TLS_CLIENT_S_DN_CN", NULL);
   tls_cipher = pr_table_get(session.notes, "TLS_CIPHER", NULL);
+  tls_sig_algo = pr_table_get(session.notes, "TLS_CLIENT_A_SIG", NULL);
+  tls_key_algo = pr_table_get(session.notes, "TLS_CLIENT_A_KEY", NULL);
 
   valsz = sizeof(client) + sizeof(verify);
 
@@ -1244,20 +1250,42 @@ static uint16_t add_v2_tlv_ssl(pool *p, struct iovec *v2_iov,
     valsz += (sizeof(uint8_t) + sizeof(uint16_t) + strlen(tls_version));
   }
 
+  if (tls_common_name != NULL) {
+    valsz += (sizeof(uint8_t) + sizeof(uint16_t) + strlen(tls_common_name));
+  }
+
   if (tls_cipher != NULL) {
     valsz += (sizeof(uint8_t) + sizeof(uint16_t) + strlen(tls_cipher));
+  }
+
+  if (tls_sig_algo != NULL) {
+    valsz += (sizeof(uint8_t) + sizeof(uint16_t) + strlen(tls_sig_algo));
+  }
+
+  if (tls_key_algo != NULL) {
+    valsz += (sizeof(uint8_t) + sizeof(uint16_t) + strlen(tls_key_algo));
   }
 
   tlv_ptr = tlv_val = pcalloc(p, valsz);
   tlv_valsz = valsz;
 
-  /* Client field: always 0x01, until we support client certs. */
+  /* Client field: 0x01 to indicate TLS was used, 0x02 when a client cert
+   * was also presented.
+   */
   client = 0x01;
+  if (tls_common_name != NULL) {
+    client = 0x02;
+  }
+
   memcpy(tlv_ptr, &client, sizeof(client));
   tlv_ptr += sizeof(client);
 
-  /* Verify field: always non-zero, until we support client certs. */
+  /* Verify field; 0 if a client cert was presented, otherwise non-zero. */
   verify = htonl(1);
+  if (tls_common_name != NULL) {
+    verify = 0;
+  }
+
   memcpy(tlv_ptr, &verify, sizeof(verify));
   tlv_ptr += sizeof(verify);
 
@@ -1266,7 +1294,7 @@ static uint16_t add_v2_tlv_ssl(pool *p, struct iovec *v2_iov,
     uint16_t tlv_sublen;
     size_t tlv_subvalsz;
 
-    tlv_subtype = PROXY_PROTOCOL_V2_TLV_SSL_VERSION;
+    tlv_subtype = PROXY_PROTOCOL_V2_TLV_TLS_VERSION;
     tlv_subvalsz = strlen(tls_version);
     tlv_sublen = htons(tlv_subvalsz);
 
@@ -1280,12 +1308,31 @@ static uint16_t add_v2_tlv_ssl(pool *p, struct iovec *v2_iov,
     tlv_ptr += tlv_subvalsz;
   }
 
+  if (tls_common_name != NULL) {
+    uint8_t tlv_subtype;
+    uint16_t tlv_sublen;
+    size_t tlv_subvalsz;
+
+    tlv_subtype = PROXY_PROTOCOL_V2_TLV_TLS_CN;
+    tlv_subvalsz = strlen(tls_common_name);
+    tlv_sublen = htons(tlv_subvalsz);
+
+    memcpy(tlv_ptr, &tlv_subtype, sizeof(tlv_subtype));
+    tlv_ptr += sizeof(tlv_subtype);
+
+    memcpy(tlv_ptr, &tlv_sublen, sizeof(tlv_sublen));
+    tlv_ptr += sizeof(tlv_sublen);
+
+    memcpy(tlv_ptr, tls_common_name, tlv_subvalsz);
+    tlv_ptr += tlv_subvalsz;
+  }
+
   if (tls_cipher != NULL) {
     uint8_t tlv_subtype;
     uint16_t tlv_sublen;
     size_t tlv_subvalsz;
 
-    tlv_subtype = PROXY_PROTOCOL_V2_TLV_SSL_CIPHER;
+    tlv_subtype = PROXY_PROTOCOL_V2_TLV_TLS_CIPHER;
     tlv_subvalsz = strlen(tls_cipher);
     tlv_sublen = htons(tlv_subvalsz);
 
@@ -1296,6 +1343,44 @@ static uint16_t add_v2_tlv_ssl(pool *p, struct iovec *v2_iov,
     tlv_ptr += sizeof(tlv_sublen);
 
     memcpy(tlv_ptr, tls_cipher, tlv_subvalsz);
+    tlv_ptr += tlv_subvalsz;
+  }
+
+  if (tls_sig_algo != NULL) {
+    uint8_t tlv_subtype;
+    uint16_t tlv_sublen;
+    size_t tlv_subvalsz;
+
+    tlv_subtype = PROXY_PROTOCOL_V2_TLV_TLS_SIG_ALGO;
+    tlv_subvalsz = strlen(tls_sig_algo);
+    tlv_sublen = htons(tlv_subvalsz);
+
+    memcpy(tlv_ptr, &tlv_subtype, sizeof(tlv_subtype));
+    tlv_ptr += sizeof(tlv_subtype);
+
+    memcpy(tlv_ptr, &tlv_sublen, sizeof(tlv_sublen));
+    tlv_ptr += sizeof(tlv_sublen);
+
+    memcpy(tlv_ptr, tls_sig_algo, tlv_subvalsz);
+    tlv_ptr += tlv_subvalsz;
+  }
+
+  if (tls_key_algo != NULL) {
+    uint8_t tlv_subtype;
+    uint16_t tlv_sublen;
+    size_t tlv_subvalsz;
+
+    tlv_subtype = PROXY_PROTOCOL_V2_TLV_TLS_KEY_ALGO;
+    tlv_subvalsz = strlen(tls_sig_algo);
+    tlv_sublen = htons(tlv_subvalsz);
+
+    memcpy(tlv_ptr, &tlv_subtype, sizeof(tlv_subtype));
+    tlv_ptr += sizeof(tlv_subtype);
+
+    memcpy(tlv_ptr, &tlv_sublen, sizeof(tlv_sublen));
+    tlv_ptr += sizeof(tlv_sublen);
+
+    memcpy(tlv_ptr, tls_key_algo, tlv_subvalsz);
     tlv_ptr += tlv_subvalsz;
   }
 
