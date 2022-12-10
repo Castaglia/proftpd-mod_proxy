@@ -1216,7 +1216,7 @@ static uint16_t add_v2_tlv_authority(pool *p, struct iovec *v2_iov,
   return total_len;
 }
 
-static uint16_t add_v2_tlv_ssl(pool *p, struct iovec *v2_iov,
+static uint16_t add_v2_tlv_tls(pool *p, struct iovec *v2_iov,
     unsigned int *v2_niov) {
   uint8_t *tlv_type, client;
   uint16_t *tlv_len, total_len;
@@ -1551,7 +1551,7 @@ int proxy_conn_send_proxy_v2(pool *p, conn_t *conn) {
       v2_len += tlv_len;
     }
 
-    tlv_len = add_v2_tlv_ssl(tlv_pool, v2_iov, &v2_niov);
+    tlv_len = add_v2_tlv_tls(tlv_pool, v2_iov, &v2_niov);
     if (tlv_len > 0) {
       v2_len += tlv_len;
     }
