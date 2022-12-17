@@ -1,8 +1,8 @@
 
 FTP to SFTP (#1):
 
-  http://www.bitvise.com/ftp-bridge
-  http://www.enterprisedt.com/products/completeftp/doc/guide/html/gateway.html
+  https://www.bitvise.com/ftp-bridge
+  https://enterprisedt.com/products/completeftp/doc/guide/html/gateway.html
 
   mindterm source (Java, FTPOverSFTP bridge code for mapping)
 
@@ -35,15 +35,17 @@ FTP commands have no SFTP request equivalents.
   EPRT
   PASV
   EPSV
-    n/a
+    this will be the most interesting; translating SFTP data transfers into
+    frontend FTP transfers.
 
   TYPE
     n/a (binary only?)
 
   STRU
-    n/a
+    n/a; always F
 
   MODE
+    n/a; always S
 
   RANG
   REST
@@ -57,7 +59,8 @@ FTP commands have no SFTP request equivalents.
     OPEN + WRITE + CLOSE
 
   STOU
-    ???
+    OPEN + WRITE + CLOSE; have mod_proxy generate the unique name for the
+    backend SFTP file?  Use O_CREAT|O_EXCL to force uniqueness, I guess...
 
   ALLO
     n/a
@@ -108,13 +111,17 @@ FTP commands have no SFTP request equivalents.
     STAT
 
   SYST
+    n/a; always "215 UNIX Type: L8"
 
   STAT
     STAT
 
   HELP
+    n/a?
 
   NOOP
+    no backend equivalent; handle in proxy
+
   FEAT
     n/a (SFTP extensions?)
 
@@ -159,21 +166,20 @@ SSH banner...
     Once that's done, we need to determine how to lookup a new Protocol object,
     and when do it, and when to register it.  For cases where mod_proxy
     knows the backend URL at connect time, this is easier.   What about for
-    the auth-time URLs?
+    the auth-time (PerUser, PerGroup) URLs?
 
-    Protocol API:
+    FTP Implementation API:
       Suitable for plugging into mod_proxy's CMD C_ANY handler, *and*
-      its POST_CMD C_PROT handler.  Thus the API for the given protocol
+      its POST_CMD C_PROT handler.  Thus the API for the given impl
       input should be something like:
 
-        (handle_request)(void *req, int phase);
+        MODRET (handle_cmd)(pool *p, cmd_rec *cmd, int cmd_phase);
 
-      By using a `void *`, we can then cast back to `cmd_rec`, or
-      (in the future) an SSH packet.  And the `phase` parameter tells the
-      Protocol object at just which lifecycle phase mod_proxy is in, for
-      that request.  (Consider, for example, a logging-only Protocol object,
-      to demonstrate the concept?)
+      Consider, for example, a logging-only Implementation object, to
+      demonstrate the concept?
 
+    Note that this Impl API works for FTP, but NOT for SSH; SSH packets
+    are not handled by the C_ANY handler.
 
 SFTP to FTP (#2):
 
