@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS implementation
- * Copyright (c) 2015-2021 TJ Saunders
+ * Copyright (c) 2015-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -337,7 +337,7 @@ static void tls_fatal(long error, int lineno) {
 }
 
 static void tls_end_sess(SSL *ssl, int strms, int flags) {
-  int lineno, res = 0;
+  int lineno = 0, res = 0;
   int shutdown_state;
   BIO *rbio, *wbio;
   int bread, bwritten;
@@ -466,6 +466,9 @@ static void tls_end_sess(SSL *ssl, int strms, int flags) {
         break;
 
       default:
+        if (lineno == 0) {
+          lineno = __LINE__;
+        }
         tls_fatal(err_code, lineno);
         break;
     }
@@ -1696,6 +1699,13 @@ static int netio_close_cb(pr_netio_stream_t *nstrm) {
       int remote_port;
 
       proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+      if (proxy_sess == NULL) {
+        /* Unlikely to occur. */
+        pr_trace_msg(trace_channel, 1, "missing proxy session unexpectedly");
+        errno = EINVAL;
+        return -1;
+      }
+
       host_name = proxy_conn_get_host(proxy_sess->dst_pconn);
       remote_port = proxy_conn_get_port(proxy_sess->dst_pconn);
 
@@ -1793,6 +1803,12 @@ static int netio_postopen_cb(pr_netio_stream_t *nstrm) {
     }
 
     proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+    if (proxy_sess == NULL) {
+      /* Unlikely to occur. */
+      pr_trace_msg(trace_channel, 1, "missing proxy session unexpectedly");
+      errno = EINVAL;
+      return -1;
+    }
 
     /* TODO: Handle SSCN_MODE CLIENT (connect), SERVER (accept) */
 

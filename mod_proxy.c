@@ -3745,7 +3745,7 @@ MODRET proxy_epsv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   memset(resp_msg, '\0', sizeof(resp_msg));
   snprintf(resp_msg, sizeof(resp_msg)-1, "Entering Extended Passive Mode (%s)",
     epsv_msg);
-  resp->msg = resp_msg;
+  resp->msg = pstrdup(cmd->tmp_pool, resp_msg);
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
     resp, resp_nlines);
@@ -3888,7 +3888,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   memset(resp_msg, '\0', sizeof(resp_msg));
   snprintf(resp_msg, sizeof(resp_msg)-1, "Entering Passive Mode (%s).",
     pasv_msg);
-  resp->msg = resp_msg;
+  resp->msg = pstrdup(cmd->tmp_pool, resp_msg);
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,
     resp, resp_nlines);
@@ -4223,7 +4223,7 @@ static void proxy_login_failed(void) {
 
 MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *block_responses) {
-  int successful = FALSE, res = 0, xerrno;
+  int successful = FALSE, res = 0, xerrno = 0;
 
   /* Remove any exit handlers installed by mod_xfer.  We do this here,
    * rather than in sess_init, since our sess_init is called BEFORE the
@@ -4657,6 +4657,12 @@ MODRET proxy_any(cmd_rec *cmd) {
 
   proxy_sess = (struct proxy_session *) pr_table_get(session.notes,
     "mod_proxy.proxy-session", NULL);
+  if (proxy_sess == NULL) {
+    /* Unlikely to occur. */
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION, "%s",
+      "missing proxy session unexpectedly");
+    return PR_DECLINED(cmd);
+  }
 
   /* Backend servers can send "asynchronous" messages to us; we need to check
    * for them.
@@ -5193,10 +5199,10 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
 }
 
 static void proxy_restart_ev(const void *event_data, void *user_data) {
-  proxy_forward_free(proxy_pool);
-  proxy_reverse_free(proxy_pool);
-  proxy_ssh_free(proxy_pool);
-  proxy_tls_free(proxy_pool);
+  (void) proxy_forward_free(proxy_pool);
+  (void) proxy_reverse_free(proxy_pool);
+  (void) proxy_ssh_free(proxy_pool);
+  (void) proxy_tls_free(proxy_pool);
 
   /* Do NOT close the database connection/handle here; we may have session
    * processes that have their own handles to that same file.
@@ -5257,10 +5263,10 @@ static void proxy_sess_reinit_ev(const void *event_data, void *user_data) {
 static void proxy_shutdown_ev(const void *event_data, void *user_data) {
   int res;
 
-  proxy_forward_free(proxy_pool);
-  proxy_reverse_free(proxy_pool);
-  proxy_ssh_free(proxy_pool);
-  proxy_tls_free(proxy_pool);
+  (void) proxy_forward_free(proxy_pool);
+  (void) proxy_reverse_free(proxy_pool);
+  (void) proxy_ssh_free(proxy_pool);
+  (void) proxy_tls_free(proxy_pool);
 
   res = proxy_db_close(proxy_pool, NULL);
   if (res < 0) {
@@ -5268,7 +5274,7 @@ static void proxy_shutdown_ev(const void *event_data, void *user_data) {
       "error closing database: %s", strerror(errno));
   }
 
-  proxy_db_free();
+  (void) proxy_db_free();
 
 #if defined(HAVE_OSSL_PROVIDER_LOAD_OPENSSL)
   if (legacy_provider != NULL) {

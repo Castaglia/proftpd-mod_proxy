@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH interoperability
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -286,11 +286,8 @@ int proxy_ssh_interop_handle_version(pool *p,
 }
 
 int proxy_ssh_interop_supports_feature(int feat_flag) {
-  switch (feat_flag) {
-    default:
-      if (!(default_flags & feat_flag)) {
-        return FALSE;
-      }
+  if (!(default_flags & feat_flag)) {
+    return FALSE;
   }
 
   return TRUE;

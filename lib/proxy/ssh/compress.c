@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH compression
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -462,51 +462,47 @@ int proxy_ssh_compress_write_data(struct proxy_ssh_packet *pkt) {
       stream->avail_out = sizeof(buf);
 
       zres = deflate(stream, Z_SYNC_FLUSH);
+      if (zres == Z_OK) {
+        copy_len = sizeof(buf) - stream->avail_out;
 
-      switch (zres) {
-        case Z_OK:
-          copy_len = sizeof(buf) - stream->avail_out;
+        /* Allocate more space for the data if necessary. */
+        if ((payload_len + copy_len) > payload_sz) {
+          uint32_t new_sz;
+          char *tmp;
 
-          /* Allocate more space for the data if necessary. */
-          if ((payload_len + copy_len) > payload_sz) {
-            uint32_t new_sz;
-            char *tmp;
+          new_sz = payload_sz;
+          while ((payload_len + copy_len) > new_sz) {
+            pr_signals_handle();
 
-            new_sz = payload_sz;
-            while ((payload_len + copy_len) > new_sz) {
-              pr_signals_handle();
-
-              /* Keep increasing the size until it is large enough. */
-              new_sz += payload_sz;
-            }
-
-            pr_trace_msg(trace_channel, 20,
-              "allocating larger payload size (%lu bytes) for "
-              "deflated data (%lu bytes) plus existing payload %lu bytes",
-              (unsigned long) new_sz, (unsigned long) copy_len,
-              (unsigned long) payload_len);
-
-            tmp = palloc(sub_pool, new_sz);
-            memcpy(tmp, payload, payload_len);
-            payload = tmp;
-            payload_sz = new_sz;
+            /* Keep increasing the size until it is large enough. */
+            new_sz += payload_sz;
           }
 
-          memcpy(payload + payload_len, buf, copy_len);
-          payload_len += copy_len;
-
           pr_trace_msg(trace_channel, 20,
-            "deflated %lu bytes to %lu bytes",
-            (unsigned long) input_len, (unsigned long) copy_len);
+            "allocating larger payload size (%lu bytes) for "
+            "deflated data (%lu bytes) plus existing payload %lu bytes",
+            (unsigned long) new_sz, (unsigned long) copy_len,
+            (unsigned long) payload_len);
 
-          break;
+          tmp = palloc(sub_pool, new_sz);
+          memcpy(tmp, payload, payload_len);
+          payload = tmp;
+          payload_sz = new_sz;
+        }
 
-        default:
-          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "unhandled zlib error (%d) while compressing", zres);
-          destroy_pool(sub_pool);
-          errno = EIO;
-          return -1;
+        memcpy(payload + payload_len, buf, copy_len);
+        payload_len += copy_len;
+
+        pr_trace_msg(trace_channel, 20,
+          "deflated %lu bytes to %lu bytes",
+          (unsigned long) input_len, (unsigned long) copy_len);
+
+      } else {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "unhandled zlib error (%d) while compressing", zres);
+        destroy_pool(sub_pool);
+        errno = EIO;
+        return -1;
       }
     }
 

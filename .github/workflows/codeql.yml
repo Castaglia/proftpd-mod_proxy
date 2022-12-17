@@ -1,0 +1,91 @@
+name: CodeQL
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '**/*.md'
+      - '**/doc/*'
+  pull_request:
+    branches:
+      - master
+    paths-ignore:
+      - '**/*.md'
+      - '**/doc/*'
+  schedule:
+    - cron: "37 17 * * 2"
+
+jobs:
+  analyze:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: true
+      matrix:
+        language:
+          - cpp
+
+    steps:
+      - name: Checkout ProFTPD
+        uses: actions/checkout@v3
+        with:
+          repository: proftpd/proftpd
+
+      - name: Checkout mod_proxy
+        uses: actions/checkout@v3
+        with:
+          path: contrib/mod_proxy
+
+      - name: Install Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libhiredis-dev libsqlite3-dev libssl-dev libsodium-dev zlib1g-dev
+
+      - name: Configure
+        run: |
+          ./configure --enable-redis --with-modules=mod_sftp:mod_tls:mod_proxy
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: ${{ matrix.language }}
+          config-file: contrib/mod_proxy/.codeql.yml
+          queries: +security-and-quality
+          source-root: contrib/mod_proxy
+
+      - name: Build
+        run: |
+          make
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+        with:
+          category: "/language:${{ matrix.language }}"
+          checkout_path: contrib/mod_proxy
+          output: sarif-results
+          upload: false
+
+      - name: Filter CodeQL SARIF
+        uses: advanced-security/filter-sarif@v1
+        with:
+          patterns: |
+            -**/lib/proxy/dns.c:cpp/large-parameter
+            -**/lib/proxy/ssh.c:cpp/stack-address-escape
+            -**/lib/proxy/ssh/compress.c:cpp/stack-address-escape
+            -**/lib/proxy/ssh/packet.c:cpp/stack-address-escape
+            -**/lib/proxy/ssh/umac.c
+            -**/lib/proxy/ssh/umac128.c
+          input: "sarif-results/${{ matrix.language }}.sarif"
+          output: "sarif-results/${{ matrix.language }}.sarif"
+
+      - name: Upload CodeQL SARIF
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          checkout_path: contrib/mod_proxy
+          sarif_file: "sarif-results/${{ matrix.language }}.sarif"

@@ -143,6 +143,9 @@ conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
   }
 
   conn = pr_inet_create_conn(session.pool, -1, bind_addr, INPORT_ANY, TRUE);
+  if (conn == NULL) {
+    return NULL;
+  }
 
   reverse_dns = pr_netaddr_set_reverse_dns(ServerUseReverseDNS);
 

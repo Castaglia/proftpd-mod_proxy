@@ -1931,6 +1931,11 @@ int proxy_ssh_packet_handle(void *data) {
   int from_frontend = FALSE;
 
   proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+  if (proxy_sess == NULL) {
+    /* Unlikely to occur. */
+    errno = EPERM;
+    return -1;
+  }
 
   pkt = data;
 

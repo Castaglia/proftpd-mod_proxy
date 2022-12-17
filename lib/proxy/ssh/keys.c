@@ -3131,19 +3131,14 @@ static int deserialize_openssh_private_key(pool *p, const char *path,
    * it.  Ugh.  This "divide in half" hack only works for these keys where the
    * private and public key sizes are the same.
    */
-  switch (*key_type) {
-    case PROXY_SSH_KEY_ED448:
 #if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
-      if (secret_keylen > (CURVE448_SIZE + 1)) {
-        have_extra_public_key = TRUE;
-        secret_keylen /= 2;
-      }
-#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
-      break;
-
-    default:
-      break;
+  if (*key_type == PROXY_SSH_KEY_ED448) {
+    if (secret_keylen > (CURVE448_SIZE + 1)) {
+      have_extra_public_key = TRUE;
+      secret_keylen /= 2;
+    }
   }
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 
   len = proxy_ssh_msg_read_data(p, data, data_len, secret_keylen,
     &secret_key);

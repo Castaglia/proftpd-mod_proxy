@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP control conn routines
- * Copyright (c) 2012-2020 TJ Saunders
+ * Copyright (c) 2012-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -463,8 +463,8 @@ int proxy_ftp_ctrl_send_cmd(pool *p, conn_t *ctrl_conn, cmd_rec *cmd) {
 
     pr_trace_msg(trace_channel, 9,
       "proxied command '%s' from frontend to backend", display_str);
-    res = proxy_netio_printf(ctrl_conn->outstrm, "%s %s\r\n", cmd->argv[0],
-      cmd->arg);
+    res = proxy_netio_printf(ctrl_conn->outstrm, "%s %s\r\n",
+      (char *) cmd->argv[0], cmd->arg);
 
   } else {
     pr_trace_msg(trace_channel, 9,
