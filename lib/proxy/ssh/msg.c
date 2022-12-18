@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH message format
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -44,6 +44,10 @@ static conn_t *get_backend_conn(void) {
   const struct proxy_session *proxy_sess;
 
   proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+  if (proxy_sess == NULL) {
+    return NULL;
+  }
+
   return proxy_sess->backend_ctrl_conn;
 }
 

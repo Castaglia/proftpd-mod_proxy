@@ -168,7 +168,13 @@ const pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *p, const char *msg,
    * We can't predict where the expected address/port numbers start in the
    * string, so start from the beginning.
    */
+
+  h1 = h2 = h3 = h4 = p1 = p2 = 0;
   for (ptr = msg; *ptr; ptr++) {
+    pr_signals_handle();
+
+    h1 = h2 = h3 = h4 = p1 = p2 = 0;
+
     if (sscanf(ptr, "%u,%u,%u,%u,%u,%u", &h1, &h2, &h3, &h4, &p1, &p2) == 6) {
       valid_fmt = TRUE;
       break;

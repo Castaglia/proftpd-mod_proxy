@@ -121,6 +121,12 @@ int proxy_conn_connect_timeout_cb(CALLBACK_FRAME) {
   server_addr = pr_table_get(session.notes, "mod_proxy.proxy-connect-address",
     NULL);
 
+  if (proxy_sess == NULL ||
+      server_addr == NULL) {
+    /* Do not restart the timer. */
+    return 0;
+  }
+
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
     "timed out connecting to %s:%d after %d %s",
     pr_netaddr_get_ipstr(server_addr), ntohs(pr_netaddr_get_port(server_addr)),

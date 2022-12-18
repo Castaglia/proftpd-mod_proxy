@@ -2861,6 +2861,12 @@ static int handle_server_hostkey(pool *p,
   uint32_t stored_hostkey_datalen = 0;
 
   proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
+  if (proxy_sess == NULL) {
+    /* Unlikely to occur. */
+    errno = EINVAL;
+    return -1;
+  }
+
   backend_uri = proxy_conn_get_uri(proxy_sess->dst_pconn);
   vhost_id = main_server->sid;
 

@@ -234,7 +234,7 @@ static int init_mac(pool *p, struct proxy_ssh_mac *mac, HMAC_CTX *hmac_ctx,
 
 static int get_mac(struct proxy_ssh_packet *pkt, struct proxy_ssh_mac *mac,
     HMAC_CTX *hmac_ctx, struct umac_ctx *umac_ctx, int etm_mac, int flags) {
-  unsigned char *mac_data;
+  unsigned char *mac_data = NULL;
   unsigned char *buf, *ptr;
   uint32_t buflen, bufsz = 0, mac_len = 0, len = 0;
 

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP data transfer routines
- * Copyright (c) 2013-2021 TJ Saunders
+ * Copyright (c) 2013-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -415,7 +415,7 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
       }
 
       if (pr_cmd_cmp(cmd, PR_CMD_EPSV_ID) == 0) {
-        int epsv_supported = TRUE;
+        int epsv_supported = FALSE;
 
         if (pr_table_get(proxy_sess->backend_features, C_EPSV, NULL) == NULL) {
           /* If the remote host does not mention EPSV in its features, fall back

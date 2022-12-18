@@ -931,7 +931,9 @@ int proxy_ssh_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
       ssh_ssh2_kex_completed_ev, proxy_sess);
   }
 
-  proxy_ssh_auth_sess_init(p, proxy_sess);
+  if (proxy_ssh_auth_sess_init(p, proxy_sess) < 0) {
+    return -1;
+  }
 #endif /* PR_USE_OPENSSL */
   return 0;
 }
