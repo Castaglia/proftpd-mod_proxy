@@ -78,7 +78,9 @@ jobs:
             -**/lib/proxy/dns.c:cpp/large-parameter
             -**/lib/proxy/ssh.c:cpp/stack-address-escape
             -**/lib/proxy/ssh/compress.c:cpp/stack-address-escape
+            -**/lib/proxy/ssh/compress.c:cpp/uncontrolled-allocation-size
             -**/lib/proxy/ssh/packet.c:cpp/stack-address-escape
+            -**/lib/proxy/ssh/packet.c:cpp/uncontrolled-allocation-size
             -**/lib/proxy/ssh/umac.c
             -**/lib/proxy/ssh/umac128.c
           input: "sarif-results/${{ matrix.language }}.sarif"

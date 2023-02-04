@@ -1105,14 +1105,14 @@ EOC
   if ($pid) {
     eval {
       for (my $i = 0; $i < $nbackends+1; $i++) {
-        sleep(2);
-        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 0);
+        # Allow for server startup
+        sleep(3);
+        my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 2);
         $client->login($setup->{user}, $setup->{passwd});
         ftp_list($self, $client, 0);
         $client->quit();
       }
     };
-
     if ($@) {
       $ex = $@;
     }

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH packet IO
- * Copyright (c) 2021-2022 TJ Saunders
+ * Copyright (c) 2021-2023 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1082,6 +1082,48 @@ static void reset_timers(void) {
   }
 }
 
+static int check_packet_lengths(conn_t *conn, struct proxy_ssh_packet *pkt) {
+  if (pkt->packet_len < 5) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "packet length too short (%lu), less than minimum packet length (5)",
+      (unsigned long) pkt->packet_len);
+    read_packet_discard(conn);
+    return -1;
+  }
+
+  if (pkt->packet_len > PROXY_SSH_MAX_PACKET_LEN) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "packet length too long (%lu), exceeds maximum packet length (%lu)",
+      (unsigned long) pkt->packet_len,
+      (unsigned long) PROXY_SSH_MAX_PACKET_LEN);
+    read_packet_discard(conn);
+    return -1;
+  }
+
+  /* Per Section 6 of RFC4253, the minimum padding length is 4, the
+   * maximum padding length is 255.
+   */
+
+  if (pkt->padding_len < PROXY_SSH_MIN_PADDING_LEN) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "padding length too short (%u), less than minimum padding length (%u)",
+      (unsigned int) pkt->padding_len,
+      (unsigned int) PROXY_SSH_MIN_PADDING_LEN);
+    read_packet_discard(conn);
+    return -1;
+  }
+
+  if (pkt->padding_len > pkt->packet_len) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "padding length too long (%u), exceeds packet length (%lu)",
+      (unsigned int) pkt->padding_len, (unsigned long) pkt->packet_len);
+    read_packet_discard(conn);
+    return -1;
+  }
+
+  return 0;
+}
+
 int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
   unsigned char buf[PROXY_SSH_MAX_PACKET_LEN];
   size_t buflen, bufsz = PROXY_SSH_MAX_PACKET_LEN, offset = 0, auth_len = 0;
@@ -1107,6 +1149,8 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
 
   while (TRUE) {
     uint32_t encrypted_datasz, req_blocksz;
+    unsigned char *buf2 = NULL;
+    size_t buflen2 = 0, bufsz2 = 0;
 
     pr_signals_handle();
 
@@ -1152,6 +1196,10 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
       pr_trace_msg(trace_channel, 20, "SSH2 packet padding len = %u bytes",
         (unsigned int) pkt->padding_len);
 
+      if (check_packet_lengths(conn, pkt) < 0) {
+        return -1;
+      }
+
       pkt->payload_len = (pkt->packet_len - pkt->padding_len - 1);
     }
 
@@ -1174,9 +1222,6 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
       (unsigned long) pkt->mac_len);
 
     if (etm_mac == TRUE) {
-      unsigned char *buf2;
-      size_t buflen2, bufsz2;
-
       bufsz2 = buflen2 = pkt->mac_len;
       buf2 = pcalloc(pkt->pool, bufsz2);
 
@@ -1231,15 +1276,6 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
       pr_trace_msg(trace_channel, 20, "SSH2 packet padding len = %u bytes",
         (unsigned int) pkt->padding_len);
 
-      pkt->payload_len = (pkt->packet_len - pkt->padding_len - 1);
-      if (pkt->payload_len > 0) {
-        pkt->payload = pcalloc(pkt->pool, pkt->payload_len);
-        memmove(pkt->payload, buf2 + offset, pkt->payload_len);
-      }
-
-      pkt->padding = pcalloc(pkt->pool, pkt->padding_len);
-      memmove(pkt->padding, buf2 + offset + pkt->payload_len, pkt->padding_len);
-
     } else {
       memset(buf, 0, sizeof(buf));
 
@@ -1269,42 +1305,20 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
      * correct.
      */
 
-    if (pkt->packet_len < 5) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "packet length too short (%lu), less than minimum packet length (5)",
-        (unsigned long) pkt->packet_len);
-      read_packet_discard(conn);
+    if (check_packet_lengths(conn, pkt) < 0) {
       return -1;
     }
 
-    if (pkt->packet_len > PROXY_SSH_MAX_PACKET_LEN) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "packet length too long (%lu), exceeds maximum packet length (%lu)",
-        (unsigned long) pkt->packet_len,
-        (unsigned long) PROXY_SSH_MAX_PACKET_LEN);
-      read_packet_discard(conn);
-      return -1;
-    }
+    if (etm_mac == TRUE) {
+      pkt->payload_len = (pkt->packet_len - pkt->padding_len - 1);
 
-    /* Per Section 6 of RFC4253, the minimum padding length is 4, the
-     * maximum padding length is 255.
-     */
+      if (pkt->payload_len > 0) {
+        pkt->payload = pcalloc(pkt->pool, pkt->payload_len);
+        memmove(pkt->payload, buf2 + offset, pkt->payload_len);
+      }
 
-    if (pkt->padding_len < PROXY_SSH_MIN_PADDING_LEN) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "padding length too short (%u), less than minimum padding length (%u)",
-        (unsigned int) pkt->padding_len,
-        (unsigned int) PROXY_SSH_MIN_PADDING_LEN);
-      read_packet_discard(conn);
-      return -1;
-    }
-
-    if (pkt->padding_len > pkt->packet_len) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "padding length too long (%u), exceeds packet length (%lu)",
-        (unsigned int) pkt->padding_len, (unsigned long) pkt->packet_len);
-      read_packet_discard(conn);
-      return -1;
+      pkt->padding = pcalloc(pkt->pool, pkt->padding_len);
+      memmove(pkt->padding, buf2 + offset + pkt->payload_len, pkt->padding_len);
     }
 
     /* From RFC4253, Section 6:

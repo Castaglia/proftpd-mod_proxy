@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH agent support
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2023 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -167,8 +167,18 @@ static unsigned char *agent_request(pool *p, int fd, const char *path,
   buflen = res;
 
   len = proxy_ssh_msg_read_int(p, &buf, &buflen, resplen);
-
   bufsz = buflen = *resplen;
+
+  if (bufsz == 0 ||
+      bufsz > AGENT_REPLY_MAXSZ) {
+    pr_trace_msg(trace_channel, 1,
+      "response length (%lu) from SSH agent at '%s' exceeds maximum (%lu), "
+      "ignoring", (unsigned long) bufsz, path,
+      (unsigned long) AGENT_REPLY_MAXSZ);
+    errno = EIO;
+    return NULL;
+  }
+
   buf = ptr = palloc(p, bufsz);
 
   buflen = 0;
