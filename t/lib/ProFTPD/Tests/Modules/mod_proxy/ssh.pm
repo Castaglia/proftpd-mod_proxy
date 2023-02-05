@@ -856,7 +856,7 @@ EOC
   if ($pid) {
     eval {
       # Give the server a chance to start up
-      sleep(2);
+      sleep(3);
 
       my $ssh2 = Net::SSH2->new();
 
