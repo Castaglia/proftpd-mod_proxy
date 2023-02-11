@@ -1449,7 +1449,7 @@ sub proxy_reverse_backend_tls_implicit_login {
       # Give the server a chance to start up
       sleep(3);
 
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 3, 5);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 10, 15);
       $client->login($setup->{user}, $setup->{passwd});
       $client->quit();
     };
@@ -6587,7 +6587,7 @@ sub proxy_forward_backend_tls_implicit_login {
       # Give the server a chance to start up
       sleep(3);
 
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 3, 5);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 10, 15);
       $client->login('demo@test.rebex.net:990', 'password');
       $client->quit();
     };
