@@ -39,19 +39,19 @@ jobs:
 
     steps:
       - name: Checkout ProFTPD
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: proftpd/proftpd
           path: proftpd
 
       - name: Checkout mod_proxy_protocol source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: Castaglia/proftpd-mod_proxy_protocol
           path: mod_proxy_protocol
 
       - name: Checkout module source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           path: proftpd/contrib/mod_proxy
 
