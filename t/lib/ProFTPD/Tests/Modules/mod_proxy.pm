@@ -13163,7 +13163,7 @@ EOC
   if ($pid) {
     eval {
       sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 5);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -25418,20 +25418,19 @@ EOC
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      sleep(1);
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      # Allow for server startup
+      sleep(3);
+
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 5);
       my ($resp_code, $resp_msg) = $client->feat();
 
-      my $expected;
-
-      $expected = 211;
+      my $expected = 211;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
 
       $client->login("$user\@127.0.0.1:$vhost_port", $passwd);
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
