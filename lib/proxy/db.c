@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy database implementation
- * Copyright (c) 2015-2021 TJ Saunders
+ * Copyright (c) 2015-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1063,12 +1063,17 @@ int proxy_db_init(pool *p) {
     return -1;
   }
 
-#ifdef SQLITE_CONFIG_LOG
+#if defined(SQLITE_CONFIG_SINGLETHREAD)
+  /* Tell SQLite that we are not a multi-threaded application. */
+  sqlite3_config(SQLITE_CONFIG_SINGLETHREAD);
+#endif /* SQLITE_CONFIG_SINGLETHREAD */
+
+#if defined(SQLITE_CONFIG_LOG)
   /* Register an error logging callback with SQLite3. */
   sqlite3_config(SQLITE_CONFIG_LOG, db_err, NULL);
 #endif /* SQLITE_CONFIG_LOG */
 
-#ifdef SQLITE_CONFIG_SQLLOG
+#if defined(SQLITE_CONFIG_SQLLOG)
   sqlite3_config(SQLITE_CONFIG_SQLLOG, db_sql, NULL);
 #endif /* SQLITE_CONFIG_SQLLOG */
 
