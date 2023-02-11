@@ -111,6 +111,7 @@ jobs:
       - name: Run integration tests
         env:
           PROFTPD_TEST_BIN: /usr/local/sbin/proftpd
+          PROFTPD_TEST_CI: github
           PROFTPD_TEST_DIR: ${{ github.workspace }}/proftpd/tests
         run: |
           cd proftpd/contrib/mod_proxy

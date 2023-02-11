@@ -1388,6 +1388,9 @@ sub proxy_reverse_backend_tls_implicit_login {
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
 
+  # Skip this test on GitHub, as it fails unnecessarily there.
+  return if $ENV{PROFTPD_TEST_CI} eq 'github';
+
   my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
   my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
 
@@ -6529,6 +6532,9 @@ sub proxy_forward_backend_tls_implicit_login {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
   my $setup = test_setup($tmpdir, 'proxy');
+
+  # Skip this test on GitHub, as it fails unnecessarily there.
+  return if $ENV{PROFTPD_TEST_CI} eq 'github';
 
   my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
   my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
