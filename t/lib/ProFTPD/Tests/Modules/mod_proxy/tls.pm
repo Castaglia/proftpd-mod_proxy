@@ -7958,9 +7958,9 @@ EOC
   if ($pid) {
     eval {
       # Give the server a chance to start up
-      sleep(2);
+      sleep(3);
 
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, $use_port, 1);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, $use_port, 5);
       $client->login("$setup->{user}\@127.0.0.1:$vhost_port", $setup->{passwd});
 
       for (my $i = 0; $i < 3; $i++) {
