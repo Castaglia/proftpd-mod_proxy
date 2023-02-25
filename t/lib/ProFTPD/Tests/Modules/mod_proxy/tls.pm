@@ -108,6 +108,21 @@ my $TESTS = {
     test_class => [qw(forking mod_tls reverse)],
   },
 
+  proxy_reverse_frontend_backend_tls_list_port => {
+    order => ++$order,
+    test_class => [qw(forking mod_tls reverse)],
+  },
+
+  proxy_reverse_frontend_backend_tls_nlst_pasv_error_issue244 => {
+    order => ++$order,
+    test_class => [qw(bug forking mod_tls reverse)],
+  },
+
+  proxy_reverse_frontend_backend_tls_nlst_port_error_issue244 => {
+    order => ++$order,
+    test_class => [qw(bug forking mod_tls reverse)],
+  },
+
   proxy_reverse_frontend_backend_tls_abort => {
     order => ++$order,
     test_class => [qw(forking mod_tls reverse)],
@@ -1203,7 +1218,6 @@ EOC
       }
 
       my $client = Net::FTPSSL->new('127.0.0.1', %$client_opts);
-
       unless ($client) {
         die("Can't connect to FTPS server: " . IO::Socket::SSL::errstr());
       }
@@ -1217,7 +1231,7 @@ EOC
         die("LIST failed unexpectedly: " . $client->last_message() .
           "(" . IO::Socket::SSL::errstr() . ")");
       }
- 
+
       my $resp_msg = $client->last_message();
       $client->quit();
 
@@ -3351,38 +3365,7 @@ EOC
 sub proxy_reverse_frontend_backend_tls_list_pasv {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/proxy.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/proxy.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/proxy.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/proxy.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/proxy.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  my $setup = test_setup($tmpdir, 'proxy');
 
   my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
   my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
@@ -3390,7 +3373,8 @@ sub proxy_reverse_frontend_backend_tls_list_pasv {
   my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
   $vhost_port += 12;
 
-  my $proxy_config = get_reverse_proxy_config($tmpdir, $log_file, $vhost_port);
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
   $proxy_config->{ProxyTLSEngine} = 'auto';
   $proxy_config->{ProxyTLSCACertificateFile} = $ca_file;
 
@@ -3399,14 +3383,16 @@ sub proxy_reverse_frontend_backend_tls_list_pasv {
   }
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'DEFAULT:10 event:0 lock:0 netio:20 scoreboard:0 signal:0 proxy:20 proxy.netio:20 proxy.db:20 proxy.reverse:20 proxy.tls:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.ftp.sess:20 tls:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     SocketBindTight => 'on',
 
     IfModules => {
@@ -3414,7 +3400,7 @@ sub proxy_reverse_frontend_backend_tls_list_pasv {
 
       'mod_tls.c' => {
         TLSEngine => 'on',
-        TLSLog => $log_file,
+        TLSLog => $setup->{log_file},
         TLSRequired => 'on',
         TLSRSACertificateFile => $cert_file,
         TLSCACertificateFile => $ca_file,
@@ -3431,21 +3417,22 @@ sub proxy_reverse_frontend_backend_tls_list_pasv {
 
     Limit => {
       LOGIN => {
-        DenyUser => $user,
+        DenyUser => $setup->{user},
       },
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
-  if (open(my $fh, ">> $config_file")) {
+  if (open(my $fh, ">> $setup->{config_file}")) {
     print $fh <<EOC;
 <VirtualHost 127.0.0.1>
   Port $vhost_port
   ServerName "Real Server"
 
-  AuthUserFile $auth_user_file
-  AuthGroupFile $auth_group_file
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
   AuthOrder mod_auth_file.c
 
   AllowOverride off
@@ -3454,7 +3441,7 @@ sub proxy_reverse_frontend_backend_tls_list_pasv {
 
   <IfModule mod_tls.c>
     TLSEngine on
-    TLSLog $log_file
+    TLSLog $setup->{log_file}
     TLSRequired on
     TLSRSACertificateFile $cert_file
     TLSCACertificateFile $ca_file
@@ -3466,11 +3453,11 @@ sub proxy_reverse_frontend_backend_tls_list_pasv {
 </VirtualHost>
 EOC
     unless (close($fh)) {
-      die("Can't write $config_file: $!");
+      die("Can't write $setup->{config_file}: $!");
     }
 
   } else {
-    die("Can't open $config_file: $!");
+    die("Can't open $setup->{config_file}: $!");
   }
 
   require Net::FTPSSL;
@@ -3508,12 +3495,11 @@ EOC
       }
 
       my $client = Net::FTPSSL->new('127.0.0.1', %$client_opts);
-
       unless ($client) {
         die("Can't connect to FTPS server: " . IO::Socket::SSL::errstr());
       }
 
-      unless ($client->login($user, $passwd)) {
+      unless ($client->login($setup->{user}, $setup->{passwd})) {
         die("Can't login: " . $client->last_message());
       }
 
@@ -3522,7 +3508,7 @@ EOC
         die("LIST failed unexpectedly: " . $client->last_message() .
           "(" . IO::Socket::SSL::errstr() . ")");
       }
- 
+
       my $resp_msg = $client->last_message();
       my $expected = '226 Transfer complete';
       $self->assert($expected eq $resp_msg,
@@ -3554,7 +3540,7 @@ EOC
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh, 20) };
+    eval { server_wait($setup->{config_file}, $rfh, 20) };
     if ($@) {
       warn($@);
       exit 1;
@@ -3564,18 +3550,596 @@ EOC
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
+}
 
-    die($ex);
+sub proxy_reverse_frontend_backend_tls_list_port {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyTLSEngine} = 'auto';
+  $proxy_config->{ProxyTLSCACertificateFile} = $ca_file;
+
+  # For this test, we want to force the use of PORT for the backend data
+  # transfers.
+  $proxy_config->{ProxyDataTransferPolicy} = 'PORT';
+
+  if ($ENV{TEST_VERBOSE}) {
+    $proxy_config->{ProxyTLSOptions} = 'EnableDiags';
   }
 
-  unlink($log_file);
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'DEFAULT:10 event:0 lock:0 netio:20 scoreboard:0 signal:0 proxy:20 proxy.netio:20 proxy.db:20 proxy.reverse:20 proxy.tls:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.ftp.sess:20 tls:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_tls.c' => {
+        TLSEngine => 'on',
+        TLSLog => $setup->{log_file},
+        TLSRequired => 'on',
+        TLSRSACertificateFile => $cert_file,
+        TLSCACertificateFile => $ca_file,
+        TLSOptions => 'NoSessionReuseRequired EnableDiags',
+        TLSTimeoutHandshake => 5,
+        TLSVerifyClient => 'off',
+        TLSVerifyServer => 'off',
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+
+  <IfModule mod_tls.c>
+    TLSEngine on
+    TLSLog $setup->{log_file}
+    TLSRequired on
+    TLSRSACertificateFile $cert_file
+    TLSCACertificateFile $ca_file
+
+    TLSVerifyClient off
+    TLSVerifyServer off
+    TLSOptions EnableDiags NoSessionReuseRequired
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  require Net::FTPSSL;
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Give the server a chance to start up
+      sleep(2);
+
+      my $ssl_opts = {
+        SSL_verify_mode => $IO::Socket::SSL::SSL_VERIFY_NONE,
+      };
+
+      my $client_opts = {
+        Encryption => 'E',
+        Port => $port,
+        SSL_Client_Certificate => $ssl_opts,
+      };
+
+      if ($ENV{TEST_VERBOSE}) {
+        $client_opts->{Debug} = 1;
+      }
+
+      my $client = Net::FTPSSL->new('127.0.0.1', %$client_opts);
+      unless ($client) {
+        die("Can't connect to FTPS server: " . IO::Socket::SSL::errstr());
+      }
+
+      unless ($client->login($setup->{user}, $setup->{passwd})) {
+        die("Can't login: " . $client->last_message());
+      }
+
+      my $res = $client->list();
+      unless ($res) {
+        die("LIST failed unexpectedly: " . $client->last_message() .
+          "(" . IO::Socket::SSL::errstr() . ")");
+      }
+
+      my $resp_msg = $client->last_message();
+      my $expected = '226 Transfer complete';
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response '$expected', got '$resp_msg'"));
+
+      # Do the LIST again; there are some reports that a first transfer
+      # might succeed, but subsequent ones will fail.
+      for (my $i = 0; $i < 3; $i++) {
+        $res = $client->list();
+        unless ($res) {
+          die("LIST failed unexpectedly: " . $client->last_message() .
+            "(" . IO::Socket::SSL::errstr() . ")");
+        }
+
+        $resp_msg = $client->last_message();
+
+        $expected = '226 Transfer complete';
+        $self->assert($expected eq $resp_msg,
+          test_msg("Expected response '$expected', got '$resp_msg'"));
+      }
+
+      $client->quit();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, 20) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_frontend_backend_tls_nlst_pasv_error_issue244 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyTLSEngine} = 'auto';
+  $proxy_config->{ProxyTLSCACertificateFile} = $ca_file;
+
+  if ($ENV{TEST_VERBOSE}) {
+    $proxy_config->{ProxyTLSOptions} = 'EnableDiags';
+  }
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'netio:20 proxy:20 proxy.netio:20 proxy.db:20 proxy.reverse:20 proxy.tls:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.ftp.sess:20 proxy.ftp.xfer:20 tls:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_tls.c' => {
+        TLSEngine => 'on',
+        TLSLog => $setup->{log_file},
+        TLSRequired => 'on',
+        TLSRSACertificateFile => $cert_file,
+        TLSCACertificateFile => $ca_file,
+        TLSOptions => 'NoSessionReuseRequired EnableDiags',
+        TLSTimeoutHandshake => 5,
+        TLSVerifyClient => 'off',
+        TLSVerifyServer => 'off',
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+
+  <IfModule mod_tls.c>
+    TLSEngine on
+    TLSLog $setup->{log_file}
+    TLSRequired on
+    TLSRSACertificateFile $cert_file
+    TLSCACertificateFile $ca_file
+
+    TLSVerifyClient off
+    TLSVerifyServer off
+    TLSOptions EnableDiags NoSessionReuseRequired
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  require Net::FTPSSL;
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Give the server a chance to start up
+      sleep(2);
+
+      my $ssl_opts = {
+        SSL_verify_mode => $IO::Socket::SSL::SSL_VERIFY_NONE,
+      };
+
+      my $client_opts = {
+        Encryption => 'E',
+        Port => $port,
+        SSL_Client_Certificate => $ssl_opts,
+      };
+
+      if ($ENV{TEST_VERBOSE}) {
+        $client_opts->{Debug} = 1;
+      }
+
+      my $client = Net::FTPSSL->new('127.0.0.1', %$client_opts);
+      unless ($client) {
+        die("Can't connect to FTPS server: " . IO::Socket::SSL::errstr());
+      }
+
+      unless ($client->login($setup->{user}, $setup->{passwd})) {
+        die("Can't login: " . $client->last_message());
+      }
+
+      my $bad_path = '/foo/bar/baz';
+
+      my $res = $client->nlst($bad_path);
+      if ($res) {
+        die("NLST $bad_path succeeded unexpectedly");
+      }
+
+      my $resp_msg = $client->last_message();
+      my $expected = "450 $bad_path: No such file or directory";
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response '$expected', got '$resp_msg'"));
+
+      # Do the NLST again; there are some reports that a first transfer
+      # might succeed, but subsequent ones will fail.
+      for (my $i = 0; $i < 3; $i++) {
+        $res = $client->nlst($bad_path);
+        if ($res) {
+          die("NLST $bad_path succeeded unexpectedly");
+        }
+
+        $resp_msg = $client->last_message();
+        $self->assert($expected eq $resp_msg,
+          test_msg("Expected response '$expected', got '$resp_msg'"));
+      }
+
+      $client->quit();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, 20) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub proxy_reverse_frontend_backend_tls_nlst_port_error_issue244 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxyTLSEngine} = 'auto';
+  $proxy_config->{ProxyTLSCACertificateFile} = $ca_file;
+
+  # For this test, we want to force the use of PORT for the backend data
+  # transfers.
+  $proxy_config->{ProxyDataTransferPolicy} = 'PORT';
+
+  if ($ENV{TEST_VERBOSE}) {
+    $proxy_config->{ProxyTLSOptions} = 'EnableDiags';
+  }
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'netio:20 proxy:20 proxy.netio:20 proxy.db:20 proxy.reverse:20 proxy.tls:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.ftp.sess:20 proxy.ftp.xfer:20 tls:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_tls.c' => {
+        TLSEngine => 'on',
+        TLSLog => $setup->{log_file},
+        TLSRequired => 'on',
+        TLSRSACertificateFile => $cert_file,
+        TLSCACertificateFile => $ca_file,
+        TLSOptions => 'NoSessionReuseRequired EnableDiags',
+        TLSTimeoutHandshake => 5,
+        TLSVerifyClient => 'off',
+        TLSVerifyServer => 'off',
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+
+  <IfModule mod_tls.c>
+    TLSEngine on
+    TLSLog $setup->{log_file}
+    TLSRequired on
+    TLSRSACertificateFile $cert_file
+    TLSCACertificateFile $ca_file
+
+    TLSVerifyClient off
+    TLSVerifyServer off
+    TLSOptions EnableDiags NoSessionReuseRequired
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  require Net::FTPSSL;
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Give the server a chance to start up
+      sleep(2);
+
+      my $ssl_opts = {
+        SSL_verify_mode => $IO::Socket::SSL::SSL_VERIFY_NONE,
+      };
+
+      my $client_opts = {
+        Encryption => 'E',
+        Port => $port,
+        SSL_Client_Certificate => $ssl_opts,
+      };
+
+      if ($ENV{TEST_VERBOSE}) {
+        $client_opts->{Debug} = 1;
+      }
+
+      my $client = Net::FTPSSL->new('127.0.0.1', %$client_opts);
+      unless ($client) {
+        die("Can't connect to FTPS server: " . IO::Socket::SSL::errstr());
+      }
+
+      unless ($client->login($setup->{user}, $setup->{passwd})) {
+        die("Can't login: " . $client->last_message());
+      }
+
+      my $bad_path = '/foo/bar/baz';
+
+      my $res = $client->nlst($bad_path);
+      if ($res) {
+        die("NLST $bad_path succeeded unexpectedly");
+      }
+
+      my $resp_msg = $client->last_message();
+      my $expected = "450 $bad_path: No such file or directory";
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response '$expected', got '$resp_msg'"));
+
+      # Do the NLST again; there are some reports that a first transfer
+      # might succeed, but subsequent ones will fail.
+      for (my $i = 0; $i < 3; $i++) {
+        $res = $client->nlst($bad_path);
+        if ($res) {
+          die("NLST $bad_path succeeded unexpectedly");
+        }
+
+        $resp_msg = $client->last_message();
+        $self->assert($expected eq $resp_msg,
+          test_msg("Expected response '$expected', got '$resp_msg'"));
+      }
+
+      $client->quit();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, 20) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub proxy_reverse_frontend_backend_tls_abort {
@@ -7958,7 +8522,7 @@ EOC
   if ($pid) {
     eval {
       # Give the server a chance to start up
-      sleep(3);
+      sleep(5);
 
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, $use_port, 5);
       $client->login("$setup->{user}\@127.0.0.1:$vhost_port", $setup->{passwd});

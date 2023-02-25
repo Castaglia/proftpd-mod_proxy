@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy
- * Copyright (c) 2012-2022 TJ Saunders
+ * Copyright (c) 2012-2023 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -2369,26 +2369,10 @@ static int proxy_data_handle_resp(pool *p, struct proxy_session *proxy_sess,
   return 0;
 }
 
-static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
-    cmd_rec *cmd, conn_t **frontend, conn_t **backend) {
-  int res, xerrno = 0;
-  conn_t *frontend_conn = NULL, *backend_conn = NULL;
-
-  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
-    cmd);
-  if (res < 0) {
-    xerrno = errno;
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "error sending %s to backend: %s", (char *) cmd->argv[0],
-      strerror(xerrno));
-
-    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
-      strerror(xerrno));
-    pr_response_flush(&resp_err_list);
-
-    errno = xerrno;
-    return -1;
-  }
+static int proxy_data_prepare_backend_conn(struct proxy_session *proxy_sess,
+    cmd_rec *cmd, conn_t **backend) {
+  int res, xerrno;
+  conn_t *backend_conn = NULL;
 
   /* XXX Should handle EPSV_ALL here, too. */
   if (proxy_sess->backend_sess_flags & SF_PASSIVE) {
@@ -2513,6 +2497,17 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
 
     proxy_sess->backend_data_conn = backend_conn;
 
+    /* Note that we delay the post-open on the backend data connection until
+     * after we have received the backend response.  In the case of a 4xx/5xx
+     * response, then such a post-open (as for a TLS handshake) will fail
+     * (Issue #244).
+     */
+
+    res = proxy_data_handle_resp(cmd->tmp_pool, proxy_sess, cmd);
+    if (res < 0) {
+      return -1;
+    }
+
     if (proxy_netio_postopen(backend_conn->instrm) < 0) {
       xerrno = errno;
 
@@ -2538,11 +2533,6 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
       proxy_sess->backend_data_conn = NULL;
 
       errno = xerrno;
-      return -1;
-    }
-
-    res = proxy_data_handle_resp(cmd->tmp_pool, proxy_sess, cmd);
-    if (res < 0) {
       return -1;
     }
 
@@ -2628,7 +2618,14 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
       backend_conn->remote_port);
   }
 
-  /* Now establish a data connection with the frontend client. */
+  *backend = backend_conn;
+  return 0;
+}
+
+static int proxy_data_prepare_frontend_conn(struct proxy_session *proxy_sess,
+    cmd_rec *cmd, conn_t **frontend) {
+  int xerrno;
+  conn_t *frontend_conn = NULL;
 
   if (proxy_sess->frontend_sess_flags & SF_PASSIVE) {
     pr_trace_msg(trace_channel, 17,
@@ -2775,7 +2772,43 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
   }
 
   *frontend = frontend_conn;
-  *backend = backend_conn;
+  return 0;
+}
+
+static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
+    cmd_rec *cmd, conn_t **frontend, conn_t **backend) {
+  int res, xerrno = 0;
+
+  /* First we proxy the command to the backend server, which starts the
+   * process.
+   */
+
+  res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
+    cmd);
+  if (res < 0) {
+    xerrno = errno;
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error sending %s to backend: %s", (char *) cmd->argv[0],
+      strerror(xerrno));
+
+    pr_response_add_err(R_500, _("%s: %s"), (char *) cmd->argv[0],
+      strerror(xerrno));
+    pr_response_flush(&resp_err_list);
+
+    errno = xerrno;
+    return -1;
+  }
+
+  res = proxy_data_prepare_backend_conn(proxy_sess, cmd, backend);
+  if (res < 0) {
+    return -1;
+  }
+
+  res = proxy_data_prepare_frontend_conn(proxy_sess, cmd, frontend);
+  if (res < 0) {
+    return -1;
+  }
+
   return 0;
 }
 
@@ -3274,7 +3307,8 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
            * a failed transfer.
            */
           /* XXX What about ABOR/aborted transfers? */
-          if (resp->num[0] == '4' || resp->num[0] == '5') {
+          if (resp->num[0] == '4' ||
+              resp->num[0] == '5') {
             xfer_ok = FALSE;
           }
         }
