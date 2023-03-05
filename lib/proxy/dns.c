@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy DNS resolution
- * Copyright (c) 2020 TJ Saunders
+ * Copyright (c) 2020-2023 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -354,7 +354,7 @@ static int dns_resolve_srv(pool *p, const char *name, array_header **resp,
     uint32_t *ttl) {
   register unsigned int i;
   int answerlen, res;
-  unsigned char answer[NS_PACKETSZ * 2];
+  unsigned char answer[NS_PACKETSZ * 4];
   unsigned int count;
   ns_msg msgh;
   pool *srv_pool;
@@ -362,7 +362,7 @@ static int dns_resolve_srv(pool *p, const char *name, array_header **resp,
 
   pr_trace_msg(trace_channel, 17, "querying DNS for SRV records for '%s'",
     name);
-  answerlen = res_query(name, ns_c_in, ns_t_srv, answer, sizeof(answer));
+  answerlen = res_query(name, ns_c_in, ns_t_srv, answer, sizeof(answer)-1);
   pr_trace_msg(trace_channel, 22, "received answer (%d bytes) of SRV records "
     "for '%s'", answerlen, name);
 
@@ -502,13 +502,13 @@ static int dns_resolve_txt(pool *p, const char *name, array_header **resp,
     uint32_t *ttl) {
   register unsigned int i;
   int answerlen;
-  unsigned char answer[NS_PACKETSZ * 2];
+  unsigned char answer[NS_PACKETSZ * 4];
   unsigned int count;
   ns_msg msgh;
 
   pr_trace_msg(trace_channel, 17, "querying DNS for TXT records for '%s'",
     name);
-  answerlen = res_query(name, ns_c_in, ns_t_txt, answer, sizeof(answer));
+  answerlen = res_query(name, ns_c_in, ns_t_txt, answer, sizeof(answer)-1);
   pr_trace_msg(trace_channel, 22, "received answer (%d bytes) of TXT records "
     "for '%s'", answerlen, name);
 
