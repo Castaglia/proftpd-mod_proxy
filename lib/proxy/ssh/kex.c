@@ -191,7 +191,7 @@ static const char *dh_group1_str =
   "4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED"
   "EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381FFFFFFFFFFFFFFFF";
 
-static const char *dh_group14_str = 
+static const char *dh_group14_str =
   "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74"
   "020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437"
   "4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED"
@@ -564,7 +564,7 @@ static const unsigned char *calculate_gex_h(pool *p, struct proxy_ssh_kex *kex,
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
     !defined(HAVE_LIBRESSL)
   DH_get0_key(kex->dh, &dh_pub_key, NULL);
-#else 
+#else
   dh_pub_key = kex->dh->pub_key;
 #endif /* prior to OpenSSL-1.1.0 */
   len += proxy_ssh_msg_write_mpint(&buf, &buflen, dh_pub_key);
@@ -1556,7 +1556,7 @@ static const char *get_preferred_name(pool *p, const char *names) {
 
   /* Advance to the first comma, or NUL. */
   for (i = 0; names[i] && names[i] != ','; i++);
-  
+
   if (names[i] == ',' ||
       names[i] == '\0') {
     char *pref;
@@ -2981,7 +2981,7 @@ static struct proxy_ssh_packet *read_kex_packet(pool *p,
     ntypes, ntypes != 1 ? "types" : "type");
 
   allowed_types = make_array(p, 1, sizeof(char));
- 
+
   va_start(ap, ntypes);  
 
   while (ntypes-- > 0) {
@@ -3139,7 +3139,7 @@ static int read_dh_reply(struct proxy_ssh_packet *pkt,
     xerrno = errno;
     DH_free(kex->dh);
     kex->dh = NULL;
-   
+
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error handling server host key: %s", strerror(xerrno));
     errno = xerrno;
@@ -3151,7 +3151,7 @@ static int read_dh_reply(struct proxy_ssh_packet *pkt,
   if (have_good_dh(kex->dh, server_pub_key) < 0) {
     DH_free(kex->dh);
     kex->dh = NULL;
-   
+
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "invalid server public DH key");
     return -1;
@@ -3920,7 +3920,7 @@ static int read_ecdh_reply(struct proxy_ssh_packet *pkt,
     xerrno = errno;
     EC_KEY_free(kex->ec);
     kex->ec = NULL;
-  
+
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error handling server host key: %s", strerror(xerrno));
     errno = xerrno;
@@ -4133,7 +4133,7 @@ static int read_kexrsa_pubkey(struct proxy_ssh_packet *pkt,
       "unsupported key type received: %s",
       key_type != NULL ? key_type : "(nil)");
     return -1;
-  } 
+  }
 
   proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &rsa_e);
   proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &rsa_n);
@@ -5093,7 +5093,7 @@ int proxy_ssh_kex_sess_init(pool *p, struct proxy_ssh_datastore *ds,
 
   kex_ds = ds;
   kex_verify_hostkeys = verify_hostkeys;
- 
+
   return 0;
 }
 
@@ -5176,7 +5176,7 @@ int proxy_ssh_kex_send_first_kexinit(pool *p,
   }
 
   /* We have just connected to the server.  We want to send our version
-   * ID string _and_ the KEXINIT in the same TCP packet, and save a 
+   * ID string _and_ the KEXINIT in the same TCP packet, and save a
    * TCP round trip (one TCP ACK for both messages, rather than one ACK
    * per message).  The packet API will automatically send the version
    * ID string along with the first packet we send; we just have to
@@ -5184,7 +5184,7 @@ int proxy_ssh_kex_send_first_kexinit(pool *p,
    */
   kex_first_kex = create_kex(kex_pool);
 
-  pkt = proxy_ssh_packet_create(kex_pool); 
+  pkt = proxy_ssh_packet_create(kex_pool);
   res = write_kexinit(pkt, kex_first_kex);
   if (res < 0) {
     destroy_kex(kex_first_kex);

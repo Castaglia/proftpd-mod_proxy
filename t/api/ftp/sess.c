@@ -52,7 +52,7 @@ static void tear_down(void) {
     p = permanent_pool = session.pool = NULL;
     session.c = NULL;
     session.notes = NULL;
-  } 
+  }
 }
 
 START_TEST (get_feat_test) {
@@ -68,7 +68,7 @@ START_TEST (get_feat_test) {
   ck_assert_msg(res < 0, "Failed to handle null proxy session");
   ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
- 
+
   proxy_sess = proxy_session_alloc(p);
 
   mark_point();
@@ -76,7 +76,7 @@ START_TEST (get_feat_test) {
   ck_assert_msg(res < 0, "Failed to handle null proxy session");
   ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
- 
+
   proxy_session_free(p, proxy_sess);
 }
 END_TEST

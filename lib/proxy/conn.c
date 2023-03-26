@@ -371,7 +371,7 @@ const struct proxy_conn *proxy_conn_create(pool *p, const char *uri,
   memset(hostport, '\0', sizeof(hostport));
   snprintf(hostport, sizeof(hostport)-1, "%s:%u", remote_host, remote_port);
 
-  pconn_pool = pr_pool_create_sz(p, 128); 
+  pconn_pool = pr_pool_create_sz(p, 128);
   pr_pool_tag(pconn_pool, "proxy connection pool");
 
   pconn = pcalloc(pconn_pool, sizeof(struct proxy_conn));
@@ -559,7 +559,7 @@ const char *proxy_conn_get_password(const struct proxy_conn *pconn) {
     errno = EINVAL;
     return NULL;
   }
-  
+
   return pconn->pconn_password;
 }
 

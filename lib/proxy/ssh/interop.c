@@ -96,12 +96,12 @@ static struct proxy_ssh_version_pattern known_versions[] = {
   { "^2\\.0\\.11.*|"
     "^2\\.0\\.12.*",		PROXY_SSH_FEAT_HAVE_PUBKEY_ALGO_IN_DSA_SIG|
 				PROXY_SSH_FEAT_SERVICE_IN_PUBKEY_SIG|
-    				PROXY_SSH_FEAT_HAVE_PUBKEY_ALGO| 
+    				PROXY_SSH_FEAT_HAVE_PUBKEY_ALGO|
 				PROXY_SSH_FEAT_MAC_LEN,			NULL },
 
   { "^2\\.0\\..*",		PROXY_SSH_FEAT_HAVE_PUBKEY_ALGO_IN_DSA_SIG|
 				PROXY_SSH_FEAT_SERVICE_IN_PUBKEY_SIG|
-    				PROXY_SSH_FEAT_HAVE_PUBKEY_ALGO| 
+    				PROXY_SSH_FEAT_HAVE_PUBKEY_ALGO|
 				PROXY_SSH_FEAT_CIPHER_USE_K|
 				PROXY_SSH_FEAT_MAC_LEN,			NULL },
 
@@ -265,14 +265,14 @@ int proxy_ssh_interop_handle_version(pool *p,
 
         if (pessimistic_newkeys == TRUE) {
           default_flags |= PROXY_SSH_FEAT_PESSIMISTIC_NEWKEYS;
-        } 
+        }
       }
 
       /* Once we're done, we can destroy the table. */
       (void) pr_table_empty(tab);
       (void) pr_table_free(tab);
       c->argv[2] = NULL;
- 
+
     } else {
       pr_trace_msg(trace_channel, 18,
         "server version '%s' did not match ProxySFTPServerMatch regex '%s'",

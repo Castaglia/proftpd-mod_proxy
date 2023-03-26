@@ -50,7 +50,7 @@ static void tear_down(void) {
     p = permanent_pool = session.pool = NULL;
     session.c = NULL;
     session.notes = NULL;
-  } 
+  }
 }
 
 START_TEST (init_test) {
@@ -260,7 +260,7 @@ START_TEST (to_text_test) {
   ck_assert_msg(res < 0, "Failed to handle null pool");
   ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
-  
+
   mark_point();
   res = proxy_ftp_dirlist_to_text(p, NULL, 0, 0, NULL, NULL, NULL);
   ck_assert_msg(res < 0, "Failed to handle null buf");

@@ -95,7 +95,7 @@ int proxy_ssh_packet_conn_mpoll(conn_t *frontend_conn, conn_t *backend_conn,
      */
 
     if (server_alive_interval > 0 &&
-        (!(proxy_sess_state & PROXY_SESS_STATE_SSH_REKEYING) && 
+        (!(proxy_sess_state & PROXY_SESS_STATE_SSH_REKEYING) &&
          (proxy_sess_state & PROXY_SESS_STATE_SSH_HAVE_AUTH))) {
       timeout_sec = server_alive_interval;
       using_server_alive = TRUE;
@@ -811,7 +811,7 @@ static int read_packet_payload(conn_t *conn, struct proxy_ssh_packet *pkt,
   if (res < 0) {
     return res;
   }
- 
+
   len = res;
 
   /* For ETM modes, we do NOT want to decrypt the data yet; we need to read/
@@ -1178,7 +1178,7 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
      * we do NOT check that the packet length is sane here; we have to
      * wait until the MAC check succeeds.
      */
- 
+
     /* Note: Checking for the RFC4253-recommended minimum packet length
      * of 16 bytes causes KEX to fail (the NEWKEYS packet is 12 bytes).
      * Thus that particular check is omitted.
@@ -2082,7 +2082,7 @@ int proxy_ssh_packet_handle(void *data) {
             "Time before first SSH key exchange: %lu ms", elapsed_ms);
         }
       }
- 
+
       proxy_sess_state |= PROXY_SESS_STATE_SSH_REKEYING;
 
       /* Clear any current "have KEX" state. */

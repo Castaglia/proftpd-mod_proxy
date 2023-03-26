@@ -103,11 +103,11 @@ START_TEST (conn_get_addr_test) {
   const char *ipstr, *url;
   const pr_netaddr_t *pconn_addr;
   array_header *other_addrs = NULL;
- 
+
   pconn_addr = proxy_conn_get_addr(NULL, NULL);
   ck_assert_msg(pconn_addr == NULL, "Failed to handle null argument");
   ck_assert_msg(errno == EINVAL, "Failed to set errno to EINVAL");
- 
+
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
   ck_assert_msg(pconn != NULL,
@@ -178,7 +178,7 @@ START_TEST (conn_get_hostport_test) {
   ck_assert_msg(hostport == NULL, "Failed to handle null argument");
   ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
- 
+
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
   ck_assert_msg(pconn != NULL,
@@ -213,7 +213,7 @@ START_TEST (conn_get_uri_test) {
   pconn_url = proxy_conn_get_uri(NULL);
   ck_assert_msg(pconn_url == NULL, "Failed to handle null argument");
   ck_assert_msg(errno == EINVAL, "Failed to set errno to EINVAL");
- 
+
   url = "ftp://127.0.0.1:21";
   pconn = proxy_conn_create(p, url, 0);
   ck_assert_msg(pconn != NULL,

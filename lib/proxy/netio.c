@@ -163,7 +163,7 @@ pr_netio_t *proxy_netio_unset(int strm_type, const char *fn) {
     default:
       break;
   }
- 
+
   return netio;
 }
 
@@ -264,7 +264,7 @@ int proxy_netio_postopen(pr_netio_stream_t *nstrm) {
   res = pr_netio_postopen(nstrm);
   xerrno = errno;
   proxy_netio_set(nstrm->strm_type, curr_netio);
- 
+
   errno = xerrno;
   return res;
 }

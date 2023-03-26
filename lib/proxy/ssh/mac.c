@@ -127,7 +127,7 @@ static void switch_read_mac(void) {
       proxy_ssh_umac128_reset(umac_read_ctxs[read_mac_idx]);
     }
 
-    mac_blockszs[read_mac_idx] = 0; 
+    mac_blockszs[read_mac_idx] = 0;
 
     /* Now we can switch the index. */
     if (read_mac_idx == 1) {
@@ -453,7 +453,7 @@ static int set_mac_key(struct proxy_ssh_mac *mac, const EVP_MD *md,
   uint32_t key_len = 0;
 
   key_sz = proxy_ssh_crypto_get_size(EVP_MD_block_size(mac->digest),
-    EVP_MD_size(md)); 
+    EVP_MD_size(md));
   if (key_sz == 0) {
     if (strcmp(mac->algo, "none") == 0) {
       return 0;

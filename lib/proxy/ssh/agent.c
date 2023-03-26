@@ -325,7 +325,7 @@ int proxy_ssh_agent_get_keys(pool *p, const char *agent_path,
 
     key->key_data = key_data;
     key->key_datalen = key_datalen;
-    key->agent_path = pstrdup(p, agent_path); 
+    key->agent_path = pstrdup(p, agent_path);
 
     *((struct agent_key **) push_array(key_list)) = key;
   }
@@ -394,6 +394,6 @@ const unsigned char *proxy_ssh_agent_sign_data(pool *p, const char *agent_path,
   len = proxy_ssh_msg_read_int(p, &resp, &resplen, sig_datalen);
   len = proxy_ssh_msg_read_data(p, &resp, &resplen, *sig_datalen, &sig_data);
 
-  return sig_data; 
+  return sig_data;
 }
 #endif /* PR_USE_OPENSSL */

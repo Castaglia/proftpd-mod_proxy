@@ -46,7 +46,7 @@ static void tear_down(void) {
   if (p != NULL) {
     destroy_pool(p);
     p = permanent_pool = session.pool = NULL;
-  } 
+  }
 }
 
 START_TEST (get_facts_test) {

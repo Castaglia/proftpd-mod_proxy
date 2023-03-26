@@ -86,7 +86,7 @@ static void tear_down(void) {
     server_list = NULL;
     session.c = NULL;
     session.notes = NULL;
-  } 
+  }
 }
 
 START_TEST (prepare_active_test) {
@@ -213,7 +213,7 @@ START_TEST (prepare_passive_test) {
     FALSE);
   ck_assert_msg(proxy_sess->backend_ctrl_conn != NULL,
     "Failed to open backend control conn: %s", strerror(errno));
-  
+
   session.c = pr_inet_create_conn(p, -1, NULL, INPORT_ANY, FALSE);
   ck_assert_msg(session.c != NULL,
     "Failed to open session control conn: %s", strerror(errno));

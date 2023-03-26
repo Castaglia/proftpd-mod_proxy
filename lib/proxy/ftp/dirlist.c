@@ -842,8 +842,8 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
       "malformed Unix text (expected space after nlink): '%*s'",
       (int) textlen, text);
     errno = EINVAL;
-    return NULL; 
-  }    
+    return NULL;
+  }
 
   ptr += 1;
 
@@ -879,7 +879,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
     pr_trace_msg(trace_channel, 3,
       "malformed Unix text (expected group with '%*s'): '%*s'", (int) buflen,
       buf, (int) textlen, text);
-      
+
     errno = xerrno;
     return NULL;
   }
@@ -930,7 +930,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
       (int) textlen, text);
     errno = EINVAL;
     return NULL;
-  } 
+  }
 
   ptr += 1;
 
@@ -939,15 +939,15 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
   buf = pstrndup(p, ptr, buflen);
   if (get_unix_timestamp(p, buf, buflen, pdf->tm, tm->tm_year) < 0) {
     int xerrno = errno;
-  
+
     pr_trace_msg(trace_channel, 3,
       "malformed Unix text (expected timestamp with '%*s'): '%*s'",
       (int) buflen, buf, (int) textlen, text);
-  
+
     errno = xerrno;
     return NULL;
   }
-    
+
   ptr += buflen;
   if (strncmp(ptr, " ", 1) != 0) {
     pr_trace_msg(trace_channel, 3,

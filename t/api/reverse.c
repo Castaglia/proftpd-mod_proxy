@@ -137,7 +137,7 @@ static void tear_down(void) {
     server_list = NULL;
     session.c = NULL;
     session.notes = NULL;
-  } 
+  }
 }
 
 START_TEST (reverse_free_test) {

@@ -197,7 +197,7 @@ static char *tls_x509_name_oneline(X509_NAME *x509_name) {
   char *data = NULL;
   long datalen = 0;
   int ok;
-  
+
   ok = X509_NAME_print_ex(mem, x509_name, 0, XN_FLAG_ONELINE);
   if (ok) {
     datalen = BIO_get_mem_data(mem, &data);
@@ -653,7 +653,7 @@ static ssize_t tls_write(SSL *ssl, const void *buf, size_t len,
     }
 
     (void) pr_gettimeofday_millis(&now);
-    
+
     wbio = SSL_get_wbio(ssl);
 
     if (adaptive_bytes_written_count != NULL) {
@@ -1272,7 +1272,7 @@ static int tls_get_cached_sess(pool *p, SSL *ssl, const char *host, int port) {
       pr_trace_msg(trace_channel, 9,
         "error getting cached session using key '%s': %s", sess_key,
         strerror(errno));
-    } 
+    }
 
     return 0;
   }
@@ -1629,13 +1629,14 @@ static int tls_connect(conn_t *conn, const char *host_name,
 static int tls_seed_prng(void) {
   char *heapdata, stackdata[1024];
   FILE *fp = NULL;
-  pid_t pid; 
+  pid_t pid;
   struct timeval tv;
- 
+
 #if OPENSSL_VERSION_NUMBER >= 0x00905100L
-  if (RAND_status() == 1)
+  if (RAND_status() == 1) {
     /* PRNG already well-seeded. */
     return 0;
+  }
 #endif
 
   pr_log_debug(DEBUG9, MOD_PROXY_VERSION

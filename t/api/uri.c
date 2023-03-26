@@ -50,7 +50,7 @@ static void tear_down(void) {
     p = permanent_pool = NULL;
     session.c = NULL;
     session.notes = NULL;
-  } 
+  }
 }
 
 START_TEST (uri_parse_args_test) {

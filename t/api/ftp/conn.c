@@ -96,7 +96,7 @@ static void tear_down(void) {
     main_server = NULL;
     session.c = NULL;
     session.notes = NULL;
-  } 
+  }
 }
 
 START_TEST (accept_test) {

@@ -309,7 +309,7 @@ static int tls_redis_init(pool *p, const char *tables_path, int flags) {
       pr_trace_msg(trace_channel, 3,
         "error truncating Redis keys for server '%s': %s", s->ServerName,
         strerror(errno));
-    } 
+    }
   }
 
   (void) pr_redis_conn_close(redis);

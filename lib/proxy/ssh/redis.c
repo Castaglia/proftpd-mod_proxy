@@ -99,7 +99,7 @@ static int ssh_redis_update_hostkey(pool *p, void *dsh, unsigned int vhost_id,
   res = pr_redis_hash_set(redis, &proxy_module, key, redis_blob_field,
     (void *) data, field_len);
   xerrno = errno;
-  
+
   if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error setting value for field '%s' in Redis hash '%s': %s",

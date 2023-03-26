@@ -540,7 +540,7 @@ static array_header *reverse_db_pername_backends_by_json(pool *p,
     if (backends->nelts == 0) {
       pr_trace_msg(trace_channel, 3,
         "no usable URLs found in ProxyReverseServers file '%s', ignoring",
-        path); 
+        path);
 
     } else {
       if (file_backends == NULL) {
@@ -845,7 +845,7 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
           strerror(errno));
       }
     }
- 
+
     errno = xerrno;
     return -1;
   }
@@ -1410,7 +1410,7 @@ static pr_json_array_t *read_json_array(pool *p, pr_fh_t *fh, off_t filesz) {
 
     /* Short read: advance the buffer, decrement the length, and read more. */
     buf += res;
-    len -= res; 
+    len -= res;
 
     pr_signals_handle();
     res = pr_fsio_read(fh, buf, len);
@@ -1834,7 +1834,7 @@ static int send_pass(struct proxy_session *proxy_sess, cmd_rec *cmd,
 
     proxy_sess_state |= PROXY_SESS_STATE_BACKEND_AUTHENTICATED;
     clear_user_creds();
-    pr_timer_remove(PR_TIMER_LOGIN, ANY_MODULE); 
+    pr_timer_remove(PR_TIMER_LOGIN, ANY_MODULE);
   }
 
   res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool, proxy_sess->frontend_ctrl_conn,

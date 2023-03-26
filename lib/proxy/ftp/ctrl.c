@@ -224,7 +224,7 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
       if (buf[3] == '-') {
         multiline = TRUE;
       }
- 
+
       count++;
       resp = (pr_response_t *) pcalloc(p, sizeof(pr_response_t));
 

@@ -80,7 +80,7 @@ static int parse_feat(pool *p, const char *feat, array_header **res) {
     if (len > 0) {
       *((char **) push_array(vals)) = pstrndup(p, ptr, len);
     }
- 
+
     ptr = ptr2;
     while (*ptr == ';') {
       pr_signals_handle();

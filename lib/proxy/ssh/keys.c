@@ -256,7 +256,7 @@ static void prepare_provider_fds(int stdout_fd, int stderr_fd) {
      */
     nfiles = 255;
   }
- 
+
   /* Close the "non-standard" file descriptors. */
   for (i = 3; i < nfiles; i++) {
     pr_signals_handle();
@@ -1148,11 +1148,11 @@ static void scrub_pkeys(void) {
   if (pkey_list == NULL) {
     return;
   }
- 
+
   /* Scrub and free all passphrases in memory. */
   pr_log_debug(DEBUG5, MOD_PROXY_VERSION ": scrubbing %u %s from memory",
     npkeys, npkeys != 1 ? "passphrases" : "passphrase");
- 
+
   for (k = pkey_list; k; k = k->next) {
     if (k->client_pkey != NULL) {
       pr_memscrub(k->client_pkey, k->pkeysz);
@@ -1776,7 +1776,7 @@ static int validate_ecdsa_private_key(const EC_KEY *ec) {
       "error getting the EC group order: %s", proxy_ssh_crypto_get_errors());
     BN_CTX_free(bn_ctx);
     errno = EPERM;
-    return -1; 
+    return -1;
   }
 
   priv_key_nbits = BN_num_bits(EC_KEY_get0_private_key(ec));
@@ -1788,7 +1788,7 @@ static int validate_ecdsa_private_key(const EC_KEY *ec) {
       "least %d bits", priv_key_nbits, ec_order_nbits);
     BN_CTX_free(bn_ctx);
     errno = EACCES;
-    return -1; 
+    return -1;
   }
 
   /* Ensure that the private key < (EC order - 1). */
@@ -1799,7 +1799,7 @@ static int validate_ecdsa_private_key(const EC_KEY *ec) {
       proxy_ssh_crypto_get_errors());
     BN_CTX_free(bn_ctx);
     errno = EPERM;
-    return -1; 
+    return -1;
   }
 
   if (BN_cmp(EC_KEY_get0_private_key(ec), bn_tmp) >= 0) {
@@ -1808,7 +1808,7 @@ static int validate_ecdsa_private_key(const EC_KEY *ec) {
       "rejecting");
     BN_CTX_free(bn_ctx);
     errno = EACCES;
-    return -1; 
+    return -1;
   }
 
   BN_CTX_free(bn_ctx);
@@ -1935,7 +1935,7 @@ int proxy_ssh_keys_validate_ecdsa_params(const EC_GROUP *group,
     errno = EACCES;
     return -1;
   }
- 
+
   /* A BN_CTX is like our pools; we allocate one, use it to get any
    * number of BIGNUM variables, and only have free up the BN_CTX when
    * we're done, rather than all of the individual BIGNUMs.
@@ -2000,7 +2000,7 @@ int proxy_ssh_keys_validate_ecdsa_params(const EC_GROUP *group,
 
   /* Ensure that the following are both true:
    *
-   *  log2(X coord) > log2(EC order)/2 
+   *  log2(X coord) > log2(EC order)/2
    *  log2(Y coord) > log2(EC order)/2
    */
 
@@ -2063,7 +2063,7 @@ int proxy_ssh_keys_validate_ecdsa_params(const EC_GROUP *group,
    *
    *  X < order - 1
    *  Y < order - 1
-   */ 
+   */
 
   bn_tmp = BN_CTX_get(bn_ctx);
   if (bn_tmp == NULL) {
@@ -2836,11 +2836,11 @@ static int handle_hostkey(pool *p, EVP_PKEY *pkey,
             ecdsa384_hostkey->key_datalen = 0;
             ecdsa384_hostkey->file_path = NULL;
             ecdsa384_hostkey->agent_path = NULL;
-          
+
           } else {
             ecdsa384_hostkey = pcalloc(p, sizeof(struct proxy_ssh_hostkey));
-          } 
-          
+          }
+
           ecdsa384_hostkey->key_type = PROXY_SSH_KEY_ECDSA_384;
           ecdsa384_hostkey->pkey = pkey;
           ecdsa384_hostkey->key_data = key_data;
@@ -2869,11 +2869,11 @@ static int handle_hostkey(pool *p, EVP_PKEY *pkey,
             ecdsa521_hostkey->key_datalen = 0;
             ecdsa521_hostkey->file_path = NULL;
             ecdsa521_hostkey->agent_path = NULL;
-          
+
           } else {
             ecdsa521_hostkey = pcalloc(p, sizeof(struct proxy_ssh_hostkey));
-          } 
-          
+          }
+
           ecdsa521_hostkey->key_type = PROXY_SSH_KEY_ECDSA_521;
           ecdsa521_hostkey->pkey = pkey;
           ecdsa521_hostkey->key_data = key_data;
@@ -2937,7 +2937,7 @@ static int load_agent_hostkeys(pool *p, const char *path) {
   int accepted_nkeys = 0, res;
   array_header *key_list;
 
-  key_list = make_array(p, 0, sizeof(struct agent_key *));  
+  key_list = make_array(p, 0, sizeof(struct agent_key *));
 
   res = proxy_ssh_agent_get_keys(p, path, key_list);
   if (res < 0) {
@@ -5489,7 +5489,7 @@ int proxy_ssh_keys_verify_signed_data(pool *p, const char *pubkey_algo,
     res = rsa_sha256_verify_signed_data(p, pkey, signature, signature_len,
       sig_data, sig_datalen);
 #endif /* HAVE_SHA256_OPENSSL */
-  
+
 #if defined(HAVE_SHA512_OPENSSL)
   } else if (strcmp(sig_type, "rsa-sha2-512") == 0) {
     res = rsa_sha512_verify_signed_data(p, pkey, signature, signature_len,

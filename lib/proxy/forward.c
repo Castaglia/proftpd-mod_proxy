@@ -674,10 +674,10 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
 
   /* XXX TODO: Concatenate the banner from the connect with the USER response
    * message here, and send the entire kit to the frontend client, e.g.:
-   * 
+   *
    *  Name (gatekeeper:you): anonymous@ftp.uu.net
    *  331-(----GATEWAY CONNECTED TO ftp.uu.net----)
-   *  331-(220 ftp.uu.net FTP server (SunOS 4.1) ready. 
+   *  331-(220 ftp.uu.net FTP server (SunOS 4.1) ready.
    *  331 Guest login ok, send ident as password.
    *  Password: ######
    *  230 Guest login ok, access restrictions apply.
@@ -694,7 +694,7 @@ static int forward_handle_user_passthru(cmd_rec *cmd,
     return -1;
   }
 
-  return 1; 
+  return 1;
 }
 
 static int forward_handle_user_proxyuserwithproxyauth(cmd_rec *cmd,

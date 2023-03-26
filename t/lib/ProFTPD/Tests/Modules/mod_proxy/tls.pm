@@ -657,7 +657,7 @@ EOC
     eval {
       # Give the server a chance to start up
       sleep(2);
- 
+
       my $client_opts = {
         Encryption => 'E',
         Port => $port,
@@ -827,7 +827,7 @@ EOC
     eval {
       # Give the server a chance to start up
       sleep(2);
- 
+
       my $client_opts = {
         Encryption => 'E',
         Port => $port,
@@ -1017,7 +1017,7 @@ EOC
         SSL_key_file => $client_cert_file,
         SSL_ca_file => $ca_file,
       };
- 
+
       my $client_opts = {
         Encryption => 'E',
         Port => $port,
