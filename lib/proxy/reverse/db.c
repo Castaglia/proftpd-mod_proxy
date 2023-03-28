@@ -1341,7 +1341,7 @@ static const struct proxy_conn *reverse_db_perhost_next(pool *p,
     /* This can happen the very first time; perform an on-demand discovery
      * of the backends for this host, and try again.
      */
- 
+
     pconn = reverse_db_perhost_init(p, dbh, vhost_id, db_backends, addr);
     if (pconn == NULL) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1408,7 +1408,7 @@ static int reverse_db_perhost_used(pool *p, struct proxy_dbh *dbh,
   if (res < 0) {
     return -1;
   }
- 
+
   results = proxy_db_exec_prepared_stmt(p, dbh, stmt, &errstr);
   if (results == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1437,7 +1437,7 @@ static int reverse_db_policy_init(pool *p, void *dbh, int policy_id,
       break;
 
     case PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN: {
-      int backend_id = 0; 
+      int backend_id = 0;
 
       if (backends != NULL) {
         backend_id = backends->nelts-1;
@@ -1589,7 +1589,7 @@ static const struct proxy_conn *reverse_db_policy_next_backend(pool *p,
           pr_netaddr_get_ipstr(session.c->remote_addr));
       }
       break;
- 
+
     default:
       errno = ENOSYS;
       return NULL;

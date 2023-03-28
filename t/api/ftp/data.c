@@ -56,7 +56,7 @@ static void tear_down(void) {
     p = permanent_pool = session.pool = NULL;
     session.c = NULL;
     session.notes = NULL;
-  } 
+  }
 }
 
 START_TEST (recv_test) {

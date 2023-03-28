@@ -8122,7 +8122,7 @@ EOC
         die("Login succeeded unexpectedly");
       }
 
-      my $resp_code = $client->response_code(); 
+      my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
 
       my $expected = 530;
@@ -8289,7 +8289,7 @@ EOC
         die("Login succeeded unexpectedly");
       }
 
-      my $resp_code = $client->response_code(); 
+      my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
 
       my $expected = 530;
@@ -17885,7 +17885,7 @@ EOC
 
       $expected = 'PORT: Operation not permitted';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected response message '$expected', got '$resp_msg'")); 
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $client->quit();
     };
@@ -18014,7 +18014,7 @@ EOC
 
       $expected = '.: No such file or directory';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected response message '$expected', got '$resp_msg'")); 
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $client->quit();
     };
@@ -19893,7 +19893,7 @@ EOC
         $expected = $test_file;
         $self->assert($expected eq $filename,
           test_msg("Expected file name '$expected', got '$filename'"));
-  
+
         $expected = 'a';
         $self->assert($expected eq $xfer_type,
           test_msg("Expected transfer type '$expected', got '$xfer_type'"));
@@ -20150,7 +20150,7 @@ EOC
         $expected = $test_file;
         $self->assert($expected eq $filename,
           test_msg("Expected file name '$expected', got '$filename'"));
-  
+
         $expected = 'a';
         $self->assert($expected eq $xfer_type,
           test_msg("Expected transfer type '$expected', got '$xfer_type'"));
@@ -20391,7 +20391,7 @@ EOC
         $expected = $test_file;
         $self->assert($expected eq $filename,
           test_msg("Expected file name '$expected', got '$filename'"));
-  
+
         $expected = 'b';
         $self->assert($expected eq $xfer_type,
           test_msg("Expected transfer type '$expected', got '$xfer_type'"));
@@ -20615,7 +20615,7 @@ EOC
         $expected = $test_file;
         $self->assert($expected eq $filename,
           test_msg("Expected file name '$expected', got '$filename'"));
-  
+
         $expected = 'a';
         $self->assert($expected eq $xfer_type,
           test_msg("Expected transfer type '$expected', got '$xfer_type'"));
@@ -20839,7 +20839,7 @@ EOC
         $expected = $test_file;
         $self->assert($expected eq $filename,
           test_msg("Expected file name '$expected', got '$filename'"));
-  
+
         $expected = 'b';
         $self->assert($expected eq $xfer_type,
           test_msg("Expected transfer type '$expected', got '$xfer_type'"));
@@ -28106,11 +28106,11 @@ EOC
       $expected = 530;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
-      
+
       $expected = 'Login incorrect.';
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
-      
+
       $client->quit();
     };
 
@@ -28278,11 +28278,11 @@ EOC
       my $expected = 530;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
-      
+
       $expected = 'Login incorrect.';
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
-      
+
       $client->quit();
     };
 
@@ -28452,11 +28452,11 @@ EOC
       my $expected = 530;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
-      
+
       $expected = 'Login incorrect.';
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
-      
+
       $client->quit();
     };
 
@@ -29998,11 +29998,11 @@ EOC
       $expected = 530;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
-      
+
       $expected = 'Login incorrect.';
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
-      
+
       $client->quit();
     };
 
@@ -30170,11 +30170,11 @@ EOC
       my $expected = 530;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
-      
+
       $expected = 'Login incorrect.';
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
-      
+
       $client->quit();
     };
 
@@ -30342,11 +30342,11 @@ EOC
       my $expected = 530;
       $self->assert($expected == $resp_code,
         test_msg("Expected response code $expected, got $resp_code"));
-      
+
       $expected = 'Login incorrect.';
       $self->assert($expected eq $resp_msg,
         test_msg("Expected response message '$expected', got '$resp_msg'"));
-      
+
       $client->quit();
     };
 

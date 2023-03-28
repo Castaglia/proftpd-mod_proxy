@@ -274,7 +274,7 @@ static long reverse_redis_shuffle_next(pool *p, pr_redis_t *redis,
 
     count = 0;
   }
- 
+
   if (count == 0) {
     res = reverse_redis_shuffle_init(p, redis, vhost_id, redis_backends);
     xerrno = errno;
@@ -988,7 +988,7 @@ static const struct proxy_conn *reverse_redis_policy_next_backend(pool *p,
           pr_netaddr_get_ipstr(session.c->remote_addr));
       }
       break;
- 
+
     default:
       errno = ENOSYS;
       return NULL;
@@ -1122,7 +1122,7 @@ static void *reverse_redis_init(pool *p, const char *tables_path, int flags) {
   }
 
   (void) pr_redis_conn_set_namespace(redis, &proxy_module, redis_prefix,
-    redis_prefixsz); 
+    redis_prefixsz);
   return redis;
 }
 

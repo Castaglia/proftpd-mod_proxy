@@ -453,7 +453,7 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
     case PR_CMD_EPSV_ID:
       passive_respcode = R_229;
       break;
-  } 
+  }
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
     pasv_cmd);

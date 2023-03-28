@@ -397,7 +397,7 @@ static void proxy_remove_symbols(void) {
   } else {
     pr_trace_msg(trace_channel, 9, "removed PRE_CMD APPE mod_xfer handlers");
   }
- 
+
   res = pr_stash_remove_cmd(C_RETR, &xfer_module, PRE_CMD, NULL, -1);
   if (res < 0) {
     pr_trace_msg(trace_channel, 1,
@@ -894,7 +894,7 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
     if (strncmp(cmd->argv[1], "file:", 5) == 0) {
       char *param, *path;
 
-      param = cmd->argv[1]; 
+      param = cmd->argv[1];
       path = param + 5;
 
       /* If the path contains the %U or %g variables, then defer loading of
@@ -2576,7 +2576,7 @@ static int proxy_data_prepare_backend_conn(struct proxy_session *proxy_sess,
     /* We can close our listening socket now. */
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
     pr_inet_close(session.pool, proxy_sess->backend_data_conn);
-    proxy_sess->backend_data_conn = backend_conn; 
+    proxy_sess->backend_data_conn = backend_conn;
 
     if (proxy_netio_postopen(backend_conn->instrm) < 0) {
       xerrno = errno;
@@ -2644,7 +2644,7 @@ static int proxy_data_prepare_frontend_conn(struct proxy_session *proxy_sess,
       pr_response_add_err(R_425, _("%s: %s"), (char *) cmd->argv[0],
         strerror(xerrno));
       pr_response_flush(&resp_err_list);
-    
+
       errno = xerrno;
       return -1;
     }
@@ -2683,7 +2683,7 @@ static int proxy_data_prepare_frontend_conn(struct proxy_session *proxy_sess,
 
     /* We can close our listening socket now. */
     pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
-    proxy_sess->frontend_data_conn = session.d = frontend_conn; 
+    proxy_sess->frontend_data_conn = session.d = frontend_conn;
 
     pr_inet_set_nonblock(session.pool, frontend_conn);
 
@@ -2700,7 +2700,7 @@ static int proxy_data_prepare_frontend_conn(struct proxy_session *proxy_sess,
     const pr_netaddr_t *bind_addr;
 
     /* Connect to the frontend server now. */
-  
+
     if (pr_netaddr_get_family(session.c->local_addr) == pr_netaddr_get_family(session.c->remote_addr)) {
       bind_addr = session.c->local_addr;
 
@@ -3088,7 +3088,7 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
         "handling data connection during data transfer");
 
       pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
- 
+
       pbuf = proxy_ftp_data_recv(cmd->tmp_pool, src_data_conn, frontend_data);
       if (pbuf == NULL) {
         xerrno = errno;
@@ -3640,7 +3640,7 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
     }
 
     case PR_CMD_PORT_ID:
-    case PR_CMD_EPRT_ID: 
+    case PR_CMD_EPRT_ID:
     default: {
       pr_response_t *resp;
       unsigned int resp_nlines = 0;
@@ -4399,7 +4399,7 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     if (xerrno == ECONNRESET ||
         xerrno == ECONNABORTED ||
         xerrno == EPIPE) {
-  
+
       /* This indicates that the backend server closed the control
        * connection on us.  Given that, the only thing we can do is to close
        * the frontend connection in turn.
@@ -4928,7 +4928,7 @@ MODRET proxy_any(cmd_rec *cmd) {
       } else {
         if (proxy_sess_state & PROXY_SESS_STATE_CONNECTED) {
           mr = proxy_feat(cmd, proxy_sess);
-          return mr;      
+          return mr;
         }
       }
       break;

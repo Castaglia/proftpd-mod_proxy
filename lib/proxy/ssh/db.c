@@ -79,7 +79,7 @@ static int ssh_db_add_hostkey(pool *p, void *dsh, unsigned int vhost_id,
 
   res = proxy_db_bind_stmt(p, dbh, stmt, 4, PROXY_DB_BIND_TYPE_BLOB,
     (void *) hostkey_data, (int) hostkey_datalen);
-  if (res < 0) { 
+  if (res < 0) {
     return -1;
   }
 

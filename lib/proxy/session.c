@@ -229,7 +229,7 @@ int proxy_session_setup_env(pool *p, const char *user, int flags) {
       errno = EPERM;
       return -1;
     }
-  
+
     session.user = pstrdup(p, pw->pw_name);
     session.group = pstrdup(p, pr_auth_gid2name(p, pw->pw_gid));
 
@@ -243,7 +243,7 @@ int proxy_session_setup_env(pool *p, const char *user, int flags) {
      * be?  Kept as is?
      */
   }
- 
+
   if (session.gids == NULL &&
       session.groups == NULL) {
     res = pr_auth_getgroups(p, session.user, &session.gids, &session.groups);

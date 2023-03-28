@@ -249,7 +249,7 @@ static int tls_db_count_sess(pool *p, void *dbh) {
   int count = 0, res;
   const char *stmt, *errstr = NULL;
   array_header *results;
-  
+
   stmt = "SELECT COUNT(*) FROM proxy_tls_sessions;";
   res = proxy_db_prepare_stmt(p, dbh, stmt);
   if (res < 0) {
@@ -272,7 +272,7 @@ static int tls_db_count_sess(pool *p, void *dbh) {
     return -1;
   }
 
-  count = atoi(((char **) results->elts)[0]); 
+  count = atoi(((char **) results->elts)[0]);
   return count;
 }
 

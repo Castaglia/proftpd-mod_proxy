@@ -58,7 +58,7 @@ static void tear_down(void) {
     p = permanent_pool = session.pool = proxy_pool = NULL;
     session.c = NULL;
     session.notes = NULL;
-  } 
+  }
 }
 
 START_TEST (fmt_addr_test) {
@@ -284,7 +284,7 @@ END_TEST
 
 START_TEST (parse_ext_addr_test) {
   const pr_netaddr_t *addr, *res;
-  const char *msg; 
+  const char *msg;
 
   res = proxy_ftp_msg_parse_ext_addr(NULL, NULL, NULL, 0, NULL);
   ck_assert_msg(res == NULL, "Failed to handle null pool");

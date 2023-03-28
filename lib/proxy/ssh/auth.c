@@ -314,19 +314,19 @@ static int write_userauth_hostbased(struct proxy_ssh_packet *pkt,
   } else if (proxy_ssh_keys_have_hostkey(PROXY_SSH_KEY_ECDSA_521) == 0) {
     use_hostkey_type = PROXY_SSH_KEY_ECDSA_521;
     hostkey_algo = "ecdsa-sha2-nistp521";
-  
+
   } else if (proxy_ssh_keys_have_hostkey(PROXY_SSH_KEY_ECDSA_384) == 0) {
     use_hostkey_type = PROXY_SSH_KEY_ECDSA_384;
     hostkey_algo = "ecdsa-sha2-nistp384";
-  
+
   } else if (proxy_ssh_keys_have_hostkey(PROXY_SSH_KEY_ECDSA_256) == 0) {
     use_hostkey_type = PROXY_SSH_KEY_ECDSA_256;
     hostkey_algo = "ecdsa-sha2-nistp256";
-  
+
   } else if (proxy_ssh_keys_have_hostkey(PROXY_SSH_KEY_RSA) == 0) {
     use_hostkey_type = PROXY_SSH_KEY_RSA;
     hostkey_algo = "ssh-rsa";
-  
+
   } else if (proxy_ssh_keys_have_hostkey(PROXY_SSH_KEY_DSA) == 0) {
     use_hostkey_type = PROXY_SSH_KEY_DSA;
     hostkey_algo = "ssh-dss";

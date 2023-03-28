@@ -82,7 +82,7 @@ static void tear_down(void) {
     server_list = NULL;
     session.c = NULL;
     session.notes = NULL;
-  } 
+  }
 }
 
 START_TEST (session_free_test) {

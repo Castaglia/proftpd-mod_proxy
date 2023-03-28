@@ -1126,7 +1126,7 @@ const char *proxy_ssh_crypto_get_kexinit_cipher_list(pool *p) {
                   ) {
                 res = pstrcat(p, res, *res ? "," : "",
                   pstrdup(p, ciphers[j].name), NULL);
-       
+
               } else {
                 pr_trace_msg(trace_channel, 3,
                   "unable to use '%s' cipher: Unsupported by OpenSSL",
@@ -1182,7 +1182,7 @@ const char *proxy_ssh_crypto_get_kexinit_cipher_list(pool *p) {
               res = pstrcat(p, res, *res ? "," : "",
                 pstrdup(p, ciphers[i].name), NULL);
 
-            } else {       
+            } else {
               pr_trace_msg(trace_channel, 3,
                 "unable to use '%s' cipher: Unsupported by OpenSSL",
                 ciphers[i].name);

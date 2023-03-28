@@ -208,7 +208,7 @@ const pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *p, const char *msg,
   addrlen += 7;
 #endif /* PR_USE_IPV6 */
 
-  addr_buf = pcalloc(p, addrlen); 
+  addr_buf = pcalloc(p, addrlen);
 
 #ifdef PR_USE_IPV6
   if (pr_netaddr_use_ipv6()) {
