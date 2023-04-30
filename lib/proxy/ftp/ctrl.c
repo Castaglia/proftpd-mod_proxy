@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP control conn routines
- * Copyright (c) 2012-2022 TJ Saunders
+ * Copyright (c) 2012-2023 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -131,7 +131,7 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
     unsigned int *nlines, int flags) {
   char buf[PR_TUNABLE_BUFFER_SIZE];
   pr_response_t *resp = NULL;
-  int multiline = FALSE;
+  int multi_line = FALSE;
   unsigned int count = 0;
 
   if (p == NULL ||
@@ -180,18 +180,20 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
      * with RFC 959.
      *
      * If we are NOT the first line of the response, then we are probably
-     * handling a multiline response. If the first character is a space, then
+     * handling a multi-line response. If the first character is a space, then
      * this is a continuation line.  Otherwise, the first three characters
      * MUST be numeric, AND MUST match the numeric code from the first line.
-     * This indicates the last line in the multiline response -- and the
+     * This indicates the last line in the multi-line response -- and the
      * character after the numerics MUST be a space.
      *
-     * Unfortunately, some FTP servers (IIS, for instance) will use multiline
+     * Unfortunately, some FTP servers (IIS, for instance) will use multi-line
      * responses whose continuation lines do NOT start with the mandated
-     * space (as for a multiline STAT response on a file, for example).  Sigh.
+     * space (as for a multi-line STAT response on a file, for example).  Sigh.
      */
     if (resp == NULL) {
-      /* First line of a possibly multiline response (or just the only line). */
+      /* First line of a possibly multi-line response (or just the only
+       * line).
+       */
       if (buflen < 4) {
         pr_trace_msg(trace_channel, 12,
           "read %lu characters of response, needed at least %d",
@@ -211,7 +213,7 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
       }
 
       /* If this is a space, then we have a single line response.  If it
-       * is a hyphen, then this is the first line of a multiline response.
+       * is a hyphen, then this is the first line of a multi-line response.
        */
       if (buf[3] != ' ' &&
           buf[3] != '-') {
@@ -222,7 +224,7 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
       }
 
       if (buf[3] == '-') {
-        multiline = TRUE;
+        multi_line = TRUE;
       }
 
       count++;
@@ -233,7 +235,7 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
 
         /* TODO: We should have a limit for how large of a buffered response
          * we will tolerate.  Consider a malicious/buggy backend server whose
-         * multiline response is in the GB?
+         * multi-line response is in the GB?
          *
          * One way to avoid the buffering would be to relay each individual
          * response line, as we read them, to the frontend client.  But if
@@ -250,7 +252,7 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
           continue;
 
         } else {
-          /* Possible ending line of multiline response. */
+          /* Possible ending line of multi-line response. */
           if (buflen < 4) {
             errno = EINVAL;
             return NULL;
@@ -306,12 +308,12 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
       resp->num = pstrdup(p, buf);
 
     } else {
-      /* Make sure the last line of the multiline response uses the same
+      /* Make sure the last line of the multi-line response uses the same
        * response code.
        */
       if (strncmp(resp->num, buf, 3) != 0) {
         pr_trace_msg(trace_channel, 1,
-          "invalid multiline FTP response: mismatched starting response "
+          "invalid multi-line FTP response: mismatched starting response "
           "code (%s) and ending response code (%s)", resp->num, buf);
         errno = EINVAL;
         return NULL;
@@ -320,7 +322,7 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
 
     if (resp->msg == NULL) {
       if (buflen > 4) {
-        if (multiline) {
+        if (multi_line == TRUE) {
           *ptr = c;
           resp->msg = pstrdup(p, ptr);
           *ptr = '\0';
@@ -342,10 +344,10 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
 
     } else {
       if (buflen > 4) {
-        if (multiline) {
+        if (multi_line == TRUE) {
           *ptr = c;
 
-          /* This the last line of a multiline response, which means we
+          /* This the last line of a multi-line response, which means we
            * need the ENTIRE line, including the response code.
            */
           resp->msg = pstrcat(p, resp->msg, "\r\n", buf, NULL);
@@ -363,7 +365,7 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
 
   pr_trace_msg(trace_channel, 9,
     "received '%s%s%s' response from backend to frontend",
-    resp->num, multiline ? "" : " ", resp->msg);
+    resp->num, multi_line ? "-" : " ", resp->msg);
   return resp;
 }
 
@@ -498,7 +500,7 @@ int proxy_ftp_ctrl_send_resp(pool *p, conn_t *ctrl_conn, pr_response_t *resp,
   }
 
   if (resp_nlines > 1) {
-    pr_response_send_raw("%s%s", resp->num, resp->msg);
+    pr_response_send_raw("%s-%s", resp->num, resp->msg);
 
   } else {
     pr_response_send(resp->num, "%s", resp->msg);
