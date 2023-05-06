@@ -2476,11 +2476,15 @@ It is <b>highly recommended</b> that SQLite 3.8.5 or later be used.  Problems
 have been reported with <code>mod_proxy</code> when SQLite 3.6.20 is used;
 these problems disappeared once SQLite was upgraded to a newer version.
 
+<b>Note</b>: <code>mod_proxy</code> uses the OpenSSL library, so its
+development library/header files <b>must</b> be installed for building
+<code>mod_proxy</code>.
+
 <p>
 <hr>
 
 <font size=2><b><i>
-&copy; Copyright 2015-2022 TJ Saunders<br>
+&copy; Copyright 2015-2023 TJ Saunders<br>
  All Rights Reserved<br>
 </i></b></font>
 
