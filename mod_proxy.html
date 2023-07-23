@@ -2074,6 +2074,45 @@ specify a port of 990, <i>e.g.</i>:
 </code>
 
 <p>
+Note that there is an additional wrinkle/caveat for implicit FTPS support when
+your <code>mod_proxy</code> installation uses shared/DSO modules.  You must
+ensure, in a list of <code>LoadModule</code> directives, that
+<code>mod_proxy</code> appears <i>before</i> <code>mod_tls</code>:
+<pre>
+  # Make sure that mod_tls appears after mod_proxy in the list of loaded
+  # modules
+  LoadModule mod_proxy.c
+  LoadModule mod_tls.c
+</pre>
+Why does this matter?
+
+<p>
+A lot of things happen when a client connects, via TCP, to the server (in this
+case, to a server configured to be a proxy). ProFTPD publishes this "on connect"
+event to all of the modules, in "module load order". The <em>last</em> module
+loaded will be the <em>first</em> module to receive this event; this means
+"module loader order" is the <em>reverse</em> order of your
+<code>LoadModule</code> directives.
+
+<p>
+What we want is for the <code>mod_tls</code> module to handle the "on connect"
+event first, so that it handles the implicit TLS handshake.  In doing so, the
+<code>mod_tls</code> module will record some internal session state showing
+that a TLS handshake occurred.  The <code>mod_proxy</code> module looks for the
+internal session state that <code>mod_tls</code> sets, and will Do The Right
+Thing if it sees that a TLS session is in effect.
+
+<p>
+On the other hand, if <code>mod_proxy</code> appears after <code>mod_tls</code>
+in the <code>LoadModule</code> list, then it is the <code>mod_proxy</code>
+module which handles the "on connect" event before <code>mod_tls</code> does.
+<code>mod_proxy</code> looks for the session state to see if a TLS session is
+in effect, does not find the session state, and then attempts to proxy things
+like the backend banner to the client.  The frontend client is expecting TLS
+handshake bytes, not plaintext text bytes from the banner, and thus the frontend
+client will see a TLS error.
+
+<p>
 <b>SFTP/SCP Support</b><br>
 The <code>mod_proxy</code> module now supports <em>reverse</em> proxying (but
 <b>not</b> <em>forward</em> proxying) of SFTP/SCP sessions.
