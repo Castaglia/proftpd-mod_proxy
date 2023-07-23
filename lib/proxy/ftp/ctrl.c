@@ -175,6 +175,13 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
       buflen--;
     }
 
+    if (buflen == 0 &&
+        (flags & PROXY_FTP_CTRL_FL_IGNORE_BLANK_RESP)) {
+      pr_trace_msg(trace_channel, 19, "%s",
+        "skipping blank response line from backend server");
+      continue;
+    }
+
     /* If we are the first line of the response, the first three characters
      * MUST be numeric, followed by a hypen.  Anything else is nonconformant
      * with RFC 959.
