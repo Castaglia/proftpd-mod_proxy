@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP session routines
- * Copyright (c) 2013-2022 TJ Saunders
+ * Copyright (c) 2013-2023 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -100,7 +100,7 @@ static int parse_feat(pool *p, const char *feat, array_header **res) {
 
 int proxy_ftp_sess_get_feat(pool *p, const struct proxy_session *proxy_sess) {
   pool *tmp_pool;
-  int res, xerrno = 0;
+  int flags, res, xerrno = 0;
   cmd_rec *cmd;
   pr_response_t *resp;
   unsigned int resp_nlines = 0;
@@ -129,8 +129,16 @@ int proxy_ftp_sess_get_feat(pool *p, const struct proxy_session *proxy_sess) {
     return -1;
   }
 
+  /* Some broken FTP servers actually send blank lines in responses, such
+   * as in a FEAT response.  Ugh.  (See Issue #251.)
+   *
+   * TODO: Should this use some sort of "enable compatibility with broken/
+   * non-conformat servrs" ProxyOption/flag?
+   */
+  flags = PROXY_FTP_CTRL_FL_IGNORE_BLANK_RESP;
+
   resp = proxy_ftp_ctrl_recv_resp(tmp_pool, proxy_sess->backend_ctrl_conn,
-    &resp_nlines, 0);
+    &resp_nlines, flags);
   if (resp == NULL) {
     xerrno = errno;
 

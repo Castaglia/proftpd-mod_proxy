@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP control conn API
- * Copyright (c) 2012-2020 TJ Saunders
+ * Copyright (c) 2012-2023 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,7 +28,9 @@
 #include "mod_proxy.h"
 
 /* Note: this flag is only used for testing. */
-#define PROXY_FTP_CTRL_FL_IGNORE_EOF	0x0001
+#define PROXY_FTP_CTRL_FL_IGNORE_EOF		0x0001
+
+#define PROXY_FTP_CTRL_FL_IGNORE_BLANK_RESP	0x0002
 
 int proxy_ftp_ctrl_handle_async(pool *p, conn_t *backend_conn,
   conn_t *frontend_conn, int flags);
