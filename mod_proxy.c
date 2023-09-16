@@ -3070,7 +3070,11 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
           pr_timer_remove(PR_TIMER_STALLED, ANY_MODULE);
         }
 
+#if PROFTPD_VERSION_NUMBER >= 0x0001030901
+        pr_throttle_pause(bytes_transferred, TRUE, bytes_transferred);
+#else
         pr_throttle_pause(bytes_transferred, TRUE);
+#endif /* Prior to ProFTPD 1.3.9rc1 */
         pr_response_clear(&resp_list);
         pr_response_clear(&resp_err_list);
 
@@ -3145,7 +3149,12 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
           session.xfer.total_bytes += nread;
 
           bytes_transferred += nread;
+
+#if PROFTPD_VERSION_NUMBER >= 0x0001030901
+          pr_throttle_pause(bytes_transferred, FALSE, bytes_transferred);
+#else
           pr_throttle_pause(bytes_transferred, FALSE);
+#endif /* Prior to ProFTPD 1.3.9rc1 */
 
           /* We use a loop in order to properly handle short writes.
            *
@@ -3347,7 +3356,11 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
     pr_timer_remove(PR_TIMER_STALLED, ANY_MODULE);
   }
 
+#if PROFTPD_VERSION_NUMBER >= 0x0001030901
+  pr_throttle_pause(bytes_transferred, TRUE, bytes_transferred);
+#else
   pr_throttle_pause(bytes_transferred, TRUE);
+#endif /* Prior to ProFTPD 1.3.9rc1 */
 
   proxy_sess->frontend_sess_flags &= ~SF_XFER;
   proxy_sess->backend_sess_flags &= ~SF_XFER;
