@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy conn implementation
- * Copyright (c) 2012-2022 TJ Saunders
+ * Copyright (c) 2012-2023 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1134,6 +1134,21 @@ static int writev_conn(conn_t *conn, const struct iovec *iov, int iov_count) {
   return res;
 }
 
+static const char *get_v2_tlv_alpn(pool *p) {
+  const char *alpn = NULL;
+
+  /* Note that in a proxy chain, we will want to also honor
+   * and preserve any ALPN TLV sent via PROXY protocol.
+   */
+  alpn = pr_table_get(session.notes, "mod_proxy_protocol.alpn", NULL);
+  if (alpn == NULL) {
+    alpn = pstrdup(p, pr_session_get_protocol(0));
+  }
+
+  pr_trace_msg(trace_channel, 22, "adding ALPN V2 TLV: '%s'", alpn);
+  return alpn;
+}
+
 static uint16_t add_v2_tlv_alpn(pool *p, struct iovec *v2_iov,
     unsigned int *v2_niov) {
   uint8_t *tlv_type;
@@ -1145,7 +1160,7 @@ static uint16_t add_v2_tlv_alpn(pool *p, struct iovec *v2_iov,
   tlv_type = pcalloc(p, sizeof(uint8_t));
   *tlv_type = PROXY_PROTOCOL_V2_TLV_ALPN;
 
-  tlv_val = pstrdup(p, pr_session_get_protocol(0));
+  tlv_val = get_v2_tlv_alpn(p);
   tlv_valsz = strlen(tlv_val);
 
   tlv_len = pcalloc(p, sizeof(uint16_t));
@@ -1171,6 +1186,25 @@ static uint16_t add_v2_tlv_alpn(pool *p, struct iovec *v2_iov,
   return total_len;
 }
 
+static const void *get_v2_tlv_authority(pool *p) {
+  const void *authority = NULL;
+
+  /* Add the Authority TLV if the client sent an FTP HOST command, or
+   * used TLS SNI.  Note that in a proxy chain, we will want to also honor
+   * and preserve any Authority TLV sent via PROXY protocol.
+   */
+  authority = pr_table_get(session.notes, "mod_proxy_protocol.authority", NULL);
+  if (authority == NULL) {
+    authority = pr_table_get(session.notes, "mod_core.host", NULL);
+  }
+
+  if (authority == NULL) {
+    authority = pr_table_get(session.notes, "mod_tls.sni", NULL);
+  }
+
+  return authority;
+}
+
 static uint16_t add_v2_tlv_authority(pool *p, struct iovec *v2_iov,
     unsigned int *v2_niov) {
   uint8_t *tlv_type;
@@ -1180,18 +1214,13 @@ static uint16_t add_v2_tlv_authority(pool *p, struct iovec *v2_iov,
   unsigned int niov;
   const void *val = NULL;
 
-  /* Only add the Authority TLV if the client sent an FTP HOST command, or
-   * used TLS SNI.
-   */
-
-  val = pr_table_get(session.notes, "mod_core.host", NULL);
-  if (val == NULL) {
-    val = pr_table_get(session.notes, "mod_tls.sni", NULL);
-  }
-
+  val = get_v2_tlv_authority(p);
   if (val == NULL) {
     return 0;
   }
+
+  pr_trace_msg(trace_channel, 22, "adding Authority V2 TLV: '%s'",
+    (const char *) val);
 
   tlv_type = pcalloc(p, sizeof(uint8_t));
   *tlv_type = PROXY_PROTOCOL_V2_TLV_AUTHORITY;
@@ -1222,53 +1251,146 @@ static uint16_t add_v2_tlv_authority(pool *p, struct iovec *v2_iov,
   return total_len;
 }
 
+static const char *get_v2_tlv_tls_version(pool *p) {
+  const char *tls_version = NULL;
+
+  tls_version = pr_table_get(session.notes, "mod_proxy_protocol.tls.version",
+    NULL);
+  if (tls_version == NULL) {
+    tls_version = pr_table_get(session.notes, "TLS_PROTOCOL", NULL);
+  }
+
+  if (tls_version != NULL) {
+    pr_trace_msg(trace_channel, 22, "adding TLS V2 TLV: TLS version '%s'",
+      tls_version);
+  }
+
+  return tls_version;
+}
+
+static const char *get_v2_tlv_tls_common_name(pool *p) {
+  const char *tls_common_name = NULL;
+
+  tls_common_name = pr_table_get(session.notes,
+    "mod_proxy_protoocl.tls.common-name", NULL);
+  if (tls_common_name == NULL) {
+    tls_common_name = pr_table_get(session.notes, "TLS_CLIENT_S_DN_CN", NULL);
+  }
+
+  if (tls_common_name != NULL) {
+    pr_trace_msg(trace_channel, 22, "adding TLS V2 TLV: TLS Common Name '%s'",
+      tls_common_name);
+  }
+
+  return tls_common_name;
+}
+
+static const char *get_v2_tlv_tls_cipher(pool *p) {
+  const char *tls_cipher = NULL;
+
+  tls_cipher = pr_table_get(session.notes, "mod_proxy_protocol.tls.cipher",
+    NULL);
+  if (tls_cipher == NULL) {
+    tls_cipher = pr_table_get(session.notes, "TLS_CIPHER", NULL);
+  }
+
+  if (tls_cipher != NULL) {
+    pr_trace_msg(trace_channel, 22, "adding TLS V2 TLV: TLS Cipher '%s'",
+      tls_cipher);
+  }
+
+  return tls_cipher;
+}
+
+static const char *get_v2_tlv_tls_sig_algo(pool *p) {
+  const char *tls_sig_algo = NULL;
+
+  tls_sig_algo = pr_table_get(session.notes,
+    "mod_proxy_protocol.tls.signature-algo", NULL);
+  if (tls_sig_algo == NULL) {
+    tls_sig_algo = pr_table_get(session.notes, "TLS_CLIENT_A_SIG", NULL);
+  }
+
+  if (tls_sig_algo != NULL) {
+    pr_trace_msg(trace_channel, 22,
+      "adding TLS V2 TLV: TLS Signature Algorithm '%s'", tls_sig_algo);
+  }
+
+  return tls_sig_algo;
+}
+
+static const char *get_v2_tlv_tls_key_algo(pool *p) {
+  const char *tls_key_algo = NULL;
+
+  tls_key_algo = pr_table_get(session.notes, "mod_proxy_protocol.tls.key-algo",
+    NULL);
+  if (tls_key_algo == NULL) {
+    tls_key_algo = pr_table_get(session.notes, "TLS_CLIENT_A_KEY", NULL);
+  }
+
+  if (tls_key_algo != NULL) {
+    pr_trace_msg(trace_channel, 22,
+      "adding TLS V2 TLV: TLS Key Algorithm '%s'", tls_key_algo);
+  }
+
+  return tls_key_algo;
+}
+
 static uint16_t add_v2_tlv_tls(pool *p, struct iovec *v2_iov,
     unsigned int *v2_niov) {
-  uint8_t *tlv_type, client;
+  uint8_t *tlv_type, client = 0;
   uint16_t *tlv_len, total_len;
   uint32_t verify;
   char *tlv_ptr;
   void *tlv_val;
   size_t tlv_valsz = 0, valsz = 0;
   unsigned int niov;
-  const char *proto, *tls_version, *tls_common_name, *tls_cipher, *tls_sig_algo, *tls_key_algo;
+  const char *tls_version, *tls_common_name, *tls_cipher, *tls_sig_algo, *tls_key_algo;
 
-  /* Only add the SSL TLV if FTPS is in use. */
-  proto = pr_session_get_protocol(0);
-  if (strcmp(proto, "ftps") != 0) {
-    return 0;
-  }
+  /* Even if FTPS is not in use right now for us, the original client may
+   * have used FTPS at the sort of a proxy chain.  Thus we'll add any TLS
+   * TLVs, if they happen to be present.
+   */
 
   tlv_type = pcalloc(p, sizeof(uint8_t));
   *tlv_type = PROXY_PROTOCOL_V2_TLV_TLS;
 
   /* This is more complicated, due to the nested nature of TLS sub-TLVs. */
 
-  tls_version = pr_table_get(session.notes, "TLS_PROTOCOL", NULL);
-  tls_common_name = pr_table_get(session.notes, "TLS_CLIENT_S_DN_CN", NULL);
-  tls_cipher = pr_table_get(session.notes, "TLS_CIPHER", NULL);
-  tls_sig_algo = pr_table_get(session.notes, "TLS_CLIENT_A_SIG", NULL);
-  tls_key_algo = pr_table_get(session.notes, "TLS_CLIENT_A_KEY", NULL);
+  tls_version = get_v2_tlv_tls_version(p);
+  tls_common_name = get_v2_tlv_tls_common_name(p);
+  tls_cipher = get_v2_tlv_tls_cipher(p);
+  tls_sig_algo = get_v2_tlv_tls_sig_algo(p);
+  tls_key_algo = get_v2_tlv_tls_key_algo(p);
 
   valsz = sizeof(client) + sizeof(verify);
 
+  /* If any of these TLS settings is present, then we set client to 1 to
+   * indicate that TLS was in fact used.
+   */
+
   if (tls_version != NULL) {
+    client = 0x01;
     valsz += (sizeof(uint8_t) + sizeof(uint16_t) + strlen(tls_version));
   }
 
   if (tls_common_name != NULL) {
+    client = 0x01;
     valsz += (sizeof(uint8_t) + sizeof(uint16_t) + strlen(tls_common_name));
   }
 
   if (tls_cipher != NULL) {
+    client = 0x01;
     valsz += (sizeof(uint8_t) + sizeof(uint16_t) + strlen(tls_cipher));
   }
 
   if (tls_sig_algo != NULL) {
+    client = 0x01;
     valsz += (sizeof(uint8_t) + sizeof(uint16_t) + strlen(tls_sig_algo));
   }
 
   if (tls_key_algo != NULL) {
+    client = 0x01;
     valsz += (sizeof(uint8_t) + sizeof(uint16_t) + strlen(tls_key_algo));
   }
 
@@ -1278,7 +1400,6 @@ static uint16_t add_v2_tlv_tls(pool *p, struct iovec *v2_iov,
   /* Client field: 0x01 to indicate TLS was used, 0x02 when a client cert
    * was also presented.
    */
-  client = 0x01;
   if (tls_common_name != NULL) {
     client = 0x02;
   }
@@ -1413,6 +1534,28 @@ static uint16_t add_v2_tlv_tls(pool *p, struct iovec *v2_iov,
   return total_len;
 }
 
+static const char *get_v2_tlv_unique_id(pool *p) {
+  const char *unique_id = NULL;
+
+  /* Only add the Unique ID TLV if mod_unique_id generated one.
+   * Note that in a proxy chain, we will want to also honor
+   * and preserve any Unique ID TLV sent via PROXY protocol.
+   */
+  unique_id = pr_table_get(session.notes, "mod_proxy_protocol.unique-id", NULL);
+  if (unique_id == NULL) {
+    const void *val;
+
+    val = pr_table_get(session.notes, "UNIQUE_ID", NULL);
+    if (val == NULL) {
+      return NULL;
+    }
+
+    unique_id = pstrdup(p, val);
+  }
+
+  return unique_id;
+}
+
 static uint16_t add_v2_tlv_unique_id(pool *p, struct iovec *v2_iov,
     unsigned int *v2_niov) {
   uint8_t *tlv_type;
@@ -1420,18 +1563,18 @@ static uint16_t add_v2_tlv_unique_id(pool *p, struct iovec *v2_iov,
   const char *tlv_val;
   size_t tlv_valsz = 0;
   unsigned int niov;
-  const void *val = NULL;
 
-  /* Only add the Unique ID TLV if mod_unique_id generated one. */
-  val = pr_table_get(session.notes, "UNIQUE_ID", NULL);
-  if (val == NULL) {
+  tlv_val = get_v2_tlv_unique_id(p);
+  if (tlv_val == NULL) {
     return 0;
   }
+
+  pr_trace_msg(trace_channel, 22, "adding Unique ID V2 TLV: '%s'",
+    (const char *) tlv_val);
 
   tlv_type = pcalloc(p, sizeof(uint8_t));
   *tlv_type = PROXY_PROTOCOL_V2_TLV_UNIQUE_ID;
 
-  tlv_val = pstrdup(p, val);
   tlv_valsz = strlen(tlv_val);
 
   tlv_len = pcalloc(p, sizeof(uint16_t));
@@ -1457,12 +1600,194 @@ static uint16_t add_v2_tlv_unique_id(pool *p, struct iovec *v2_iov,
   return total_len;
 }
 
+static uint16_t add_v2_tlv_aws(pool *p, struct iovec *v2_iov,
+    unsigned int *v2_niov) {
+  uint8_t *tlv_type, tlv_subtype;
+  uint16_t *tlv_len, tlv_sublen, total_len;
+  char *tlv_ptr;
+  void *tlv_val;
+  const void *tlv_subval;
+  size_t tlv_valsz = 0, tlv_subvalsz = 0, valsz = 0;
+  unsigned int niov;
+
+  tlv_subval = pr_table_get(session.notes,
+    "mod_proxy_protocol.aws.vpc-endpoint-id", &tlv_subvalsz);
+  if (tlv_subval == NULL) {
+    return 0;
+  }
+
+  pr_trace_msg(trace_channel, 22, "adding AWS V2 TLV: VPC Endpoint ID '%s'",
+    (const char *) tlv_subval);
+
+  /* mod_proxy_protocol treats its notes as NUL-terminated strings, but the
+   * AWS TLVs may not actually be strings.  So subtract one for the NUL that
+   * mod_proxy_protocol adds.
+   */
+  tlv_subvalsz -= 1;
+
+  tlv_type = pcalloc(p, sizeof(uint8_t));
+
+  /* AWS custom type for its TLVs. */
+  *tlv_type = 0xEA;
+
+  /* This is more complicated, due to the nested nature of sub-TLVs. */
+
+  valsz = (sizeof(uint8_t) + sizeof(uint16_t) + tlv_subvalsz);
+
+  tlv_ptr = tlv_val = pcalloc(p, valsz);
+  tlv_valsz = valsz;
+
+  /* VPC Endpoint ID */
+  tlv_subtype = 0x01;
+  tlv_sublen = htons(tlv_subvalsz);
+
+  memcpy(tlv_ptr, &tlv_subtype, sizeof(tlv_subtype));
+  tlv_ptr += sizeof(tlv_subtype);
+
+  memcpy(tlv_ptr, &tlv_sublen, sizeof(tlv_sublen));
+  tlv_ptr += sizeof(tlv_sublen);
+
+  memcpy(tlv_ptr, tlv_subval, tlv_subvalsz);
+  tlv_ptr += tlv_subvalsz;
+
+  tlv_len = pcalloc(p, sizeof(uint16_t));
+  *tlv_len = htons(tlv_valsz);
+
+  niov = *v2_niov;
+
+  v2_iov[niov].iov_base = (void *) tlv_type;
+  v2_iov[niov].iov_len = sizeof(uint8_t);
+
+  niov++;
+  v2_iov[niov].iov_base = (void *) tlv_len;
+  v2_iov[niov].iov_len = sizeof(uint16_t);
+
+  niov++;
+  v2_iov[niov].iov_base = (void *) tlv_val;
+  v2_iov[niov].iov_len = tlv_valsz;
+
+  /* Make sure to increment niov one more, for the next TLV. */
+  *v2_niov = niov + 1;
+
+  total_len = sizeof(uint8_t) + sizeof(uint16_t) + tlv_valsz;
+  return total_len;
+}
+
+static int parse_ul(const char *text, uint32_t *num) {
+  char *endp = NULL;
+  unsigned long res;
+
+  res = strtoul(text, &endp, 10);
+  if (endp && *endp) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  *num = (uint32_t) res;
+  return 0;
+}
+
+static uint16_t add_v2_tlv_azure(pool *p, struct iovec *v2_iov,
+    unsigned int *v2_niov) {
+  uint8_t *tlv_type, tlv_subtype;
+  uint16_t *tlv_len, tlv_sublen, total_len;
+  char *tlv_ptr;
+  void *tlv_val;
+  const void *tlv_subval;
+  size_t tlv_valsz = 0, tlv_subvalsz = 0, valsz = 0;
+  unsigned int niov;
+  uint32_t link_id;
+
+  tlv_subval = pr_table_get(session.notes,
+    "mod_proxy_protocol.azure.private-endpoint-linkid", &tlv_subvalsz);
+  if (tlv_subval == NULL) {
+    return 0;
+  }
+
+  /* Per Azure docs, the linkid is a uint32_t value, little-endian.  But
+   * mod_proxy_protocol wants to store session notes as strings, so it does an
+   * snprintf("%u") on the value.  We, of course, want to encode it on the
+   * wire per the docs.  So we need to change the text back to the uint32_t
+   * value.
+   */
+  if (parse_ul(tlv_subval, &link_id) < 0) {
+    return 0;
+  }
+
+  pr_trace_msg(trace_channel, 22,
+    "adding Azure V2 TLV: Private Endpoint Link ID %lu",
+    (unsigned long) link_id);
+
+  tlv_subval = &link_id;
+  tlv_subvalsz = 4;
+
+  tlv_type = pcalloc(p, sizeof(uint8_t));
+
+  /* Azure custom type for its TLVs. */
+  *tlv_type = 0xEE;
+
+  /* This is more complicated, due to the nested nature of sub-TLVs. */
+
+  valsz = (sizeof(uint8_t) + sizeof(uint16_t) + tlv_subvalsz);
+
+  tlv_ptr = tlv_val = pcalloc(p, valsz);
+  tlv_valsz = valsz;
+
+  /* Private Endpoint LinkID */
+  tlv_subtype = 0x01;
+  tlv_sublen = htons(tlv_subvalsz);
+
+  memcpy(tlv_ptr, &tlv_subtype, sizeof(tlv_subtype));
+  tlv_ptr += sizeof(tlv_subtype);
+
+  memcpy(tlv_ptr, &tlv_sublen, sizeof(tlv_sublen));
+  tlv_ptr += sizeof(tlv_sublen);
+
+  memcpy(tlv_ptr, tlv_subval, tlv_subvalsz);
+  tlv_ptr += tlv_subvalsz;
+
+  tlv_len = pcalloc(p, sizeof(uint16_t));
+  *tlv_len = htons(tlv_valsz);
+
+  niov = *v2_niov;
+
+  v2_iov[niov].iov_base = (void *) tlv_type;
+  v2_iov[niov].iov_len = sizeof(uint8_t);
+
+  niov++;
+  v2_iov[niov].iov_base = (void *) tlv_len;
+  v2_iov[niov].iov_len = sizeof(uint16_t);
+
+  niov++;
+  v2_iov[niov].iov_base = (void *) tlv_val;
+  v2_iov[niov].iov_len = tlv_valsz;
+
+  /* Make sure to increment niov one more, for the next TLV. */
+  *v2_niov = niov + 1;
+
+  total_len = sizeof(uint8_t) + sizeof(uint16_t) + tlv_valsz;
+  return total_len;
+}
+
+static uint16_t add_v2_tlv_other(pool *p, struct iovec *v2_iov,
+    unsigned int *v2_niov) {
+  uint16_t len, total_len = 0;
+
+  len = add_v2_tlv_aws(p, v2_iov, v2_niov);
+  total_len += len;
+
+  len = add_v2_tlv_azure(p, v2_iov, v2_niov);
+  total_len += len;
+
+  return total_len;
+}
+
 int proxy_conn_send_proxy_v2(pool *p, conn_t *conn) {
   int res, xerrno;
   uint8_t ver_cmd, trans_fam, src_ipv6[16], dst_ipv6[16];
   uint16_t v2_len, src_port, dst_port;
   uint32_t src_ipv4, dst_ipv4;
-  struct iovec v2_iov[20];
+  struct iovec v2_iov[32];
   unsigned int v2_niov = 8;
   pool *sub_pool = NULL, *tlv_pool = NULL;
   char *proto;
@@ -1563,6 +1888,14 @@ int proxy_conn_send_proxy_v2(pool *p, conn_t *conn) {
     }
 
     tlv_len = add_v2_tlv_unique_id(tlv_pool, v2_iov, &v2_niov);
+    if (tlv_len > 0) {
+      v2_len += tlv_len;
+    }
+
+    /* Make sure we propagate any of the other custom TLVs, such as
+     * for AWS or Azure.
+     */
+    tlv_len = add_v2_tlv_other(tlv_pool, v2_iov, &v2_niov);
     if (tlv_len > 0) {
       v2_len += tlv_len;
     }
