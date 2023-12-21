@@ -2325,6 +2325,18 @@ int proxy_ssh_packet_send_version(conn_t *conn) {
   return 0;
 }
 
+uint32_t proxy_ssh_packet_get_server_seqno(void) {
+  return packet_server_seqno;
+}
+
+void proxy_ssh_packet_reset_client_seqno(void) {
+  packet_client_seqno = 0;
+}
+
+void proxy_ssh_packet_reset_server_seqno(void) {
+  packet_server_seqno = 0;
+}
+
 int proxy_ssh_packet_set_version(const char *version) {
   if (client_version == NULL) {
     errno = EINVAL;

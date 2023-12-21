@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH key exchange (kex)
- * Copyright (c) 2021-2022 TJ Saunders
+ * Copyright (c) 2021-2023 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -182,6 +182,13 @@ struct proxy_ssh_kex {
 static struct proxy_ssh_kex *kex_first_kex = NULL;
 static struct proxy_ssh_kex *kex_rekey_kex = NULL;
 static int kex_sent_kexinit = FALSE;
+
+/* Using strict kex?  Note that we maintain this value here, rather than
+ * in the proxy_ssh_kex struct, so that any "use strict KEX" flag set via the
+ * first KEXINIT is used through any subsequent KEXINITs.
+ */
+static int use_strict_kex = FALSE;
+static int kex_done_first_kex = FALSE;
 
 /* Diffie-Hellman group moduli */
 
@@ -1660,6 +1667,16 @@ static const char *get_kexinit_exchange_list(pool *p) {
     res = pstrcat(p, res, *res ? "," : "", pstrdup(p, "ext-info-c"), NULL);
   }
 
+  if (!(proxy_opts & PROXY_OPT_SSH_NO_STRICT_KEX)) {
+    /* Indicate support for OpenSSH's custom "strict KEX" mode extension,
+     * but only if we have not done/completed our first KEX.
+     */
+    if (kex_done_first_kex == FALSE) {
+      res = pstrcat(p, res, *res ? "," : "",
+        pstrdup(p, "kex-strict-c-v00@openssh.com"), NULL);
+    }
+  }
+
   return res;
 }
 
@@ -2270,6 +2287,21 @@ static int get_session_names(struct proxy_ssh_kex *kex, int *correct_guess) {
       "ext-info-s");
     pr_trace_msg(trace_channel, 20, "server %s EXT_INFO support",
       kex->use_ext_info ? "signaled" : "did not signal" );
+
+    if (!(proxy_opts & PROXY_OPT_SSH_NO_STRICT_KEX)) {
+      /* Did the server indicate "strict kex" support (Issue 257)?
+       *
+       * Note that we only check for this if it is our first KEXINIT.
+       * The "strict kex" extension is ignored in any subsequent KEXINITs, as
+       * for rekeys.
+       */
+      if (kex_done_first_kex == FALSE) {
+        use_strict_kex = proxy_ssh_misc_namelist_contains(kex->pool,
+          server_list, "kex-strict-s-v00@openssh.com");
+        pr_trace_msg(trace_channel, 20, "server %s strict KEX support",
+          use_strict_kex ? "signaled" : "did not signal" );
+      }
+    }
 
   } else {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -3018,6 +3050,10 @@ static struct proxy_ssh_packet *read_kex_packet(pool *p,
     /* Per RFC 4253, Section 11, DEBUG, DISCONNECT, IGNORE, and UNIMPLEMENTED
      * messages can occur at any time, even during KEX.  We have to be prepared
      * for this, and Do The Right Thing(tm).
+     *
+     * However, due to the Terrapin attack, if we are using a "strict KEX"
+     * mode, then only DISCONNECT messages can occur during KEX; DEBUG,
+     * IGNORE, and UNIMPLEMENTED messages will lead to disconnecting.
      */
 
     msg_type = proxy_ssh_packet_get_msg_type(pkt);
@@ -3046,35 +3082,43 @@ static struct proxy_ssh_packet *read_kex_packet(pool *p,
     }
 
     switch (msg_type) {
-      case PROXY_SSH_MSG_DEBUG:
-        proxy_ssh_packet_handle_debug(pkt);
-        pr_response_set_pool(NULL);
-        pkt = NULL;
-        break;
-
+      /* DISCONNECT messages are always allowed. */
       case PROXY_SSH_MSG_DISCONNECT:
         proxy_ssh_packet_handle_disconnect(pkt);
         pr_response_set_pool(NULL);
         pkt = NULL;
         break;
 
+      case PROXY_SSH_MSG_DEBUG:
+        if (use_strict_kex == FALSE) {
+          proxy_ssh_packet_handle_debug(pkt);
+          pr_response_set_pool(NULL);
+          pkt = NULL;
+          break;
+        }
+
       case PROXY_SSH_MSG_IGNORE:
-        proxy_ssh_packet_handle_ignore(pkt);
-        pr_response_set_pool(NULL);
-        pkt = NULL;
-        break;
+        if (use_strict_kex == FALSE) {
+          proxy_ssh_packet_handle_ignore(pkt);
+          pr_response_set_pool(NULL);
+          pkt = NULL;
+          break;
+        }
 
       case PROXY_SSH_MSG_UNIMPLEMENTED:
-        proxy_ssh_packet_handle_unimplemented(pkt);
-        pr_response_set_pool(NULL);
-        pkt = NULL;
-        break;
+        if (use_strict_kex == FALSE) {
+          proxy_ssh_packet_handle_unimplemented(pkt);
+          pr_response_set_pool(NULL);
+          pkt = NULL;
+          break;
+        }
 
       default:
         /* For any other message type, it's considered a protocol error. */
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "received %s (%d) unexpectedly, disconnecting",
-          proxy_ssh_packet_get_msg_type_desc(msg_type), msg_type);
+          "received %s (%d) unexpectedly%s, disconnecting",
+          proxy_ssh_packet_get_msg_type_desc(msg_type), msg_type,
+          use_strict_kex ? " during strict KEX" : "");
         pr_response_set_pool(NULL);
         destroy_kex(kex);
         destroy_pool(pkt->pool);
@@ -4903,6 +4947,25 @@ int proxy_ssh_kex_handle(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
+  if (use_strict_kex == TRUE &&
+      kex_done_first_kex == FALSE) {
+    uint32_t server_seqno;
+
+    server_seqno = proxy_ssh_packet_get_server_seqno();
+    if (server_seqno != 1) {
+      /* Receiving any messages other than a KEXINIT as the first server
+       * message indicates the possibility of the Terrapin attack being
+       * conducted (Issue 257).  Thus we disconnect the server in such
+       * cases.
+       */
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "'strict KEX' violation, as KEXINIT was not the first message; disconnecting");
+      destroy_kex(kex);
+      PROXY_SSH_DISCONNECT_CONN(proxy_sess->backend_ctrl_conn,
+        PROXY_SSH_DISCONNECT_BY_APPLICATION, NULL);
+    }
+  }
+
   /* Once we have received the server KEXINIT message, we can compare what we
    * want to send against what we already received from the server.
    *
@@ -5063,6 +5126,11 @@ int proxy_ssh_kex_handle(struct proxy_ssh_packet *pkt,
     sent_newkeys = TRUE;
   }
 
+  if (use_strict_kex == TRUE) {
+    proxy_ssh_packet_reset_client_seqno();
+    proxy_ssh_packet_reset_server_seqno();
+  }
+
   /* Last but certainly not least, set up the keys for encryption and
    * authentication, based on H and K.
    */
@@ -5074,6 +5142,9 @@ int proxy_ssh_kex_handle(struct proxy_ssh_packet *pkt,
     PROXY_SSH_DISCONNECT_CONN(proxy_sess->backend_ctrl_conn,
       PROXY_SSH_DISCONNECT_BY_APPLICATION, NULL);
   }
+
+  /* We've now completed our KEX, possibly our first. */
+  kex_done_first_kex = TRUE;
 
   destroy_pool(pkt->pool);
   destroy_kex(kex);
