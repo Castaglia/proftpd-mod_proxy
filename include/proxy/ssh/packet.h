@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH packet API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2023 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -131,6 +131,13 @@ void proxy_ssh_packet_handle_disconnect(struct proxy_ssh_packet *pkt);
 void proxy_ssh_packet_handle_ext_info(struct proxy_ssh_packet *pkt);
 void proxy_ssh_packet_handle_ignore(struct proxy_ssh_packet *pkt);
 void proxy_ssh_packet_handle_unimplemented(struct proxy_ssh_packet *pkt);
+
+/* These are used for implementing the "strict KEX" mitigations of the Terrapin
+ * attack (Issue 257).
+ */
+uint32_t proxy_ssh_packet_get_server_seqno(void);
+void proxy_ssh_packet_reset_client_seqno(void);
+void proxy_ssh_packet_reset_server_seqno(void);
 
 int proxy_ssh_packet_set_version(const char *client_version);
 int proxy_ssh_packet_send_version(conn_t *conn);

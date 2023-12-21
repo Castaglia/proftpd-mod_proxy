@@ -1242,6 +1242,9 @@ MODRET set_proxysftpoptions(cmd_rec *cmd) {
     } else if (strcmp(cmd->argv[i], "NoHostkeyRotation") == 0) {
       opts |= PROXY_OPT_SSH_NO_HOSTKEY_ROTATION;
 
+    } else if (strcmp(cmd->argv[i], "NoStrictKex") == 0) {
+      opts |= PROXY_OPT_SSH_NO_STRICT_KEX;
+
     } else {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxySFTPOption '",
         cmd->argv[i], "'", NULL));

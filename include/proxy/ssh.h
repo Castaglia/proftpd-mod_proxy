@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2023 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,6 +37,7 @@
 #define PROXY_OPT_SSH_ALLOW_WEAK_SECURITY	0x0800
 #define PROXY_OPT_SSH_NO_EXT_INFO		0x1000
 #define PROXY_OPT_SSH_NO_HOSTKEY_ROTATION	0x2000
+#define PROXY_OPT_SSH_NO_STRICT_KEX		0x4000
 
 int proxy_ssh_init(pool *p, const char *tables_dir, int flags);
 int proxy_ssh_free(pool *p);
