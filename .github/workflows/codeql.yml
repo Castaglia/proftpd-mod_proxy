@@ -5,6 +5,7 @@ on:
     branches:
       - master
     paths-ignore:
+      - '*.html'
       - '**/*.md'
       - '**/doc/*'
   pull_request:
