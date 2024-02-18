@@ -73,14 +73,176 @@ is unhealthy?  How long to skip over unhealthy backends?  What happens when
 all backends are unhealthy?
 
   Types of errors:
+    DNS resolution errors
     TCP connect errors
     TLS handshake errors
     FTP connect/login errors (ignoring bad credentials!)
+    SSH banner error (e.g. ill-formed SSH banner/version)
 
 Specifically, we want to track errors that indicate that that server is
-unavailable for service.  Thus probably NOT TLS handshake errors, or
-FTP data transfer errors.  That leaves TCP connect errors, and FTP non-200
-responses on connect.
+unavailable for service.  Thus probably NOT FTP data transfer errors.
+
+  Configuration:
+    use passive health tracking: yes/no
+    number of failures before unhealthy ("down") [default: 2-3]
+    number of successes before healthy ("up") [default: 1]
+      success implies active probes/health checks; this is NOT that
+    unhealthy timeout (before unhealthy status expires) [default: 10s]
+
+    ProxyReverseHealthPolicy
+      none/off
+
+      PassiveChecks
+        failures N (2)
+        expires time (30s)
+
+        ProxyReverseHealthPolicy PassiveChecks failures 2 expires 30s
+
+      ActiveChecks (not implemented)
+
+  Retries:
+    depth-first (retry same target multiple times _first_), or
+    breadth-first (retry next target _first_, cycling through list until max retries count reached)
+
+  NOTE: We only want to call _index_used() if we WANT to move to the next
+  backend.  If we want to retry THIS backend (due to
+  transient/ignorable/non-fatal error), then we explicitly do NOT call
+  _index_used.  Subtle.  Need to capture this in comments for my future self.
+
+  int (*policy_used_backend)(pool *p, void *dsh, int policy_id,
+    unsigned int vhost_id, int backend_id);
+  int (*policy_update_backend)(pool *p, void *dsh, int policy_id,
+    unsigned int vhost_id, int backend_id, int conn_incr, long connect_ms);
+
+Maybe we need now:
+
+  int (*policy_unhealthy_backend)(pool *p, void *dsh, int health_policy_id,
+    unsigned int vhost_id, int backend_id, int unhealthy_incr, long unhealthy_ms, const char *unhealthy_reason)
+
+    Unhealthy Errors
+      DNS
+          Maybe log message should include hint for "Trace dns:20" for more
+          info
+
+        gai_strerror:
+          EAI_AGAIN (ignore)
+          EAI_FAIL
+          EAI_SYSTEM (see errno)
+          EAI_NONAME
+            mapped to ENOENT
+          EAI_FAMILY
+            mapped to EAFNOSUPPORT
+
+        h_errno:
+          HOST_NOT_FOUND
+          TRY_AGAIN (ignore)
+          NO_RECOVERY
+          NO_DATA
+
+      TCP
+        EADDRINUSE (local error, ignore?)
+        EADDRNOTAVAIL (local error, ignore?)
+        ENETDOWN
+        ENETUNREACH
+        EHOSTUNREACH
+        ENETRESET (ignore?)
+        ECONNABORTED
+        ECONNRESET
+        ECONNREFUSED
+        ETIMEDOUT
+
+      TLS
+        any ignorable?
+
+          Maybe log message should include hint for "Trace tls:20" for more
+          info
+
+      FTP
+        non-220 greeting
+          banner_ok = FALSE (non-2xx) in reverse_try_connect()
+
+          Maybe log message should include hint for "Trace proxy.response:20"
+          for more info
+
+      SSH
+        illegal SSH version/banner
+
+          bad_proto = TRUE in lib/proxy/ssh.c#ssh_get_server_version
+
+          Maybe log message should include hint for
+          "Trace proxy.ssh2:20 ssh2:20" for more info
+
+         note that lib/proxy/ssh.c will NOT have the db index as seen
+           in lib/proxy/reverse.c; may need a way to get it.  That said,
+           lib/proxy/ssh.c#ssh_ssh2_auth_completed_ev() DOES call
+           proxy_reverse_connect() and thus all of the above.  So the lack
+           of treatment of illegal SSH banner as "unhealthy" is the result;
+           I think that's OK for now.  We can handle this case as unhealthy
+           in a later pass.
+
+    Remember that _index_used is what advances the index, for _next_backend.
+    lib/proxy/reverse/db.c schema does NOT currently have columns for
+    unhealthy status; would need to bump schema version!
+
+      unhealthy_count INT
+      unhealthy_ms BIGINT
+      unhealthy_reason TEXT
+
+    need reverse_connect_index_unhealthy() function for recording "down"
+    backends, it increments unheathy_count, updates _ms, records last
+    _reason (e.g. "dns: host unknown", "tcp: connection refused")
+
+    and in _next per-policy db functions, need to see if selected backend
+    is unhealthy, or not.  If unhealthy, LOG IT.  If down status expired,
+    log expiry (and clear unhealthy columns) and use selected entry.
+    Otherwise, select NEXT backend.
+
+      This is where the health policy failure count is honored/implemented,
+        by examining unhealthy_count value for exceeding threshold.
+
+      If all backend addresses discovered are marked as "unavailable", should
+      mod_proxy try connecting to one of them anyway?
+
+        These _next per-policy db functions thus need to handle this scenario,
+        where all are unhealthy, none expired; watch for "wrapping" around the
+        list of targets!  This, in turn, means that callers of _next need
+        to handle NULL/ENOENT returns.
+
+        Some policies, like Shuffle or Random, may require a "read-then-write"
+        approach.  Hmm.  These are currently implemented as
+        "get index into list of conns", and idx is a single value, not any
+        metadata associated with that backend/idx (such as unhealthy fields).
+
+        Maybe, in policy_next_backend, it should be:
+
+          get index per policy
+
+          get backend metadata for that index
+            exposing/adding a policy_get_backend feels like surfacing this
+            unnecessarily; it should be an impl detail of policy_next_backend.
+            However, if implemented at the datastore layer, then the datastore
+            layer needs accessors to the configured health policy parameters.
+            I guess this is where having an include/proxy/reverse/health.h API
+            could come in handy.
+
+            int proxy_reverse_health_sess_init(pool *p);
+              does lookup of ProxyReverseHealthPolicy directive
+              called by proxy_reverse_sess_init
+
+            int proxy_reverse_health_is_healthy(unsigned int unhealthy_count, unsigned long unhealthy_ms, const char *unhealthy_reason);
+
+              This way, the Health API knows which policy is configured, knows
+              its parameters.  It logs the fields, handles expiration, etc.
+              If the result is TRUE, then we clear any unhealthy fields.
+
+          check backend metadata for health
+
+          if unhealthy
+            mark index as used
+            goto top
+
+          TRACK starting index, to catch looping around to same index value
+          again due to ALL backends being unhealthy.
 
 Consider also the case where a configured backend server is a DNS name/URL,
 which resolves to multiple IP addresses/ports.  These resolved addresses/ports
@@ -105,3 +267,17 @@ in the db.  Hmm.
   https://docs.nginx.com/nginx/admin-guide/load-balancer/tcp-health-check/#fine-tuning-tcp-health-checks
 
     Defaults: interval=5s, passes=1, fails=1
+
+Tests:
+
+  No regressions (default health policy: none)
+  health policy: passive checks
+    DNS errors
+    TCP errors
+    TLS errors
+    FTP errors
+
+    count exceeded, not exceeded
+    expired, not expired
+
+    all backends unhealthy for a connect policy + vhost
