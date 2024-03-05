@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy database implementation
- * Copyright (c) 2015-2022 TJ Saunders
+ * Copyright (c) 2015-2024 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,8 +38,8 @@ static const char *current_schema = NULL;
 
 static const char *trace_channel = "proxy.db";
 
-#define PROXY_DB_SQLITE_MAX_RETRY_COUNT		4
-#define PROXY_DB_SQLITE_MAX_RETRY_DELAY_MS	250
+#define PROXY_DB_SQLITE_MAX_RETRY_COUNT		20
+#define PROXY_DB_SQLITE_MAX_RETRY_DELAY_MS	100
 
 #define PROXY_DB_SQLITE_TRACE_LEVEL		17
 
@@ -64,12 +64,12 @@ static int db_busy(void *user_data, int busy_count) {
   /* If we're busy, then sleep for a short while, on the assumption that the
    * other process will finish its business with our tables.
    */
-  (void) pr_timer_usleep(PROXY_DB_SQLITE_MAX_RETRY_DELAY_MS);
+  (void) pr_timer_usleep(PROXY_DB_SQLITE_MAX_RETRY_DELAY_MS * 1000);
 
   return retry;
 }
 
-#ifdef SQLITE_CONFIG_LOG
+#if defined(SQLITE_CONFIG_LOG)
 static void db_err(void *user_data, int err_code, const char *err_msg) {
   if (current_schema != NULL) {
     pr_trace_msg(trace_channel, 1, "(sqlite3): schema '%s': [error %d] %s",
@@ -82,7 +82,7 @@ static void db_err(void *user_data, int err_code, const char *err_msg) {
 }
 #endif /* SQLITE_CONFIG_LOG */
 
-#ifdef SQLITE_CONFIG_SQLLOG
+#if defined(SQLITE_CONFIG_SQLLOG)
 static void db_sql(void *user_data, sqlite3 *db, const char *info,
     int event_type) {
   switch (event_type) {
@@ -570,7 +570,7 @@ array_header *proxy_db_exec_prepared_stmt(pool *p, struct proxy_dbh *dbh,
   current_schema = dbh->schema;
 
   /* The sqlit3_stmt_readonly() function first appeared in SQLite 3.7.x. */
-#ifdef HAVE_SQLITE3_STMT_READONLY
+#if defined(HAVE_SQLITE3_STMT_READONLY)
   readonly = sqlite3_stmt_readonly(pstmt);
 #else
   readonly = FALSE;
@@ -695,7 +695,7 @@ struct proxy_dbh *proxy_db_open(pool *p, const char *table_path,
     schema_name, table_path);
 
   flags = SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE;
-#ifdef SQLITE_OPEN_PRIVATECACHE
+#if defined(SQLITE_OPEN_PRIVATECACHE)
   /* By default, disable the shared cache mode. */
   flags |= SQLITE_OPEN_PRIVATECACHE;
 #endif
