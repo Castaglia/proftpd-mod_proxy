@@ -2280,6 +2280,21 @@ custom <code>LogFormats</code> and/or custom SQL statements:
   <li><code>%{note:mod_proxy.backend-url}</code>: URL to the backend/proxied server
 </ul>
 
+<p><a name="SELinux"></a>
+<b>SELinux</b><br>
+If using the <code>mod_proxy</code> module on an SELinux-enabled system, you
+may need the following to allow for proper operations of proxying.  For example,
+using the following <code>mod_proxy</code> configuration:
+<pre>
+  ProxyTables /var/ftp/proxy
+</pre>
+may require that you run:
+<pre>
+  $ semanage fcontext --add --type public_content_rw_t '/var/ftp/proxy(/.*)?'
+  $ setsebool -P ftpd_anon_write=1
+  $ setsebool -P nis_enabled=1
+</pre>
+
 <p><a name="Wishlist"></a>
 <b>Suggested Future Features</b><br>
 The following lists the features I hope to add to <code>mod_proxy</code>,
