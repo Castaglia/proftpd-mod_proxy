@@ -74,6 +74,7 @@ SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/ssh/redis.lo \
   lib/proxy/tls.lo \
   lib/proxy/tls/db.lo \
+  lib/proxy/tls/redis.lo \
   lib/proxy/uri.lo \
   lib/proxy/forward.lo \
   lib/proxy/reverse.lo \
@@ -119,7 +120,7 @@ LDFLAGS=-L../../lib @LIBDIRS@
 	$(LIBTOOL) --mode=compile --tag=CC $(CC) $(CPPFLAGS) $(CFLAGS) $(SHARED_CFLAGS) -c $< -o $@
 
 shared: $(SHARED_MODULE_OBJS)
-	$(LIBTOOL) --mode=link --tag=CC $(CC) -o $(MODULE_NAME).la $(SHARED_MODULE_OBJS) -rpath $(LIBEXECDIR) $(LDFLAGS) $(SHARED_LDFLAGS) $(SHARED_MODULE_LIBS) `cat $(MODULE_NAME).c | grep '$$Libraries:' | sed -e 's/^.*\$$Libraries: \(.*\)\\$$/\1/'`
+	$(LIBTOOL) --mode=link --tag=CC $(CC) -o $(MODULE_NAME).la $(SHARED_MODULE_OBJS) -rpath $(LIBEXECDIR) $(LDFLAGS) $(SHARED_LDFLAGS) $(MODULE_LIBS) $(SHARED_MODULE_LIBS) `cat $(MODULE_NAME).c | grep '$$Libraries:' | sed -e 's/^.*\$$Libraries: \(.*\)\\$$/\1/'`
 
 static: $(MODULE_OBJS)
 	test -z "$(MODULE_LIBS)" || echo "$(MODULE_LIBS)" >> $(MODULE_LIBS_FILE)
