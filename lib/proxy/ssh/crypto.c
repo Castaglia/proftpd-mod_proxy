@@ -36,6 +36,12 @@
 #endif /* !OPENSSL_NO_DES */
 #include <openssl/err.h>
 
+#if OPENSSL_VERSION_NUMBER > 0x000907000L && \
+    OPENSSL_VERSION_NUMBER < 0x10100000L
+#include <openssl/engine.h>
+static const char *crypto_engine = NULL;
+#endif
+
 struct proxy_ssh_cipher {
   const char *name;
   const char *openssl_name;
