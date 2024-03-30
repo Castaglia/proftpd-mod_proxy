@@ -44,6 +44,7 @@
 #include "proxy/ssh/utf8.h"
 
 #if defined(PR_USE_OPENSSL)
+#include <openssl/conf.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 
