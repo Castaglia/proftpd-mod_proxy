@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy conn implementation
- * Copyright (c) 2012-2023 TJ Saunders
+ * Copyright (c) 2012-2024 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -677,7 +677,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
   const char *remote_ipstr = NULL;
   unsigned int remote_port;
   conn_t *server_conn, *ctrl_conn;
-  int res;
+  int res, default_inet_family = 0;
 
   if (proxy_sess->connect_timeout > 0) {
     const char *notes_key = "mod_proxy.proxy-connect-address";
@@ -750,8 +750,21 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
   }
 
   bind_addr = proxy_sess->src_addr;
+
+  /* We need to set the default inet family to use for the local address of
+   * our socket.  We do NOT want to just use the family of the local address of
+   * our control connection, since we could be listening on an IPv6 address
+   * and want to connect to a backend IPv4 address, or vice versa; see
+   * Issue #272.
+   */
   if (bind_addr == NULL) {
-    bind_addr = local_addr;
+    int remote_family;
+
+    remote_family = pr_netaddr_get_family(remote_addr);
+
+    pr_trace_msg(trace_channel, 9, "using %s family for socket local address",
+      remote_family == AF_INET ? "IPv4" : "IPv6");
+    default_inet_family = pr_inet_set_default_family(p, remote_family);
   }
 
   /* Note: IF mod_proxy is running on localhost, and the connection to be
@@ -760,7 +773,8 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
    * and of course not reachable from a public IP.  Thus we check for this
    * edge case (which happens often for development).
    */
-  if (pr_netaddr_is_loopback(bind_addr) == TRUE &&
+  if (bind_addr != NULL &&
+      pr_netaddr_is_loopback(bind_addr) == TRUE &&
       pr_netaddr_is_loopback(remote_addr) != TRUE) {
     const char *local_name;
     const pr_netaddr_t *new_local_addr;
@@ -812,6 +826,11 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     pr_timer_remove(proxy_sess->connect_timerno, &proxy_module);
     errno = xerrno;
     return NULL;
+  }
+
+  /* Restore the previous default inet family if necessary. */
+  if (bind_addr == NULL) {
+    (void) pr_inet_set_default_family(p, default_inet_family);
   }
 
   pr_trace_msg(trace_channel, 12,

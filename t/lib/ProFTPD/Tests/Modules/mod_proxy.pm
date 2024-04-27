@@ -4963,11 +4963,12 @@ sub proxy_reverse_eprt_ipv6 {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:20 proxy.conn:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
     AuthOrder => 'mod_auth_file.c',
+    UseIPv6 => 'on',
 
     SocketBindTight => 'on',
     TimeoutIdle => $timeout_idle,
@@ -5036,19 +5037,16 @@ EOC
 
       my ($resp_code, $resp_msg) = $client->eprt('|2|::ffff:127.0.0.1|4856|');
 
-      my $expected;
-
-      $expected = 200;
+      my $expected = 200;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = "EPRT command successful";
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -23599,6 +23597,7 @@ sub proxy_forward_noproxyauth_login_ipv6_dst_addr {
 
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
+    UseIPv6 => 'on',
 
     IfModules => {
       'mod_proxy.c' => $proxy_config,
@@ -26121,6 +26120,7 @@ sub proxy_forward_eprt_ipv6 {
 
     ServerIdent => 'on "Forward Proxy Server"',
     SocketBindTight => 'on',
+    UseIPv6 => 'on',
 
     IfModules => {
       'mod_proxy.c' => $proxy_config,
