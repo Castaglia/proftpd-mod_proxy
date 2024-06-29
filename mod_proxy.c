@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy
- * Copyright (c) 2012-2023 TJ Saunders
+ * Copyright (c) 2012-2024 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -810,6 +810,9 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
 
     } else if (strcmp(cmd->argv[i], "IgnoreConfigPerms") == 0) {
       opts |= PROXY_OPT_IGNORE_CONFIG_PERMS;
+
+    } else if (strcmp(cmd->argv[i], "AllowForeignAddress") == 0) {
+      opts |= PROXY_OPT_ALLOW_FOREIGN_ADDRESS;
 
     } else {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxyOption '",

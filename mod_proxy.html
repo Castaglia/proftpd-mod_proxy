@@ -492,6 +492,21 @@ behavior of <code>mod_proxy</code>.  For example:
 <p>
 The currently implemented options are:
 <ul>
+  <li><code>AllowForeignAddress</code><br>
+    <p>
+    The <a href="http://www.proftpd.org/docs/modules/mod_core.html#AllowForeignAddress"><code>AllowForeignAddress</code></a> directive controls the policy for
+    <i>frontend</i> data transfer requests from clients connecting to the proxy
+    server; it does <b>not</b> apply to <i>backend</i> data transfer requests.
+    For those, you will want to use this <code>AllowForeignAddress</code>
+    option:
+    <pre>
+  # Allow for cases where the backend server tells us to use a different IP
+  # address for data transfers than the IP address to which mod_proxy connected.
+  ProxyOptions AllowForeignAddress
+    </pre>
+  </li>
+
+  <p>
   <li><code>ShowFeatures</code><br>
     <p>
     When reverse proxying, <code>mod_proxy</code> defaults to not responding to
