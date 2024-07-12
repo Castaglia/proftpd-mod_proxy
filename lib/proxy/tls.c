@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS implementation
- * Copyright (c) 2015-2022 TJ Saunders
+ * Copyright (c) 2015-2024 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -3641,7 +3641,8 @@ static void tls_tlsext_cb(SSL *ssl, int server, int type,
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "[tls.tlsext] TLS %s extension \"%s\" (ID %d, %d %s)%.*s",
         server ? "server" : "client", extension_name, type, tlsext_datalen,
-        tlsext_datalen != 1 ? "bytes" : "byte", (int) ext_infolen, ext_info);
+        tlsext_datalen != 1 ? "bytes" : "byte", (int) ext_infolen,
+        ext_info != NULL ? ext_info : "");
 
       if (bio != NULL) {
         BIO_free(bio);
@@ -3766,7 +3767,8 @@ static void tls_tlsext_cb(SSL *ssl, int server, int type,
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "[tls.tlsext] TLS %s extension \"%s\" (ID %d, %d %s)%.*s",
         server ? "server" : "client", extension_name, type, tlsext_datalen,
-        tlsext_datalen != 1 ? "bytes" : "byte", (int) ext_infolen, ext_info);
+        tlsext_datalen != 1 ? "bytes" : "byte", (int) ext_infolen,
+        ext_info != NULL ? ext_info : "");
 
       if (bio != NULL) {
         BIO_free(bio);
@@ -3878,7 +3880,8 @@ static void tls_tlsext_cb(SSL *ssl, int server, int type,
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "[tls.tlsext] TLS %s extension \"%s\" (ID %d, %d %s)%.*s",
         server ? "server" : "client", extension_name, type, tlsext_datalen,
-        tlsext_datalen != 1 ? "bytes" : "byte", (int) ext_infolen, ext_info);
+        tlsext_datalen != 1 ? "bytes" : "byte", (int) ext_infolen,
+        ext_info != NULL ? ext_info : "");
 
       if (bio != NULL) {
         BIO_free(bio);
@@ -3932,7 +3935,8 @@ static void tls_tlsext_cb(SSL *ssl, int server, int type,
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "[tls.tlsext] TLS %s extension \"%s\" (ID %d, %d %s)%.*s",
         server ? "server" : "client", extension_name, type, tlsext_datalen,
-        tlsext_datalen != 1 ? "bytes" : "byte", (int) ext_infolen, ext_info);
+        tlsext_datalen != 1 ? "bytes" : "byte", (int) ext_infolen,
+        ext_info != NULL ? ext_info : "");
 
       if (bio != NULL) {
         BIO_free(bio);
