@@ -34,12 +34,12 @@ jobs:
 
     steps:
       - name: Checkout ProFTPD
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: proftpd/proftpd
 
       - name: Checkout mod_proxy
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: contrib/mod_proxy
 
