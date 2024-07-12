@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS API
- * Copyright (c) 2015-2021 TJ Saunders
+ * Copyright (c) 2015-2024 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,7 +39,9 @@
 # include <openssl/x509v3.h>
 # include <openssl/rand.h>
 # if OPENSSL_VERSION_NUMBER > 0x000907000L
-#  include <openssl/engine.h>
+#  if defined(PR_USE_OPENSSL_ENGINE)
+#   include <openssl/engine.h>
+#  endif /* PR_USE_OPENSSL_ENGINE */
 #  include <openssl/ocsp.h>
 # endif
 # ifdef PR_USE_OPENSSL_ECC

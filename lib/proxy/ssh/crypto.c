@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH crypto
- * Copyright (c) 2021-2022 TJ Saunders
+ * Copyright (c) 2021-2024 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,8 +37,9 @@
 #include <openssl/err.h>
 
 #if OPENSSL_VERSION_NUMBER > 0x000907000L && \
-    OPENSSL_VERSION_NUMBER < 0x10100000L
-#include <openssl/engine.h>
+    OPENSSL_VERSION_NUMBER < 0x10100000L && \
+    defined(PR_USE_OPENSSL_ENGINE)
+# include <openssl/engine.h>
 static const char *crypto_engine = NULL;
 #endif
 
@@ -1407,8 +1408,9 @@ void proxy_ssh_crypto_free(int flags) {
       pr_module_get("mod_tls.c") == NULL) {
 
 #if OPENSSL_VERSION_NUMBER > 0x000907000L && \
-    OPENSSL_VERSION_NUMBER < 0x10100000L
-    if (crypto_engine) {
+    OPENSSL_VERSION_NUMBER < 0x10100000L && \
+    defined(PR_USE_OPENSSL_ENGINE)
+    if (crypto_engine != NULL) {
       ENGINE_cleanup();
       crypto_engine = NULL;
     }
