@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP data transfer routines
- * Copyright (c) 2013-2022 TJ Saunders
+ * Copyright (c) 2013-2024 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -550,24 +550,26 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
 
   remote_port = ntohs(pr_netaddr_get_port(remote_addr));
 
-  /* Make sure that the given address matches the address to which we
-   * originally connected.
-   */
+  if (!(proxy_opts & PROXY_OPT_ALLOW_FOREIGN_ADDRESS)) {
+    /* Make sure that the given address matches the address to which we
+     * originally connected.
+     */
 
-  if (pr_netaddr_cmp(remote_addr,
-      proxy_sess->backend_ctrl_conn->remote_addr) != 0) {
-    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-      "Refused %s address %s (address mismatch with %s)",
-      (char *) pasv_cmd->argv[0], pr_netaddr_get_ipstr(remote_addr),
-      pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr));
-    xerrno = EPERM;
+    if (pr_netaddr_cmp(remote_addr,
+        proxy_sess->backend_ctrl_conn->remote_addr) != 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "Refused %s address %s (address mismatch with %s)",
+        (char *) pasv_cmd->argv[0], pr_netaddr_get_ipstr(remote_addr),
+        pr_netaddr_get_ipstr(proxy_sess->backend_ctrl_conn->remote_addr));
+      xerrno = EPERM;
 
-    pr_response_add_err(error_code, "%s: %s", (char *) cmd->argv[0],
-      strerror(xerrno));
-    pr_response_flush(&resp_err_list);
+      pr_response_add_err(error_code, "%s: %s", (char *) cmd->argv[0],
+        strerror(xerrno));
+      pr_response_flush(&resp_err_list);
 
-    errno = xerrno;
-    return NULL;
+      errno = xerrno;
+      return NULL;
+    }
   }
 
   if (remote_port < 1024) {
