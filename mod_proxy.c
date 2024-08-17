@@ -5569,8 +5569,38 @@ static int proxy_sess_init(void) {
    * needed.
    */
   proxy_sess = (struct proxy_session *) proxy_session_alloc(proxy_pool);
-  if (pr_table_add(session.notes, "mod_proxy.proxy-session", proxy_sess,
-      sizeof(struct proxy_session)) < 0) {
+  res = pr_table_add(session.notes, "mod_proxy.proxy-session", proxy_sess,
+    sizeof(struct proxy_session));
+
+  if (res < 0 &&
+      errno == ENOSPC) {
+    int nents, nmaxents;
+
+    nents = pr_table_count(session.notes);
+    nmaxents = nents * 2;
+
+    /* Attempt to handle the unusual case where the table is full, since
+     * we really need this note.
+     */
+    pr_trace_msg(trace_channel, 1,
+      "session notes table is full (%u), increasing entry limit to %u",
+      nents, nmaxents);
+
+    if (pr_table_ctl(session.notes, PR_TABLE_CTL_SET_MAX_ENTS,
+        &nmaxents) == 0) {
+      res = pr_table_add(session.notes, "mod_proxy.proxy-session", proxy_sess,
+        sizeof(struct proxy_session));
+
+    } else {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error increasing session notes max entries: %s", strerror(errno));
+
+      res = -1;
+      errno = ENOSPC;
+    }
+  }
+
+  if (res < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error stashing proxy session note: %s", strerror(errno));
 
