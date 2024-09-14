@@ -2412,10 +2412,16 @@ static int proxy_data_prepare_backend_conn(struct proxy_session *proxy_sess,
      * response until we connect to the backend data address/port.
      */
 
+    /* Specify the specific address/interface to use as the source address for
+     * connections to the destination server.
+     */
+    bind_addr = proxy_sess->src_addr;
+
     /* Check the family of the remote address vs what we'll be using to connect.
      * If there's a mismatch, we need to get an addr with the matching family.
      */
-    if (pr_netaddr_get_family(bind_addr) != pr_netaddr_get_family(proxy_sess->backend_data_addr)) {
+    if (bind_addr != NULL &&
+        pr_netaddr_get_family(bind_addr) != pr_netaddr_get_family(proxy_sess->backend_data_addr)) {
       /* In this scenario, the proxy has an IPv6 socket, but the remote/backend
        * server has an IPv4 (or IPv4-mapped IPv6) address.  OR it's the proxy
        * which has an IPv4 socket, and the remote/backend server has an IPv6
@@ -2459,10 +2465,6 @@ static int proxy_data_prepare_backend_conn(struct proxy_session *proxy_sess,
       }
     }
 
-    /* Specify the specific address/interface to use as the source address for
-     * connections to the destination server.
-     */
-    bind_addr = proxy_sess->src_addr;
     if (bind_addr == NULL) {
       bind_addr = local_addr;
     }
