@@ -485,6 +485,8 @@ static void proxy_restrict_session(void) {
    */
   PRIVS_REVOKE
 
+  session.disable_id_switching = TRUE;
+
   if (proxy_chroot != NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "proxy session running as UID %lu, GID %lu, restricted to '%s'",
