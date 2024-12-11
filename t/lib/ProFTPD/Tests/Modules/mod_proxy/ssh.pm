@@ -627,7 +627,7 @@ sub list_tests {
     my $ntests = scalar(@tests);
     for (my $i = 0; $i < $ntests; $i++) {
       if ($tests[$i] eq $key) {
-        splice(@$tests, $i, 1);
+        splice(@tests, $i, 1);
         last;
       }
     }
