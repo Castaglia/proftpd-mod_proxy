@@ -612,7 +612,28 @@ sub list_tests {
     }
   }
 
-  return testsuite_get_runnable_tests($TESTS);
+  my @tests = testsuite_get_runnable_tests($TESTS);
+
+  # These tests need to be skipped due to lack of support when using newer
+  # OpenSSL versions, i.e. 3.x or later.
+  my $skipped_tests = {
+    proxy_reverse_backend_ssh_cipher_3des_ctr => 1,
+    proxy_reverse_backend_ssh_cipher_arcfour128 => 1,
+    proxy_reverse_backend_ssh_cipher_arcfour256 => 1,
+    proxy_reverse_backend_ssh_cipher_blowfish_ctr => 1,
+  };
+
+  foreach my $key (keys(%$skipped_tests)) {
+    my $ntests = scalar(@tests);
+    for (my $i = 0; $i < $ntests; $i++) {
+      if ($tests[$i] eq $key) {
+        splice(@$tests, $i, 1);
+        last;
+      }
+    }
+  }
+
+  return @tests;
 }
 
 sub set_up {
