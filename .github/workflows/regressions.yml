@@ -41,7 +41,7 @@ jobs:
         compiler:
           - gcc
         container:
-          - ubuntu:18.04
+          - ubuntu:22.04
 
     container: ${{ matrix.container }}
 
