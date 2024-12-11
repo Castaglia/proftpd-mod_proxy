@@ -8,6 +8,9 @@ on:
       - '*.html'
       - '**/*.md'
       - '**/doc/*'
+      - 't/etc/**'
+      - 't/lib/**'
+      - 't/modules/**'
   pull_request:
     branches:
       - master
