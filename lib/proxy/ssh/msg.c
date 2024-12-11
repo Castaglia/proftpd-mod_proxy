@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH message format
- * Copyright (c) 2021-2022 TJ Saunders
+ * Copyright (c) 2021-2024 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -355,8 +355,8 @@ uint32_t proxy_ssh_msg_write_byte(unsigned char **buf, uint32_t *buflen,
 }
 
 uint32_t proxy_ssh_msg_write_bool(unsigned char **buf, uint32_t *buflen,
-    unsigned char bool) {
-  return proxy_ssh_msg_write_byte(buf, buflen, bool == 0 ? 0 : 1);
+    unsigned char b) {
+  return proxy_ssh_msg_write_byte(buf, buflen, b == 0 ? 0 : 1);
 }
 
 uint32_t proxy_ssh_msg_write_data(unsigned char **buf, uint32_t *buflen,
