@@ -67,7 +67,7 @@ jobs:
         run: |
           apk update
           # for builds
-          apk add bash build-base clang compiler-rt-static gcc make zlib-dev
+          apk add bash build-base clang compiler-rt gcc make zlib-dev
           # for unit tests
           apk add check check-dev subunit subunit-dev
           # for Redis support
