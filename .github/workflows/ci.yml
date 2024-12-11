@@ -50,7 +50,7 @@ jobs:
           path: proftpd/contrib/mod_proxy
 
       - name: Whitespace check
-        if: ${{ matrix.container == 'ubuntu:18.04' }}
+        if: ${{ matrix.container == 'ubuntu:22.04' }}
         run: |
           apt-get update -qq
           apt-get install -y git
@@ -63,7 +63,7 @@ jobs:
           fi
 
       - name: Install Alpine packages
-        if: ${{ matrix.container == 'alpine:3.15' }}
+        if: ${{ matrix.container == 'alpine:3.18' }}
         run: |
           apk update
           # for builds
@@ -100,7 +100,7 @@ jobs:
           openssl version -a
 
       - name: Install Ubuntu packages
-        if: ${{ matrix.container == 'ubuntu:18.04' }}
+        if: ${{ matrix.container == 'ubuntu:22.04' }}
         run: |
           apt-get update -qq
           # for builds
@@ -126,7 +126,7 @@ jobs:
           openssl version -a
 
       - name: Prepare code coverage
-        if: ${{ matrix.container == 'ubuntu:18.04' }}
+        if: ${{ matrix.container == 'ubuntu:22.04' }}
         run: |
           lcov --directory proftpd --zerocounters
 
@@ -169,7 +169,7 @@ jobs:
         env:
           CC: ${{ matrix.compiler }}
         # Note: Skip the unit tests on Alpine
-        if: ${{ matrix.container != 'alpine:3.15' }}
+        if: ${{ matrix.container != 'alpine:3.18' }}
         run: |
           cd proftpd/contrib/mod_proxy
           make TEST_VERBOSE=1 check
@@ -206,7 +206,7 @@ jobs:
           CC: ${{ matrix.compiler }}
           CFLAGS: -fsanitize=address,undefined
           LDFLAGS: -fsanitize=address,undefined
-        if: ${{ matrix.compiler == 'clang' && matrix.container == 'ubuntu:18.04' }}
+        if: ${{ matrix.compiler == 'clang' && matrix.container == 'ubuntu:22.04' }}
         run: |
           cd proftpd
           make clean
@@ -217,7 +217,7 @@ jobs:
           make TEST_VERBOSE=1 check
 
       - name: Check HTML docs
-        if: ${{ matrix.container == 'ubuntu:18.04' }}
+        if: ${{ matrix.container == 'ubuntu:22.04' }}
         run: |
           cd proftpd/contrib/mod_proxy
           for f in $(/bin/ls *.html); do echo "Processing $f"; tidy -errors -omit -q $f; done || exit 0
