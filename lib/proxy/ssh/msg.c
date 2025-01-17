@@ -70,7 +70,7 @@ uint32_t proxy_ssh_msg_read_byte(pool *p, unsigned char **buf, uint32_t *buflen,
 }
 
 uint32_t proxy_ssh_msg_read_bool(pool *p, unsigned char **buf, uint32_t *buflen,
-    int *bool) {
+    int *b) {
   unsigned char byte = 0;
   uint32_t len;
 
@@ -81,7 +81,7 @@ uint32_t proxy_ssh_msg_read_bool(pool *p, unsigned char **buf, uint32_t *buflen,
     return 0;
   }
 
-  *bool = byte;
+  *b = byte;
   return len;
 }
 
