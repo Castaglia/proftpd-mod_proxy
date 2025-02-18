@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP dirlist routines
- * Copyright (c) 2020-2021 TJ Saunders
+ * Copyright (c) 2020-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -126,7 +126,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_dos(pool *p,
     return NULL;
   }
 
-  pr_trace_msg(trace_channel, 19, "parsing Windows text: '%*s'",
+  pr_trace_msg(trace_channel, 19, "parsing Windows text: '%.*s'",
     (int) textlen, text);
 
   /* 24 is the minimum length of a well-formatted Windows directory listing
@@ -134,7 +134,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_dos(pool *p,
    */
   if (textlen < 24) {
     pr_trace_msg(trace_channel, 3,
-      "error parsing Windows text (too short, need at least 24 bytes): '%*s'",
+      "error parsing Windows text (too short, need at least 24 bytes): '%.*s'",
         (int) textlen, text);
     errno = EINVAL;
     return NULL;
@@ -148,7 +148,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_dos(pool *p,
 
   if (strpbrk(buf, "0123456789-") == NULL) {
     pr_trace_msg(trace_channel, 3,
-      "unexpected Windows date format: '%*s'", (int) buflen, buf);
+      "unexpected Windows date format: '%.*s'", (int) buflen, buf);
     errno = EINVAL;
     return NULL;
   }
@@ -156,7 +156,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_dos(pool *p,
   ptr += buflen;
   if (strncmp(ptr, "  ", 2) != 0) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Windows text (expected 2 spaces after date): '%*s'",
+      "malformed Windows text (expected 2 spaces after date): '%.*s'",
       (int) textlen, text); errno = EINVAL;
     return NULL;
   }
@@ -167,7 +167,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_dos(pool *p,
   buf = pstrndup(p, ptr, buflen);
 
   if (strpbrk(buf, "AMP0123456789:") == NULL) {
-    pr_trace_msg(trace_channel, 3, "unexpected Windows time format: '%*s'",
+    pr_trace_msg(trace_channel, 3, "unexpected Windows time format: '%.*s'",
       (int) buflen, buf);
     errno = EINVAL;
     return NULL;
@@ -189,10 +189,10 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_dos(pool *p,
   buf = pstrndup(p, text, buflen);
 
   pr_trace_msg(trace_channel, 19,
-    "parsing Windows-style timestamp: '%*s'", (int) buflen, buf);
+    "parsing Windows-style timestamp: '%.*s'", (int) buflen, buf);
   if (strptime(buf, windows_ts_fmt, pdf->tm) == NULL) {
     pr_trace_msg(trace_channel, 3,
-      "unexpected Windows timestamp format: '%*s'", (int) buflen, buf);
+      "unexpected Windows timestamp format: '%.*s'", (int) buflen, buf);
     errno = EINVAL;
     return NULL;
   }
@@ -202,7 +202,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_dos(pool *p,
   /* We now expect at least 7 spaces. */
   if (strncmp(ptr, "       ", 7) != 0) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Windows text (expected 7 spaces after timestamp): '%*s'",
+      "malformed Windows text (expected 7 spaces after timestamp): '%.*s'",
       (int) textlen, text);
     errno = EINVAL;
     return NULL;
@@ -220,7 +220,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_dos(pool *p,
 
     if (strncmp(ptr, "          ", 10) != 0) {
       pr_trace_msg(trace_channel, 3,
-        "malformed Windows text (expected 10 spaces after dir): '%*s'",
+        "malformed Windows text (expected 10 spaces after dir): '%.*s'",
         (int) textlen, text);
       errno = EINVAL;
       return NULL;
@@ -245,7 +245,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_dos(pool *p,
 
     if (strpbrk(buf, "0123456789 ") == NULL) {
       pr_trace_msg(trace_channel, 3,
-        "malformed Windows text (expected filesize with '%*s'): '%*s'",
+        "malformed Windows text (expected filesize with '%.*s'): '%.*s'",
         (int) buflen, buf, (int) textlen, text);
       errno = EINVAL;
       return NULL;
@@ -254,7 +254,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_dos(pool *p,
     size_ptr = strpbrk(buf, "0123456789");
     if (size_ptr == NULL) {
       pr_trace_msg(trace_channel, 3,
-        "malformed Windows text (expected filesize not found): '%*s'",
+        "malformed Windows text (expected filesize not found): '%.*s'",
         (int) textlen, text);
       errno = EINVAL;
       return NULL;
@@ -265,7 +265,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_dos(pool *p,
 
     if (pr_str_get_nbytes(size_ptr, NULL, &filesz) < 0) {
       pr_trace_msg(trace_channel, 3,
-        "malformed Windows text (unable to parse filesize: %s): '%*s'",
+        "malformed Windows text (unable to parse filesize: %s): '%.*s'",
         strerror(errno), (int) textlen, text);
       errno = EINVAL;
       return NULL;
@@ -276,7 +276,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_dos(pool *p,
 
     if (strncmp(ptr, " ", 1) != 0) {
       pr_trace_msg(trace_channel, 3,
-        "malformed Windows text (missing space after filesize): '%*s'",
+        "malformed Windows text (missing space after filesize): '%.*s'",
         (int) textlen, text);
       errno = EINVAL;
       return NULL;
@@ -286,7 +286,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_dos(pool *p,
 
   } else {
     pr_trace_msg(trace_channel, 3,
-      "malformed Windows text (unexpected spaces after timestamp): '%*s'",
+      "malformed Windows text (unexpected spaces after timestamp): '%.*s'",
       (int) textlen, text);
     errno = EINVAL;
     return NULL;
@@ -519,7 +519,7 @@ static int get_unix_user(pool *p, char *buf, size_t buflen,
   res = sscanf(buf, "%s", user);
   if (res != 1) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (unable to parse user): '%*s'", (int) buflen, buf);
+      "malformed Unix text (unable to parse user): '%.*s'", (int) buflen, buf);
     errno = EINVAL;
     return -1;
   }
@@ -552,7 +552,7 @@ static int get_unix_group(pool *p, char *buf, size_t buflen,
   res = sscanf(buf, "%s", group);
   if (res != 1) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (unable to parse group): '%*s'", (int) buflen, buf);
+      "malformed Unix text (unable to parse group): '%.*s'", (int) buflen, buf);
     errno = EINVAL;
     return -1;
   }
@@ -574,7 +574,7 @@ static int get_unix_filesize(pool *p, char *buf, size_t buflen,
 
   if (pr_str_get_nbytes(buf, NULL, &filesz) < 0) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (unable to parse filesize: %s): '%*s'",
+      "malformed Unix text (unable to parse filesize: %s): '%.*s'",
       strerror(errno), (int) buflen, buf);
     errno = EINVAL;
     return -1;
@@ -610,7 +610,7 @@ static int get_unix_timestamp(pool *p, char *buf, size_t buflen,
 
   if (found_month == FALSE) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (unable to month in '%*s')", (int) buflen, buf);
+      "malformed Unix text (unable to month in '%.*s')", (int) buflen, buf);
     errno = EINVAL;
     return -1;
   }
@@ -620,7 +620,7 @@ static int get_unix_timestamp(pool *p, char *buf, size_t buflen,
 
   if (strncmp(buf, " ", 1) != 0) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (expected space after month): '%*s'",
+      "malformed Unix text (expected space after month): '%.*s'",
       (int) buflen, buf);
     errno = EINVAL;
     return -1;
@@ -632,7 +632,7 @@ static int get_unix_timestamp(pool *p, char *buf, size_t buflen,
   res = sscanf(buf, "%2d", &mday);
   if (res != 1) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (expected mday after month): '%*s'",
+      "malformed Unix text (expected mday after month): '%.*s'",
       (int) buflen, buf);
     errno = EINVAL;
     return -1;
@@ -664,7 +664,7 @@ static int get_unix_timestamp(pool *p, char *buf, size_t buflen,
 
     } else {
       pr_trace_msg(trace_channel, 3,
-        "malformed Unix text (expected year/hour/min after mday): '%*s'",
+        "malformed Unix text (expected year/hour/min after mday): '%.*s'",
         (int) buflen, buf);
       errno = EINVAL;
       return -1;
@@ -689,7 +689,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
     return NULL;
   }
 
-  pr_trace_msg(trace_channel, 19, "parsing Unix text: '%*s'",
+  pr_trace_msg(trace_channel, 19, "parsing Unix text: '%.*s'",
     (int) textlen, text);
 
   /* 43 is the minimum length of a well-formatted Unix directory listing
@@ -697,7 +697,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
    */
   if (textlen < 43) {
     pr_trace_msg(trace_channel, 3,
-      "error parsing Unix text (too short, need at least 43 bytes): '%*s'",
+      "error parsing Unix text (too short, need at least 43 bytes): '%.*s'",
         (int) textlen, text);
     errno = EINVAL;
     return NULL;
@@ -775,7 +775,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
       break;
 
     default:
-      pr_trace_msg(trace_channel, 3, "unknown Unix file type: '%*s'", 1, text);
+      pr_trace_msg(trace_channel, 3, "unknown Unix file type: '%.*s'", 1, text);
       errno = EINVAL;
       return NULL;
   }
@@ -786,7 +786,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
 
   if (strpbrk(buf, "rwx-tTsS") == NULL) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (expected permissions): '%*s'", (int) buflen, buf);
+      "malformed Unix text (expected permissions): '%.*s'", (int) buflen, buf);
     errno = EINVAL;
     return NULL;
   }
@@ -800,7 +800,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
   ptr += buflen;
   if (strncmp(ptr, " ", 1) != 0) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (expected space after permissions): '%*s'",
+      "malformed Unix text (expected space after permissions): '%.*s'",
       (int) textlen, text);
     errno = EINVAL;
     return NULL;
@@ -815,7 +815,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
     ptr2 = strchr(ptr, ' ');
     if (ptr2 == NULL) {
       pr_trace_msg(trace_channel, 3,
-        "malformed Unix text (expected space after nlink): '%*s'",
+        "malformed Unix text (expected space after nlink): '%.*s'",
         (int) textlen, text);
       errno = EINVAL;
       return NULL;
@@ -829,7 +829,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
     int xerrno = errno;
 
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (expected nlink with '%*s'): '%*s'", (int) buflen,
+      "malformed Unix text (expected nlink with '%.*s'): '%.*s'", (int) buflen,
       buf, (int) textlen, text);
 
     errno = xerrno;
@@ -839,7 +839,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
   ptr += buflen;
   if (strncmp(ptr, " ", 1) != 0) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (expected space after nlink): '%*s'",
+      "malformed Unix text (expected space after nlink): '%.*s'",
       (int) textlen, text);
     errno = EINVAL;
     return NULL;
@@ -853,7 +853,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
     int xerrno = errno;
 
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (expected user with '%*s'): '%*s'", (int) buflen,
+      "malformed Unix text (expected user with '%.*s'): '%.*s'", (int) buflen,
       buf, (int) textlen, text);
 
     errno = xerrno;
@@ -863,7 +863,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
   ptr += buflen;
   if (strncmp(ptr, " ", 1) != 0) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (expected space after user): '%*s'",
+      "malformed Unix text (expected space after user): '%.*s'",
       (int) textlen, text);
     errno = EINVAL;
     return NULL;
@@ -877,7 +877,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
     int xerrno = errno;
 
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (expected group with '%*s'): '%*s'", (int) buflen,
+      "malformed Unix text (expected group with '%.*s'): '%.*s'", (int) buflen,
       buf, (int) textlen, text);
 
     errno = xerrno;
@@ -887,7 +887,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
   ptr += buflen;
   if (strncmp(ptr, " ", 1) != 0) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (expected space after group): '%*s'",
+      "malformed Unix text (expected space after group): '%.*s'",
       (int) textlen, text);
     errno = EINVAL;
     return NULL;
@@ -904,7 +904,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
   ptr2 = strchr(ptr, ' ');
   if (ptr2 == NULL) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (expected space after filesize): '%*s'",
+      "malformed Unix text (expected space after filesize): '%.*s'",
       (int) textlen, text);
     errno = EINVAL;
     return NULL;
@@ -916,8 +916,8 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
     int xerrno = errno;
 
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (expected filesize with '%*s'): '%*s'", (int) buflen,
-      buf, (int) textlen, text);
+      "malformed Unix text (expected filesize with '%.*s'): '%.*s'",
+      (int) buflen, buf, (int) textlen, text);
 
     errno = xerrno;
     return NULL;
@@ -926,7 +926,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
   ptr += buflen;
   if (strncmp(ptr, " ", 1) != 0) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (expected space after filesize): '%*s'",
+      "malformed Unix text (expected space after filesize): '%.*s'",
       (int) textlen, text);
     errno = EINVAL;
     return NULL;
@@ -941,7 +941,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
     int xerrno = errno;
 
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (expected timestamp with '%*s'): '%*s'",
+      "malformed Unix text (expected timestamp with '%.*s'): '%.*s'",
       (int) buflen, buf, (int) textlen, text);
 
     errno = xerrno;
@@ -951,7 +951,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
   ptr += buflen;
   if (strncmp(ptr, " ", 1) != 0) {
     pr_trace_msg(trace_channel, 3,
-      "malformed Unix text (expected space after timestamp): '%*s'",
+      "malformed Unix text (expected space after timestamp): '%.*s'",
       (int) textlen, text);
     errno = EINVAL;
     return NULL;
@@ -963,7 +963,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
     ptr2 = strchr(ptr, ' ');
     if (ptr2 == NULL) {
       pr_trace_msg(trace_channel, 3,
-        "malformed Unix text (expected space after symlink source): '%*s'",
+        "malformed Unix text (expected space after symlink source): '%.*s'",
         (int) textlen, text);
       errno = EINVAL;
       return NULL;
@@ -975,7 +975,7 @@ struct proxy_dirlist_fileinfo *proxy_ftp_dirlist_fileinfo_from_unix(pool *p,
     ptr = ptr2 + 1;
     if (strncmp(ptr, "-> ", 3) != 0) {
       pr_trace_msg(trace_channel, 3,
-        "malformed Unix text (expected arrow after symlink source): '%*s'",
+        "malformed Unix text (expected arrow after symlink source): '%.*s'",
         (int) textlen, text);
       errno = EINVAL;
       return NULL;
@@ -1372,7 +1372,7 @@ int proxy_ftp_dirlist_to_text(pool *p, char *buf, size_t buflen,
     pdf = proxy_ftp_dirlist_fileinfo_from_text(tmp_pool, input_line,
       input_linelen, tm, user_data, proxy_sess->dirlist_opts);
     if (pdf == NULL) {
-      pr_trace_msg(trace_channel, 3, "error parsing text '%*s': %s",
+      pr_trace_msg(trace_channel, 3, "error parsing text '%.*s': %s",
         (int) input_linelen, input_line, strerror(errno));
       continue;
     }
@@ -1401,7 +1401,7 @@ int proxy_ftp_dirlist_to_text(pool *p, char *buf, size_t buflen,
     output_line = proxy_ftp_dirlist_fileinfo_to_facts(tmp_pool, pdf,
       &output_linelen);
 
-    pr_trace_msg(trace_channel, 19, "emitting line: '%*s'",
+    pr_trace_msg(trace_channel, 19, "emitting line: '%.*s'",
       (int) output_linelen, output_line);
 
     /* XXX What to do if this will exceed capacity of output buffer? */
