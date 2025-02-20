@@ -825,6 +825,13 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
   c->argv[0] = pcalloc(c->pool, sizeof(unsigned long));
   *((unsigned long *) c->argv[0]) = opts;
 
+  if (pr_module_exists("mod_ifsession.c")) {
+    /* These are needed in case this directive is used with mod_ifsession
+     * configuration.
+     */
+    c->flags |= CF_MULTI;
+  }
+
   return PR_HANDLED(cmd);
 }
 
@@ -981,6 +988,13 @@ MODRET set_proxyreverseservers(cmd_rec *cmd) {
   c->argv[0] = backend_servers;
   if (uri != NULL) {
     c->argv[1] = pstrdup(c->pool, uri);
+  }
+
+  if (pr_module_exists("mod_ifsession.c")) {
+    /* These are needed in case this directive is used with mod_ifsession
+     * configuration.
+     */
+    c->flags |= CF_MULTI;
   }
 
   return PR_HANDLED(cmd);
@@ -1258,6 +1272,13 @@ MODRET set_proxysftpoptions(cmd_rec *cmd) {
 
   c->argv[0] = pcalloc(c->pool, sizeof(unsigned long));
   *((unsigned long *) c->argv[0]) = opts;
+
+  if (pr_module_exists("mod_ifsession.c")) {
+    /* These are needed in case this directive is used with mod_ifsession
+     * configuration.
+     */
+    c->flags |= CF_MULTI;
+  }
 
   return PR_HANDLED(cmd);
 }
@@ -1789,7 +1810,7 @@ MODRET set_proxytlscertkeyfile(cmd_rec *cmd) {
 
 /* usage: ProxyTLSCipherSuite [protocol] ciphers */
 MODRET set_proxytlsciphersuite(cmd_rec *cmd) {
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   config_rec *c = NULL;
   char *ciphersuite = NULL;
   int protocol = 0;
@@ -1885,6 +1906,13 @@ MODRET set_proxytlsciphersuite(cmd_rec *cmd) {
   c->argv[1] = palloc(c->pool, sizeof(int));
   *((int *) c->argv[1]) = protocol;
 
+  if (pr_module_exists("mod_ifsession.c")) {
+    /* These are needed in case this directive is used with mod_ifsession
+     * configuration.
+     */
+    c->flags |= CF_MULTI;
+  }
+
   return PR_HANDLED(cmd);
 #else
   CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
@@ -1934,7 +1962,7 @@ MODRET set_proxytlsengine(cmd_rec *cmd) {
 
 /* usage: ProxyTLSOptions ... */
 MODRET set_proxytlsoptions(cmd_rec *cmd) {
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   config_rec *c = NULL;
   register unsigned int i = 0;
   unsigned long opts = 0UL;
@@ -1974,6 +2002,13 @@ MODRET set_proxytlsoptions(cmd_rec *cmd) {
 
   c->argv[0] = pcalloc(c->pool, sizeof(unsigned long));
   *((unsigned long *) c->argv[0]) = opts;
+
+  if (pr_module_exists("mod_ifsession.c")) {
+    /* These are needed in case this directive is used with mod_ifsession
+     * configuration.
+     */
+    c->flags |= CF_MULTI;
+  }
 
   return PR_HANDLED(cmd);
 #else
