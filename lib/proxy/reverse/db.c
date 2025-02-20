@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse datastore implementation
- * Copyright (c) 2012-2021 TJ Saunders
+ * Copyright (c) 2012-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1507,10 +1507,21 @@ static const struct proxy_conn *reverse_db_policy_next_backend(pool *p,
 
   if (proxy_reverse_policy_is_sticky(policy_id) != TRUE) {
     if (conns == NULL &&
-        default_backends != NULL &&
         db_backends == NULL) {
-      conns = default_backends->elts;
-      nelts = default_backends->nelts;
+
+      if (default_backends != NULL) {
+        conns = default_backends->elts;
+        nelts = default_backends->nelts;
+
+      } else {
+        /* Prevent possible null pointer dereferences later due to missing
+         * default URIs for non-sticky ConnectPolicy configurations.
+         */
+        pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "missing required default/global ProxyReverseServers");
+        errno = EPERM;
+        return NULL;
+      }
     }
   }
 
