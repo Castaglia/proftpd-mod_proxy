@@ -504,6 +504,37 @@ The currently implemented options are:
   # address for data transfers than the IP address to which mod_proxy connected.
   ProxyOptions AllowForeignAddress
     </pre>
+
+    <p>
+    Note that the <code>IgnoreForeignAddress</code> option takes precedence
+    over this option.
+  </li>
+
+  <p>
+  <li><code>IgnoreForeignAddress</code><br>
+    <p>
+    Use this option to tell the <code>mod_proxy</code> module to <i>always</i>
+    use the same IP address for passive data transfers to the backend server as
+    used for the control connection, ignoring any different IP address that
+    the backend server may provide in its <code>PASV</code> response.
+
+    <p>
+    This option may be needed in cases where you see backend data transfers fail with errors logged such as:
+    <pre>
+      unable to connect to 172.16.1.2#8200: Network unreachable
+      unable to connect to 172.16.2.2#8200: Connection refused
+    </pre>
+    Example:
+    <pre>
+  # When the backend server tells us to use a different IP address for data
+  # transfers than the IP address to which mod_proxy connected, ignore that
+  # different IP address and use the original initial IP address.
+  ProxyOptions IgnoreForeignAddress
+    </pre>
+
+    <p>
+    Note that this option takes precedence over the
+    <code>AllowForeignAddress</code> option.
   </li>
 
   <p>
@@ -2561,7 +2592,7 @@ development library/header files <b>must</b> be installed for building
 <hr>
 
 <font size=2><b><i>
-&copy; Copyright 2015-2024 TJ Saunders<br>
+&copy; Copyright 2015-2025 TJ Saunders<br>
  All Rights Reserved<br>
 </i></b></font>
 
