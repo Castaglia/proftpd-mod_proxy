@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy
- * Copyright (c) 2012-2024 TJ Saunders
+ * Copyright (c) 2012-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -2519,14 +2519,9 @@ static int proxy_data_prepare_backend_conn(struct proxy_session *proxy_sess,
     backend_conn = proxy_ftp_conn_connect(cmd->pool, bind_addr,
       proxy_sess->backend_data_addr, FALSE);
     if (backend_conn == NULL) {
-      xerrno = errno;
-
-      pr_response_add_err(R_425, _("%s: %s"), (char *) cmd->argv[0],
-        strerror(xerrno));
-      pr_response_flush(&resp_err_list);
-
-      errno = xerrno;
-      return -1;
+      pr_trace_msg(trace_channel, 9,
+        "error connecting to backend server for passive data transfer: %s",
+        strerror(errno));
     }
 
     proxy_sess->backend_data_conn = backend_conn;
