@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP connection routines
- * Copyright (c) 2013-2022 TJ Saunders
+ * Copyright (c) 2013-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -134,7 +134,7 @@ conn_t *proxy_ftp_conn_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn,
 conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
     const pr_netaddr_t *remote_addr, int frontend_data) {
   conn_t *conn, *opened = NULL;
-  int res, reverse_dns;
+  int default_inet_family = 0, remote_family, res, reverse_dns, xerrno;
 
   if (p == NULL ||
       remote_addr == NULL) {
@@ -142,8 +142,19 @@ conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
     return NULL;
   }
 
+  remote_family = pr_netaddr_get_family(remote_addr);
+  pr_trace_msg(trace_channel, 9,
+    "using %s family for backend socket address %s",
+    remote_family == AF_INET ? "IPv4" : "IPv6",
+    pr_netaddr_get_ipstr(remote_addr));
+  default_inet_family = pr_inet_set_default_family(p, remote_family);
+
   conn = pr_inet_create_conn(session.pool, -1, bind_addr, INPORT_ANY, TRUE);
+  xerrno = errno;
+
   if (conn == NULL) {
+    pr_inet_set_default_family(p, default_inet_family);
+    errno = xerrno;
     return NULL;
   }
 
@@ -179,7 +190,7 @@ conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
   }
 
   if (res < 0) {
-    int xerrno = errno;
+    xerrno = errno;
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "unable to connect to %s#%u: %s\n", pr_netaddr_get_ipstr(remote_addr),
@@ -208,7 +219,7 @@ conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
   pr_netaddr_set_reverse_dns(reverse_dns);
 
   if (opened == NULL) {
-    int xerrno = errno;
+    xerrno = errno;
 
     if (frontend_data == FALSE) {
       proxy_inet_close(session.pool, conn);

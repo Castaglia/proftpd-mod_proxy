@@ -570,7 +570,7 @@ const pr_netaddr_t *proxy_ftp_xfer_prepare_passive(int policy_id, cmd_rec *cmd,
 
       remote_addr = pr_netaddr_dup(proxy_sess->dataxfer_pool,
         proxy_sess->backend_ctrl_conn->remote_addr);
-      pr_netaddr_set_port2(remote_addr, remote_port);
+      pr_netaddr_set_port2((pr_netaddr_t *) remote_addr, remote_port);
 
     } else {
       if (!(proxy_opts & PROXY_OPT_ALLOW_FOREIGN_ADDRESS)) {

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy conn implementation
- * Copyright (c) 2012-2024 TJ Saunders
+ * Copyright (c) 2012-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -677,7 +677,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
   const char *remote_ipstr = NULL;
   unsigned int remote_port;
   conn_t *server_conn, *ctrl_conn;
-  int res, default_inet_family = 0;
+  int res, default_inet_family = 0, xerrno;
 
   if (proxy_sess->connect_timeout > 0) {
     const char *notes_key = "mod_proxy.proxy-connect-address";
@@ -816,9 +816,14 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
   }
 
   server_conn = pr_inet_create_conn(p, -1, bind_addr, INPORT_ANY, FALSE);
-  if (server_conn == NULL) {
-    int xerrno = errno;
+  xerrno = errno;
 
+  /* Restore the previous default inet family if necessary. */
+  if (bind_addr == NULL) {
+    (void) pr_inet_set_default_family(p, default_inet_family);
+  }
+
+  if (server_conn == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error creating connection to %s: %s", pr_netaddr_get_ipstr(bind_addr),
       strerror(xerrno));
@@ -828,11 +833,6 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     return NULL;
   }
 
-  /* Restore the previous default inet family if necessary. */
-  if (bind_addr == NULL) {
-    (void) pr_inet_set_default_family(p, default_inet_family);
-  }
-
   pr_trace_msg(trace_channel, 12,
     "connecting to backend address %s#%u from %s#%u", remote_ipstr, remote_port,
     pr_netaddr_get_ipstr(server_conn->local_addr), server_conn->local_port);
@@ -840,7 +840,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
   res = pr_inet_connect_nowait(p, server_conn, remote_addr,
     ntohs(pr_netaddr_get_port(remote_addr)));
   if (res < 0) {
-    int xerrno = errno;
+    xerrno = errno;
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error starting connect to %s#%u: %s", remote_ipstr, remote_port,
@@ -903,7 +903,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
     nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, server_conn->listen_fd,
       nstrm_mode);
     if (nstrm == NULL) {
-      int xerrno = errno;
+      xerrno = errno;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "error opening stream to %s#%u: %s", remote_ipstr, remote_port,
@@ -927,7 +927,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
       switch (polled) {
         case 1: {
           /* Aborted, timed out.  Note that we shouldn't reach here. */
-          int xerrno = ETIMEDOUT;
+          xerrno = ETIMEDOUT;
 
           (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
             "error connecting to %s#%u: %s", remote_ipstr, remote_port,
@@ -942,7 +942,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
 
         case -1: {
           /* Error */
-          int xerrno = nstrm->strm_errno;
+          xerrno = nstrm->strm_errno;
 
           if (xerrno == 0) {
             xerrno = errno;
@@ -976,7 +976,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
 
           res = pr_inet_get_conn_info(server_conn, server_conn->listen_fd);
           if (res < 0) {
-            int xerrno = errno;
+            xerrno = errno;
 
             (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
               "error obtaining local socket info on fd %d: %s",
@@ -1005,7 +1005,7 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
   ctrl_conn = proxy_inet_openrw(p, server_conn, NULL, PR_NETIO_STRM_CTRL, -1,
     -1, -1, FALSE);
   if (ctrl_conn == NULL) {
-    int xerrno = errno;
+    xerrno = errno;
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "unable to open control connection to %s#%u: %s", remote_ipstr,
