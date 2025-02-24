@@ -816,6 +816,9 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
     } else if (strcmp(cmd->argv[i], "AllowForeignAddress") == 0) {
       opts |= PROXY_OPT_ALLOW_FOREIGN_ADDRESS;
 
+    } else if (strcmp(cmd->argv[i], "IgnoreForeignAddress") == 0) {
+      opts |= PROXY_OPT_IGNORE_FOREIGN_ADDRESS;
+
     } else {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxyOption '",
         (char *) cmd->argv[i], "'", NULL));
