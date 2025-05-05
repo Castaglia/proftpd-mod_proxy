@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH packet IO
- * Copyright (c) 2021-2023 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1117,6 +1117,20 @@ static int check_packet_lengths(conn_t *conn, struct proxy_ssh_packet *pkt) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "padding length too long (%u), exceeds packet length (%lu)",
       (unsigned int) pkt->padding_len, (unsigned long) pkt->packet_len);
+    read_packet_discard(conn);
+    return -1;
+  }
+
+  /* XXX I'm not so sure about this check; we SHOULD have a maximum payload
+   * check, but using the max packet length check for the payload length seems
+   * awkward.  Still, better than nothing.
+   */
+  if (pkt->payload_len > PROXY_SSH_MAX_PACKET_LEN) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "payload length too long (%lu), exceeds maximum payload length (%lu) "
+      "(packet len %lu, padding len %u)", (unsigned long) pkt->payload_len,
+      (unsigned long) PROXY_SSH_MAX_PACKET_LEN, (unsigned long) pkt->packet_len,
+      (unsigned int) pkt->padding_len);
     read_packet_discard(conn);
     return -1;
   }
