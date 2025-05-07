@@ -1210,11 +1210,11 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
       pr_trace_msg(trace_channel, 20, "SSH2 packet padding len = %u bytes",
         (unsigned int) pkt->padding_len);
 
+      pkt->payload_len = (pkt->packet_len - pkt->padding_len - 1);
+
       if (check_packet_lengths(conn, pkt) < 0) {
         return -1;
       }
-
-      pkt->payload_len = (pkt->packet_len - pkt->padding_len - 1);
     }
 
     pr_trace_msg(trace_channel, 20, "SSH2 packet payload len = %lu bytes",
@@ -1319,12 +1319,12 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
      * correct.
      */
 
-    if (check_packet_lengths(conn, pkt) < 0) {
-      return -1;
-    }
-
     if (etm_mac == TRUE) {
       pkt->payload_len = (pkt->packet_len - pkt->padding_len - 1);
+
+      if (check_packet_lengths(conn, pkt) < 0) {
+        return -1;
+      }
 
       if (pkt->payload_len > 0) {
         pkt->payload = pcalloc(pkt->pool, pkt->payload_len);
