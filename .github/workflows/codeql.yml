@@ -56,7 +56,7 @@ jobs:
           ./configure --enable-redis --with-modules=mod_sftp:mod_tls:mod_proxy
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v2
+        uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
           config-file: contrib/mod_proxy/.codeql.yml
@@ -68,7 +68,7 @@ jobs:
           make
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v2
+        uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
           checkout_path: contrib/mod_proxy
@@ -91,7 +91,7 @@ jobs:
           output: "sarif-results/${{ matrix.language }}.sarif"
 
       - name: Upload CodeQL SARIF
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           checkout_path: contrib/mod_proxy
           sarif_file: "sarif-results/${{ matrix.language }}.sarif"
