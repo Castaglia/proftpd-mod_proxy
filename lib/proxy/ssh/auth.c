@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH user authentication
- * Copyright (c) 2021-2022 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1208,6 +1208,8 @@ int proxy_ssh_auth_handle(struct proxy_ssh_packet *pkt,
       errno = EINVAL;
       return -1;
     }
+
+    (void) len;
 
   } else if (msg_type == PROXY_SSH_MSG_USER_AUTH_INFO_RESP) {
     pr_trace_msg(trace_channel, 17,

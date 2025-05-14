@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH crypto
- * Copyright (c) 2021-2024 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -84,6 +84,11 @@ static struct proxy_ssh_cipher ciphers[] = {
   /* The handling of NULL openssl_name and get_type fields is done in
    * proxy_ssh_crypto_get_cipher(), as special cases.
    */
+#if defined(HAVE_EVP_CHACHA20_OPENSSL) && \
+   !defined(HAVE_BROKEN_CHACHA20)
+  { "chacha20-poly1305@openssh.com", "chacha20", 16, 0, EVP_chacha20, TRUE, TRUE },
+#endif /* HAVE_EVP_CHACHA20_OPENSSL and !HAVE_BROKEN_CHACHA20 */
+
   { "aes256-ctr",	NULL,		0, 0,	NULL,	TRUE, TRUE },
   { "aes192-ctr",	NULL,		0, 0,	NULL,	TRUE, TRUE },
   { "aes128-ctr",	NULL,		0, 0,	NULL,	TRUE, TRUE },
@@ -1011,15 +1016,18 @@ const EVP_CIPHER *proxy_ssh_crypto_get_cipher(const char *name, size_t *key_len,
       }
 
       if (key_len != NULL) {
-        if (strcmp(name, "arcfour256") != 0) {
-          *key_len = 0;
-
-        } else {
+        if (strcmp(name, "arcfour256") == 0) {
           /* The arcfour256 cipher is special-cased here in order to use
            * a longer key (32 bytes), rather than the normal 16 bytes for the
            * RC4 cipher.
            */
           *key_len = 32;
+
+        } else if (strcmp(name, "chacha20-poly1305@openssh.com") == 0) {
+          *key_len = 64;
+
+        } else {
+          *key_len = 0;
         }
       }
 

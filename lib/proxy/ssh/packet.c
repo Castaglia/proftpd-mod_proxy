@@ -611,7 +611,7 @@ static void read_packet_discard(conn_t *conn) {
 
 static int read_packet_len(conn_t *conn, struct proxy_ssh_packet *pkt,
     unsigned char *buf, size_t *offset, size_t *buflen, size_t bufsz,
-    int etm_mac) {
+    int etm_mac, int chachapoly) {
   uint32_t packet_len = 0, len = 0;
   size_t readsz;
   int res;
@@ -629,7 +629,8 @@ static int read_packet_len(conn_t *conn, struct proxy_ssh_packet *pkt,
      * ETM mode, read enough to include the AAD.  For ETM modes, leave the
      * first block for later.
      */
-    if (etm_mac == TRUE) {
+    if (etm_mac == TRUE ||
+        chachapoly == TRUE) {
       readsz = pkt->aad_len;
 
     } else {
@@ -643,15 +644,13 @@ static int read_packet_len(conn_t *conn, struct proxy_ssh_packet *pkt,
   }
 
   len = res;
-  if (proxy_ssh_cipher_read_data(pkt, buf, readsz, &ptr, &len) < 0) {
+  res = proxy_ssh_cipher_read_packet_len(pkt, buf, readsz, &ptr, &len,
+    &packet_len);
+  if (res < 0) {
     return -1;
   }
 
-  memmove(&packet_len, ptr, sizeof(uint32_t));
-  pkt->packet_len = ntohl(packet_len);
-
-  ptr += sizeof(uint32_t);
-  len -= sizeof(uint32_t);
+  pkt->packet_len = packet_len;
 
   /* Copy the remaining unencrypted bytes from the block into the given
    * buffer.
@@ -687,7 +686,7 @@ static int read_packet_padding_len(conn_t *conn, struct proxy_ssh_packet *pkt,
 
 static int read_packet_payload(conn_t *conn, struct proxy_ssh_packet *pkt,
     unsigned char *buf, size_t *offset, size_t *buflen, size_t bufsz,
-    int etm_mac) {
+    int etm_mac, int chachapoly) {
   unsigned char *ptr = NULL;
   int res;
   uint32_t payload_len = pkt->payload_len, padding_len = 0, auth_len = 0,
@@ -700,7 +699,8 @@ static int read_packet_payload(conn_t *conn, struct proxy_ssh_packet *pkt,
    * decrypt it, to find the padding.
    *
    * For ETM, we only want to find the payload and padding AFTER we've read
-   * the entire (encrypted) payload, MAC'd it, THEN decrypt it.
+   * the entire (encrypted) payload, MAC'd it, THEN decrypt it.  Similarly
+   * for ChaChaPoly.
    */
 
   if (pkt->padding_len > 0) {
@@ -710,7 +710,7 @@ static int read_packet_payload(conn_t *conn, struct proxy_ssh_packet *pkt,
   auth_len = proxy_ssh_cipher_get_read_auth_size();
 
   if (payload_len + padding_len + auth_len == 0 &&
-      etm_mac == FALSE) {
+      etm_mac == FALSE && chachapoly == FALSE) {
     return 0;
   }
 
@@ -788,7 +788,8 @@ static int read_packet_payload(conn_t *conn, struct proxy_ssh_packet *pkt,
     }
   }
 
-  if (etm_mac == TRUE) {
+  if (etm_mac == TRUE ||
+      chachapoly == TRUE) {
     data_len = pkt->packet_len;
 
   } else {
@@ -815,10 +816,11 @@ static int read_packet_payload(conn_t *conn, struct proxy_ssh_packet *pkt,
   len = res;
 
   /* For ETM modes, we do NOT want to decrypt the data yet; we need to read/
-   * compare MACs first.
+   * compare MACs first.  Similarly for ChaChaPoly.
    */
 
-  if (etm_mac == TRUE) {
+  if (etm_mac == TRUE ||
+      chachapoly == TRUE) {
     *buflen = res;
 
   } else {
@@ -866,7 +868,7 @@ struct proxy_ssh_packet *proxy_ssh_packet_create(pool *p) {
   tmp_pool = make_sub_pool(p);
   pr_pool_tag(tmp_pool, "Proxy SSH2 packet pool");
 
-  pkt = pcalloc(tmp_pool, sizeof(struct proxy_ssh_packet));
+  pkt = palloc(tmp_pool, sizeof(struct proxy_ssh_packet));
   pkt->pool = tmp_pool;
   pkt->m = &proxy_module;
   pkt->packet_len = 0;
@@ -875,6 +877,9 @@ struct proxy_ssh_packet *proxy_ssh_packet_create(pool *p) {
   pkt->padding_len = 0;
   pkt->aad = NULL;
   pkt->aad_len = 0;
+  pkt->mac = NULL;
+  pkt->mac_len = 0;
+  pkt->seqno = 0;
 
   return pkt;
 }
@@ -1085,7 +1090,7 @@ static void reset_timers(void) {
 int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
   unsigned char buf[PROXY_SSH_MAX_PACKET_LEN];
   size_t buflen, bufsz = PROXY_SSH_MAX_PACKET_LEN, offset = 0, auth_len = 0;
-  int etm_mac = FALSE;
+  int chachapoly = FALSE, etm_mac = FALSE;
 
   pr_session_set_idle();
 
@@ -1093,6 +1098,9 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
   if (auth_len > 0) {
     /* Authenticated encryption ciphers do not encrypt the packet length,
      * and instead use it as Additional Authenticated Data (AAD).
+     *
+     * Note that OpenSSH's ChaChaPoly cipher does encrypt the packet length,
+     * and uses it as AAD.
      */
     pkt->aad_len = sizeof(uint32_t);
   }
@@ -1105,10 +1113,13 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
     pkt->aad_len = sizeof(uint32_t);
   }
 
+  /* OpenSSH's ChaChaPoly acts like an ETM cipher as well. */
+  chachapoly = proxy_ssh_cipher_is_read_chachapoly();
+
+  pkt->seqno = packet_server_seqno;
+
   while (TRUE) {
     uint32_t encrypted_datasz, req_blocksz;
-    unsigned char *buf2 = NULL;
-    size_t buflen2 = 0, bufsz2 = 0;
 
     pr_signals_handle();
 
@@ -1117,9 +1128,9 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
      */
 
     buflen = 0;
-    memset(buf, 0, sizeof(buf));
 
-    if (read_packet_len(conn, pkt, buf, &offset, &buflen, bufsz, etm_mac) < 0) {
+    if (read_packet_len(conn, pkt, buf, &offset, &buflen, bufsz, etm_mac,
+        chachapoly) < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "no data to be read from socket %d", conn->rfd);
       return -1;
@@ -1142,7 +1153,8 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
      * Thus that particular check is omitted.
      */
 
-    if (etm_mac == FALSE) {
+    if (etm_mac == FALSE &&
+        chachapoly == FALSE) {
       if (read_packet_padding_len(conn, pkt, buf, &offset, &buflen,
           bufsz) < 0) {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1163,18 +1175,29 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
      * decrypting the data.
      */
     if (read_packet_payload(conn, pkt, buf, &offset, &buflen, bufsz,
-        etm_mac) < 0) {
+        etm_mac, chachapoly) < 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unable to read payload from socket %d", conn->rfd);
       read_packet_discard(conn);
       return -1;
     }
 
-    pkt->mac_len = proxy_ssh_mac_get_block_size();
+    if (chachapoly == TRUE) {
+      /* The custom authentication tag for ChaChaPoly is 16 bytes. */
+      pkt->mac_len = 16;
+
+    } else {
+      pkt->mac_len = proxy_ssh_mac_get_block_size();
+    }
+
     pr_trace_msg(trace_channel, 20, "SSH2 packet MAC len = %lu bytes",
       (unsigned long) pkt->mac_len);
 
-    if (etm_mac == TRUE) {
+    if (etm_mac == TRUE ||
+        chachapoly == TRUE) {
+      unsigned char *buf2;
+      size_t buflen2, bufsz2;
+
       bufsz2 = buflen2 = pkt->mac_len;
       buf2 = palloc(pkt->pool, bufsz2);
 
@@ -1183,8 +1206,6 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
        */
       pkt->payload = buf;
       pkt->payload_len = buflen;
-
-      pkt->seqno = packet_server_seqno;
 
       if (read_packet_mac(conn, pkt, buf2) < 0) {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1249,7 +1270,6 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
         return -1;
       }
 
-      pkt->seqno = packet_server_seqno;
       if (proxy_ssh_mac_read_data(pkt) < 0) {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "unable to verify MAC on packet from socket %d", conn->rfd);
@@ -1322,7 +1342,9 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
     req_blocksz = MAX(8, proxy_ssh_cipher_get_read_block_size());
     encrypted_datasz = pkt->packet_len + sizeof(uint32_t);
 
-    /* If AAD bytes are present, they are not encrypted. */
+    /* If AAD bytes are present, they are not encrypted (except for
+     * ChaChaPoly).
+     */
     if (pkt->aad_len > 0) {
       encrypted_datasz -= pkt->aad_len;
     }
@@ -1442,6 +1464,9 @@ int proxy_ssh_packet_send(conn_t *conn, struct proxy_ssh_packet *pkt) {
   if (auth_len > 0) {
     /* Authenticated encryption ciphers do not encrypt the packet length,
      * and instead use it as Additional Authenticated Data (AAD).
+     *
+     * The OpenSSH ChaChaPoly cipher does encrypt the packet length, on the
+     * other hand, and uses a separate AAD.
      */
     pkt->aad_len = sizeof(uint32_t);
     pkt->aad = NULL;
@@ -1491,7 +1516,6 @@ int proxy_ssh_packet_send(conn_t *conn, struct proxy_ssh_packet *pkt) {
 
   pkt->seqno = packet_client_seqno;
 
-  memset(buf, 0, sizeof(buf));
   buflen = bufsz;
 
   if (etm_mac == TRUE) {
@@ -1705,6 +1729,8 @@ int proxy_ssh_packet_send(conn_t *conn, struct proxy_ssh_packet *pkt) {
     pr_alarms_unblock();
   }
 
+  (void) write_len;
+
   reset_timers();
   return 0;
 }
@@ -1772,6 +1798,7 @@ void proxy_ssh_packet_handle_debug(struct proxy_ssh_packet *pkt) {
       ": server sent SSH_MSG_DEBUG message '%s'", text);
   }
 
+  (void) len;
   destroy_pool(pkt->pool);
 }
 
@@ -1812,6 +1839,8 @@ void proxy_ssh_packet_handle_disconnect(struct proxy_ssh_packet *pkt) {
     pr_trace_msg(trace_channel, 19, "server sent DISCONNECT language tag '%s'",
       lang);
   }
+
+  (void) len;
 
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
     "server at %s sent SSH_DISCONNECT message: %s (%s)",
@@ -1860,6 +1889,7 @@ void proxy_ssh_packet_handle_ignore(struct proxy_ssh_packet *pkt) {
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
     "server sent SSH_MSG_IGNORE message (%u bytes)", (unsigned int) text_len);
 
+  (void) len;
   destroy_pool(pkt->pool);
 }
 
@@ -1872,6 +1902,7 @@ void proxy_ssh_packet_handle_unimplemented(struct proxy_ssh_packet *pkt) {
   pr_trace_msg(trace_channel, 7, "received SSH_MSG_UNIMPLEMENTED for "
     "packet #%lu", (unsigned long) seqno);
 
+  (void) len;
   destroy_pool(pkt->pool);
 }
 
