@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH key mgmt (keys)
- * Copyright (c) 2021-2023 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -3041,6 +3041,8 @@ static int decrypt_openssh_data(pool *p, const char *path,
   uint32_t buflen, key_len, rounds, salt_len, len = 0;
   size_t passphrase_len;
 
+  (void) len;
+
   if (strcmp(kdf_name, "none") == 0) {
     *decrypted_data = encrypted_data;
     *decrypted_len = encrypted_len;
@@ -3276,6 +3278,8 @@ static int decrypt_openssh_private_key(pool *p, const char *path,
   int res;
   unsigned int i = 0;
 
+  (void) len;
+
   res = decrypt_openssh_data(p, path, encrypted_data, encrypted_len, passphrase,
     cipher, kdf_name, kdf_data, kdf_len, &decrypted_data, &decrypted_len);
   if (res < 0) {
@@ -3354,6 +3358,8 @@ static int unwrap_openssh_private_key(pool *p, const char *path,
   uint32_t buflen, kdf_len = 0, key_count = 0, encrypted_len = 0, len = 0;
   struct openssh_cipher *cipher = NULL;
   int xerrno = 0;
+
+  (void) len;
 
   data = decode_base64(p, text, text_len, &data_len);
   xerrno = errno;
@@ -4483,7 +4489,6 @@ static const unsigned char *dsa_sign_data(pool *p, const unsigned char *data,
 #if defined(PR_USE_OPENSSL_ECC)
 static const unsigned char *ecdsa_sign_data(pool *p, const unsigned char *data,
     size_t datalen, size_t *siglen, int nid) {
-  EVP_PKEY *pkey = NULL;
   EC_KEY *ec = NULL;
   ECDSA_SIG *sig;
   const BIGNUM *sig_r = NULL, *sig_s = NULL;
@@ -4512,7 +4517,6 @@ static const unsigned char *ecdsa_sign_data(pool *p, const unsigned char *data,
         return NULL;
       }
 
-      pkey = ecdsa256_hostkey->pkey;
       md = EVP_sha256();
       break;
 
@@ -4530,7 +4534,6 @@ static const unsigned char *ecdsa_sign_data(pool *p, const unsigned char *data,
         return NULL;
       }
 
-      pkey = ecdsa384_hostkey->pkey;
       md = EVP_sha384();
       break;
 
@@ -4548,7 +4551,6 @@ static const unsigned char *ecdsa_sign_data(pool *p, const unsigned char *data,
         return NULL;
       }
 
-      pkey = ecdsa521_hostkey->pkey;
       md = EVP_sha512();
       break;
 

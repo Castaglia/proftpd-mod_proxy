@@ -37,6 +37,16 @@
 /* Define if you have the <zlib.h> header.  */
 #undef HAVE_ZLIB_H
 
+/* Define if you have the LibreSSL library.
+ *
+ * Note that in LibreSSL-3.5.0, the structs became opaque, as they are in
+ * OpenSSL-1.1.0, and thus these version-dependent macros became more
+ * complex.
+ */
+#if defined(LIBRESSL_VERSION_NUMBER)
+# define HAVE_LIBRESSL  1
+#endif
+
 /* Define if you have OpenSSL with crippled AES support. */
 #undef HAVE_AES_CRIPPLED_OPENSSL
 
@@ -51,6 +61,17 @@
 
 /* Define if you have OpenSSL with EVP_aes_256_gcm support. */
 #undef HAVE_EVP_AES_256_GCM_OPENSSL
+
+/* Define if you have OpenSSL with EVP_chacha20 support.
+ *
+ * Note, however, that older LibreSSL versions have broken ChaCha20 support.
+ */
+#undef HAVE_EVP_CHACHA20_OPENSSL
+
+#if defined(HAVE_LIBRESSL) && \
+    LIBRESSL_VERSION_NUMBER < 0x3010000fL
+# define HAVE_BROKEN_CHACHA20	1
+#endif
 
 /* Define if you have OpenSSL with OSSL_PROVIDER_load support. */
 #undef HAVE_OSSL_PROVIDER_LOAD_OPENSSL

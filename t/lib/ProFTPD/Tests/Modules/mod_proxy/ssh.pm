@@ -218,6 +218,11 @@ my $TESTS = {
     test_class => [qw(forking mod_sftp reverse)],
   },
 
+  proxy_reverse_backend_ssh_cipher_chachapoly_issue295 => {
+    order => ++$order,
+    test_class => [qw(bug forking mod_sftp reverse)],
+  },
+
   proxy_reverse_backend_ssh_mac_hmac_sha1 => {
     order => ++$order,
     test_class => [qw(forking mod_sftp reverse)],
@@ -1960,6 +1965,18 @@ sub proxy_reverse_backend_ssh_cipher_none {
   my $digest_algo = 'hmac-sha1';
   my $kex_algo = 'diffie-hellman-group14-sha1';
   my $proxy_sftp_opts = 'AllowInsecureLogin';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
+sub proxy_reverse_backend_ssh_cipher_chachapoly_issue295 {
+  my $self = shift;
+
+  my $cipher_algo = 'chacha20-poly1305@openssh.com';
+  my $digest_algo = 'hmac-sha1';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+  my $proxy_sftp_opts = '';
 
   ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
     $proxy_sftp_opts);

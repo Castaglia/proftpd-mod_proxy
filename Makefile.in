@@ -54,6 +54,7 @@ MODULE_OBJS=mod_proxy.o \
   lib/proxy/ssh/misc.o \
   lib/proxy/ssh/msg.o \
   lib/proxy/ssh/packet.o \
+  lib/proxy/ssh/poly1305.o \
   lib/proxy/ssh/service.o \
   lib/proxy/ssh/session.o \
   lib/proxy/ssh/umac.o \
@@ -102,6 +103,7 @@ SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/ssh/misc.lo \
   lib/proxy/ssh/msg.lo \
   lib/proxy/ssh/packet.lo \
+  lib/proxy/ssh/poly1305.lo \
   lib/proxy/ssh/service.lo \
   lib/proxy/ssh/session.lo \
   lib/proxy/ssh/umac.lo \
