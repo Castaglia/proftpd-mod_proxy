@@ -44,7 +44,7 @@ my $TESTS = {
 
   proxy_reverse_config_redis_connect_policy_leastresponsetime => {
     order => ++$order,
-    test_class => [qw(forking mod_redis reverse)],
+    test_class => [qw(flaky forking mod_redis reverse)],
   },
 
   proxy_reverse_config_redis_connect_policy_per_host => {

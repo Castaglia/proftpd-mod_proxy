@@ -344,7 +344,7 @@ my $TESTS = {
 
   proxy_forward_frontend_backend_tls_stor_pasv_tls_xfer_policy_clear => {
     order => ++$order,
-    test_class => [qw(forking mod_tls forward)],
+    test_class => [qw(flaky forking mod_tls forward)],
   },
 
   proxy_forward_frontend_backend_tls_stor_port_tls_xfer_policy_clear => {

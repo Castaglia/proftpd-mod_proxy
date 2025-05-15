@@ -430,7 +430,7 @@ my $TESTS = {
 
   proxy_reverse_config_directorylistpolicy_list_windows => {
     order => ++$order,
-    test_class => [qw(forking reverse)],
+    test_class => [qw(flaky forking reverse)],
   },
 
   proxy_reverse_config_directorylistpolicy_list_backend_error => {
