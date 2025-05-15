@@ -4676,7 +4676,7 @@ static int proxy_get_cmd_group(cmd_rec *cmd) {
   }
 
   /* Note that some commands legitimately have no group (G_NONE is NULL), thus
-   * the absense of a group could simply indicate G_NONE.
+   * the absence of a group could simply indicate G_NONE.
    */
   if (cmd->group == NULL) {
     pr_trace_msg(trace_channel, 15,
@@ -4756,7 +4756,7 @@ MODRET proxy_any(cmd_rec *cmd) {
     return PR_DECLINED(cmd);
   }
 
-  /* Honor any <Limit> sections for this comand. */
+  /* Honor any <Limit> sections for this command. */
   if (proxy_have_limit(cmd, &resp_code) < 0) {
     int xerrno = errno;
 

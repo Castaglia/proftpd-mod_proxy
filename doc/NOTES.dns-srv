@@ -34,7 +34,7 @@ Implementation:
 
   NOTE: Port numbers are NOT allowed in the URL if the SRV scheme is used!
     Why not?  Because port numbers are returned in the SRV records themselves;
-    avoid any possible collisions/conflicts.  Besides, mutiple SRV records
+    avoid any possible collisions/conflicts.  Besides, multiple SRV records
     for the same service name might have different ports.
 
     Similarly for TXT scheme; the port will be part of the URLs found in
