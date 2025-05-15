@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP control conn routines
- * Copyright (c) 2012-2023 TJ Saunders
+ * Copyright (c) 2012-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -183,7 +183,7 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
     }
 
     /* If we are the first line of the response, the first three characters
-     * MUST be numeric, followed by a hypen.  Anything else is nonconformant
+     * MUST be numeric, followed by a hyphen.  Anything else is nonconformant
      * with RFC 959.
      *
      * If we are NOT the first line of the response, then we are probably

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS implementation
- * Copyright (c) 2015-2024 TJ Saunders
+ * Copyright (c) 2015-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -934,7 +934,7 @@ static int cert_match_ip_san(pool *p, X509 *cert, const char *ipstr) {
           } else {
             if (san_datalen == 16) {
               /* We need to handle the case where the iPAddress SAN might
-               * have contained an IPv4-mapped IPv6 adress, and we're
+               * have contained an IPv4-mapped IPv6 address, and we're
                * comparing against an IPv4 address.
                */
               if (san_ipstrlen > 7 &&
@@ -1558,7 +1558,7 @@ static int tls_connect(conn_t *conn, const char *host_name,
   (void) pr_inet_set_proto_nodelay(conn->pool, conn, 0);
 
   if (nstrm->strm_type == PR_NETIO_STRM_DATA) {
-    /* Reenable TCP_CORK (aka TCP_NOPUSH), now that the handshake is done. */
+    /* Re-enable TCP_CORK (aka TCP_NOPUSH), now that the handshake is done. */
     if (pr_inet_set_proto_cork(conn->wfd, 1) < 0) {
       pr_trace_msg(trace_channel, 9,
         "error re-enabling TCP_CORK on data conn: %s", strerror(errno));

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy URI implementation
- * Copyright (c) 2012-2020 TJ Saunders
+ * Copyright (c) 2012-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -139,7 +139,7 @@ static char *uri_parse_userinfo(pool *p, const char *orig_uri,
 
   /* To handle the case where the password field might itself contain an
    * '@' character, we first search from the end for '@'.  If found, then we
-   * search for '@' from the beginning.  If also found, AND if both ocurrences
+   * search for '@' from the beginning.  If also found, AND if both occurrences
    * are the same, then we have a plain "username:password@" string.
    *
    * Note that we can handle '@' characters within passwords (or usernames),

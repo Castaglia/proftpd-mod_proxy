@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP message API
- * Copyright (c) 2013-2021 TJ Saunders
+ * Copyright (c) 2013-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,13 +27,13 @@
 
 #include "mod_proxy.h"
 
-/* Format a string containg the address for use in a PORT command or a
+/* Format a string containing the address for use in a PORT command or a
  * PASV response.
  */
 const char *proxy_ftp_msg_fmt_addr(pool *, const pr_netaddr_t *,
   unsigned short, int);
 
-/* Format a string containg the address for use in an EPRT command or an
+/* Format a string containing the address for use in an EPRT command or an
  * EPSV response.
  */
 const char *proxy_ftp_msg_fmt_ext_addr(pool *, const pr_netaddr_t *,

@@ -1750,7 +1750,7 @@ sub proxy_reverse_backend_tls_login_cached_ticket {
   if (open(my $fh, ">> $config_file")) {
     print $fh <<EOC;
 <IfModule mod_tls.c>
-  # Recommended practice is to diable server-side session caching entirely,
+  # Recommended practice is to disable server-side session caching entirely,
   # if you are going to use client-side session tickets.  Why?  It
   # reduces the number of places where a session's master secret are held
   # in memory for "long" periods of time.
