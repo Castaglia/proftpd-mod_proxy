@@ -90,7 +90,7 @@ static size_t mac_blockszs[2] = { 0, 0 };
 static unsigned int read_mac_idx = 0;
 static unsigned int write_mac_idx = 0;
 
-static void clear_mac(struct proxy_ssh_mac *);
+static void clear_mac(struct proxy_ssh_mac *mac);
 
 static unsigned int get_next_read_index(void) {
   if (read_mac_idx == 1) {

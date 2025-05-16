@@ -28,6 +28,7 @@
 #include "mod_proxy.h"
 
 #if defined(PR_USE_OPENSSL)
+#include <openssl/evp.h>
 
 int proxy_ssh_cipher_init(void);
 int proxy_ssh_cipher_free(void);

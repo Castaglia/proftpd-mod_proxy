@@ -98,7 +98,7 @@ static unsigned int write_cipher_idx = 0;
 
 static const char *trace_channel = "proxy.ssh.cipher";
 
-static void clear_cipher(struct proxy_ssh_cipher *);
+static void clear_cipher(struct proxy_ssh_cipher *cipher);
 
 static unsigned int get_next_read_index(void) {
   if (read_cipher_idx == 1) {

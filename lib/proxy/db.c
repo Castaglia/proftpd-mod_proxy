@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy database implementation
- * Copyright (c) 2015-2024 TJ Saunders
+ * Copyright (c) 2015-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -107,6 +107,9 @@ static void db_sql(void *user_data, sqlite3 *db, const char *info,
       /* Closing database. */
       pr_trace_msg(trace_channel, 1, "(sqlite3): closed database: %s",
         sqlite3_db_filename(db, "main"));
+      break;
+
+    default:
       break;
   }
 }

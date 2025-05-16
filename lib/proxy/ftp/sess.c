@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP session routines
- * Copyright (c) 2013-2023 TJ Saunders
+ * Copyright (c) 2013-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -573,6 +573,9 @@ int proxy_ftp_sess_send_pbsz_prot(pool *p,
       if (session.rfc2228_mech == NULL) {
         send_prot = TRUE;
       }
+      break;
+
+    default:
       break;
   }
 

@@ -605,8 +605,6 @@ static void read_packet_discard(conn_t *conn) {
     flags = PROXY_SSH_PACKET_READ_FL_PESSIMISTIC;
     proxy_ssh_packet_conn_read(conn, buf, buflen, flags);
   }
-
-  return;
 }
 
 static int read_packet_len(conn_t *conn, struct proxy_ssh_packet *pkt,
@@ -1004,6 +1002,9 @@ const char *proxy_ssh_packet_get_msg_type_desc(unsigned char msg_type) {
 
     case PROXY_SSH_MSG_CHANNEL_FAILURE:
       return "SSH_MSG_CHANNEL_FAILURE";
+
+    default:
+      break;
   }
 
   return "(unknown)";

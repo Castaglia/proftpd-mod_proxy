@@ -93,9 +93,9 @@ static const char *trace_channel = "proxy";
 
 /* Necessary function prototypes. */
 static int proxy_sess_init(void);
-static void proxy_timeoutidle_ev(const void *, void *);
-static void proxy_timeoutnoxfer_ev(const void *, void *);
-static void proxy_timeoutstalled_ev(const void *, void *);
+static void proxy_timeoutidle_ev(const void *event_data, void *user_data);
+static void proxy_timeoutnoxfer_ev(const void *event_data, void *user_data);
+static void proxy_timeoutstalled_ev(const void *event_data, void *user_data);
 
 static int recv_resp(cmd_rec *cmd, struct proxy_session *proxy_sess,
     pr_response_t **rp) {
@@ -2960,6 +2960,9 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
       proxy_netio_set_poll_interval(backend_conn->outstrm, 1);
       pr_netio_set_poll_interval(frontend_conn->instrm, 1);
       break;
+
+    default:
+      break;
   }
 
   proxy_sess->frontend_sess_flags |= SF_XFER;
@@ -3021,6 +3024,9 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
         src_data_conn = proxy_sess->frontend_data_conn;
         dst_data_conn = proxy_sess->backend_data_conn;
         frontend_data = TRUE;
+        break;
+
+      default:
         break;
     }
 
@@ -3376,6 +3382,9 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
                 pr_inet_close(session.pool, proxy_sess->backend_data_conn);
                 proxy_sess->backend_data_conn = NULL;
               }
+              break;
+
+            default:
               break;
           }
 
@@ -4382,6 +4391,11 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
         pr_response_add_err(R_530, _("Login incorrect."));
       }
       break;
+
+    default:
+      errno = ENOSYS;
+      res = -1;
+      break;
   }
 
   if (res < 0) {
@@ -4471,6 +4485,11 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
       res = proxy_forward_handle_pass(cmd, proxy_sess, &successful,
         block_responses);
       break;
+
+    default:
+      errno = ENOSYS;
+      res = -1;
+      break;
   }
 
   if (res < 0) {
@@ -4524,6 +4543,9 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
 
       case PROXY_ROLE_REVERSE:
         proxy_auth = proxy_reverse_use_proxy_auth();
+        break;
+
+      default:
         break;
     }
 
@@ -5137,6 +5159,9 @@ MODRET proxy_post_prot(cmd_rec *cmd) {
         proxy_tls_set_data_prot(FALSE);
       }
       break;
+
+    default:
+      break;
   }
 
   return PR_DECLINED(cmd);
@@ -5159,6 +5184,9 @@ static void proxy_ctrl_read_ev(const void *event_data, void *user_data) {
       /* We don't really need this event listener for forward proxying. */
       pr_event_unregister(&proxy_module, "mod_proxy.ctrl-read",
         proxy_ctrl_read_ev);
+      break;
+
+    default:
       break;
   }
 }
@@ -5210,6 +5238,7 @@ static void proxy_exit_ev(const void *event_data, void *user_data) {
       break;
 
     case PROXY_ROLE_FORWARD:
+    default:
       break;
   }
 
@@ -5749,6 +5778,11 @@ static int proxy_sess_init(void) {
        */
 
       set_auth_check(proxy_forward_have_authenticated);
+      break;
+
+    default:
+      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
+        "Unknown/unsupported ProxyRole");
       break;
   }
 
