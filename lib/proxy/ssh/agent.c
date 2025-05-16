@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH agent support
- * Copyright (c) 2021-2023 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -68,6 +68,9 @@ static int agent_failure(char resp_status) {
     case PROXY_SSH_AGENT_EXTENDED_FAILURE:
     case PROXY_SSHCOM_AGENT_FAILURE:
       failed = TRUE;
+      break;
+
+    default:
       break;
   }
 

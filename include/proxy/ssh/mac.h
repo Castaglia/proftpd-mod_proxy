@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH MAC API
- * Copyright (c) 2021-2022 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,6 +29,7 @@
 #include "proxy/ssh/packet.h"
 
 #if defined(PR_USE_OPENSSL)
+#include <openssl/evp.h>
 
 int proxy_ssh_mac_init(void);
 int proxy_ssh_mac_free(void);

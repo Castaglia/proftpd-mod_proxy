@@ -124,7 +124,8 @@ static int netio_install_data(void);
 #define PROXY_TLS_IDX_HAD_TICKET		3
 
 #if !defined(OPENSSL_NO_TLSEXT)
-static void tls_tlsext_cb(SSL *, int, int, unsigned char *, int, void *);
+static void tls_tlsext_cb(SSL *ssl, int server, int type,
+  unsigned char *tlsext_data, int tlsext_datalen, void *user_data);
 #endif /* !OPENSSL_NO_TLSEXT */
 
 static int handshake_timeout_cb(CALLBACK_FRAME) {
@@ -3465,7 +3466,7 @@ static void tls_print_server_hello(int io_flag, int version, int content_type,
   BIO *bio;
   char *data = NULL;
   long datalen;
-  int print_session_id = TRUE, print_compressions = TRUE, server_version;
+  int print_session_id = TRUE, print_compressions = TRUE, server_version = -1;
   unsigned int suiteno;
 
   bio = BIO_new(BIO_s_mem());
@@ -4372,6 +4373,9 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
 
         break;
       }
+
+      default:
+        break;
     }
 
 #  if defined(SSL3_RT_HEADER)

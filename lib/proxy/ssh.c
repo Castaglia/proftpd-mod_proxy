@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH implementation
- * Copyright (c) 2021-2022 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -70,7 +70,7 @@ static const char *trace_channel = "proxy.ssh";
 
 static unsigned long ssh_opts = 0UL;
 
-static void ssh_ssh2_read_poll_ev(const void *, void *);
+static void ssh_ssh2_read_poll_ev(const void *event_data, void *user_data);
 
 static int ssh_get_server_version(pool *p,
     const struct proxy_session *proxy_sess) {

@@ -262,8 +262,6 @@ static void prepare_provider_fds(int stdout_fd, int stderr_fd) {
     pr_signals_handle();
     (void) close(i);
   }
-
-  return;
 }
 
 static void prepare_provider_pipes(int *stdout_pipe, int *stderr_pipe) {
@@ -2891,6 +2889,9 @@ static int handle_hostkey(pool *p, EVP_PKEY *pkey,
           }
 
           break;
+
+        default:
+          break;
       }
 
       break;
@@ -4631,6 +4632,9 @@ static const unsigned char *ecdsa_sign_data(pool *p, const unsigned char *data,
     case NID_secp521r1:
       proxy_ssh_msg_write_string(&buf, &buflen, "ecdsa-sha2-nistp521");
       break;
+
+    default:
+      break;
   }
 
   proxy_ssh_msg_write_data(&buf, &buflen, sig_ptr, (sig_bufsz - sig_buflen),
@@ -4879,6 +4883,9 @@ int proxy_ssh_keys_verify_pubkey_type(pool *p, unsigned char *pubkey_data,
 
           case NID_secp521r1:
             res = (pubkey_type == PROXY_SSH_KEY_ECDSA_521);
+            break;
+
+          default:
             break;
         }
       }

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy FTP message routines
- * Copyright (c) 2013-2021 TJ Saunders
+ * Copyright (c) 2013-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -444,6 +444,9 @@ const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
 
         break;
       }
+
+      default:
+        break;
     }
 
     /* Advance past the address portion of the argument. */

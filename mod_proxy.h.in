@@ -37,6 +37,10 @@
 /* Define if you have the <zlib.h> header.  */
 #undef HAVE_ZLIB_H
 
+#if defined(PR_USE_OPENSSL)
+#include <openssl/opensslv.h>
+#endif /* PR_USE_OPENSSL */
+
 /* Define if you have the LibreSSL library.
  *
  * Note that in LibreSSL-3.5.0, the structs became opaque, as they are in

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy reverse proxy implementation
- * Copyright (c) 2012-2022 TJ Saunders
+ * Copyright (c) 2012-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1584,26 +1584,33 @@ int proxy_reverse_connect_get_policy_id(const char *policy) {
 
   if (strcasecmp(policy, "Random") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_RANDOM;
+  }
 
-  } else if (strcasecmp(policy, "RoundRobin") == 0) {
+  if (strcasecmp(policy, "RoundRobin") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN;
+  }
 
-  } else if (strcasecmp(policy, "Shuffle") == 0) {
+  if (strcasecmp(policy, "Shuffle") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_SHUFFLE;
+  }
 
-  } else if (strcasecmp(policy, "LeastConns") == 0) {
+  if (strcasecmp(policy, "LeastConns") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_LEAST_CONNS;
+  }
 
-  } else if (strcasecmp(policy, "PerUser") == 0) {
+  if (strcasecmp(policy, "PerUser") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_PER_USER;
+  }
 
-  } else if (strcasecmp(policy, "PerGroup") == 0) {
+  if (strcasecmp(policy, "PerGroup") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_PER_GROUP;
+  }
 
-  } else if (strcasecmp(policy, "PerHost") == 0) {
+  if (strcasecmp(policy, "PerHost") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_PER_HOST;
+  }
 
-  } else if (strcasecmp(policy, "LeastResponseTime") == 0) {
+  if (strcasecmp(policy, "LeastResponseTime") == 0) {
     return PROXY_REVERSE_CONNECT_POLICY_LEAST_RESPONSE_TIME;
   }
 

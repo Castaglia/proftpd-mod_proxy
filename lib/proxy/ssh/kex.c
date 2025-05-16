@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH key exchange (kex)
- * Copyright (c) 2021-2023 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -298,8 +298,9 @@ static const char *kex_server_version = NULL;
 static unsigned char kex_digest_buf[EVP_MAX_MD_SIZE];
 
 /* Necessary prototypes. */
-static struct proxy_ssh_packet *read_kex_packet(pool *, struct proxy_ssh_kex *,
-  conn_t *, int, char *, unsigned int, ...);
+static struct proxy_ssh_packet *read_kex_packet(pool *p,
+  struct proxy_ssh_kex *kex, conn_t *conn, int disconnect_code,
+  char *found_msg_type, unsigned int ntypes, ...);
 
 static const char *trace_channel = "proxy.ssh.kex";
 
@@ -1562,7 +1563,8 @@ static const char *get_preferred_name(pool *p, const char *names) {
   register unsigned int i;
 
   /* Advance to the first comma, or NUL. */
-  for (i = 0; names[i] && names[i] != ','; i++);
+  for (i = 0; names[i] && names[i] != ','; i++) {
+  }
 
   if (names[i] == ',' ||
       names[i] == '\0') {
@@ -4858,41 +4860,48 @@ static int run_kex(struct proxy_ssh_kex *kex, conn_t *conn) {
       strcmp(algo, "diffie-hellman-group16-sha512") == 0 ||
       strcmp(algo, "diffie-hellman-group18-sha512") == 0) {
     return handle_kex_dh(kex, conn);
+  }
 
-  } else if (strcmp(algo, "diffie-hellman-group-exchange-sha1") == 0) {
+  if (strcmp(algo, "diffie-hellman-group-exchange-sha1") == 0) {
     return handle_kex_dh_gex(kex, conn);
+  }
 
-  } else if (strcmp(algo, "rsa1024-sha1") == 0) {
+  if (strcmp(algo, "rsa1024-sha1") == 0) {
     return handle_kex_rsa(kex, conn);
+  }
 
 #if ((OPENSSL_VERSION_NUMBER > 0x000907000L && defined(OPENSSL_FIPS)) || \
      (OPENSSL_VERSION_NUMBER > 0x000908000L)) && \
      defined(HAVE_SHA256_OPENSSL)
-  } else if (strcmp(algo, "diffie-hellman-group-exchange-sha256") == 0) {
+  if (strcmp(algo, "diffie-hellman-group-exchange-sha256") == 0) {
     return handle_kex_dh_gex(kex, conn);
+  }
 
-  } else if (strcmp(algo, "rsa2048-sha256") == 0) {
+  if (strcmp(algo, "rsa2048-sha256") == 0) {
     return handle_kex_rsa(kex, conn);
+  }
 #endif
 
 #if defined(PR_USE_OPENSSL_ECC)
-  } else if (strcmp(algo, "ecdh-sha2-nistp256") == 0 ||
-             strcmp(algo, "ecdh-sha2-nistp384") == 0 ||
-             strcmp(algo, "ecdh-sha2-nistp521") == 0) {
+  if (strcmp(algo, "ecdh-sha2-nistp256") == 0 ||
+      strcmp(algo, "ecdh-sha2-nistp384") == 0 ||
+      strcmp(algo, "ecdh-sha2-nistp521") == 0) {
     return handle_kex_ecdh(kex, conn);
+  }
 #endif /* PR_USE_OPENSSL_ECC */
 
 #if defined(PR_USE_SODIUM) && defined(HAVE_SHA256_OPENSSL)
-  } else if (strcmp(algo, "curve25519-sha256") == 0 ||
-             strcmp(algo, "curve25519-sha256@libssh.org") == 0) {
+  if (strcmp(algo, "curve25519-sha256") == 0 ||
+      strcmp(algo, "curve25519-sha256@libssh.org") == 0) {
     return handle_kex_curve25519(kex, conn);
+  }
 #endif /* PR_USE_SODIUM and HAVE_SHA256_OPENSSL */
 
 #if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
-  } else if (strcmp(algo, "curve448-sha512") == 0) {
+  if (strcmp(algo, "curve448-sha512") == 0) {
     return handle_kex_curve448(kex, conn);
-#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
   }
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
     "unsupported key exchange algorithm '%s'", algo);
