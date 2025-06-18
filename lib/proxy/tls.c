@@ -1417,20 +1417,9 @@ static int tls_connect(conn_t *conn, const char *host_name,
   }
 
   /* If configured, set a timer for the handshake. */
-  if (handshake_timeout) {
+  if (handshake_timeout > 0) {
     handshake_timer_id = pr_timer_add(handshake_timeout, -1,
       &proxy_module, handshake_timeout_cb, "SSL/TLS handshake");
-  }
-
-  /* Make sure that TCP_NODELAY is enabled for the handshake. */
-  (void) pr_inet_set_proto_nodelay(conn->pool, conn, 1);
-
-  /* Make sure that TCP_CORK (aka TCP_NOPUSH) is DISABLED for the handshake. */
-  if (pr_inet_set_proto_cork(conn->wfd, 0) < 0) {
-    pr_trace_msg(trace_channel, 9,
-      "error disabling TCP_CORK on %s conn: %s",
-       nstrm->strm_type == PR_NETIO_STRM_CTRL ? "control" : "data",
-       strerror(errno));
   }
 
   connect_retry:
@@ -1555,17 +1544,7 @@ static int tls_connect(conn_t *conn, const char *host_name,
   /* Disable the handshake timer. */
   pr_timer_remove(handshake_timer_id, &proxy_module);
 
-  /* Disable TCP_NODELAY, now that the handshake is done. */
-  (void) pr_inet_set_proto_nodelay(conn->pool, conn, 0);
-
-  if (nstrm->strm_type == PR_NETIO_STRM_DATA) {
-    /* Re-enable TCP_CORK (aka TCP_NOPUSH), now that the handshake is done. */
-    if (pr_inet_set_proto_cork(conn->wfd, 1) < 0) {
-      pr_trace_msg(trace_channel, 9,
-        "error re-enabling TCP_CORK on data conn: %s", strerror(errno));
-    }
-
-  } else if (nstrm->strm_type == PR_NETIO_STRM_CTRL) {
+  if (nstrm->strm_type == PR_NETIO_STRM_CTRL) {
     int reused;
 
     /* Only try to cache the new SSL session if we actually did create a

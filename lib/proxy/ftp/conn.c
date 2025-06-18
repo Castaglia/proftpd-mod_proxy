@@ -128,6 +128,12 @@ conn_t *proxy_ftp_conn_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn,
 
   pr_trace_msg(trace_channel, 9,
     "accepted connection from server '%s'", conn->remote_name);
+
+  /* Make sure that TCP_NODELAY is enabled (i.e. Nagle is disabled) by default
+   * for our data connections.
+   */
+  (void) pr_inet_set_proto_nodelay(conn->pool, conn, 1);
+
   return conn;
 }
 
@@ -247,6 +253,12 @@ conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
 
   pr_trace_msg(trace_channel, 9,
     "connected to server '%s'", opened->remote_name);
+
+  /* Make sure that TCP_NODELAY is enabled (i.e. Nagle is disabled) by default
+   * for our data connections.
+   */
+  (void) pr_inet_set_proto_nodelay(opened->pool, opened, 1);
+
   return opened;
 }
 
