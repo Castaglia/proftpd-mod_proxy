@@ -1023,6 +1023,12 @@ conn_t *proxy_conn_get_server_conn(pool *p, struct proxy_session *proxy_sess,
   pr_inet_close(p, server_conn);
 
   pr_pool_tag(ctrl_conn->pool, "proxy backend ctrl conn pool");
+
+  /* Make sure that TCP_NODELAY is enabled (i.e. Nagle is disabled) by default
+   * for our control connections.
+   */
+  (void) pr_inet_set_proto_nodelay(ctrl_conn->pool, ctrl_conn, 1);
+
   return ctrl_conn;
 }
 
