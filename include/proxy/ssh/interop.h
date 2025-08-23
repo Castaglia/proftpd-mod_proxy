@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH interop API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,8 +27,6 @@
 
 #include "mod_proxy.h"
 #include "proxy/session.h"
-
-#if defined(PR_USE_OPENSSL)
 
 /* For servers which do not support IGNORE packets */
 #define PROXY_SSH_FEAT_IGNORE_MSG			0x0001
@@ -98,6 +96,5 @@ int proxy_ssh_interop_supports_feature(int);
 
 int proxy_ssh_interop_init(void);
 int proxy_ssh_interop_free(void);
-#endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_INTEROP_H */

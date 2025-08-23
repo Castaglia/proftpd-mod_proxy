@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH session API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,13 +27,11 @@
 
 #include "mod_proxy.h"
 
-#if defined(PR_USE_OPENSSL)
 uint32_t proxy_ssh_session_get_id(const unsigned char **);
 
 /* Note that the provided pool must have the same lifetime as that of the
  * entire SSH session, e.g. proxy_pool or similar.
  */
 int proxy_ssh_session_set_id(pool *p, const unsigned char *, uint32_t);
-#endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_SESSION_H */

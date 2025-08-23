@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH Redis implementation
- * Copyright (c) 2022 TJ Saunders
+ * Copyright (c) 2022-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,7 +29,6 @@
 #include "proxy/ssh/crypto.h"
 #include "proxy/ssh/redis.h"
 
-#if defined(PR_USE_OPENSSL)
 #include <openssl/evp.h>
 
 extern xaset_t *server_list;
@@ -279,4 +278,3 @@ int proxy_ssh_redis_as_datastore(struct proxy_ssh_datastore *ds, void *ds_data,
 
   return 0;
 }
-#endif /* PR_USE_OPENSSL */

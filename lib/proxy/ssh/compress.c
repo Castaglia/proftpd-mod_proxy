@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH compression
- * Copyright (c) 2021-2022 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,9 +29,7 @@
 #include "proxy/ssh/crypto.h"
 #include "proxy/ssh/compress.h"
 
-#if defined(PR_USE_OPENSSL)
-
-#ifdef HAVE_ZLIB_H
+#if defined(HAVE_ZLIB_H)
 #include <zlib.h>
 
 static const char *trace_channel = "proxy.ssh.compress";
@@ -573,5 +571,3 @@ int proxy_ssh_compress_write_data(struct proxy_ssh_packet *pkt) {
   return 0;
 }
 #endif /* !HAVE_ZLIB_H */
-
-#endif /* PR_USE_OPENSSL */

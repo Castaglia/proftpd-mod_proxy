@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH service
- * Copyright (c) 2021-2022 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,8 +26,6 @@
 #include "proxy/ssh/ssh2.h"
 #include "proxy/ssh/packet.h"
 #include "proxy/ssh/service.h"
-
-#if defined(PR_USE_OPENSSL)
 
 static const char *trace_channel = "proxy.ssh.service";
 
@@ -114,4 +112,3 @@ int proxy_ssh_service_handle(struct proxy_ssh_packet *pkt,
   errno = xerrno;
   return res;
 }
-#endif /* PR_USE_OPENSSL */

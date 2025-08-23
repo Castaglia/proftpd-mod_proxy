@@ -22,7 +22,6 @@
 #include "proxy/ssh/bcrypt.h"
 #include "proxy/ssh/crypto.h"
 
-#if defined(PR_USE_OPENSSL)
 #include <openssl/sha.h>
 
 #define	MINIMUM(a,b) (((a) < (b)) ? (a) : (b))
@@ -219,4 +218,3 @@ int proxy_ssh_bcrypt_pbkdf2(pool *p, const char *passphrase,
 
   return 0;
 }
-#endif /* PR_USE_OPENSSL */

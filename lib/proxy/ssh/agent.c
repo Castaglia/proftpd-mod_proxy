@@ -26,8 +26,6 @@
 #include "proxy/ssh/agent.h"
 #include "proxy/ssh/msg.h"
 
-#if defined(PR_USE_OPENSSL)
-
 static const char *trace_channel = "proxy.ssh.agent";
 
 /* These values from https://tools.ietf.org/html/draft-miller-ssh-agent-04
@@ -399,4 +397,3 @@ const unsigned char *proxy_ssh_agent_sign_data(pool *p, const char *agent_path,
 
   return sig_data;
 }
-#endif /* PR_USE_OPENSSL */

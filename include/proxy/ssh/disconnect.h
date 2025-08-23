@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH disconnect API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,8 +27,6 @@
 
 #include "mod_proxy.h"
 
-#if defined(PR_USE_OPENSSL)
-
 void proxy_ssh_disconnect_conn(conn_t *, uint32_t, const char *, const char *,
   int, const char *);
 void proxy_ssh_disconnect_send(pool *, conn_t *, uint32_t, const char *,
@@ -43,19 +41,18 @@ const char *proxy_ssh_disconnect_get_text(uint32_t);
  * (e.g. SunStudio) like __func__.
  */
 
-# if defined(__FUNCTION__)
+#if defined(__FUNCTION__)
 #define PROXY_SSH_DISCONNECT_CONN(c, n, m) \
   proxy_ssh_disconnect_conn((c), (n), (m), __FILE__, __LINE__, __FUNCTION__)
 
-# elif defined(__func__)
+#elif defined(__func__)
 #define PROXY_SSH_DISCONNECT_CONN(c, n, m) \
   proxy_ssh_disconnect_conn((c), (n), (m), __FILE__, __LINE__, __func__)
 
-# else
+#else
 #define PROXY_SSH_DISCONNECT_CONN(c, n, m) \
   proxy_ssh_disconnect_conn((c), (n), (m), __FILE__, __LINE__, "")
 
-# endif
-#endif /* PR_USE_OPENSSL */
+#endif
 
 #endif /* MOD_PROXY_SSH_DISCONNECT_H */

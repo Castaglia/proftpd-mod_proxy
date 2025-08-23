@@ -26,7 +26,6 @@
 #include "proxy/ssh/crypto.h"
 #include "proxy/ssh/umac.h"
 
-#if defined(PR_USE_OPENSSL)
 #include <openssl/aes.h>
 #if !defined(OPENSSL_NO_BF)
 # include <openssl/blowfish.h>
@@ -1444,4 +1443,3 @@ void proxy_ssh_crypto_free(int flags) {
 #endif /* prior to OpenSSL-1.1.x */
   }
 }
-#endif /* PR_USE_OPENSSL */

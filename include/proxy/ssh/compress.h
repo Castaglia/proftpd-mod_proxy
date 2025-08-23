@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH compression API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,8 +28,6 @@
 #include "mod_proxy.h"
 #include "proxy/ssh/packet.h"
 
-#if defined(PR_USE_OPENSSL)
-
 #define PROXY_SSH_COMPRESS_FL_NEW_KEY		1
 #define PROXY_SSH_COMPRESS_FL_AUTHENTICATED	2
 
@@ -42,6 +40,5 @@ int proxy_ssh_compress_init_write(int);
 const char *proxy_ssh_compress_get_write_algo(void);
 int proxy_ssh_compress_set_write_algo(pool *p, const char *algo);
 int proxy_ssh_compress_write_data(struct proxy_ssh_packet *);
-#endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_COMPRESS_H */

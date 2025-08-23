@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH service API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,9 +29,7 @@
 #include "proxy/session.h"
 #include "proxy/ssh/packet.h"
 
-#if defined(PR_USE_OPENSSL)
 int proxy_ssh_service_handle(struct proxy_ssh_packet *,
   const struct proxy_session *);
-#endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_SERVICE_H */

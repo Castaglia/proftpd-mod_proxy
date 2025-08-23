@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH message API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,8 +26,7 @@
 #define MOD_PROXY_SSH_MSG_H
 
 #include "mod_proxy.h"
-
-#if defined(PR_USE_OPENSSL)
+#include <openssl/bn.h>
 
 #if defined(PR_USE_OPENSSL_ECC)
 # include <openssl/ec.h>
@@ -71,6 +70,5 @@ uint32_t proxy_ssh_msg_write_mpint(unsigned char **buf, uint32_t *buflen,
   const BIGNUM *msg);
 uint32_t proxy_ssh_msg_write_string(unsigned char **buf, uint32_t *buflen,
   const char *msg);
-#endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_MSG_H */

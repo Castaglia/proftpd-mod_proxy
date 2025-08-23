@@ -72,13 +72,11 @@
 
 #include "mod_proxy.h"
 #include "proxy/ssh/umac.h"
-#if defined(PR_USE_OPENSSL)
-# include <openssl/aes.h>
-# include <openssl/crypto.h>
-#endif /* PR_USE_OPENSSL */
 #include <string.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <openssl/aes.h>
+#include <openssl/crypto.h>
 
 #if OPENSSL_VERSION_NUMBER > 0x000907000L 
 

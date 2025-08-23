@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH kex API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,8 +29,6 @@
 #include "proxy/session.h"
 #include "proxy/ssh.h"
 
-#if defined(PR_USE_OPENSSL)
-
 int proxy_ssh_kex_handle(struct proxy_ssh_packet *pkt,
   const struct proxy_session *proxy_sess);
 int proxy_ssh_kex_init(pool *p, const char *client_version,
@@ -46,6 +44,5 @@ int proxy_ssh_kex_send_first_kexinit(pool *p,
 
 #define PROXY_SSH_KEX_DH_GROUP_MIN	1024
 #define PROXY_SSH_KEX_DH_GROUP_MAX	8192
-#endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_KEX_H */

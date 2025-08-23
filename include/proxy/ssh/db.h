@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH Database API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,9 +28,7 @@
 #include "mod_proxy.h"
 #include "proxy/ssh.h"
 
-#if defined(PR_USE_OPENSSL)
 int proxy_ssh_db_as_datastore(struct proxy_ssh_datastore *ds, void *ds_data,
   size_t ds_datasz);
-#endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_DB_H */

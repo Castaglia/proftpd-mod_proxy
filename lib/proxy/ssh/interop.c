@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH interoperability
- * Copyright (c) 2021-2022 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,8 +26,6 @@
 #include "proxy/ssh/ssh2.h"
 #include "proxy/ssh/disconnect.h"
 #include "proxy/ssh/interop.h"
-
-#if defined(PR_USE_OPENSSL)
 
 /* By default, each server is assumed to support all of the features in
  * which we are interested.
@@ -340,4 +338,3 @@ int proxy_ssh_interop_free(void) {
 
   return 0;
 }
-#endif /* PR_USE_OPENSSL */

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS API
- * Copyright (c) 2015-2024 TJ Saunders
+ * Copyright (c) 2015-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,27 +28,25 @@
 #include "mod_proxy.h"
 #include "proxy/session.h"
 
-#ifdef PR_USE_OPENSSL
-# include <openssl/bio.h>
-# include <openssl/err.h>
-# include <openssl/conf.h>
-# include <openssl/crypto.h>
-# include <openssl/evp.h>
-# include <openssl/ssl.h>
-# include <openssl/ssl3.h>
-# include <openssl/x509v3.h>
-# include <openssl/rand.h>
-# if OPENSSL_VERSION_NUMBER > 0x000907000L
-#  if defined(PR_USE_OPENSSL_ENGINE)
-#   include <openssl/engine.h>
-#  endif /* PR_USE_OPENSSL_ENGINE */
-#  include <openssl/ocsp.h>
-# endif
-# ifdef PR_USE_OPENSSL_ECC
-#  include <openssl/ec.h>
-#  include <openssl/ecdh.h>
-# endif /* PR_USE_OPENSSL_ECC */
+#include <openssl/bio.h>
+#include <openssl/err.h>
+#include <openssl/conf.h>
+#include <openssl/crypto.h>
+#include <openssl/evp.h>
+#include <openssl/ssl.h>
+#include <openssl/ssl3.h>
+#include <openssl/x509v3.h>
+#include <openssl/rand.h>
+#if OPENSSL_VERSION_NUMBER > 0x000907000L
+# if defined(PR_USE_OPENSSL_ENGINE)
+#  include <openssl/engine.h>
+# endif /* PR_USE_OPENSSL_ENGINE */
+# include <openssl/ocsp.h>
 #endif
+#ifdef PR_USE_OPENSSL_ECC
+# include <openssl/ec.h>
+# include <openssl/ecdh.h>
+#endif /* PR_USE_OPENSSL_ECC */
 
 /* ProxyTLSEngine values */
 #define PROXY_TLS_ENGINE_ON		1
@@ -112,12 +110,10 @@ int proxy_tls_match_client_tls(void);
 
 /* Defines the datastore interface. */
 struct proxy_tls_datastore {
-#ifdef PR_USE_OPENSSL
   int (*add_sess)(pool *p, void *dsh, const char *key, SSL_SESSION *sess);
   int (*remove_sess)(pool *p, void *dsh, const char *key);
   SSL_SESSION *(*get_sess)(pool *p, void *dsh, const char *key);
   int (*count_sess)(pool *p, void *dsh);
-#endif /* PR_USE_OPENSSL */
   int (*init)(pool *p, const char *path, int flags);
   void *(*open)(pool *p, const char *path, unsigned long opts);
   int (*close)(pool *p, void *dsh);

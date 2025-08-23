@@ -27,7 +27,6 @@
 
 #include "mod_proxy.h"
 
-#if defined(PR_USE_OPENSSL)
 #include <openssl/evp.h>
 
 int proxy_ssh_cipher_init(void);
@@ -69,6 +68,5 @@ int proxy_ssh_cipher_set_write_key(pool *p, const EVP_MD *md,
   int role);
 int proxy_ssh_cipher_write_data(struct proxy_ssh_packet *pkt,
   unsigned char *buf, size_t *bufsz);
-#endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_CIPHER_H */
