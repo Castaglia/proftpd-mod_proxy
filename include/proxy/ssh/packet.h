@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH packet API
- * Copyright (c) 2021-2023 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,8 +27,6 @@
 
 #include "mod_proxy.h"
 #include "proxy/session.h"
-
-#if defined(PR_USE_OPENSSL)
 
 /* From RFC 4253, Section 6 */
 /* NOTE: This struct MUST be kept in sync with the struct used in mod_sftp;
@@ -152,7 +150,5 @@ int proxy_ssh_packet_set_server_alive(unsigned int, unsigned int);
 
 int proxy_ssh_packet_set_frontend_packet_handle(pool *p, int (*cb)(void *pkt));
 void proxy_ssh_packet_set_frontend_packet_write(int (*cb)(int fd, void *pkt));
-
-#endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_PACKET_H */

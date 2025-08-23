@@ -32,8 +32,6 @@
 #include "proxy/ssh/interop.h"
 #include "proxy/ssh/bcrypt.h"
 
-#if defined(PR_USE_OPENSSL)
-
 #if defined(PR_USE_SODIUM)
 # include <sodium.h>
 #endif /* PR_USE_SODIUM */
@@ -1645,35 +1643,35 @@ static const char *get_pkey_type_desc(int pkey_type) {
   const char *key_desc = NULL;
 
   switch (pkey_type) {
-#ifdef EVP_PKEY_NONE
+#if defined(EVP_PKEY_NONE)
     case EVP_PKEY_NONE:
       key_desc = "undefined";
       break;
-#endif
+#endif /* EVP_PKEY_NONE */
 
-#ifdef EVP_PKEY_RSA
+#if defined(EVP_PKEY_RSA)
     case EVP_PKEY_RSA:
       key_desc = "RSA";
       break;
-#endif
+#endif /* EVP_PKEY_RSA */
 
-#ifdef EVP_PKEY_DSA
+#if defined(EVP_PKEY_DSA)
     case EVP_PKEY_DSA:
       key_desc = "DSA";
       break;
-#endif
+#endif /* EVP_PKEY_DSA */
 
-#ifdef EVP_PKEY_DH
+#if defined(EVP_PKEY_DH)
     case EVP_PKEY_DH:
       key_desc = "DH";
       break;
-#endif
+#endif /* EVP_PKEY_DH */
 
-#ifdef EVP_PKEY_EC
+#if defined(EVP_PKEY_EC)
     case EVP_PKEY_EC:
       key_desc = "ECC";
       break;
-#endif
+#endif /* EVP_PKEY_EC */
 
     default:
       key_desc = "unknown";
@@ -1812,6 +1810,7 @@ static int validate_ecdsa_private_key(const EC_KEY *ec) {
   BN_CTX_free(bn_ctx);
   return 0;
 }
+#endif /* PR_USE_OPENSSL_ECC */
 
 enum proxy_ssh_key_type_e proxy_ssh_keys_get_key_type(const char *algo) {
   enum proxy_ssh_key_type_e key_type = PROXY_SSH_KEY_UNKNOWN;
@@ -2103,7 +2102,6 @@ int proxy_ssh_keys_validate_ecdsa_params(const EC_GROUP *group,
   BN_CTX_free(bn_ctx);
   return 0;
 }
-#endif /* PR_USE_OPENSSL_ECC */
 
 #ifdef SFTP_DEBUG_KEYS
 static void debug_rsa_key(pool *p, const char *label, RSA *rsa) {
@@ -5719,4 +5717,3 @@ void proxy_ssh_keys_free(void) {
   clear_ed25519_hostkey();
   clear_rsa_hostkey();
 }
-#endif /* PR_USE_OPENSSL */

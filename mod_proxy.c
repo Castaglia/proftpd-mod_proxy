@@ -1031,7 +1031,6 @@ MODRET set_proxyrole(cmd_rec *cmd) {
 
 /* usage: ProxySFTPCiphers algos */
 MODRET set_proxysftpciphers(cmd_rec *cmd) {
-#if defined(PR_USE_OPENSSL)
   register unsigned int i;
   config_rec *c;
 
@@ -1054,10 +1053,6 @@ MODRET set_proxysftpciphers(cmd_rec *cmd) {
   }
 
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd,
-    "Use of the ProxySFTPCiphers directive requires OpenSSL support (--enable-openssl)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxySFTPCompression on|off|delayed */
@@ -1096,7 +1091,6 @@ MODRET set_proxysftpcompression(cmd_rec *cmd) {
 
 /* usage: ProxySFTPDigests algos */
 MODRET set_proxysftpdigests(cmd_rec *cmd) {
-#if defined(PR_USE_OPENSSL)
   register unsigned int i;
   config_rec *c;
 
@@ -1119,10 +1113,6 @@ MODRET set_proxysftpdigests(cmd_rec *cmd) {
   }
 
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd,
-    "Use of the ProxySFTPDigests directive requires OpenSSL support (--enable-openssl)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxySFTPHostKey path|"agent:/..." */
@@ -1174,7 +1164,6 @@ MODRET set_proxysftphostkey(cmd_rec *cmd) {
 
 /* usage: ProxySFTPKeyExchanges algos */
 MODRET set_proxysftpkeyexchanges(cmd_rec *cmd) {
-#if defined(PR_USE_OPENSSL)
   register unsigned int i;
   config_rec *c;
   char *exchanges = "";
@@ -1223,10 +1212,6 @@ MODRET set_proxysftpkeyexchanges(cmd_rec *cmd) {
   c->argv[0] = exchanges;
 
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd,
-    "Use of the ProxySFTPKeyExchanges directive requires OpenSSL support (--enable-openssl)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxySFTPOptions opts */
@@ -1629,7 +1614,6 @@ MODRET set_proxytimeoutlinger(cmd_rec *cmd) {
 
 /* usage: ProxyTLSCACertificateFile path */
 MODRET set_proxytlscacertfile(cmd_rec *cmd) {
-#ifdef PR_USE_OPENSSL
   int res;
   char *path;
 
@@ -1653,14 +1637,10 @@ MODRET set_proxytlscacertfile(cmd_rec *cmd) {
 
   add_config_param_str(cmd->argv[0], 1, path);
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxyTLSCACertificatePath path */
 MODRET set_proxytlscacertpath(cmd_rec *cmd) {
-#ifdef PR_USE_OPENSSL
   int res;
   char *path;
 
@@ -1683,14 +1663,10 @@ MODRET set_proxytlscacertpath(cmd_rec *cmd) {
 
   add_config_param_str(cmd->argv[0], 1, path);
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxyTLSCARevocationFile path */
 MODRET set_proxytlscacrlfile(cmd_rec *cmd) {
-#ifdef PR_USE_OPENSSL
   int res;
   char *path;
 
@@ -1714,14 +1690,10 @@ MODRET set_proxytlscacrlfile(cmd_rec *cmd) {
 
   add_config_param_str(cmd->argv[0], 1, path);
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxyTLSCARevocationPath path */
 MODRET set_proxytlscacrlpath(cmd_rec *cmd) {
-#ifdef PR_USE_OPENSSL
   int res;
   char *path;
 
@@ -1744,14 +1716,10 @@ MODRET set_proxytlscacrlpath(cmd_rec *cmd) {
 
   add_config_param_str(cmd->argv[0], 1, path);
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxyTLSCertificateFile path */
 MODRET set_proxytlscertfile(cmd_rec *cmd) {
-#ifdef PR_USE_OPENSSL
   int res;
   char *path;
 
@@ -1775,14 +1743,10 @@ MODRET set_proxytlscertfile(cmd_rec *cmd) {
 
   add_config_param_str(cmd->argv[0], 1, path);
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxyTLSCertificateKeyFile path */
 MODRET set_proxytlscertkeyfile(cmd_rec *cmd) {
-#ifdef PR_USE_OPENSSL
   int res;
   char *path;
 
@@ -1806,14 +1770,10 @@ MODRET set_proxytlscertkeyfile(cmd_rec *cmd) {
 
   add_config_param_str(cmd->argv[0], 1, path);
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxyTLSCipherSuite [protocol] ciphers */
 MODRET set_proxytlsciphersuite(cmd_rec *cmd) {
-#if defined(PR_USE_OPENSSL)
   config_rec *c = NULL;
   char *ciphersuite = NULL;
   int protocol = 0;
@@ -1917,14 +1877,10 @@ MODRET set_proxytlsciphersuite(cmd_rec *cmd) {
   }
 
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxyTLSEngine on|off|auto|MatchClient */
 MODRET set_proxytlsengine(cmd_rec *cmd) {
-#ifdef PR_USE_OPENSSL
   int engine = -1;
   config_rec *c;
 
@@ -1958,14 +1914,10 @@ MODRET set_proxytlsengine(cmd_rec *cmd) {
   *((int *) c->argv[0]) = engine;
 
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxyTLSOptions ... */
 MODRET set_proxytlsoptions(cmd_rec *cmd) {
-#if defined(PR_USE_OPENSSL)
   config_rec *c = NULL;
   register unsigned int i = 0;
   unsigned long opts = 0UL;
@@ -2014,15 +1966,11 @@ MODRET set_proxytlsoptions(cmd_rec *cmd) {
   }
 
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxyTLSPreSharedKey name path */
 MODRET set_proxytlspresharedkey(cmd_rec *cmd) {
-#ifdef PR_USE_OPENSSL
-# if defined(PSK_MAX_PSK_LEN)
+#if defined(PSK_MAX_PSK_LEN)
   size_t identity_len, path_len;
   char *path;
 
@@ -2054,20 +2002,17 @@ MODRET set_proxytlspresharedkey(cmd_rec *cmd) {
   }
 
   (void) add_config_param_str(cmd->argv[0], 2, cmd->argv[1], path);
-# else
+#else
   pr_log_debug(DEBUG0,
     "%s is not supported by this build/version of OpenSSL, ignoring",
     (char *) cmd->argv[0]);
-# endif /* PSK support */
+#endif /* PSK support */
+
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxyTLSProtocol protocols */
 MODRET set_proxytlsprotocol(cmd_rec *cmd) {
-#ifdef PR_USE_OPENSSL
   register unsigned int i;
   config_rec *c;
   unsigned int tls_protocol = 0;
@@ -2119,37 +2064,37 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
         }
 
       } else if (strcasecmp(proto_name, "TLSv1.1") == 0) {
-# if defined(TLS1_1_VERSION)
+#if defined(TLS1_1_VERSION)
         if (disable) {
           tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1_1;
         } else {
           tls_protocol |= PROXY_TLS_PROTO_TLS_V1_1;
         }
-# else
+#else
         CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.1");
-# endif /* OpenSSL 1.0.1 or later */
+#endif /* OpenSSL 1.0.1 or later */
 
       } else if (strcasecmp(proto_name, "TLSv1.2") == 0) {
-# if defined(TLS1_2_VERSION)
+#if defined(TLS1_2_VERSION)
         if (disable) {
           tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1_2;
         } else {
           tls_protocol |= PROXY_TLS_PROTO_TLS_V1_2;
         }
-# else
+#else
         CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.2");
-# endif /* OpenSSL 1.0.1 or later */
+#endif /* OpenSSL 1.0.1 or later */
 
       } else if (strcasecmp(proto_name, "TLSv1.3") == 0) {
-# if defined(TLS1_3_VERSION)
+#if defined(TLS1_3_VERSION)
         if (disable) {
           tls_protocol &= ~PROXY_TLS_PROTO_TLS_V1_3;
         } else {
           tls_protocol |= PROXY_TLS_PROTO_TLS_V1_3;
         }
-# else
+#else
         CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.3");
-# endif /* OpenSSL 1.1.1 or later */
+#endif /* OpenSSL 1.1.1 or later */
 
       } else {
         CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown protocol: '",
@@ -2171,25 +2116,25 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
         tls_protocol |= PROXY_TLS_PROTO_TLS_V1;
 
       } else if (strcasecmp(cmd->argv[i], "TLSv1.1") == 0) {
-# if defined(TLS1_1_VERSION)
+#if defined(TLS1_1_VERSION)
         tls_protocol |= PROXY_TLS_PROTO_TLS_V1_1;
-# else
+#else
         CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.1");
-# endif /* OpenSSL 1.0.1 or later */
+#endif /* OpenSSL 1.0.1 or later */
 
       } else if (strcasecmp(cmd->argv[i], "TLSv1.2") == 0) {
-# if defined(TLS1_2_VERSION)
+#if defined(TLS1_2_VERSION)
         tls_protocol |= PROXY_TLS_PROTO_TLS_V1_2;
-# else
+#else
         CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.2");
-# endif /* OpenSSL 1.0.1 or later */
+#endif /* OpenSSL 1.0.1 or later */
 
       } else if (strcasecmp(cmd->argv[i], "TLSv1.3") == 0) {
-# if defined(TLS1_3_VERSION)
+#if defined(TLS1_3_VERSION)
         tls_protocol |= PROXY_TLS_PROTO_TLS_V1_3;
-# else
+#else
         CONF_ERROR(cmd, "Your OpenSSL installation does not support TLSv1.3");
-# endif /* OpenSSL 1.1.1 or later */
+#endif /* OpenSSL 1.1.1 or later */
 
       } else {
         CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unknown protocol: '",
@@ -2203,14 +2148,10 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
   *((unsigned int *) c->argv[0]) = tls_protocol;
 
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxyTLSTimeoutHandshake timeout */
 MODRET set_proxytlstimeouthandshake(cmd_rec *cmd) {
-#ifdef PR_USE_OPENSSL
   int timeout = -1;
   config_rec *c = NULL;
 
@@ -2227,14 +2168,10 @@ MODRET set_proxytlstimeouthandshake(cmd_rec *cmd) {
   *((unsigned int *) c->argv[0]) = timeout;
 
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxyTLSTransferProtectionPolicy client|required|clear */
 MODRET set_proxytlsxferprotpolicy(cmd_rec *cmd) {
-#ifdef PR_USE_OPENSSL
   config_rec *c;
   const char *policy;
   int require_prot = 0;
@@ -2262,14 +2199,10 @@ MODRET set_proxytlsxferprotpolicy(cmd_rec *cmd) {
   *((int *) c->argv[0]) = require_prot;
 
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
-#endif /* PR_USE_OPENSSL */
 }
 
 /* usage: ProxyTLSVerifyServer on|off */
 MODRET set_proxytlsverifyserver(cmd_rec *cmd) {
-#ifdef PR_USE_OPENSSL
   int verify = -1;
   config_rec *c = NULL;
 
@@ -2286,9 +2219,6 @@ MODRET set_proxytlsverifyserver(cmd_rec *cmd) {
   *((int *) c->argv[0]) = verify;
 
   return PR_HANDLED(cmd);
-#else
-  CONF_ERROR(cmd, "Missing required OpenSSL support (see --enable-openssl configure option)");
-#endif /* PR_USE_OPENSSL */
 }
 
 static void proxy_process_cmd(void) {

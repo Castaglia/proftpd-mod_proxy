@@ -39,17 +39,16 @@
 #include "proxy/ssh/interop.h"
 #include "proxy/ssh/misc.h"
 
-#if defined(PR_USE_OPENSSL)
-# include <openssl/bn.h>
-# include <openssl/dh.h>
-# include <openssl/evp.h>
-# include <openssl/rand.h>
-# include <openssl/rsa.h>
+#include <openssl/bn.h>
+#include <openssl/dh.h>
+#include <openssl/evp.h>
+#include <openssl/rand.h>
+#include <openssl/rsa.h>
 
-# if defined(PR_USE_OPENSSL_ECC)
-#  include <openssl/ec.h>
-#  include <openssl/ecdh.h>
-# endif /* PR_USE_OPENSSL_ECC */
+#if defined(PR_USE_OPENSSL_ECC)
+# include <openssl/ec.h>
+# include <openssl/ecdh.h>
+#endif /* PR_USE_OPENSSL_ECC */
 
 #if defined(PR_USE_SODIUM)
 # include <sodium.h>
@@ -5285,4 +5284,3 @@ int proxy_ssh_kex_send_first_kexinit(pool *p,
   destroy_pool(pkt->pool);
   return 0;
 }
-#endif /* PR_USE_OPENSSL */

@@ -43,7 +43,6 @@
 #include "proxy/ssh/mac.h"
 #include "proxy/ssh/utf8.h"
 
-#if defined(PR_USE_OPENSSL)
 #include <openssl/conf.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
@@ -665,10 +664,8 @@ static void ssh_ssh2_read_poll_ev(const void *event_data, void *user_data) {
   proxy_ssh_packet_set_poll_timeout(poll_timeout_secs, poll_timeout_ms);
   destroy_pool(tmp_pool);
 }
-#endif /* PR_USE_OPENSSL */
 
 int proxy_ssh_init(pool *p, const char *tables_path, int flags) {
-#if defined(PR_USE_OPENSSL)
   int res;
   config_rec *c;
 
@@ -733,8 +730,6 @@ int proxy_ssh_init(pool *p, const char *tables_path, int flags) {
   }
 
   proxy_ssh_keys_get_passphrases();
-#endif /* PR_USE_OPENSSL */
-
   return 0;
 }
 
@@ -744,7 +739,6 @@ int proxy_ssh_free(pool *p) {
     return -1;
   }
 
-#if defined(PR_USE_OPENSSL)
   if (ssh_ds.dsh != NULL) {
     int res;
 
@@ -766,13 +760,10 @@ int proxy_ssh_free(pool *p) {
   proxy_ssh_utf8_free();
   proxy_ssh_crypto_free(0);
 
-#endif /* PR_USE_OPENSSL */
-
   return 0;
 }
 
 int proxy_ssh_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
-#if defined(PR_USE_OPENSSL)
   int connect_policy_id = PROXY_REVERSE_CONNECT_POLICY_ROUND_ROBIN;
   int sftp_engine, proxy_role = 0, verify_server, xerrno = 0;
   config_rec *c;
@@ -935,7 +926,7 @@ int proxy_ssh_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
   if (proxy_ssh_auth_sess_init(p, proxy_sess) < 0) {
     return -1;
   }
-#endif /* PR_USE_OPENSSL */
+
   return 0;
 }
 
@@ -945,7 +936,6 @@ int proxy_ssh_sess_free(pool *p) {
     return -1;
   }
 
-#if defined(PR_USE_OPENSSL)
   ssh_opts = 0UL;
 
   if (ssh_ds.dsh != NULL) {
@@ -967,7 +957,6 @@ int proxy_ssh_sess_free(pool *p) {
     ssh_ssh2_kex_completed_ev);
   pr_event_unregister(&proxy_module, "mod_sftp.ssh2.read-poll",
     ssh_ssh2_read_poll_ev);
-#endif /* PR_USE_OPENSSL */
 
   return 0;
 }

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH UTF8 encoding
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -92,7 +92,6 @@ static int utf8_convert(iconv_t conv, const char *inbuf, size_t *inbuflen,
 }
 #endif /* !PR_USE_NLS && !HAVE_ICONV_H */
 
-#if defined(PR_USE_OPENSSL)
 int proxy_ssh_utf8_set_charset(const char *charset) {
   int res;
 
@@ -329,4 +328,3 @@ char *proxy_ssh_utf8_encode_text(pool *p, const char *text) {
   return pstrdup(p, text);
 #endif /* !PR_USE_NLS && !HAVE_ICONV_H */
 }
-#endif /* PR_USE_OPENSSL */

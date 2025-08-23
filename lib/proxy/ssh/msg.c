@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH message format
- * Copyright (c) 2021-2024 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,8 +28,6 @@
 #include "proxy/ssh/msg.h"
 #include "proxy/ssh/crypto.h"
 #include "proxy/ssh/disconnect.h"
-
-#if defined(PR_USE_OPENSSL)
 
 #if defined(PR_USE_OPENSSL_ECC)
 /* Max GFp field length = 528 bits.  SEC1 uncompressed encoding uses 2
@@ -583,5 +581,3 @@ uint32_t proxy_ssh_msg_write_ecpoint(unsigned char **buf, uint32_t *buflen,
   return len;
 }
 #endif /* PR_USE_OPENSSL_ECC */
-
-#endif /* PR_USE_OPENSSL */

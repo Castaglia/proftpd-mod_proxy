@@ -34,8 +34,6 @@
 #include "proxy/ssh/disconnect.h"
 #include "proxy/ssh/interop.h"
 
-#if defined(PR_USE_OPENSSL)
-
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 
@@ -1110,4 +1108,3 @@ int proxy_ssh_mac_free(void) {
 #endif /* OpenSSL-1.1.0 and later */
   return 0;
 }
-#endif /* PR_USE_OPENSSL */

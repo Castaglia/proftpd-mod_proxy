@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS Redis implementation
- * Copyright (c) 2017-2020 TJ Saunders
+ * Copyright (c) 2017-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,8 +27,6 @@
 #include "redis.h"
 #include "proxy/tls.h"
 #include "proxy/tls/redis.h"
-
-#ifdef PR_USE_OPENSSL
 
 extern xaset_t *server_list;
 
@@ -347,7 +345,6 @@ static void *tls_redis_open(pool *p, const char *tables_dir,
   redis_opts = opts;
   return redis;
 }
-#endif /* PR_USE_OPENSSL */
 
 int proxy_tls_redis_as_datastore(struct proxy_tls_datastore *ds, void *ds_data,
     size_t ds_datasz) {
@@ -356,7 +353,6 @@ int proxy_tls_redis_as_datastore(struct proxy_tls_datastore *ds, void *ds_data,
     return -1;
   }
 
-#ifdef PR_USE_OPENSSL
   redis_prefix = ds_data;
   redis_prefixsz = ds_datasz;
 
@@ -368,7 +364,6 @@ int proxy_tls_redis_as_datastore(struct proxy_tls_datastore *ds, void *ds_data,
   ds->init = tls_redis_init;
   ds->open = tls_redis_open;
   ds->close = tls_redis_close;
-#endif /* PR_USE_OPENSSL */
 
   return 0;
 }

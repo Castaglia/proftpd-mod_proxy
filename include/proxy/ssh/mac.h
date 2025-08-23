@@ -28,7 +28,6 @@
 #include "mod_proxy.h"
 #include "proxy/ssh/packet.h"
 
-#if defined(PR_USE_OPENSSL)
 #include <openssl/evp.h>
 
 int proxy_ssh_mac_init(void);
@@ -55,6 +54,5 @@ int proxy_ssh_mac_set_write_key(pool *p, const EVP_MD *md,
   const unsigned char *k, uint32_t klen, const char *h, uint32_t hlen,
   int role);
 int proxy_ssh_mac_write_data(struct proxy_ssh_packet *pkt);
-#endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_MAC_H */

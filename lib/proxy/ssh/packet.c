@@ -43,8 +43,6 @@
 # define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #endif
 
-#if defined(PR_USE_OPENSSL)
-
 extern pr_response_t *resp_list, *resp_err_list;
 
 static int (*frontend_packet_write)(int, void *) = NULL;
@@ -2364,4 +2362,3 @@ int proxy_ssh_packet_set_version(const char *version) {
   version_id = pstrcat(proxy_pool, version, "\r\n", NULL);
   return 0;
 }
-#endif /* PR_USE_OPENSSL */

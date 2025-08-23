@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH keys API
- * Copyright (c) 2021-2022 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,7 +27,6 @@
 
 #include "mod_proxy.h"
 
-#if defined(PR_USE_OPENSSL)
 #include <openssl/ec.h>
 
 enum proxy_ssh_key_type_e {
@@ -77,6 +76,5 @@ int proxy_ssh_keys_verify_signed_data(pool *p, const char *pubkey_algo,
   unsigned char *pubkey_data, uint32_t pubkey_datalen,
   unsigned char *signature, uint32_t signaturelen,
   unsigned char *sig_data, size_t sig_datalen);
-#endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_KEYS_H */

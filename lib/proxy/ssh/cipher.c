@@ -32,7 +32,6 @@
 #include "proxy/ssh/interop.h"
 #include "proxy/ssh/poly1305.h"
 
-#if defined(PR_USE_OPENSSL)
 #include <openssl/evp.h>
 
 struct proxy_ssh_cipher {
@@ -1635,4 +1634,3 @@ int proxy_ssh_cipher_free(void) {
 
   return 0;
 }
-#endif /* PR_USE_OPENSSL */

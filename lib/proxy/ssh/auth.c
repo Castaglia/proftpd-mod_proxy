@@ -37,8 +37,6 @@
 #include "proxy/ssh/keys.h"
 #include "proxy/ssh/utf8.h"
 
-#if defined(PR_USE_OPENSSL)
-
 /* From response.c */
 extern pr_response_t *resp_list, *resp_err_list;
 
@@ -1296,4 +1294,3 @@ int proxy_ssh_auth_set_frontend_success_handle(pool *p,
 
   return 0;
 }
-#endif /* PR_USE_OPENSSL */

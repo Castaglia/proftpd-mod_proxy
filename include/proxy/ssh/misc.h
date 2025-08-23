@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH miscellany API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,9 +27,7 @@
 
 #include "mod_proxy.h"
 
-#if defined(PR_USE_OPENSSL)
 int proxy_ssh_misc_namelist_contains(pool *, const char *, const char *);
 const char *proxy_ssh_misc_namelist_shared(pool *, const char *, const char *);
-#endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_MISC_H */

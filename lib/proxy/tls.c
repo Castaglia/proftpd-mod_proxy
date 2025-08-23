@@ -38,7 +38,6 @@
 
 static const char *trace_channel = "proxy.tls";
 
-#if defined(PR_USE_OPENSSL)
 extern xaset_t *server_list;
 
 static unsigned long tls_opts = 0UL;
@@ -2267,12 +2266,12 @@ static int set_next_protocol(SSL_CTX *ctx) {
 
 # if defined(PR_USE_OPENSSL_NPN)
   SSL_CTX_set_next_proto_select_cb(ctx, tls_npn_cb, next_proto);
-# endif /* NPN */
+# endif /* PR_USE_OPENSSL_NPN */
 
 # if defined(PR_USE_OPENSSL_ALPN)
   SSL_CTX_set_alpn_protos(ctx, next_proto->encoded_proto,
     next_proto->encoded_protolen);
-# endif /* ALPN */
+# endif /* PR_USE_OPENSSL_ALPN */
 
   return 0;
 }
@@ -2333,7 +2332,7 @@ static int init_ssl_ctx(void) {
 # if defined(SSL_OP_SAFARI_ECDHE_ECDSA_BUG)
   ssl_opts |= SSL_OP_SAFARI_ECDHE_ECDSA_BUG;
 # endif
-#endif /* ECC support */
+#endif /* PR_USE_OPENSSL_ECC */
 
   SSL_CTX_set_options(ssl_ctx, ssl_opts);
 
@@ -2356,23 +2355,17 @@ static int init_ssl_ctx(void) {
 static void proxy_tls_shutdown_ev(const void *event_data, void *user_data) {
   RAND_cleanup();
 }
-#endif /* PR_USE_OPENSSL */
 
 int proxy_tls_set_data_prot(int data_prot) {
   int old_data_prot;
 
-#if defined(PR_USE_OPENSSL)
   old_data_prot = tls_need_data_prot;
   tls_need_data_prot = data_prot;
-#else
-  old_data_prot = FALSE;
-#endif /* PR_USE_OPENSSL */
 
   return old_data_prot;
 }
 
 int proxy_tls_set_tls(int engine) {
-#if defined(PR_USE_OPENSSL)
   if (engine != PROXY_TLS_ENGINE_ON &&
       engine != PROXY_TLS_ENGINE_OFF &&
       engine != PROXY_TLS_ENGINE_AUTO &&
@@ -2382,17 +2375,11 @@ int proxy_tls_set_tls(int engine) {
   }
 
   tls_engine = engine;
-#endif /* PR_USE_OPENSSL */
-
   return 0;
 }
 
 int proxy_tls_using_tls(void) {
-#if defined(PR_USE_OPENSSL)
   return tls_engine;
-#else
-  return PROXY_TLS_ENGINE_OFF;
-#endif /* PR_USE_OPENSSL */
 }
 
 int proxy_tls_match_client_tls(void) {
@@ -2451,7 +2438,6 @@ int proxy_tls_match_client_tls(void) {
 }
 
 int proxy_tls_init(pool *p, const char *tables_path, int flags) {
-#if defined(PR_USE_OPENSSL)
   int res;
 
   memset(&tls_ds, 0, sizeof(tls_ds));
@@ -2502,7 +2488,6 @@ int proxy_tls_init(pool *p, const char *tables_path, int flags) {
 
   pr_event_register(&proxy_module, "core.shutdown", proxy_tls_shutdown_ev,
     NULL);
-#endif /* PR_USE_OPENSSL */
 
   return 0;
 }
@@ -2513,7 +2498,6 @@ int proxy_tls_free(pool *p) {
     return -1;
   }
 
-#if defined(PR_USE_OPENSSL)
   if (ssl_ctx != NULL) {
     SSL_CTX_free(ssl_ctx);
     ssl_ctx = NULL;
@@ -2530,12 +2514,10 @@ int proxy_tls_free(pool *p) {
 
     tls_ds.dsh = NULL;
   }
-#endif /* PR_USE_OPENSSL */
 
   return 0;
 }
 
-#if defined(PR_USE_OPENSSL)
 /* Construct the options value that disables all unsupported protocols. */
 static int get_disabled_protocols(unsigned int supported_protocols) {
   int disabled_protocols;
@@ -2617,7 +2599,7 @@ static const char *get_enabled_protocols_str(pool *p, unsigned int protos,
   return proto_str;
 }
 
-# if defined(PSK_MAX_PSK_LEN)
+#if defined(PSK_MAX_PSK_LEN)
 static int tls_load_psk(const char *identity, const char *path) {
   register int i;
   char key_buf[PR_TUNABLE_BUFFER_SIZE];
@@ -2749,7 +2731,7 @@ static int tls_load_psk(const char *identity, const char *path) {
   tls_psk_bn = bn;
   return 0;
 }
-# endif /* PSK support */
+#endif /* PSK support */
 
 static void tls_info_cb(const SSL *ssl, int where, int ret) {
   const char *str = "(unknown)";
@@ -2770,11 +2752,11 @@ static void tls_info_cb(const SSL *ssl, int where, int ret) {
 
     ssl_state = SSL_get_state(ssl);
     switch (ssl_state) {
-# if defined(SSL_ST_BEFORE)
+#if defined(SSL_ST_BEFORE)
       case SSL_ST_BEFORE:
         str = "before";
         break;
-# endif
+#endif
 
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
     !defined(HAVE_LIBRESSL)
@@ -2785,11 +2767,11 @@ static void tls_info_cb(const SSL *ssl, int where, int ret) {
         str = "ok";
         break;
 
-# if defined(SSL_ST_RENEGOTIATE)
+#if defined(SSL_ST_RENEGOTIATE)
       case SSL_ST_RENEGOTIATE:
         str = "renegotiating";
         break;
-# endif
+#endif
 
       default:
         break;
@@ -2851,7 +2833,7 @@ static void tls_info_cb(const SSL *ssl, int where, int ret) {
   }
 }
 
-# if OPENSSL_VERSION_NUMBER > 0x000907000L
+#if OPENSSL_VERSION_NUMBER > 0x000907000L
 
 /* Borrowed from mod_tls.  Would be nice to share this code somehow. */
 
@@ -3151,7 +3133,7 @@ static struct tls_label tls_extension_labels[] = {
   { 0, NULL }
 };
 
-# if defined(TLSEXT_TYPE_signature_algorithms)
+#if defined(TLSEXT_TYPE_signature_algorithms)
 /* Signature Algorithms.  These values come from:
  *   https://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml#tls-parameters-16
  */
@@ -3182,9 +3164,9 @@ static struct tls_label tls_sigalgo_labels[] = {
 
   { 0, NULL }
 };
-# endif /* TLSEXT_TYPE_signature_algorithms */
+#endif /* TLSEXT_TYPE_signature_algorithms */
 
-# if defined(TLSEXT_TYPE_psk_kex_modes)
+#if defined(TLSEXT_TYPE_psk_kex_modes)
 /* PSK KEX modes.  These values come from:
  *   https://tools.ietf.org/html/rfc8446#section-4.2.9
  */
@@ -3194,7 +3176,7 @@ static struct tls_label tls_psk_kex_labels[] = {
 
   { 0, NULL }
 };
-# endif /* TLSEXT_TYPE_psk_kex_modes */
+#endif /* TLSEXT_TYPE_psk_kex_modes */
 
 static const char *tls_get_label(int labelno, struct tls_label *labels) {
   register unsigned int i;
@@ -3505,7 +3487,7 @@ static void tls_print_server_hello(int io_flag, int version, int content_type,
   BIO_free(bio);
 }
 
-# if defined(SSL3_MT_NEWSESSION_TICKET)
+#if defined(SSL3_MT_NEWSESSION_TICKET)
 static void tls_print_ticket(int io_flag, int version, int content_type,
     const unsigned char *buf, size_t buflen, SSL *ssl, void *arg) {
   BIO *bio;
@@ -3524,12 +3506,12 @@ static void tls_print_ticket(int io_flag, int version, int content_type,
     buflen -= 4;
     BIO_printf(bio, "  ticket_lifetime_hint\n    %u (sec)\n", ticket_lifetime);
 
-#  if defined(TLS1_3_VERSION)
+# if defined(TLS1_3_VERSION)
     if (SSL_version(ssl) == TLS1_3_VERSION) {
       print_ticket_age = TRUE;
       print_extensions = TRUE;
     }
-#  endif /* TLS1_3_VERSION */
+# endif /* TLS1_3_VERSION */
 
     if (print_ticket_age == TRUE) {
       unsigned int ticket_age_add;
@@ -3560,7 +3542,7 @@ static void tls_print_ticket(int io_flag, int version, int content_type,
 
   BIO_free(bio);
 }
-# endif /* SSL3_MT_NEWSESSION_TICKET */
+#endif /* SSL3_MT_NEWSESSION_TICKET */
 
 #if !defined(OPENSSL_NO_TLSEXT)
 static void tls_tlsext_cb(SSL *ssl, int server, int type,
@@ -4009,26 +3991,26 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
       version_str = "TLSv1";
       break;
 
-#  if defined(TLS1_1_VERSION)
+# if defined(TLS1_1_VERSION)
     case TLS1_1_VERSION:
       version_str = "TLSv1.1";
       break;
-#  endif /* TLS1_1_VERSION */
+# endif /* TLS1_1_VERSION */
 
-#  if defined(TLS1_2_VERSION)
+# if defined(TLS1_2_VERSION)
     case TLS1_2_VERSION:
       version_str = "TLSv1.2";
       break;
-#  endif /* TLS1_2_VERSION */
+# endif /* TLS1_2_VERSION */
 
-#  if defined(TLS1_3_VERSION)
+# if defined(TLS1_3_VERSION)
     case TLS1_3_VERSION:
       version_str = "TLSv1.3";
       break;
-#  endif /* TLS1_3_VERSION */
+# endif /* TLS1_3_VERSION */
 
     default:
-#  if defined(SSL3_RT_HEADER)
+# if defined(SSL3_RT_HEADER)
       /* OpenSSL calls this callback for SSL records received; filter those
        * from true "unknowns".
        */
@@ -4038,23 +4020,23 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "[tls.msg] unknown/unsupported version: %d", version);
       }
-#  else
+# else
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "[tls.msg] unknown/unsupported version: %d", version);
-#  endif
+# endif
       break;
   }
 
   if (version == SSL3_VERSION ||
-#  if defined(TLS1_1_VERSION)
+# if defined(TLS1_1_VERSION)
       version == TLS1_1_VERSION ||
-#  endif /* TLS1_1_VERSION */
-#  if defined(TLS1_2_VERSION)
+# endif /* TLS1_1_VERSION */
+# if defined(TLS1_2_VERSION)
       version == TLS1_2_VERSION ||
-#  endif /* TLS1_2_VERSION */
-#  if defined(TLS1_3_VERSION)
+# endif /* TLS1_2_VERSION */
+# if defined(TLS1_3_VERSION)
       version == TLS1_3_VERSION ||
-#  endif /* TLS1_3_VERSION */
+# endif /* TLS1_3_VERSION */
       version == TLS1_VERSION) {
 
     switch (content_type) {
@@ -4134,50 +4116,50 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
                 (unsigned int) buflen, bytes_str);
               break;
 
-#  if defined(SSL3_AD_BAD_CERTIFICATE)
+# if defined(SSL3_AD_BAD_CERTIFICATE)
             case SSL3_AD_BAD_CERTIFICATE:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s %s 'bad_certificate' Alert message "
                 "(%u %s)", action_str, version_str, severity_str,
                 (unsigned int) buflen, bytes_str);
               break;
-#  endif /* SSL3_AD_BAD_CERTIFICATE */
+# endif /* SSL3_AD_BAD_CERTIFICATE */
 
-#  if defined(SSL3_AD_CERTIFICATE_REVOKED)
+# if defined(SSL3_AD_CERTIFICATE_REVOKED)
             case SSL3_AD_CERTIFICATE_REVOKED:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s %s 'certificate_revoked' Alert message "
                 "(%u %s)", action_str, version_str, severity_str,
                 (unsigned int) buflen, bytes_str);
               break;
-#  endif /* SSL3_AD_CERTIFICATE_REVOKED */
+# endif /* SSL3_AD_CERTIFICATE_REVOKED */
 
-#  if defined(SSL3_AD_CERTIFICATE_EXPIRED)
+# if defined(SSL3_AD_CERTIFICATE_EXPIRED)
             case SSL3_AD_CERTIFICATE_EXPIRED:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s %s 'certificate_expired' Alert message "
                 "(%u %s)", action_str, version_str, severity_str,
                 (unsigned int) buflen, bytes_str);
               break;
-#  endif /* SSL3_AD_CERTIFICATE_EXPIRED */
+# endif /* SSL3_AD_CERTIFICATE_EXPIRED */
 
-#  if defined(SSL3_AD_CERTIFICATE_UNKNOWN)
+# if defined(SSL3_AD_CERTIFICATE_UNKNOWN)
             case SSL3_AD_CERTIFICATE_UNKNOWN:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s %s 'certificate_unknown' Alert message "
                 "(%u %s)", action_str, version_str, severity_str,
                 (unsigned int) buflen, bytes_str);
               break;
-#  endif /* SSL3_AD_CERTIFICATE_UNKNOWN */
+# endif /* SSL3_AD_CERTIFICATE_UNKNOWN */
 
-#  if defined(SSL3_AD_ILLEGAL_PARAMETER)
+# if defined(SSL3_AD_ILLEGAL_PARAMETER)
             case SSL3_AD_ILLEGAL_PARAMETER:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s %s 'illegal_parameter' Alert message "
                 "(%u %s)", action_str, version_str, severity_str,
                 (unsigned int) buflen, bytes_str);
               break;
-#  endif /* SSL3_AD_ILLEGAL_PARAMETER */
+# endif /* SSL3_AD_ILLEGAL_PARAMETER */
           }
 
         } else {
@@ -4235,7 +4217,7 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
               break;
             }
 
-#  if defined(SSL3_MT_NEWSESSION_TICKET)
+# if defined(SSL3_MT_NEWSESSION_TICKET)
             case SSL3_MT_NEWSESSION_TICKET: {
               const unsigned char *msg;
               size_t msglen;
@@ -4251,7 +4233,7 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
 
               break;
             }
-#  endif /* SSL3_MT_NEWSESSION_TICKET */
+# endif /* SSL3_MT_NEWSESSION_TICKET */
 
             case SSL3_MT_CERTIFICATE:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -4299,15 +4281,15 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
                 action_str, version_str, (unsigned int) buflen, bytes_str);
               break;
 
-#  if defined(SSL3_MT_CERTIFICATE_STATUS)
+# if defined(SSL3_MT_CERTIFICATE_STATUS)
             case SSL3_MT_CERTIFICATE_STATUS:
               (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                 "[tls.msg] %s %s 'CertificateStatus' Handshake message (%u %s)",
                 action_str, version_str, (unsigned int) buflen, bytes_str);
               break;
-#  endif /* SSL3_MT_CERTIFICATE_STATUS */
+# endif /* SSL3_MT_CERTIFICATE_STATUS */
 
-#  if defined(SSL3_MT_ENCRYPTED_EXTENSIONS)
+# if defined(SSL3_MT_ENCRYPTED_EXTENSIONS)
             case SSL3_MT_ENCRYPTED_EXTENSIONS: {
               const unsigned char *msg;
               size_t msglen;
@@ -4340,7 +4322,7 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
               BIO_free(bio);
               break;
             }
-#  endif /* SSL3_MT_ENCRYPTED_EXTENSIONS */
+# endif /* SSL3_MT_ENCRYPTED_EXTENSIONS */
           }
 
         } else {
@@ -4357,7 +4339,7 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
         break;
     }
 
-#  if defined(SSL3_RT_HEADER)
+# if defined(SSL3_RT_HEADER)
   } else if (version == 0 &&
              content_type == SSL3_RT_HEADER &&
              buflen == SSL3_RT_HEADER_LENGTH) {
@@ -4372,7 +4354,7 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "[tls.msg] %s protocol record message (content_type = %s, len = %u)",
       action_str, record_type, msg_len);
-#  endif
+# endif
 
   } else {
     /* This case might indicate an issue with OpenSSL itself; the version
@@ -4385,11 +4367,9 @@ static void tls_msg_cb(int io_flag, int version, int content_type,
       action_str, version, content_type, (unsigned int) buflen, bytes_str);
   }
 }
-# endif /* OpenSSL-0.9.7 or later */
-#endif /* PR_USE_OPENSSL */
+#endif /* OpenSSL-0.9.7 or later */
 
 int proxy_tls_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
-#if defined(PR_USE_OPENSSL)
   config_rec *c;
   unsigned int enabled_proto_count = 0, tls_protocol = PROXY_TLS_PROTO_DEFAULT;
   int disabled_proto, res, xerrno = 0;
@@ -4566,12 +4546,12 @@ int proxy_tls_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
 # endif
 #endif
 
-# if defined(X509_V_FLAG_TRUSTED_FIRST)
+#if defined(X509_V_FLAG_TRUSTED_FIRST)
     verify_flags |= X509_V_FLAG_TRUSTED_FIRST;
-# endif
-# if defined(X509_V_FLAG_PARTIAL_CHAIN)
+#endif
+#if defined(X509_V_FLAG_PARTIAL_CHAIN)
     verify_flags |= X509_V_FLAG_PARTIAL_CHAIN;
-# endif
+#endif
 
     if (X509_VERIFY_PARAM_set_flags(verify_param, verify_flags) != 1) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -4690,7 +4670,7 @@ int proxy_tls_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
     }
   }
 
-# if defined(PSK_MAX_PSK_LEN)
+#if defined(PSK_MAX_PSK_LEN)
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSPreSharedKey", FALSE);
   if (c != NULL) {
     const char *identity, *path;
@@ -4716,23 +4696,23 @@ int proxy_tls_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
       "enabling support for PSK identities");
     SSL_CTX_set_psk_client_callback(ssl_ctx, tls_psk_cb);
   }
-# endif /* PSK support */
+#endif /* PSK support */
 
-# if !defined(OPENSSL_NO_TLSEXT) && defined(TLSEXT_STATUSTYPE_ocsp)
+#if !defined(OPENSSL_NO_TLSEXT) && defined(TLSEXT_STATUSTYPE_ocsp)
   SSL_CTX_set_tlsext_status_cb(ssl_ctx, tls_ocsp_response_cb);
-# endif /* OCSP support */
+#endif /* OCSP support */
 
   if (tls_opts & PROXY_TLS_OPT_ALLOW_WEAK_SECURITY) {
-# if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
     SSL_CTX_set_security_level(ssl_ctx, 0);
-# endif /* OpenSSL-1.1.0 and later */
+#endif /* OpenSSL-1.1.0 and later */
   }
 
   if (tls_opts & PROXY_TLS_OPT_ENABLE_DIAGS) {
     SSL_CTX_set_info_callback(ssl_ctx, tls_info_cb);
-# if OPENSSL_VERSION_NUMBER > 0x000907000L
+#if OPENSSL_VERSION_NUMBER > 0x000907000L
     SSL_CTX_set_msg_callback(ssl_ctx, tls_msg_cb);
-# endif
+#endif
   }
 
   if (netio_install_ctrl() < 0) {
@@ -4744,7 +4724,6 @@ int proxy_tls_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
     errno = xerrno;
     return -1;
   }
-#endif /* PR_USE_OPENSSL */
 
   return 0;
 }
@@ -4755,7 +4734,6 @@ int proxy_tls_sess_free(pool *p) {
     return -1;
   }
 
-#if defined(PR_USE_OPENSSL)
   /* Reset any state, but only if we have not already negotiated an SSL
    * session.
    */
@@ -4767,16 +4745,16 @@ int proxy_tls_sess_free(pool *p) {
     tls_engine = PROXY_TLS_ENGINE_AUTO;
     tls_verify_server = TRUE;
     tls_cipher_suite = NULL;
-# if OPENSSL_VERSION_NUMBER >= 0x10101000L && \
+#if OPENSSL_VERSION_NUMBER >= 0x10101000L && \
      defined(TLS1_3_VERSION)
     tlsv13_cipher_suite = NULL;
-# endif /* TLS1_3_VERSION */
+#endif /* TLS1_3_VERSION */
 
-# if defined(PSK_MAX_PSK_LEN)
+#if defined(PSK_MAX_PSK_LEN)
     tls_psk_name = NULL;
     tls_psk_bn = NULL;
     tls_psk_used = FALSE;
-# endif /* PSK support */
+#endif /* PSK support */
 
     if (tls_ds.dsh != NULL) {
       (void) (tls_ds.close)(p, tls_ds.dsh);
@@ -4802,7 +4780,6 @@ int proxy_tls_sess_free(pool *p) {
       tls_ctrl_netio = NULL;
     }
   }
-#endif /* PR_USE_OPENSSL */
 
   return 0;
 }

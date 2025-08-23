@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH disconnects
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,8 +27,6 @@
 #include "proxy/ssh/msg.h"
 #include "proxy/ssh/packet.h"
 #include "proxy/ssh/disconnect.h"
-
-#if defined(PR_USE_OPENSSL)
 
 struct disconnect_reason {
   uint32_t code;
@@ -149,4 +147,3 @@ void proxy_ssh_disconnect_conn(conn_t *conn, uint32_t reason,
   pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION, NULL);
 #endif /* PR_DEVEL_COREDUMP */
 }
-#endif /* PR_USE_OPENSSL */

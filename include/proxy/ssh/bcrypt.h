@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH bcrypt PBKDF2
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,12 +27,10 @@
 
 #include "mod_proxy.h"
 
-#if defined(PR_USE_OPENSSL)
 #define PROXY_SSH_BCRYPT_DIGEST_LEN	32
 
 int proxy_ssh_bcrypt_pbkdf2(pool *p, const char *passphrase,
   size_t passphrase_len, unsigned char *salt, uint32_t salt_len,
   uint32_t rounds, unsigned char *key, uint32_t key_len);
-#endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_BCRYPT_H */

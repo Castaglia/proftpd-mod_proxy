@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS Database implementation
- * Copyright (c) 2017-2021 TJ Saunders
+ * Copyright (c) 2017-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,8 +27,6 @@
 #include "proxy/db.h"
 #include "proxy/tls.h"
 #include "proxy/tls/db.h"
-
-#ifdef PR_USE_OPENSSL
 
 extern xaset_t *server_list;
 
@@ -478,7 +476,6 @@ static void *tls_db_open(pool *p, const char *tables_dir, unsigned long opts) {
   db_opts = opts;
   return dbh;
 }
-#endif /* PR_USE_OPENSSL */
 
 int proxy_tls_db_as_datastore(struct proxy_tls_datastore *ds, void *ds_data,
     size_t ds_datasz) {
@@ -490,7 +487,6 @@ int proxy_tls_db_as_datastore(struct proxy_tls_datastore *ds, void *ds_data,
   (void) ds_data;
   (void) ds_datasz;
 
-#ifdef PR_USE_OPENSSL
   ds->add_sess = tls_db_add_sess;
   ds->remove_sess = tls_db_remove_sess;
   ds->get_sess = tls_db_get_sess;
@@ -499,7 +495,6 @@ int proxy_tls_db_as_datastore(struct proxy_tls_datastore *ds, void *ds_data,
   ds->init = tls_db_init;
   ds->open = tls_db_open;
   ds->close = tls_db_close;
-#endif /* PR_USE_OPENSSL */
 
   return 0;
 }

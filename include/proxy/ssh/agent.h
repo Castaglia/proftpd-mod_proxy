@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH agent API
- * Copyright (c) 2021 TJ Saunders
+ * Copyright (c) 2021-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,8 +27,6 @@
 
 #include "mod_proxy.h"
 
-#if defined(PR_USE_OPENSSL)
-
 struct agent_key {
   unsigned char *key_data;
   uint32_t key_datalen;
@@ -42,7 +40,5 @@ const unsigned char *proxy_ssh_agent_sign_data(pool *, const char *,
 
 #define PROXY_SSH_AGENT_SIGN_FL_USE_RSA_SHA256	0x001
 #define PROXY_SSH_AGENT_SIGN_FL_USE_RSA_SHA512	0x002
-
-#endif /* PR_USE_OPENSSL */
 
 #endif /* MOD_PROXY_SSH_AGENT_H */
