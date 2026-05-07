@@ -16,10 +16,10 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # We need to avoid using NodeJS v20, because it doesn't work with
-      # older glibc versions.  See:
-      #  https://github.com/actions/checkout/issues/1809.
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+      # Let's try opting into use of Nodejs v24; see:
+      #  https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+      # GitHub runners still causing problems with NodeJS v20; see:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       DEBIAN_FRONTEND: noninteractive
       REDIS_HOST: redis
@@ -47,19 +47,19 @@ jobs:
 
     steps:
       - name: Checkout ProFTPD
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           repository: proftpd/proftpd
           path: proftpd
 
       - name: Checkout mod_proxy_protocol source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           repository: Castaglia/proftpd-mod_proxy_protocol
           path: mod_proxy_protocol
 
       - name: Checkout module source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           path: proftpd/contrib/mod_proxy
 
