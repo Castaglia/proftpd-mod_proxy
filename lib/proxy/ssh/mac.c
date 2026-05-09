@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH MACs
- * Copyright (c) 2021-2025 TJ Saunders
+ * Copyright (c) 2021-2026 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,8 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335, USA.
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
  *
  * As a special exemption, TJ Saunders and other respective copyright holders
  * give permission to link this program with OpenSSL, and distribute the
@@ -89,6 +88,19 @@ static unsigned int read_mac_idx = 0;
 static unsigned int write_mac_idx = 0;
 
 static void clear_mac(struct proxy_ssh_mac *mac);
+
+#if !defined(HAVE_TIMINGSAFE_BCMP)
+static int timingsafe_bcmp(const void *b1, const void *b2, size_t n) {
+  const unsigned char *p1 = b1, *p2 = b2;
+  int ret = 0;
+
+  for (; n > 0; n--) {
+    ret |= *p1++ ^ *p2++;
+  }
+
+  return (ret != 0);
+}
+#endif /* HAVE_TIMINGSAFE_BCMP */
 
 static unsigned int get_next_read_index(void) {
   if (read_mac_idx == 1) {
@@ -392,7 +404,7 @@ static int get_mac(struct proxy_ssh_packet *pkt, struct proxy_ssh_mac *mac,
   }
 
   if (flags & PROXY_SSH_MAC_FL_READ_MAC) {
-    if (memcmp(mac_data, pkt->mac, mac_len) != 0) {
+    if (timingsafe_bcmp(mac_data, pkt->mac, mac_len) != 0) {
       unsigned int i = 0;
 
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
