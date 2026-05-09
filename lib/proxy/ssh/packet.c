@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH packet IO
- * Copyright (c) 2021-2025 TJ Saunders
+ * Copyright (c) 2021-2026 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,8 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335, USA.
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
  *
  * As a special exemption, TJ Saunders and other respective copyright holders
  * give permission to link this program with OpenSSL, and distribute the
@@ -71,6 +70,22 @@ static unsigned int server_alive_interval = 0;
 
 static const char *trace_channel = "proxy.ssh.packet";
 static const char *timing_channel = "timing";
+
+/* This is admittedly an arbitrary upper limit on the number of EXT_INFO
+ * extensions we will handle.
+ *
+ * draft-ssh-ext-info-05 currently defines five:
+ *
+ *  server-sig-algs
+ *  no-flow-control
+ *  accept-channels
+ *  elevation
+ *  delay-compression
+ *
+ * And some implementations, like OpenSSH, will have their own namespaced
+ * extensions.
+ */
+#define PROXY_SSH_MAX_EXT_INFO_COUNT	32
 
 #define DEFAULT_POLL_ATTEMPTS		3
 static unsigned long poll_attempts = DEFAULT_POLL_ATTEMPTS;
@@ -1858,6 +1873,14 @@ void proxy_ssh_packet_handle_ext_info(struct proxy_ssh_packet *pkt) {
   proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &ext_count);
   pr_trace_msg(trace_channel, 9, "server sent EXT_INFO with %lu %s",
     (unsigned long) ext_count, ext_count != 1 ? "extensions" : "extension");
+
+  if (ext_count > PROXY_SSH_MAX_EXT_INFO_COUNT) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "server sent too many EXT_INFO extensions (%lu, max %lu), ignoring",
+      (unsigned long) ext_count, (unsigned long) PROXY_SSH_MAX_EXT_INFO_COUNT);
+    destroy_pool(pkt->pool);
+    return;
+  }
 
   for (i = 0; i < ext_count; i++) {
     unsigned char *ext_data = NULL;
