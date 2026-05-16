@@ -26,6 +26,7 @@ MODULE_OBJS=mod_proxy.o \
   lib/proxy/ssh/redis.o \
   lib/proxy/tls.o \
   lib/proxy/tls/db.o \
+  lib/proxy/tls/pkcs11.o \
   lib/proxy/tls/redis.o \
   lib/proxy/uri.o \
   lib/proxy/forward.o \
@@ -75,6 +76,7 @@ SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/ssh/redis.lo \
   lib/proxy/tls.lo \
   lib/proxy/tls/db.lo \
+  lib/proxy/tls/pkcs11.lo \
   lib/proxy/tls/redis.lo \
   lib/proxy/uri.lo \
   lib/proxy/forward.lo \

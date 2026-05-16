@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy
- * Copyright (c) 2012-2025 TJ Saunders
+ * Copyright (c) 2012-2026 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,8 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335, USA.
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
  *
  * As a special exemption, TJ Saunders and other respective copyright holders
  * give permission to link this program with OpenSSL, and distribute the
@@ -48,6 +47,7 @@
 #include "proxy/ssh/ssh2.h"
 #include "proxy/ssh/auth.h"
 #include "proxy/ssh/crypto.h"
+#include "proxy/tls/pkcs11.h"
 
 #if defined(HAVE_OSSL_PROVIDER_LOAD_OPENSSL)
 # include <openssl/provider.h>
@@ -1755,17 +1755,19 @@ MODRET set_proxytlscertkeyfile(cmd_rec *cmd) {
 
   path = cmd->argv[1];
 
-  PRIVS_ROOT
-  res = file_exists2(cmd->tmp_pool, path);
-  PRIVS_RELINQUISH
+  if (proxy_tls_pkcs11_uri(path) == FALSE) {
+    PRIVS_ROOT
+    res = file_exists2(cmd->tmp_pool, path);
+    PRIVS_RELINQUISH
 
-  if (!res) {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", path, "' does not exist",
-      NULL));
-  }
+    if (!res) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", path, "' does not exist",
+        NULL));
+    }
 
-  if (*path != '/') {
-    CONF_ERROR(cmd, "parameter must be an absolute path");
+    if (*path != '/') {
+      CONF_ERROR(cmd, "parameter must be an absolute path");
+    }
   }
 
   add_config_param_str(cmd->argv[0], 1, path);
