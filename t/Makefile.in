@@ -55,6 +55,7 @@ TEST_API_DEPS=\
   $(module_srcdir)/lib/proxy/str.o \
   $(module_srcdir)/lib/proxy/tls.o \
   $(module_srcdir)/lib/proxy/tls/db.o \
+  $(module_srcdir)/lib/proxy/tls/pkcs11.o \
   $(module_srcdir)/lib/proxy/tls/redis.o \
   $(module_srcdir)/lib/proxy/session.o \
   $(module_srcdir)/lib/proxy/reverse.o \

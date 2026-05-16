@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy TLS implementation
- * Copyright (c) 2015-2025 TJ Saunders
+ * Copyright (c) 2015-2026 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,8 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335, USA.
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
  *
  * As a special exemption, TJ Saunders and other respective copyright holders
  * give permission to link this program with OpenSSL, and distribute the
@@ -29,6 +28,7 @@
 #include "proxy/session.h"
 #include "proxy/tls.h"
 #include "proxy/tls/db.h"
+#include "proxy/tls/pkcs11.h"
 #include "proxy/tls/redis.h"
 
 /* Define if you have the LibreSSL library.  */
@@ -4646,9 +4646,23 @@ int proxy_tls_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
       ok = FALSE;
     }
 
-    if (ok) {
+    if (ok == TRUE) {
+
       PRIVS_ROOT
-      res = SSL_CTX_use_PrivateKey_file(ssl_ctx, key_file, SSL_FILETYPE_PEM);
+      if (proxy_tls_pkcs11_uri(key_file) == TRUE) {
+        EVP_PKEY *pkey;
+
+        pkey = proxy_tls_pkcs11_get_private_key(key_file);
+        if (pkey != NULL) {
+          res = SSL_CTX_use_PrivateKey(ssl_ctx, pkey);
+
+        } else {
+          res = -1;
+        }
+
+      } else {
+        res = SSL_CTX_use_PrivateKey_file(ssl_ctx, key_file, SSL_FILETYPE_PEM);
+      }
       PRIVS_RELINQUISH
 
       if (res != 1) {
@@ -4659,7 +4673,7 @@ int proxy_tls_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
       }
     }
 
-    if (ok) {
+    if (ok == TRUE) {
       res = SSL_CTX_check_private_key(ssl_ctx);
       if (res != 1) {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
