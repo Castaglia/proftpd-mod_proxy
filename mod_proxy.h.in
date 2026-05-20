@@ -78,6 +78,9 @@
 #endif
 
 /* Define if you have OpenSSL with OSSL_PROVIDER_load support. */
+#undef HAVE_MLKEM768_OPENSSL
+
+/* Define if you have OpenSSL with OSSL_PROVIDER_load support. */
 #undef HAVE_OSSL_PROVIDER_LOAD_OPENSSL
 
 /* Define if you have OpenSSL with SHA256 support. */

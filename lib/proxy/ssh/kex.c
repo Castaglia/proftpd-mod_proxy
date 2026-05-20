@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH key exchange (kex)
- * Copyright (c) 2021-2025 TJ Saunders
+ * Copyright (c) 2021-2026 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,8 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335, USA.
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
  *
  * As a special exemption, TJ Saunders and other respective copyright holders
  * give permission to link this program with OpenSSL, and distribute the
@@ -54,6 +53,14 @@
 # include <sodium.h>
 # define CURVE25519_SIZE	32
 #endif /* PR_USE_SODIUM */
+
+#if defined(HAVE_MLKEM768_OPENSSL) && defined(HAVE_SHA256_OPENSSL)
+# include <openssl/ml_kem.h>
+#endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
+
+#if defined(HAVE_X25519_OPENSSL)
+# define X25519_KEYLEN		32
+#endif /* HAVE_X25519_OPENSSL */
 
 #if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
 # define CURVE448_SIZE          56
@@ -142,6 +149,9 @@ struct proxy_ssh_kex {
   /* Using Curve448? */
   int use_curve448;
 
+  /* Using MLKEM768? */
+  int use_mlkem768;
+
   /* Using extension negotiations? */
   int use_ext_info;
 
@@ -151,6 +161,11 @@ struct proxy_ssh_kex {
   const EVP_MD *hash;
 
   const BIGNUM *k;
+
+  /* Some key exchanges encode K as something other than an mpint. */
+  unsigned char *kdata;
+  uint32_t kdatalen;
+
   const char *h;
   uint32_t hlen;
 
@@ -176,6 +191,14 @@ struct proxy_ssh_kex {
   unsigned char *client_curve448_pub_key;
   unsigned char *server_curve448_pub_key;
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+#if defined(HAVE_MLKEM768_OPENSSL) && defined(HAVE_SHA256_OPENSSL)
+  EVP_PKEY *client_mlkem768;
+#endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
+#if defined(HAVE_X25519_OPENSSL)
+  unsigned char *client_x25519_priv_key;
+  unsigned char *client_x25519_pub_key;
+  unsigned char *server_x25519_pub_key;
+#endif /* HAVE_X25519_OPENSSL */
 };
 
 static struct proxy_ssh_kex *kex_first_kex = NULL;
@@ -1557,6 +1580,184 @@ static int create_curve448(struct proxy_ssh_kex *kex) {
 }
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 
+#if defined(HAVE_X25519_OPENSSL)
+/* Note: This is an OpenSSL-based implementation of the similarly named
+ * 'generate_curve25519_keys' function, which is Sodium-based.
+ */
+static int generate_x25519_keys(pool *p, unsigned char **priv_key,
+    unsigned char *pub_key) {
+  EVP_PKEY_CTX *pctx = NULL;
+  EVP_PKEY *pkey = NULL;
+  size_t key_len = 0;
+
+  pctx = EVP_PKEY_CTX_new_id(NID_X25519, NULL);
+  if (pctx == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing context for X25519 key: %s",
+      proxy_ssh_crypto_get_errors());
+    return -1;
+  }
+
+  if (EVP_PKEY_keygen_init(pctx) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error preparing to generate X25519 key: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    return -1;
+  }
+
+  if (EVP_PKEY_keygen(pctx, &pkey) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error generating X25519 shared key: %s", proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    return -1;
+  }
+
+  key_len = X25519_KEYLEN;
+  *priv_key = pcalloc(p, key_len);
+  if (EVP_PKEY_get_raw_private_key(pkey, *priv_key, &key_len) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error obtaining X25519 private key: %s", proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    EVP_PKEY_free(pkey);
+    return -1;
+  }
+
+  key_len = X25519_KEYLEN;
+  if (EVP_PKEY_get_raw_public_key(pkey, pub_key, &key_len) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error obtaining X25519 public key: %s", proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    EVP_PKEY_free(pkey);
+    return -1;
+  }
+
+  EVP_PKEY_CTX_free(pctx);
+  EVP_PKEY_free(pkey);
+  return 0;
+}
+
+/* Note: This is an OpenSSL-based implementation of the similarly named
+ * 'get_curve25519_shared_key' function, which is Sodium-based.
+ */
+static int get_x25519_shared_key(unsigned char *shared_key,
+    unsigned char *client_x25519, unsigned char *server_key) {
+  EVP_PKEY_CTX *pctx = NULL;
+  EVP_PKEY *client_pkey = NULL, *server_pkey = NULL;
+  size_t shared_keylen = 0;
+
+  server_pkey = EVP_PKEY_new_raw_private_key(EVP_PKEY_X25519, NULL, server_key,
+    X25519_KEYLEN);
+  if (server_pkey == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing X25519 server key: %s",
+      proxy_ssh_crypto_get_errors());
+    return -1;
+  }
+
+  client_pkey = EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519, NULL,
+    client_x25519, X25519_KEYLEN);
+  if (client_pkey == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing X25519 client key: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_free(server_pkey);
+    return -1;
+  }
+
+  pctx = EVP_PKEY_CTX_new(server_pkey, NULL);
+  if (pctx == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing context for X25519 shared key: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_free(server_pkey);
+    EVP_PKEY_free(client_pkey);
+    return -1;
+  }
+
+  if (EVP_PKEY_derive_init(pctx) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error preparing for X25519 shared key: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    EVP_PKEY_free(server_pkey);
+    EVP_PKEY_free(client_pkey);
+    return -1;
+  }
+
+  if (EVP_PKEY_derive_set_peer(pctx, client_pkey) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error setting peer for X25519 shared key: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    EVP_PKEY_free(server_pkey);
+    EVP_PKEY_free(client_pkey);
+    return -1;
+  }
+
+  shared_keylen = X25519_KEYLEN;
+  if (EVP_PKEY_derive(pctx, shared_key, &shared_keylen) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error generating X25519 shared key: %s", proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    EVP_PKEY_free(server_pkey);
+    EVP_PKEY_free(client_pkey);
+    return -1;
+  }
+
+  if (shared_keylen != X25519_KEYLEN) {
+    pr_trace_msg(trace_channel, 1,
+      "generated X25519 shared key length (%lu bytes) is not as expected "
+      "(%lu bytes)", (unsigned long) shared_keylen,
+      (unsigned long) X25519_KEYLEN);
+  }
+
+  EVP_PKEY_CTX_free(pctx);
+  EVP_PKEY_free(server_pkey);
+  EVP_PKEY_free(client_pkey);
+
+  return X25519_KEYLEN;
+}
+#endif /* HAVE_X25519_OPENSSL */
+
+#if defined(HAVE_MLKEM768_OPENSSL) && defined(HAVE_SHA256_OPENSSL)
+static int create_mlkem768(struct proxy_ssh_kex *kex) {
+  EVP_PKEY_CTX *pctx;
+  EVP_PKEY *pkey;
+
+  pctx = EVP_PKEY_CTX_new_id(NID_ML_KEM_768, NULL);
+  if (pctx == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing context for MLKEM768 key: %s",
+      proxy_ssh_crypto_get_errors());
+    return -1;
+  }
+
+  if (EVP_PKEY_keygen_init(pctx) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error preparing to generate MLKEM768 key: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    return -1;
+  }
+
+  if (EVP_PKEY_keygen(pctx, &pkey) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error generating MLKEM768 key: %s", proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+    return -1;
+  }
+
+  kex->client_mlkem768 = pkey;
+
+  kex->client_x25519_priv_key = palloc(kex_pool, X25519_KEYLEN);
+  kex->client_x25519_pub_key = palloc(kex_pool, X25519_KEYLEN);
+
+  return generate_x25519_keys(kex_pool, &(kex->client_x25519_priv_key),
+    kex->client_x25519_pub_key);
+}
+#endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA512_OPENSSL */
+
 /* Given a name-list, return the first (i.e. preferred) name in the list. */
 static const char *get_preferred_name(pool *p, const char *names) {
   register unsigned int i;
@@ -1591,6 +1792,9 @@ static const char *get_preferred_name(pool *p, const char *names) {
  * SFTPOption is used.
  */
 static const char *kex_exchanges[] = {
+#if defined(HAVE_MLKEM768_OPENSSL) && defined(HAVE_SHA256_OPENSSL)
+  "mlkem768x25519-sha256",
+#endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
 #if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
   "curve448-sha512",
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
@@ -1888,6 +2092,30 @@ static void destroy_kex(struct proxy_ssh_kex *kex) {
     }
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 
+#if defined(HAVE_MLKEM768_OPENSSL) && defined(HAVE_SHA256_OPENSSL)
+    if (kex->client_mlkem768 != NULL) {
+      EVP_PKEY_free(kex->client_mlkem768);
+      kex->client_mlkem768 = NULL;
+    }
+#endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
+
+#if defined(HAVE_X25519_OPENSSL)
+    if (kex->client_x25519_priv_key != NULL) {
+      pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+      kex->client_x25519_priv_key = NULL;
+    }
+
+    if (kex->client_x25519_pub_key != NULL) {
+      pr_memscrub(kex->client_x25519_pub_key, X25519_KEYLEN);
+      kex->client_x25519_pub_key = NULL;
+    }
+
+    if (kex->server_x25519_pub_key != NULL) {
+      pr_memscrub(kex->server_x25519_pub_key, X25519_KEYLEN);
+      kex->server_x25519_pub_key = NULL;
+    }
+#endif /* HAVE_X25519_OPENSSL */
+
     if (kex->pool != NULL) {
       destroy_pool(kex->pool);
     }
@@ -2086,6 +2314,22 @@ static int setup_kex_algo(struct proxy_ssh_kex *kex, const char *algo) {
     return 0;
   }
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+
+#if defined(HAVE_MLKEM768_OPENSSL) && defined(HAVE_SHA256_OPENSSL)
+  if (strcmp(algo, "mlkem768x25519-sha256") == 0) {
+    if (create_mlkem768(kex) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error using '%s' as the key exchange algorithm: %s", algo,
+        strerror(errno));
+      return -1;
+    }
+
+    kex->hash = EVP_sha256();
+    kex->session_names->kex_algo = algo;
+    kex->use_mlkem768 = TRUE;
+    return 0;
+  }
+#endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
 
   if (strcmp(algo, "ext-info-c") == 0 ||
       strcmp(algo, "ext-info-s") == 0) {
@@ -2775,7 +3019,13 @@ static int set_session_keys(struct proxy_ssh_kex *kex) {
   ptr = buf = palloc(kex_pool, bufsz);
 
   /* Need to use SSH2-style format of K for the key. */
-  klen = proxy_ssh_msg_write_mpint(&buf, &buflen, kex->k);
+  if (kex->k != NULL) {
+    klen = proxy_ssh_msg_write_mpint(&buf, &buflen, kex->k);
+
+  } else {
+    klen = proxy_ssh_msg_write_data(&buf, &buflen, kex->kdata, kex->kdatalen,
+      TRUE);
+  }
 
   if (proxy_ssh_cipher_set_read_key(kex_pool, kex->hash, ptr, klen, kex->h,
       kex->hlen, PROXY_SSH_ROLE_CLIENT) < 0) {
@@ -4848,6 +5098,444 @@ static int handle_kex_curve448(struct proxy_ssh_kex *kex, conn_t *conn) {
 }
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 
+#if defined(HAVE_MLKEM768_OPENSSL) && defined(HAVE_SHA256_OPENSSL)
+static int write_mlkem768_init(struct proxy_ssh_packet *pkt,
+    struct proxy_ssh_kex *kex) {
+  unsigned char *buf, *ptr, *key;
+  uint32_t buflen, bufsz, len = 0;
+  size_t key_len = 0;
+
+  /* In our MLKEM768 ECDH_INIT, we send our concatened mlkem768 public key,
+   * and our client x25519 public key.
+   */
+
+  /* XXX Is this buffer large enough? Too large? */
+  bufsz = buflen = 2048;
+  ptr = buf = palloc(pkt->pool, bufsz);
+
+  len += proxy_ssh_msg_write_byte(&buf, &buflen, PROXY_SSH_MSG_KEX_ECDH_INIT);
+
+  key_len = OSSL_ML_KEM_768_PUBLIC_KEY_BYTES;
+  key = palloc(pkt->pool, key_len);
+  if (EVP_PKEY_get_raw_public_key(kex->client_mlkem768, key, &key_len) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error obtaining client MLKEM768 public key: %s",
+      proxy_ssh_crypto_get_errors());
+    return -1;
+  }
+
+  len += proxy_ssh_msg_write_int(&buf, &buflen,
+    OSSL_ML_KEM_768_PUBLIC_KEY_BYTES + X25519_KEYLEN);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, key, key_len, FALSE);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, kex->client_x25519_pub_key,
+    X25519_KEYLEN, FALSE);
+
+  pkt->payload = ptr;
+  pkt->payload_len = len;
+
+  return 0;
+}
+
+static int get_mlkem768_shared_key(pool *p, EVP_PKEY *client_mlkem768,
+    unsigned char **mlkem_key, size_t *mlkem_keylen,
+    unsigned char *ciphertext, size_t ciphertext_len) {
+  EVP_PKEY_CTX *pctx = NULL;
+
+  pctx = EVP_PKEY_CTX_new_from_pkey(NULL, client_mlkem768, NULL);
+  if (pctx == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing context from client MLKEM768 public key: %s",
+      proxy_ssh_crypto_get_errors());
+    return -1;
+  }
+
+  if (EVP_PKEY_decapsulate_init(pctx, NULL) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error preparing context for MLKEM768 decapsulation: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+
+    return -1;
+  }
+
+  if (EVP_PKEY_decapsulate(pctx, NULL, mlkem_keylen, ciphertext,
+      ciphertext_len) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to discover MLKEM768 decapsulation size: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+
+    return -1;
+  }
+
+  *mlkem_key = palloc(p, *mlkem_keylen);
+
+  if (EVP_PKEY_decapsulate(pctx, *mlkem_key, mlkem_keylen, ciphertext,
+      ciphertext_len) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error performing MLKEM768 decapsulation: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pctx);
+
+    return -1;
+  }
+
+  EVP_PKEY_CTX_free(pctx);
+  return *mlkem_keylen;
+}
+
+static const unsigned char *calculate_mlkem768_h(struct proxy_ssh_kex *kex,
+    pool *p, const unsigned char *hostkey_data, uint32_t hostkey_datalen,
+    const unsigned char *kdata, uint32_t kdatalen,
+    EVP_PKEY *client_mlkem768, unsigned char *client_x25519,
+    unsigned char *ciphertext, uint32_t ciphertext_len,
+    unsigned char *server_x25519, uint32_t *hlen) {
+  unsigned char *buf, *ptr, *mlkem768;
+  uint32_t buflen, bufsz, len = 0;
+  size_t mlkem768_len;
+
+  bufsz = buflen = 8192;
+
+  /* XXX Is this buffer large enough? Too large? */
+  ptr = buf = palloc(p, bufsz);
+
+  /* Write all of the data into the buffer in the SSH2 format, and hash it.
+   * The ordering of these fields is described in RFC5656.
+   */
+
+  /* First, the version strings */
+  len += proxy_ssh_msg_write_string(&buf, &buflen, kex->client_version);
+  len += proxy_ssh_msg_write_string(&buf, &buflen, kex->server_version);
+
+  /* Client's KEXINIT */
+  len += proxy_ssh_msg_write_int(&buf, &buflen,
+    kex->client_kexinit_payload_len + 1);
+  len += proxy_ssh_msg_write_byte(&buf, &buflen, PROXY_SSH_MSG_KEXINIT);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, kex->client_kexinit_payload,
+    kex->client_kexinit_payload_len, FALSE);
+
+  /* Server's KEXINIT */
+  len += proxy_ssh_msg_write_int(&buf, &buflen,
+    kex->server_kexinit_payload_len + 1);
+  len += proxy_ssh_msg_write_byte(&buf, &buflen, PROXY_SSH_MSG_KEXINIT);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, kex->server_kexinit_payload,
+    kex->server_kexinit_payload_len, FALSE);
+
+  /* Hostkey data */
+  len += proxy_ssh_msg_write_data(&buf, &buflen, hostkey_data, hostkey_datalen,
+    TRUE);
+
+  mlkem768_len = OSSL_ML_KEM_768_PUBLIC_KEY_BYTES;
+  mlkem768 = palloc(p, mlkem768_len);
+  if (EVP_PKEY_get_raw_public_key(client_mlkem768, mlkem768,
+      &mlkem768_len) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error obtaining client MLKEM768 public key: %s",
+      proxy_ssh_crypto_get_errors());
+
+    return NULL;
+  }
+
+  len += proxy_ssh_msg_write_int(&buf, &buflen, mlkem768_len + X25519_KEYLEN);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, mlkem768, mlkem768_len, FALSE);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, client_x25519, X25519_KEYLEN,
+    FALSE);
+
+  len += proxy_ssh_msg_write_int(&buf, &buflen, ciphertext_len + X25519_KEYLEN);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, ciphertext, ciphertext_len,
+    FALSE);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, server_x25519, X25519_KEYLEN,
+    FALSE);
+
+  /* Shared secret */
+  len += proxy_ssh_msg_write_data(&buf, &buflen, kdata, kdatalen, TRUE);
+
+  if (digest_data(kex, ptr, len, hlen) < 0) {
+    pr_memscrub(ptr, bufsz);
+    return NULL;
+  }
+
+  pr_memscrub(ptr, bufsz);
+  return kex_digest_buf;
+}
+
+static int read_mlkem768_reply(struct proxy_ssh_packet *pkt,
+    struct proxy_ssh_kex *kex) {
+  EVP_MD_CTX *pctx;
+  const unsigned char *h;
+  unsigned char zero_x25519[X25519_KEYLEN];
+  unsigned char *buf, *server_hostkey_data = NULL, *sig = NULL;
+  uint32_t buflen, server_hostkey_datalen = 0, siglen = 0, hlen = 0;
+  unsigned char *x25519_key, *mlkem_key = NULL, *ciphertext = NULL;
+  size_t mlkem_keylen = 0, expected_len = 0;
+  unsigned char *buf2, *ptr2, *kdata = NULL;
+  uint32_t buflen2, bufsz2, ciphertext_len = 0, reply_len = 0, kdatalen = 0;
+  int res;
+
+  buf = pkt->payload;
+  buflen = pkt->payload_len;
+
+  /* See RFC 5656, Section 4 "ECDH Key Exchange", modified by RFC 8731. */
+
+  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &server_hostkey_datalen);
+  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, server_hostkey_datalen,
+    &server_hostkey_data);
+
+  res = handle_server_hostkey(pkt->pool, kex->use_hostkey_type,
+    server_hostkey_data, server_hostkey_datalen);
+  if (res < 0) {
+    int xerrno;
+
+    xerrno = errno;
+
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error handling server host key: %s", strerror(xerrno));
+    errno = xerrno;
+    return -1;
+  }
+
+  ciphertext_len = OSSL_ML_KEM_768_CIPHERTEXT_BYTES;
+  expected_len = ciphertext_len + X25519_KEYLEN;
+
+  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &reply_len);
+  if (reply_len != expected_len) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "rejecting invalid length (%lu %s, wanted %lu) of server reply bytes",
+      (unsigned long) reply_len, reply_len != 1 ? "bytes" : "byte",
+      (unsigned long) expected_len);
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
+
+    return -1;
+  }
+
+  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, ciphertext_len,
+    &ciphertext);
+  if (ciphertext == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error reading ECDH_REPLY: %s", strerror(errno));
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
+
+    return -1;
+  }
+
+  /* Note that we use `kex->pool` here, since we are storing the key in the
+   * `kex` structure.
+   */
+  proxy_ssh_msg_read_data(kex->pool, &buf, &buflen, X25519_KEYLEN,
+    &(kex->server_x25519_pub_key));
+  if (kex->server_x25519_pub_key == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error reading ECDH_REPLY: %s", strerror(errno));
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
+
+    return -1;
+  }
+
+  /* Watch for all-zero public keys, and reject them. */
+  memset(zero_x25519, '\0', sizeof(zero_x25519));
+  if (memcmp(kex->server_x25519_pub_key, zero_x25519, X25519_KEYLEN) == 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "rejecting invalid (all-zero) server X25519 public key");
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
+
+    return -1;
+  }
+
+  /* Note that this X25519 shared key is not needed for long, hence why
+   * we can use this packet-specific pool.
+   */
+  x25519_key = palloc(pkt->pool, X25519_KEYLEN);
+
+  pr_trace_msg(trace_channel, 12, "computing X25519 key");
+  res = get_x25519_shared_key((unsigned char *) x25519_key,
+    kex->server_x25519_pub_key, kex->client_x25519_priv_key);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error computing X25519 shared secret: %s", strerror(errno));
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
+
+    return -1;
+  }
+
+  pr_trace_msg(trace_channel, 12, "computing MLKEM768 key");
+  res = get_mlkem768_shared_key(pkt->pool, kex->client_mlkem768, &mlkem_key,
+    &mlkem_keylen, ciphertext, ciphertext_len);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error computing MLKEM768 shared secret: %s", strerror(errno));
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
+
+    return -1;
+  }
+
+  bufsz2 = buflen2 = mlkem_keylen + X25519_KEYLEN;
+  ptr2 = buf2 = palloc(pkt->pool, bufsz2);
+
+  /* Per the PQ key exchange draft, here we do:
+   *
+   *  K = HASH(K_PQ || K_CL)
+   *
+   * where K_PQ is the MLKEM768 shared key, and K_CL is our shared X25519 key.
+   *
+   * Note that for this concatenation, we only want the bytes, and not the
+   * length prefixes, hence the last parameter being FALSE.
+   */
+  proxy_ssh_msg_write_data(&buf2, &buflen2, mlkem_key, mlkem_keylen, FALSE);
+  proxy_ssh_msg_write_data(&buf2, &buflen2, x25519_key, X25519_KEYLEN, FALSE);
+
+  pctx = EVP_MD_CTX_new();
+
+  if (EVP_DigestInit(pctx, kex->hash) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing message digest: %s", proxy_ssh_crypto_get_errors());
+    pr_memscrub(ptr2, bufsz2);
+    EVP_MD_CTX_free(pctx);
+
+    return -1;
+  }
+
+  if (EVP_DigestUpdate(pctx, ptr2, (bufsz2 - buflen2)) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error updating message digest: %s", proxy_ssh_crypto_get_errors());
+    pr_memscrub(ptr2, bufsz2);
+    EVP_MD_CTX_free(pctx);
+
+    return -1;
+  }
+
+  kdatalen = EVP_MAX_MD_SIZE;
+  kdata = palloc(pkt->pool, kdatalen);
+
+  if (EVP_DigestFinal(pctx, kdata, &kdatalen) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error finalizing message digest: %s", proxy_ssh_crypto_get_errors());
+    pr_memscrub(ptr2, bufsz2);
+    EVP_MD_CTX_free(pctx);
+
+    return -1;
+  }
+
+  EVP_MD_CTX_free(pctx);
+  pr_memscrub(ptr2, bufsz2);
+
+  kex->kdatalen = kdatalen;
+  kex->kdata = palloc(kex->pool, kex->kdatalen);
+  memcpy(kex->kdata, kdata, kex->kdatalen);
+  pr_memscrub(kdata, kdatalen);
+
+  /* Calculate H */
+  h = calculate_mlkem768_h(kex, pkt->pool, server_hostkey_data,
+    server_hostkey_datalen, kex->kdata, kex->kdatalen, kex->client_mlkem768,
+    kex->client_x25519_pub_key, ciphertext, ciphertext_len,
+    kex->server_x25519_pub_key, &hlen);
+  if (h == NULL) {
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
+    pr_memscrub((char *) kex->kdata, kex->kdatalen);
+    kex->kdata = NULL;
+    kex->kdatalen = 0;
+
+    return -1;
+  }
+
+  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
+  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+
+  /* Verify H */
+  res = verify_h(pkt->pool, kex, server_hostkey_data, server_hostkey_datalen,
+    sig, siglen, h, hlen);
+  if (res < 0) {
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
+    pr_memscrub((char *) kex->kdata, kex->kdatalen);
+    kex->kdata = NULL;
+    kex->kdatalen = 0;
+
+    return -1;
+  }
+
+  kex->h = palloc(kex->pool, hlen);
+  kex->hlen = hlen;
+  memcpy((char *) kex->h, h, kex->hlen);
+
+  /* Save H as the session ID. */
+  proxy_ssh_session_set_id(session.pool, h, hlen);
+
+  /* We no longer need the private keys. */
+  pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+  kex->client_x25519_priv_key = NULL;
+  EVP_PKEY_free(kex->client_mlkem768);
+  kex->client_mlkem768 = NULL;
+
+  return 0;
+}
+
+static int handle_kex_mlkem768(struct proxy_ssh_kex *kex, conn_t *conn) {
+  int res;
+  struct proxy_ssh_packet *pkt;
+
+  pr_trace_msg(trace_channel, 9, "writing ECDH_INIT message to server");
+  pkt = proxy_ssh_packet_create(kex_pool);
+  res = write_mlkem768_init(pkt, kex);
+  if (res < 0) {
+    destroy_pool(pkt->pool);
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
+
+  res = proxy_ssh_packet_write(conn, pkt);
+  if (res < 0) {
+    destroy_pool(pkt->pool);
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
+
+  destroy_pool(pkt->pool);
+
+  pr_trace_msg(trace_channel, 9, "reading ECDH_REPLY message from server");
+  pkt = read_kex_packet(kex_pool, kex, conn,
+    PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL, 1,
+    PROXY_SSH_MSG_KEX_ECDH_REPLY);
+
+  res = read_mlkem768_reply(pkt, kex);
+  if (res < 0) {
+    destroy_pool(pkt->pool);
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
+
+  destroy_pool(pkt->pool);
+  return 0;
+}
+#endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
+
 static int run_kex(struct proxy_ssh_kex *kex, conn_t *conn) {
   const char *algo;
 
@@ -4901,6 +5589,12 @@ static int run_kex(struct proxy_ssh_kex *kex, conn_t *conn) {
     return handle_kex_curve448(kex, conn);
   }
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+
+#if defined(HAVE_MLKEM768_OPENSSL) && defined(HAVE_SHA256_OPENSSL)
+  if (strcmp(algo, "mlkem768x25519-sha256") == 0) {
+    return handle_kex_mlkem768(kex, conn);
+  }
+#endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
 
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
     "unsupported key exchange algorithm '%s'", algo);

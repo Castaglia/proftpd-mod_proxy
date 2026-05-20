@@ -98,6 +98,11 @@ my $TESTS = {
     test_class => [qw(forking mod_sftp reverse)],
   },
 
+  proxy_reverse_backend_ssh_kex_mlkem768_sha256_issue306 => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
   proxy_reverse_backend_ssh_hostkey_rsa => {
     order => ++$order,
     test_class => [qw(forking mod_sftp reverse)],
@@ -675,6 +680,27 @@ sub config_hash2array {
   }
 
   return $array;
+}
+
+sub get_openssl_version {
+  my $proftpd_bin = $ENV{PROFTPD_TEST_BIN};
+  my $openssl_version;
+
+  if (open(my $cmdh, "$proftpd_bin -V |")) {
+    while (my $line = <$cmdh>) {
+      chomp($line);
+
+      next unless $line =~ /\s+\+ OpenSSL support \((.*?)\)/;
+      $openssl_version = $1;
+      last;
+    }
+
+    close($cmdh);
+    return $openssl_version;
+
+  } else {
+    die("Error listing features");
+  }
 }
 
 sub get_reverse_proxy_config {
@@ -1683,6 +1709,46 @@ sub proxy_reverse_backend_ssh_kex_rsa1024_sha1 {
   my $digest_algo = 'hmac-sha1';
   my $kex_algo = 'rsa1024-sha1';
   my $proxy_sftp_opts = '';
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
+sub proxy_reverse_backend_ssh_kex_mlkem768_sha256_issue306 {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-sha1';
+  my $kex_algo = 'mlkem768x25519-sha256';
+  my $proxy_sftp_opts = '';
+
+  # NOTE: MLKEM support first appeared in OpenSSL 3.5.  So if we are using a
+  # version older than that, we need to skip this test.
+
+  my $openssl_version = get_openssl_version();
+  if ($ENV{TEST_VERBOSE}) {
+    print STDERR "# ProFTPD built using $openssl_version\n";
+  }
+
+  if ($openssl_version =~ /OpenSSL (\d+)\.(\d+)\..*?/) {
+    my $major_version = $1;
+    my $minor_version = $2;
+
+    if ($major_version < 3) {
+      print STDERR "# OpenSSL $major_version.x too old, skipping this test\n";
+      return;
+    }
+
+    if ($major_version == 3) {
+      if ($minor_version < 5) {
+        print STDERR "# OpenSSL $major_version.$minor_version too old, skipping this test\n";
+        return;
+      }
+    }
+
+  } else {
+    print STDERR "# Unable to determine OpenSSL version, skipping this test\n";
+    return;
+  }
 
   ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
     $proxy_sftp_opts);
