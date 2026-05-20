@@ -1197,6 +1197,9 @@ MODRET set_proxysftpkeyexchanges(cmd_rec *cmd) {
 #if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
         strcmp(cmd->argv[i], "curve448-sha512") != 0 &&
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+#if defined(HAVE_MLKEM768_OPENSSL) && defined(HAVE_SHA256_OPENSSL)
+        strcmp(cmd->argv[i], "mlkem768x25519-sha256") != 0 &&
+#endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
         strcmp(cmd->argv[i], "rsa1024-sha1") != 0) {
 
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,

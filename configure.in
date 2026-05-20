@@ -1,5 +1,5 @@
 dnl ProFTPD - mod_proxy
-dnl Copyright (c) 2012-2025 TJ Saunders <tj@castaglia.org>
+dnl Copyright (c) 2012-2026 TJ Saunders <tj@castaglia.org>
 dnl
 dnl This program is free software; you can redistribute it and/or modify
 dnl it under the terms of the GNU General Public License as published by
@@ -12,8 +12,7 @@ dnl MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 dnl GNU General Public License for more details.
 dnl
 dnl You should have received a copy of the GNU General Public License
-dnl along with this program; if not, write to the Free Software
-dnl Foundation, Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335, USA.
+dnl along with this program; if not, see <https://www.gnu.org/licenses/>.
 dnl
 dnl Process this file with autoconf to produce a configure script.
 
@@ -378,6 +377,42 @@ AC_TRY_LINK(
   [
     AC_MSG_RESULT(yes)
     AC_DEFINE(HAVE_EVP_CHACHA20_OPENSSL, 1, [OpenSSL supports EVP_chacha20])
+    LIBS="$saved_libs"
+  ],
+  [
+    AC_MSG_RESULT(no)
+    LIBS="$saved_libs"
+  ]
+)
+
+AC_MSG_CHECKING([whether OpenSSL supports MLKEM768 algorithm])
+LIBS="-lcrypto $LIBS"
+
+AC_TRY_RUN(
+  [
+    #include <errno.h>
+    #include <stdio.h>
+    #include <openssl/evp.h>
+    #ifdef HAVE_STDLIB_H
+    # include <stdlib.h>
+    #endif
+    #ifdef HAVE_STRING_H
+    # include <string.h>
+    #endif
+
+    int main(int argc, char *argv[]) {
+      EVP_PKEY_CTX *pctx;
+      pctx = EVP_PKEY_CTX_new_from_name(NULL, "ML-KEM-768", NULL);
+      if (pctx == NULL) {
+        return 1;
+      }
+      EVP_PKEY_CTX_free(pctx);
+      return 0;
+    }
+  ],
+  [
+    AC_MSG_RESULT(yes)
+    AC_DEFINE(HAVE_MLKEM768_OPENSSL, 1, [OpenSSL supports MLKEM768])
     LIBS="$saved_libs"
   ],
   [
