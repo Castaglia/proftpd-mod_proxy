@@ -449,6 +449,12 @@ static int dns_resolve_srv(pool *p, const char *name, array_header **resp,
     if (expanded_namelen < 0) {
       /* Assume the target name was properly NOT compressed. */
       target_len = ns_rr_rdlen(record) - offset;
+      if (target_len == 0 || target_len > NS_MAXDNAME) {
+        pr_trace_msg(trace_channel, 3,
+          "invalid SRV target length %lu for record #%u, skipping",
+          (unsigned long) target_len, i + 1);
+        continue;
+      }
       target_text = pcalloc(srv_pool, target_len + 1);
       memcpy(target_text, (unsigned char *) ns_rr_rdata(record) + offset,
         target_len);
