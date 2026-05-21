@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy DNS resolution
- * Copyright (c) 2020-2023 TJ Saunders
+ * Copyright (c) 2020-2026 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,8 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335, USA.
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
  *
  * As a special exemption, TJ Saunders and other respective copyright holders
  * give permission to link this program with OpenSSL, and distribute the
@@ -449,7 +448,8 @@ static int dns_resolve_srv(pool *p, const char *name, array_header **resp,
     if (expanded_namelen < 0) {
       /* Assume the target name was properly NOT compressed. */
       target_len = ns_rr_rdlen(record) - offset;
-      if (target_len == 0 || target_len > NS_MAXDNAME) {
+      if (target_len == 0 ||
+          target_len > NS_MAXDNAME) {
         pr_trace_msg(trace_channel, 3,
           "invalid SRV target length %lu for record #%u, skipping",
           (unsigned long) target_len, i + 1);
