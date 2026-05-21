@@ -103,6 +103,11 @@ my $TESTS = {
     test_class => [qw(forking mod_sftp reverse)],
   },
 
+  proxy_reverse_backend_ssh_kex_sntrup761_sha512_issue306 => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
   proxy_reverse_backend_ssh_hostkey_rsa => {
     order => ++$order,
     test_class => [qw(forking mod_sftp reverse)],
@@ -1749,6 +1754,17 @@ sub proxy_reverse_backend_ssh_kex_mlkem768_sha256_issue306 {
     print STDERR "# Unable to determine OpenSSL version, skipping this test\n";
     return;
   }
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts);
+}
+
+sub proxy_reverse_backend_ssh_kex_sntrup761_sha512_issue306 {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-sha1';
+  my $kex_algo = 'sntrup761x25519-sha512';
+  my $proxy_sftp_opts = '';
 
   ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
     $proxy_sftp_opts);

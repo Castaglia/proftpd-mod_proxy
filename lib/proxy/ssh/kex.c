@@ -36,6 +36,7 @@
 #include "proxy/ssh/crypto.h"
 #include "proxy/ssh/disconnect.h"
 #include "proxy/ssh/interop.h"
+#include "proxy/ssh/sntrup761.h"
 #include "proxy/ssh/misc.h"
 
 #include <openssl/bn.h>
@@ -152,6 +153,9 @@ struct proxy_ssh_kex {
   /* Using MLKEM768? */
   int use_mlkem768;
 
+  /* Using sntrup761? */
+  int use_sntrup761;
+
   /* Using extension negotiations? */
   int use_ext_info;
 
@@ -195,6 +199,8 @@ struct proxy_ssh_kex {
   EVP_PKEY *client_mlkem768;
 #endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
 #if defined(HAVE_X25519_OPENSSL)
+  unsigned char *client_sntrup761_priv_key;
+  unsigned char *client_sntrup761_pub_key;
   unsigned char *client_x25519_priv_key;
   unsigned char *client_x25519_pub_key;
   unsigned char *server_x25519_pub_key;
@@ -1758,6 +1764,24 @@ static int create_mlkem768(struct proxy_ssh_kex *kex) {
 }
 #endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA512_OPENSSL */
 
+#if defined(HAVE_X25519_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+static int create_sntrup761(struct proxy_ssh_kex *kex) {
+  kex->client_x25519_priv_key = palloc(kex_pool, X25519_KEYLEN);
+  kex->client_x25519_pub_key = palloc(kex_pool, X25519_KEYLEN);
+
+  if (generate_x25519_keys(kex_pool, &(kex->client_x25519_priv_key),
+      kex->client_x25519_pub_key) < 0) {
+    return -1;
+  }
+
+  kex->client_sntrup761_priv_key = palloc(kex_pool, sntrup761_SECRETKEYBYTES);
+  kex->client_sntrup761_pub_key = palloc(kex_pool, sntrup761_PUBLICKEYBYTES);
+
+  return sntrup761_keypair(kex->client_sntrup761_pub_key,
+    kex->client_sntrup761_priv_key);
+}
+#endif /* HAVE_X25519_OPENSSL and HAVE_SHA512_OPENSSL */
+
 /* Given a name-list, return the first (i.e. preferred) name in the list. */
 static const char *get_preferred_name(pool *p, const char *names) {
   register unsigned int i;
@@ -1796,6 +1820,10 @@ static const char *kex_exchanges[] = {
   "mlkem768x25519-sha256",
 #endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
 #if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+#if defined(HAVE_X25519_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+  "sntrup761x25519-sha512",
+  "sntrup761x25519-sha512@openssh.com",
+#endif /* HAVE_X25519_OPENSSL and HAVE_SHA512_OPENSSL */
   "curve448-sha512",
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 #if defined(PR_USE_SODIUM) && defined(HAVE_SHA256_OPENSSL)
@@ -2100,6 +2128,16 @@ static void destroy_kex(struct proxy_ssh_kex *kex) {
 #endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
 
 #if defined(HAVE_X25519_OPENSSL)
+    if (kex->client_sntrup761_priv_key != NULL) {
+      pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+      kex->client_sntrup761_priv_key = NULL;
+    }
+
+    if (kex->client_sntrup761_pub_key != NULL) {
+      pr_memscrub(kex->client_sntrup761_pub_key, sntrup761_PUBLICKEYBYTES);
+      kex->client_sntrup761_pub_key = NULL;
+    }
+
     if (kex->client_x25519_priv_key != NULL) {
       pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
       kex->client_x25519_priv_key = NULL;
@@ -2330,6 +2368,22 @@ static int setup_kex_algo(struct proxy_ssh_kex *kex, const char *algo) {
     return 0;
   }
 #endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
+
+#if defined(HAVE_X25519_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+  if (strcmp(algo, "sntrup761x25519-sha512") == 0) {
+    if (create_sntrup761(kex) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error using '%s' as the key exchange algorithm: %s", algo,
+        strerror(errno));
+      return -1;
+    }
+
+    kex->hash = EVP_sha512();
+    kex->session_names->kex_algo = algo;
+    kex->use_sntrup761 = TRUE;
+    return 0;
+  }
+#endif /* HAVE_X25519_OPENSSL and HAVE_SHA512_OPENSSL */
 
   if (strcmp(algo, "ext-info-c") == 0 ||
       strcmp(algo, "ext-info-s") == 0) {
@@ -5411,6 +5465,10 @@ static int read_mlkem768_reply(struct proxy_ssh_packet *pkt,
   if (EVP_DigestInit(pctx, kex->hash) != 1) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error initializing message digest: %s", proxy_ssh_crypto_get_errors());
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
     pr_memscrub(ptr2, bufsz2);
     EVP_MD_CTX_free(pctx);
 
@@ -5420,6 +5478,10 @@ static int read_mlkem768_reply(struct proxy_ssh_packet *pkt,
   if (EVP_DigestUpdate(pctx, ptr2, (bufsz2 - buflen2)) != 1) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error updating message digest: %s", proxy_ssh_crypto_get_errors());
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
     pr_memscrub(ptr2, bufsz2);
     EVP_MD_CTX_free(pctx);
 
@@ -5432,6 +5494,10 @@ static int read_mlkem768_reply(struct proxy_ssh_packet *pkt,
   if (EVP_DigestFinal(pctx, kdata, &kdatalen) != 1) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error finalizing message digest: %s", proxy_ssh_crypto_get_errors());
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
     pr_memscrub(ptr2, bufsz2);
     EVP_MD_CTX_free(pctx);
 
@@ -5536,6 +5602,400 @@ static int handle_kex_mlkem768(struct proxy_ssh_kex *kex, conn_t *conn) {
 }
 #endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
 
+#if defined(HAVE_X25519_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+static int write_sntrup761_init(struct proxy_ssh_packet *pkt,
+    struct proxy_ssh_kex *kex) {
+  unsigned char *buf, *ptr;
+  uint32_t buflen, bufsz, len = 0;
+
+  /* In our sntrup761 ECDH_INIT, we send our concatened sntrup761 public key,
+   * and our client x25519 public key.
+   */
+
+  /* XXX Is this buffer large enough? Too large? */
+  bufsz = buflen = 2048;
+  ptr = buf = palloc(pkt->pool, bufsz);
+
+  len += proxy_ssh_msg_write_byte(&buf, &buflen, PROXY_SSH_MSG_KEX_ECDH_INIT);
+
+  len += proxy_ssh_msg_write_int(&buf, &buflen,
+    sntrup761_PUBLICKEYBYTES + X25519_KEYLEN);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, kex->client_sntrup761_pub_key,
+    sntrup761_PUBLICKEYBYTES, FALSE);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, kex->client_x25519_pub_key,
+    X25519_KEYLEN, FALSE);
+
+  pkt->payload = ptr;
+  pkt->payload_len = len;
+
+  return 0;
+}
+
+static int get_sntrup761_shared_key(pool *p, unsigned char *client_sntrup761,
+    unsigned char **sntrup_key, size_t *sntrup_keylen,
+    unsigned char *ciphertext, size_t ciphertext_len) {
+
+  *sntrup_keylen = sntrup761_BYTES;
+  *sntrup_key = palloc(p, *sntrup_keylen);
+
+  sntrup761_dec(*sntrup_key, ciphertext, client_sntrup761);
+  return *sntrup_keylen;
+}
+
+static const unsigned char *calculate_sntrup761_h(struct proxy_ssh_kex *kex,
+    pool *p, const unsigned char *hostkey_data, uint32_t hostkey_datalen,
+    const unsigned char *kdata, uint32_t kdatalen,
+    unsigned char *client_sntrup761, unsigned char *client_x25519,
+    unsigned char *ciphertext, uint32_t ciphertext_len,
+    unsigned char *server_x25519, uint32_t *hlen) {
+  unsigned char *buf, *ptr;
+  uint32_t buflen, bufsz, len = 0;
+
+  bufsz = buflen = 8192;
+
+  /* XXX Is this buffer large enough? Too large? */
+  ptr = buf = palloc(p, bufsz);
+
+  /* Write all of the data into the buffer in the SSH2 format, and hash it.
+   * The ordering of these fields is described in RFC5656.
+   */
+
+  /* First, the version strings */
+  len += proxy_ssh_msg_write_string(&buf, &buflen, kex->client_version);
+  len += proxy_ssh_msg_write_string(&buf, &buflen, kex->server_version);
+
+  /* Client's KEXINIT */
+  len += proxy_ssh_msg_write_int(&buf, &buflen,
+    kex->client_kexinit_payload_len + 1);
+  len += proxy_ssh_msg_write_byte(&buf, &buflen, PROXY_SSH_MSG_KEXINIT);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, kex->client_kexinit_payload,
+    kex->client_kexinit_payload_len, FALSE);
+
+  /* Server's KEXINIT */
+  len += proxy_ssh_msg_write_int(&buf, &buflen,
+    kex->server_kexinit_payload_len + 1);
+  len += proxy_ssh_msg_write_byte(&buf, &buflen, PROXY_SSH_MSG_KEXINIT);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, kex->server_kexinit_payload,
+    kex->server_kexinit_payload_len, FALSE);
+
+  /* Hostkey data */
+  len += proxy_ssh_msg_write_data(&buf, &buflen, hostkey_data, hostkey_datalen,
+    TRUE);
+
+  len += proxy_ssh_msg_write_int(&buf, &buflen,
+    sntrup761_PUBLICKEYBYTES + X25519_KEYLEN);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, client_sntrup761,
+    sntrup761_PUBLICKEYBYTES, FALSE);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, client_x25519, X25519_KEYLEN,
+    FALSE);
+
+  len += proxy_ssh_msg_write_int(&buf, &buflen, ciphertext_len + X25519_KEYLEN);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, ciphertext, ciphertext_len,
+    FALSE);
+  len += proxy_ssh_msg_write_data(&buf, &buflen, server_x25519, X25519_KEYLEN,
+    FALSE);
+
+  /* Shared secret */
+  len += proxy_ssh_msg_write_data(&buf, &buflen, kdata, kdatalen, TRUE);
+
+  if (digest_data(kex, ptr, len, hlen) < 0) {
+    pr_memscrub(ptr, bufsz);
+    return NULL;
+  }
+
+  pr_memscrub(ptr, bufsz);
+  return kex_digest_buf;
+}
+
+static int read_sntrup761_reply(struct proxy_ssh_packet *pkt,
+    struct proxy_ssh_kex *kex) {
+  EVP_MD_CTX *pctx;
+  const unsigned char *h;
+  unsigned char zero_x25519[X25519_KEYLEN];
+  unsigned char *buf, *server_hostkey_data = NULL, *sig = NULL;
+  uint32_t buflen, server_hostkey_datalen = 0, siglen = 0, hlen = 0;
+  unsigned char *x25519_key, *sntrup_key = NULL, *ciphertext = NULL;
+  size_t sntrup_keylen = 0, expected_len = 0;
+  unsigned char *buf2, *ptr2, *kdata = NULL;
+  uint32_t buflen2, bufsz2, ciphertext_len = 0, reply_len = 0, kdatalen = 0;
+  int res;
+
+  buf = pkt->payload;
+  buflen = pkt->payload_len;
+
+  /* See RFC 5656, Section 4 "ECDH Key Exchange", modified by RFC 8731. */
+
+  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &server_hostkey_datalen);
+  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, server_hostkey_datalen,
+    &server_hostkey_data);
+
+  res = handle_server_hostkey(pkt->pool, kex->use_hostkey_type,
+    server_hostkey_data, server_hostkey_datalen);
+  if (res < 0) {
+    int xerrno;
+
+    xerrno = errno;
+
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error handling server host key: %s", strerror(xerrno));
+    errno = xerrno;
+    return -1;
+  }
+
+  ciphertext_len = sntrup761_CIPHERTEXTBYTES;
+  expected_len = ciphertext_len + X25519_KEYLEN;
+
+  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &reply_len);
+  if (reply_len != expected_len) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "rejecting invalid length (%lu %s, wanted %lu) of server reply bytes",
+      (unsigned long) reply_len, reply_len != 1 ? "bytes" : "byte",
+      (unsigned long) expected_len);
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+
+    return -1;
+  }
+
+  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, ciphertext_len,
+    &ciphertext);
+  if (ciphertext == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error reading ECDH_REPLY: %s", strerror(errno));
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+
+    return -1;
+  }
+
+  /* Note that we use `kex->pool` here, since we are storing the key in the
+   * `kex` structure.
+   */
+  proxy_ssh_msg_read_data(kex->pool, &buf, &buflen, X25519_KEYLEN,
+    &(kex->server_x25519_pub_key));
+  if (kex->server_x25519_pub_key == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error reading ECDH_REPLY: %s", strerror(errno));
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+
+    return -1;
+  }
+
+  /* Watch for all-zero public keys, and reject them. */
+  memset(zero_x25519, '\0', sizeof(zero_x25519));
+  if (memcmp(kex->server_x25519_pub_key, zero_x25519, X25519_KEYLEN) == 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "rejecting invalid (all-zero) server X25519 public key");
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+
+    return -1;
+  }
+
+  /* Note that this X25519 shared key is not needed for long, hence why
+   * we can use this packet-specific pool.
+   */
+  x25519_key = palloc(pkt->pool, X25519_KEYLEN);
+
+  pr_trace_msg(trace_channel, 12, "computing X25519 key");
+  res = get_x25519_shared_key((unsigned char *) x25519_key,
+    kex->server_x25519_pub_key, kex->client_x25519_priv_key);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error computing X25519 shared secret: %s", strerror(errno));
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+
+    return -1;
+  }
+
+  pr_trace_msg(trace_channel, 12, "computing SNTRUP761 key");
+  res = get_sntrup761_shared_key(pkt->pool, kex->client_sntrup761_priv_key,
+    &sntrup_key, &sntrup_keylen, ciphertext, ciphertext_len);
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error computing SNTRUP761 shared secret: %s", strerror(errno));
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+
+    return -1;
+  }
+
+  bufsz2 = buflen2 = sntrup_keylen + X25519_KEYLEN;
+  ptr2 = buf2 = palloc(pkt->pool, bufsz2);
+
+  /* Per the PQ key exchange draft, here we do:
+   *
+   *  K = HASH(K_PQ || K_CL)
+   *
+   * where K_PQ is the SNTRUP761 shared key, and K_CL is our shared X25519 key.
+   *
+   * Note that for this concatenation, we only want the bytes, and not the
+   * length prefixes, hence the last parameter being FALSE.
+   */
+  proxy_ssh_msg_write_data(&buf2, &buflen2, sntrup_key, sntrup_keylen, FALSE);
+  proxy_ssh_msg_write_data(&buf2, &buflen2, x25519_key, X25519_KEYLEN, FALSE);
+
+  pctx = EVP_MD_CTX_new();
+
+  if (EVP_DigestInit(pctx, kex->hash) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing message digest: %s", proxy_ssh_crypto_get_errors());
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    pr_memscrub(ptr2, bufsz2);
+    EVP_MD_CTX_free(pctx);
+
+    return -1;
+  }
+
+  if (EVP_DigestUpdate(pctx, ptr2, (bufsz2 - buflen2)) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error updating message digest: %s", proxy_ssh_crypto_get_errors());
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    pr_memscrub(ptr2, bufsz2);
+    EVP_MD_CTX_free(pctx);
+
+    return -1;
+  }
+
+  kdatalen = EVP_MAX_MD_SIZE;
+  kdata = palloc(pkt->pool, kdatalen);
+
+  if (EVP_DigestFinal(pctx, kdata, &kdatalen) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error finalizing message digest: %s", proxy_ssh_crypto_get_errors());
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    pr_memscrub(ptr2, bufsz2);
+    EVP_MD_CTX_free(pctx);
+
+    return -1;
+  }
+
+  EVP_MD_CTX_free(pctx);
+  pr_memscrub(ptr2, bufsz2);
+
+  kex->kdatalen = kdatalen;
+  kex->kdata = palloc(kex->pool, kex->kdatalen);
+  memcpy(kex->kdata, kdata, kex->kdatalen);
+  pr_memscrub(kdata, kdatalen);
+
+  /* Calculate H */
+  h = calculate_sntrup761_h(kex, pkt->pool, server_hostkey_data,
+    server_hostkey_datalen, kex->kdata, kex->kdatalen,
+    kex->client_sntrup761_pub_key, kex->client_x25519_pub_key,
+    ciphertext, ciphertext_len, kex->server_x25519_pub_key, &hlen);
+  if (h == NULL) {
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    pr_memscrub((char *) kex->kdata, kex->kdatalen);
+    kex->kdata = NULL;
+    kex->kdatalen = 0;
+
+    return -1;
+  }
+
+  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
+  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+
+  /* Verify H */
+  res = verify_h(pkt->pool, kex, server_hostkey_data, server_hostkey_datalen,
+    sig, siglen, h, hlen);
+  if (res < 0) {
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    pr_memscrub((char *) kex->kdata, kex->kdatalen);
+    kex->kdata = NULL;
+    kex->kdatalen = 0;
+
+    return -1;
+  }
+
+  kex->h = palloc(kex->pool, hlen);
+  kex->hlen = hlen;
+  memcpy((char *) kex->h, h, kex->hlen);
+
+  /* Save H as the session ID. */
+  proxy_ssh_session_set_id(session.pool, h, hlen);
+
+  /* We no longer need the private keys. */
+  pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+  kex->client_sntrup761_priv_key = NULL;
+  pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+  kex->client_x25519_priv_key = NULL;
+
+  return 0;
+}
+
+static int handle_kex_sntrup761(struct proxy_ssh_kex *kex, conn_t *conn) {
+  int res;
+  struct proxy_ssh_packet *pkt;
+
+  pr_trace_msg(trace_channel, 9, "writing ECDH_INIT message to server");
+  pkt = proxy_ssh_packet_create(kex_pool);
+  res = write_sntrup761_init(pkt, kex);
+  if (res < 0) {
+    destroy_pool(pkt->pool);
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
+
+  res = proxy_ssh_packet_write(conn, pkt);
+  if (res < 0) {
+    destroy_pool(pkt->pool);
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
+
+  destroy_pool(pkt->pool);
+
+  pr_trace_msg(trace_channel, 9, "reading ECDH_REPLY message from server");
+  pkt = read_kex_packet(kex_pool, kex, conn,
+    PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL, 1,
+    PROXY_SSH_MSG_KEX_ECDH_REPLY);
+
+  res = read_sntrup761_reply(pkt, kex);
+  if (res < 0) {
+    destroy_pool(pkt->pool);
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
+
+  destroy_pool(pkt->pool);
+  return 0;
+}
+#endif /* HAVE_X25519_OPENSSL and HAVE_SHA512_OPENSSL */
+
 static int run_kex(struct proxy_ssh_kex *kex, conn_t *conn) {
   const char *algo;
 
@@ -5595,6 +6055,13 @@ static int run_kex(struct proxy_ssh_kex *kex, conn_t *conn) {
     return handle_kex_mlkem768(kex, conn);
   }
 #endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
+
+#if defined(HAVE_X25519_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+  if (strcmp(algo, "sntrup761x25519-sha512") == 0 ||
+      strcmp(algo, "sntrup761x25519-sha512@openssh.com") == 0) {
+    return handle_kex_sntrup761(kex, conn);
+  }
+#endif /* HAVE_X25519_OPENSSL and HAVE_SHA512_OPENSSL */
 
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
     "unsupported key exchange algorithm '%s'", algo);
