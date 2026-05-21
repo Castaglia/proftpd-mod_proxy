@@ -2161,7 +2161,6 @@ int proxy_ssh_packet_handle(void *data) {
         (void) proxy_ssh_packet_get_msg_type(pkt);
         proxy_ssh_packet_handle_ext_info(pkt);
         proxy_sess_state |= PROXY_SESS_STATE_SSH_HAVE_EXT_INFO;
-        break;
 
       } else {
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
