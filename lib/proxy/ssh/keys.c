@@ -4964,6 +4964,13 @@ static int verify_rsa_signed_data(pool *p, EVP_PKEY *pkey,
   }
 
   rsa = EVP_PKEY_get1_RSA(pkey);
+  if (rsa == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error obtaining RSA key: %s",  proxy_ssh_crypto_get_errors());
+    errno = EINVAL;
+    return -1;
+  }
+
   modulus_len = RSA_size(rsa);
 
   /* If the signature provided by the server is more than the expected
@@ -5101,6 +5108,12 @@ static int dsa_verify_signed_data(pool *p, EVP_PKEY *pkey,
   }
 
   dsa = EVP_PKEY_get1_DSA(pkey);
+  if (dsa == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error obtaining DSA key: %s",  proxy_ssh_crypto_get_errors());
+    errno = EINVAL;
+    return -1;
+  }
 
   dsa_sig = DSA_SIG_new();
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
@@ -5489,6 +5502,14 @@ int proxy_ssh_keys_verify_signed_data(pool *p, const char *pubkey_algo,
   }
 
   if (strcmp(sig_type, "ssh-rsa") == 0) {
+    if (strcmp(pubkey_algo, sig_type) != 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to verify signed data: signature type '%s' does not match "
+        "publickey algorithm '%s'", sig_type, pubkey_algo);
+      errno = EINVAL;
+      return -1;
+    }
+
     res = rsa_verify_signed_data(p, pkey, signature, signature_len, sig_data,
       sig_datalen);
 
@@ -5506,6 +5527,14 @@ int proxy_ssh_keys_verify_signed_data(pool *p, const char *pubkey_algo,
 
 #if !defined(OPENSSL_NO_DSA)
   } else if (strcmp(sig_type, "ssh-dss") == 0) {
+    if (strcmp(pubkey_algo, sig_type) != 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to verify signed data: signature type '%s' does not match "
+        "publickey algorithm '%s'", sig_type, pubkey_algo);
+      errno = EINVAL;
+      return -1;
+    }
+
     res = dsa_verify_signed_data(p, pkey, signature, signature_len, sig_data,
       sig_datalen);
 #endif /* !OPENSSL_NO_DSA */
@@ -5514,7 +5543,6 @@ int proxy_ssh_keys_verify_signed_data(pool *p, const char *pubkey_algo,
   } else if (strcmp(sig_type, "ecdsa-sha2-nistp256") == 0 ||
              strcmp(sig_type, "ecdsa-sha2-nistp384") == 0 ||
              strcmp(sig_type, "ecdsa-sha2-nistp521") == 0) {
-
     if (strcmp(pubkey_algo, sig_type) != 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unable to verify signed data: public key algorithm '%s' does not "
