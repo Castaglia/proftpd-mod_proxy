@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH key mgmt (keys)
- * Copyright (c) 2021-2025 TJ Saunders
+ * Copyright (c) 2021-2026 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,8 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335, USA.
+ * along with this program; see <https://www.gnu.org/licenses/>.
  *
  * As a special exemption, TJ Saunders and other respective copyright holders
  * give permission to link this program with OpenSSL, and distribute the
@@ -5084,6 +5083,8 @@ static int dsa_verify_signed_data(pool *p, EVP_PKEY *pkey,
   if (sig_len != 40) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "bad DSA signature len (%lu)", (unsigned long) sig_len);
+    errno = EINVAL;
+    return -1;
   }
 
   len = proxy_ssh_msg_read_data(p, &signature, &signature_len, sig_len, &sig);
