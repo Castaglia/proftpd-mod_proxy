@@ -41,6 +41,7 @@ struct proxy_ssh_mac {
   const char *algo;
   unsigned int algo_type;
   int is_etm;
+  int free_digest;
 
   const EVP_MD *digest;
   unsigned char *key;
@@ -69,15 +70,15 @@ struct proxy_ssh_mac {
  */
 
 static struct proxy_ssh_mac read_macs[] = {
-  { NULL, NULL, 0, FALSE, NULL, NULL, 0, 0, 0 },
-  { NULL, NULL, 0, FALSE, NULL, NULL, 0, 0, 0 }
+  { NULL, NULL, 0, FALSE, FALSE, NULL, NULL, 0, 0, 0 },
+  { NULL, NULL, 0, FALSE, FALSE, NULL, NULL, 0, 0, 0 }
 };
 static HMAC_CTX *hmac_read_ctxs[2];
 static struct umac_ctx *umac_read_ctxs[2];
 
 static struct proxy_ssh_mac write_macs[] = {
-  { NULL, NULL, 0, FALSE, NULL, NULL, 0, 0, 0 },
-  { NULL, NULL, 0, FALSE, NULL, NULL, 0, 0, 0 }
+  { NULL, NULL, 0, FALSE, FALSE, NULL, NULL, 0, 0, 0 },
+  { NULL, NULL, 0, FALSE, FALSE, NULL, NULL, 0, 0, 0 }
 };
 static HMAC_CTX *hmac_write_ctxs[2];
 static struct umac_ctx *umac_write_ctxs[2];
@@ -781,16 +782,25 @@ int proxy_ssh_mac_set_read_algo(pool *p, const char *algo) {
       case PROXY_SSH_MAC_ALGO_TYPE_UMAC64:
         proxy_ssh_umac_delete(umac_read_ctxs[idx]);
         umac_read_ctxs[idx] = NULL;
+        if (read_macs[idx].free_digest == TRUE) {
+          proxy_ssh_crypto_free_digest(read_macs[idx].digest);
+          read_macs[idx].digest = NULL;
+        }
         break;
 
       case PROXY_SSH_MAC_ALGO_TYPE_UMAC128:
         proxy_ssh_umac128_delete(umac_read_ctxs[idx]);
         umac_read_ctxs[idx] = NULL;
+        if (read_macs[idx].free_digest == TRUE) {
+          proxy_ssh_crypto_free_digest(read_macs[idx].digest);
+          read_macs[idx].digest = NULL;
+        }
         break;
     }
   }
 
-  read_macs[idx].digest = proxy_ssh_crypto_get_digest(algo, &mac_len);
+  read_macs[idx].digest = proxy_ssh_crypto_get_digest(algo, &mac_len,
+    &(read_macs[idx].free_digest));
   if (read_macs[idx].digest == NULL) {
     return -1;
   }
@@ -955,16 +965,25 @@ int proxy_ssh_mac_set_write_algo(pool *p, const char *algo) {
       case PROXY_SSH_MAC_ALGO_TYPE_UMAC64:
         proxy_ssh_umac_delete(umac_write_ctxs[idx]);
         umac_write_ctxs[idx] = NULL;
+        if (write_macs[idx].free_digest == TRUE) {
+          proxy_ssh_crypto_free_digest(write_macs[idx].digest);
+          write_macs[idx].digest = NULL;
+        }
         break;
 
       case PROXY_SSH_MAC_ALGO_TYPE_UMAC128:
         proxy_ssh_umac128_delete(umac_write_ctxs[idx]);
         umac_write_ctxs[idx] = NULL;
+        if (write_macs[idx].free_digest == TRUE) {
+          proxy_ssh_crypto_free_digest(write_macs[idx].digest);
+          write_macs[idx].digest = NULL;
+        }
         break;
     }
   }
 
-  write_macs[idx].digest = proxy_ssh_crypto_get_digest(algo, &mac_len);
+  write_macs[idx].digest = proxy_ssh_crypto_get_digest(algo, &mac_len,
+    &(write_macs[idx].free_digest));
   if (write_macs[idx].digest == NULL) {
     return -1;
   }

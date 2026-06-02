@@ -180,7 +180,7 @@ const char *proxy_tls_get_errors(void) {
   return str;
 }
 
-static char *tls_x509_name_oneline(X509_NAME *x509_name) {
+static char *tls_x509_name_oneline(const X509_NAME *x509_name) {
   static char buf[1024] = {'\0'};
 
   /* If we are using OpenSSL 0.9.6 or newer, we want to use
@@ -814,7 +814,12 @@ static int cert_match_dns_san(pool *p, X509 *cert, const char *dns_name,
         char *dns_san;
         size_t dns_sanlen;
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
+    !defined(HAVE_LIBRESSL)
+        dns_san = (char *) ASN1_STRING_get0_data(alt_name->d.ia5);
+#else
         dns_san = (char *) ASN1_STRING_data(alt_name->d.ia5);
+#endif /* OpenSSL 1.1.x and later */
         dns_sanlen = strlen(dns_san);
 
         /* Check for subjectAltName values which contain embedded NULs.
@@ -881,7 +886,7 @@ static int cert_match_ip_san(pool *p, X509 *cert, const char *ipstr) {
       GENERAL_NAME *alt_name = sk_GENERAL_NAME_value(sans, i);
 
       if (alt_name->type == GEN_IPADD) {
-        unsigned char *san_data = NULL;
+        const unsigned char *san_data = NULL;
         int have_ipstr = FALSE, san_datalen;
 #if defined(PR_USE_IPV6)
         char san_ipstr[INET6_ADDRSTRLEN + 1] = {'\0'};
@@ -889,7 +894,13 @@ static int cert_match_ip_san(pool *p, X509 *cert, const char *ipstr) {
         char san_ipstr[INET_ADDRSTRLEN + 1] = {'\0'};
 #endif /* PR_USE_IPV6 */
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
+    !defined(HAVE_LIBRESSL)
+        san_data = ASN1_STRING_get0_data(alt_name->d.ip);
+#else
         san_data = ASN1_STRING_data(alt_name->d.ip);
+#endif /* OpenSSL 1.1.x and later */
+
         memset(san_ipstr, '\0', sizeof(san_ipstr));
 
         san_datalen = ASN1_STRING_length(alt_name->d.ip);
@@ -971,9 +982,9 @@ static int cert_match_ip_san(pool *p, X509 *cert, const char *ipstr) {
 static int cert_match_cn(pool *p, X509 *cert, const char *name,
     int allow_wildcards) {
   int matched = FALSE, idx = -1;
-  X509_NAME *subj_name = NULL;
-  X509_NAME_ENTRY *cn_entry = NULL;
-  ASN1_STRING *cn_asn1 = NULL;
+  const X509_NAME *subj_name = NULL;
+  const X509_NAME_ENTRY *cn_entry = NULL;
+  const ASN1_STRING *cn_asn1 = NULL;
   char *cn_str = NULL;
   size_t cn_len = 0;
 
@@ -1015,7 +1026,12 @@ static int cert_match_cn(pool *p, X509 *cert, const char *name,
     return 0;
   }
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
+    !defined(HAVE_LIBRESSL)
+  cn_str = (char *) ASN1_STRING_get0_data(cn_asn1);
+#else
   cn_str = (char *) ASN1_STRING_data(cn_asn1);
+#endif /* OpenSSL 1.1.x and later */
 
   /* Check for CommonName values which contain embedded NULs.  This can cause
    * verification problems (spoofing), e.g. if the string is

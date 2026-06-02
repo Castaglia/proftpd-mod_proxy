@@ -48,6 +48,7 @@
 #include "proxy/ssh/auth.h"
 #include "proxy/ssh/crypto.h"
 #include "proxy/tls/pkcs11.h"
+#include "proxy/ssh/provider.h"
 
 #if defined(HAVE_OSSL_PROVIDER_LOAD_OPENSSL)
 # include <openssl/provider.h>
@@ -1101,9 +1102,17 @@ MODRET set_proxysftpdigests(cmd_rec *cmd) {
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
   for (i = 1; i < cmd->argc; i++) {
-    if (proxy_ssh_crypto_get_digest(cmd->argv[i], NULL) == NULL) {
+    const EVP_MD *digest;
+    int free_digest = FALSE;
+
+    digest = proxy_ssh_crypto_get_digest(cmd->argv[i], NULL, &free_digest);
+    if (digest == NULL) {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool,
         "unsupported digest algorithm: ", cmd->argv[i], NULL));
+    }
+
+    if (free_digest == TRUE) {
+      proxy_ssh_crypto_free_digest(digest);
     }
   }
 
@@ -5195,13 +5204,32 @@ static void proxy_mod_unload_ev(const void *event_data, void *user_data) {
   /* Unregister ourselves from all events. */
   pr_event_unregister(&proxy_module, NULL, NULL);
 
+  (void) proxy_forward_free(proxy_pool);
+  (void) proxy_reverse_free(proxy_pool);
+  (void) proxy_ssh_free(proxy_pool);
+  (void) proxy_tls_free(proxy_pool);
+
+  if (proxy_db_close(proxy_pool, NULL) < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error closing database: %s", strerror(errno));
+  }
+
+  (void) proxy_db_free();
+
+#if defined(HAVE_OSSL_PROVIDER_LOAD_OPENSSL)
+  if (legacy_provider != NULL) {
+    OSSL_PROVIDER_unload(legacy_provider);
+    legacy_provider = NULL;
+  }
+#endif /* HAVE_OSSL_PROVIDER_LOAD_OPENSSL */
+
   destroy_pool(proxy_pool);
   proxy_pool = NULL;
 
   (void) close(proxy_logfd);
   proxy_logfd = -1;
 }
-#endif
+#endif /* PR_SHARED_MODULE */
 
 static void proxy_postparse_ev(const void *event_data, void *user_data) {
   int engine = FALSE;
@@ -5422,7 +5450,7 @@ static int proxy_init(void) {
 #if defined(PR_SHARED_MODULE)
   pr_event_register(&proxy_module, "core.module-unload", proxy_mod_unload_ev,
     NULL);
-#endif
+#endif /* PR_SHARED_MODULE */
   pr_event_register(&proxy_module, "core.postparse", proxy_postparse_ev, NULL);
   pr_event_register(&proxy_module, "core.restart", proxy_restart_ev, NULL);
   pr_event_register(&proxy_module, "core.shutdown", proxy_shutdown_ev, NULL);
@@ -5437,6 +5465,11 @@ static int proxy_init(void) {
   if (proxy_db_init(proxy_pool) < 0) {
     return -1;
   }
+
+  /* We need to do this now, before parsing, in case the configuration uses
+   * algorithms provided by our custom provider.
+   */
+  proxy_ssh_provider_init();
 
   return 0;
 }

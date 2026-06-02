@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH crypto
- * Copyright (c) 2021-2025 TJ Saunders
+ * Copyright (c) 2021-2026 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,8 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335, USA.
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
  *
  * As a special exemption, TJ Saunders and other respective copyright holders
  * give permission to link this program with OpenSSL, and distribute the
@@ -759,6 +758,9 @@ static const EVP_CIPHER *get_aes_ctr_cipher(int key_len) {
 }
 #endif /* OpenSSL implements AES CTR modes */
 
+#if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL)
+/* We'll use the Provider interface for UMAC digests in this case. */
+#else
 static int update_umac64(EVP_MD_CTX *ctx, const void *data, size_t len) {
   int res;
   void *md_data;
@@ -887,12 +889,26 @@ static int delete_umac128(EVP_MD_CTX *ctx) {
 
   return 1;
 }
+#endif /* OpenSSL before 4.x */
 
-static const EVP_MD *get_umac64_digest(void) {
-  EVP_MD *md;
+static const EVP_MD *get_umac64_digest(int *free_md) {
+  EVP_MD *md = NULL;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+  *free_md = FALSE;
+
+#if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL)
+  md = EVP_MD_fetch(NULL, "umac64", NULL);
+  if (md == NULL) {
+    pr_trace_msg(trace_channel, 4, "error fetching 'umac64' EVP_MD: %s",
+      proxy_ssh_crypto_get_errors());
+
+  } else {
+    *free_md = TRUE;
+  }
+
+#else
+# if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
+     !defined(HAVE_LIBRESSL)
   /* XXX TODO: At some point, we also need to call EVP_MD_meth_free() on
    * this, to avoid a resource leak.
    */
@@ -903,7 +919,7 @@ static const EVP_MD *get_umac64_digest(void) {
   EVP_MD_meth_set_update(md, update_umac64);
   EVP_MD_meth_set_final(md, final_umac64);
   EVP_MD_meth_set_cleanup(md, delete_umac64);
-#else
+# else
   static EVP_MD umac64_digest;
 
   memset(&umac64_digest, 0, sizeof(EVP_MD));
@@ -917,16 +933,30 @@ static const EVP_MD *get_umac64_digest(void) {
   umac64_digest.block_size = 32;
 
   md = &umac64_digest;
-#endif /* prior to OpenSSL-1.1.0 */
+# endif /* prior to OpenSSL-1.1.0 */
+#endif /* OpenSSL before 4.x */
 
   return md;
 }
 
-static const EVP_MD *get_umac128_digest(void) {
+static const EVP_MD *get_umac128_digest(int *free_md) {
   EVP_MD *md;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+  *free_md = FALSE;
+
+#if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL)
+  md = EVP_MD_fetch(NULL, "umac128", NULL);
+  if (md == NULL) {
+    pr_trace_msg(trace_channel, 4, "error fetching 'umac64' EVP_MD: %s",
+      proxy_ssh_crypto_get_errors());
+
+  } else {
+    *free_md = TRUE;
+  }
+
+#else
+# if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
+     !defined(HAVE_LIBRESSL)
   /* XXX TODO: At some point, we also need to call EVP_MD_meth_free() on
    * this, to avoid a resource leak.
    */
@@ -938,7 +968,7 @@ static const EVP_MD *get_umac128_digest(void) {
   EVP_MD_meth_set_final(md, final_umac128);
   EVP_MD_meth_set_cleanup(md, delete_umac128);
 
-#else
+# else
   static EVP_MD umac128_digest;
 
   memset(&umac128_digest, 0, sizeof(EVP_MD));
@@ -952,7 +982,8 @@ static const EVP_MD *get_umac128_digest(void) {
   umac128_digest.block_size = 64;
 
   md = &umac128_digest;
-#endif /* prior to OpenSSL-1.1.0 */
+# endif /* prior to OpenSSL-1.1.0 */
+#endif /* OpenSSL before 4.x */
 
   return md;
 }
@@ -1048,13 +1079,26 @@ const EVP_CIPHER *proxy_ssh_crypto_get_cipher(const char *name, size_t *key_len,
   return NULL;
 }
 
-const EVP_MD *proxy_ssh_crypto_get_digest(const char *name, uint32_t *mac_len) {
+void proxy_ssh_crypto_free_digest(const EVP_MD *md) {
+#if (OPENSSL_VERSION_NUMBER >= 0x30000000L && !defined(HAVE_LIBRESSL)) || \
+     (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3080000L)
+  EVP_MD_free((EVP_MD *) md);
+#else
+  /* Avoid compiler warnings. */
+  (void) md;
+#endif /* OpenSSL-3.x/LibreSSL-3.8.x and later */
+}
+
+const EVP_MD *proxy_ssh_crypto_get_digest(const char *name, uint32_t *mac_len,
+    int *free_md) {
   register unsigned int i;
 
   if (name == NULL) {
     errno = EINVAL;
     return NULL;
   }
+
+  *free_md = FALSE;
 
   for (i = 0; digests[i].name; i++) {
     if (strcmp(digests[i].name, name) == 0) {
@@ -1063,11 +1107,11 @@ const EVP_MD *proxy_ssh_crypto_get_digest(const char *name, uint32_t *mac_len) {
 #if OPENSSL_VERSION_NUMBER > 0x000907000L
       if (strcmp(name, "umac-64@openssh.com") == 0 ||
           strcmp(name, "umac-64-etm@openssh.com") == 0) {
-        digest = get_umac64_digest();
+        digest = get_umac64_digest(free_md);
 
       } else if (strcmp(name, "umac-128@openssh.com") == 0 ||
                  strcmp(name, "umac-128-etm@openssh.com") == 0) {
-        digest = get_umac128_digest();
+        digest = get_umac128_digest(free_md);
 #else
       if (FALSE) {
 #endif /* OpenSSL older than 0.9.7 */

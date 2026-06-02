@@ -1,6 +1,6 @@
 /*
- * ProFTPD - mod_proxy SSH crypto API
- * Copyright (c) 2021-2026 TJ Saunders
+ * ProFTPD - mod_proxy OpenSSL provider
+ * Copyright (c) 2026 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,27 +21,12 @@
  * source distribution.
  */
 
-#ifndef MOD_PROXY_SSH_CRYPTO_H
-#define MOD_PROXY_SSH_CRYPTO_H
+#ifndef MOD_PROXY_SSH_PROVIDER_H
+#define MOD_PROXY_SSH_PROVIDER_H
 
 #include "mod_proxy.h"
 
-#include <openssl/evp.h>
+int proxy_ssh_provider_init(void);
+void proxy_ssh_provider_free(void);
 
-#if defined(EVP_PKEY_X25519)
-# define HAVE_X25519_OPENSSL	1
-#endif /* EVP_PKEY_X25519 */
-
-void proxy_ssh_crypto_free(int flags);
-const EVP_CIPHER *proxy_ssh_crypto_get_cipher(const char *algo, size_t *key_len,
-  size_t *auth_len, size_t *discard_len);
-const EVP_MD *proxy_ssh_crypto_get_digest(const char *algo, uint32_t *mac_len,
-  int *free_digest);
-void proxy_ssh_crypto_free_digest(const EVP_MD *md);
-const char *proxy_ssh_crypto_get_kexinit_cipher_list(pool *p);
-const char *proxy_ssh_crypto_get_kexinit_digest_list(pool *p);
-
-const char *proxy_ssh_crypto_get_errors(void);
-size_t proxy_ssh_crypto_get_size(size_t, size_t);
-
-#endif /* MOD_PROXY_SSH_CRYPTO_H */
+#endif /* MOD_PROXY_SSH_PROVIDER_H */
