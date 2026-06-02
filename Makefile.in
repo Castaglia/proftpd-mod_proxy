@@ -47,6 +47,7 @@ MODULE_OBJS=mod_proxy.o \
   lib/proxy/ssh/cipher.o \
   lib/proxy/ssh/compress.o \
   lib/proxy/ssh/crypto.o \
+  lib/proxy/ssh/provider.o \
   lib/proxy/ssh/disconnect.o \
   lib/proxy/ssh/interop.o \
   lib/proxy/ssh/kex.o \
@@ -98,6 +99,7 @@ SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/ssh/cipher.lo \
   lib/proxy/ssh/compress.lo \
   lib/proxy/ssh/crypto.lo \
+  lib/proxy/ssh/provider.lo \
   lib/proxy/ssh/disconnect.lo \
   lib/proxy/ssh/interop.lo \
   lib/proxy/ssh/kex.lo \

@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH implementation
- * Copyright (c) 2021-2025 TJ Saunders
+ * Copyright (c) 2021-2026 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,8 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335, USA.
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
  *
  * As a special exemption, TJ Saunders and other respective copyright holders
  * give permission to link this program with OpenSSL, and distribute the
@@ -35,6 +34,7 @@
 #include "proxy/ssh/db.h"
 #include "proxy/ssh/redis.h"
 #include "proxy/ssh/crypto.h"
+#include "proxy/ssh/provider.h"
 #include "proxy/ssh/packet.h"
 #include "proxy/ssh/interop.h"
 #include "proxy/ssh/kex.h"
@@ -758,6 +758,7 @@ int proxy_ssh_free(pool *p) {
   proxy_ssh_cipher_free();
   proxy_ssh_mac_free();
   proxy_ssh_utf8_free();
+  proxy_ssh_provider_free();
   proxy_ssh_crypto_free(0);
 
   return 0;
