@@ -35,7 +35,7 @@
  */
 
 #if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL) && \
-    PROFTPD_VERSION_NUMBER < 0x0001031002
+    PROFTPD_VERSION_NUMBER < 0x0001030A02
 # include <openssl/core.h>
 # include <openssl/core_dispatch.h>
 # include <openssl/core_names.h>
@@ -288,7 +288,7 @@ static int umac_provider_init(const OSSL_CORE_HANDLE *core,
 
 int proxy_ssh_provider_init(void) {
 #if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL) && \
-    PROFTPD_VERSION_NUMBER < 0x0001031002
+    PROFTPD_VERSION_NUMBER < 0x0001030A02
   if (OSSL_PROVIDER_add_builtin(NULL, "umac", umac_provider_init) != 1) {
     pr_log_debug(DEBUG1, MOD_PROXY_VERSION
       ": error registering 'umac' OpenSSL provider: %s",
@@ -315,7 +315,7 @@ int proxy_ssh_provider_init(void) {
 
 void proxy_ssh_provider_free(void) {
 #if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL) && \
-    PROFTPD_VERSION_NUMBER < 0x0001031002
+    PROFTPD_VERSION_NUMBER < 0x0001030A02
   if (umac_provider != NULL) {
     OSSL_PROVIDER_unload(umac_provider);
     umac_provider = NULL;
