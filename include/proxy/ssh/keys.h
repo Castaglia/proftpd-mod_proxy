@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_proxy SSH keys API
- * Copyright (c) 2021-2025 TJ Saunders
+ * Copyright (c) 2021-2026 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,8 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Suite 500, Boston, MA 02110-1335, USA.
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
  *
  * As a special exemption, TJ Saunders and other respective copyright holders
  * give permission to link this program with OpenSSL, and distribute the
@@ -59,6 +58,9 @@ enum proxy_ssh_key_type_e proxy_ssh_keys_get_key_type(const char *algo);
 const char *proxy_ssh_keys_get_key_type_desc(enum proxy_ssh_key_type_e);
 
 void proxy_ssh_keys_free(void);
+int proxy_ssh_keys_compare_keys(pool *p, unsigned char *remote_key_data,
+  uint32_t remote_key_datalen, unsigned char *local_key_data,
+  uint32_t local_key_datalen);
 int proxy_ssh_keys_have_hostkey(enum proxy_ssh_key_type_e);
 int proxy_ssh_keys_get_hostkey(pool *p, const char *);
 const unsigned char *proxy_ssh_keys_get_hostkey_data(pool *,
