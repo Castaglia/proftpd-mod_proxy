@@ -1901,6 +1901,7 @@ const char *proxy_ssh_keys_get_key_type_desc(enum proxy_ssh_key_type_e key_type)
   return key_desc;
 }
 
+#if defined(PR_USE_OPENSSL_ECC)
 /* This is used to validate the ECDSA parameters we might receive e.g. from
  * a server.  These checks come from Section 3.2.2.1 of 'Standards for
  * Efficient Cryptography Group, "Elliptic Curve Cryptography", SEC 1,
@@ -2101,6 +2102,7 @@ int proxy_ssh_keys_validate_ecdsa_params(const EC_GROUP *group,
   BN_CTX_free(bn_ctx);
   return 0;
 }
+#endif /* PR_USE_OPENSSL_ECC */
 
 #ifdef SFTP_DEBUG_KEYS
 static void debug_rsa_key(pool *p, const char *label, RSA *rsa) {
