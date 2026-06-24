@@ -1211,6 +1211,7 @@ MODRET set_proxysftpkeyexchanges(cmd_rec *cmd) {
 #endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
 #if defined(HAVE_X25519_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
         strcmp(cmd->argv[i], "sntrup761x25519-sha512") != 0 &&
+        strcmp(cmd->argv[i], "sntrup761x25519-sha512@openssh.comf") != 0 &&
 #endif /* HAVE_X25519_OPENSSL and HAVE_SHA512_OPENSSL */
         strcmp(cmd->argv[i], "rsa1024-sha1") != 0) {
 
