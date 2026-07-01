@@ -23,6 +23,7 @@
 
 #include "mod_proxy.h"
 
+#include "proxy/ssh/ssh2.h"
 #include "proxy/ssh/msg.h"
 #include "proxy/ssh/packet.h"
 #include "proxy/ssh/crypto.h"
@@ -277,6 +278,16 @@ int proxy_ssh_compress_read_data(struct proxy_ssh_packet *pkt) {
 
               /* Keep increasing the size until it is large enough. */
               new_sz += payload_sz;
+            }
+
+            if (new_sz > PROXY_SSH_MAX_PACKET_LEN) {
+              (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "decompression error: inflated payload size (%lu bytes) "
+                "exceeds %lu byte maximum", (unsigned long) new_sz,
+                (unsigned long) PROXY_SSH_MAX_PACKET_LEN);
+              destroy_pool(sub_pool);
+              errno = EIO;
+              return -1;
             }
 
             pr_trace_msg(trace_channel, 20,
