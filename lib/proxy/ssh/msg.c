@@ -169,10 +169,10 @@ uint32_t proxy_ssh_msg_read_mpint(pool *p, unsigned char **buf,
     return 0;
   }
 
-  if (len > (1024 * 16)) {
+  if (mpint_len > (1024 * 16)) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "message format error: unable to handle mpint of %lu bytes",
-      (unsigned long) len);
+      (unsigned long) mpint_len);
     return 0;
   }
 
