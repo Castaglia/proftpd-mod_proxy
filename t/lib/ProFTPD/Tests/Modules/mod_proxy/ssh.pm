@@ -954,7 +954,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub ssh_rekey_with_algos {
@@ -1227,7 +1227,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_connect_bad_version_format {
@@ -1386,7 +1386,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_connect_timeoutlogin {
@@ -1573,7 +1573,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_kex_dh_group1_sha1 {
@@ -2452,7 +2452,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_hostbased {
@@ -2648,7 +2648,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_hostbased_failed {
@@ -2806,7 +2806,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_hostbased_passphraseprovider {
@@ -3002,7 +3002,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_hostbased_openssh_rsa {
@@ -3197,7 +3197,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_hostbased_rewrite_user {
@@ -3402,7 +3402,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_publickey {
@@ -3600,7 +3600,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_publickey_failed {
@@ -3758,7 +3758,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_publickey_rewrite_user {
@@ -3965,7 +3965,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_publickey_useproxyauth {
@@ -4165,7 +4165,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_publickey_useproxyauth_peruser {
@@ -4366,7 +4366,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_password {
@@ -4543,7 +4543,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_password_failed {
@@ -4725,7 +4725,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_password_with_banner {
@@ -4925,7 +4925,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_password_twice {
@@ -5127,7 +5127,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_password_rewrite_user {
@@ -5313,7 +5313,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_kbdint {
@@ -5563,7 +5563,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_kbdint_failed {
@@ -5734,7 +5734,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_kbdint_rewrite_user {
@@ -5993,7 +5993,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_chain_password_kbdint {
@@ -6246,7 +6246,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_auth_chain_publickey_kbdint {
@@ -6520,7 +6520,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_verify_server_off {
@@ -6716,7 +6716,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_verify_server_on {
@@ -6939,7 +6939,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_sftp_without_auth {
@@ -7082,7 +7082,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_sftp_stat {
@@ -7248,7 +7248,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_sftp_upload {
@@ -7489,7 +7489,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_sftp_download {
@@ -7737,7 +7737,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_sftp_readdir {
@@ -7954,7 +7954,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_scp_upload {
@@ -8151,7 +8151,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_scp_download {
@@ -8348,7 +8348,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_server_rekey_kex_dh_group1_sha1 {
@@ -8775,7 +8775,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_sighup {
@@ -8959,7 +8959,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_extlog {
@@ -9140,10 +9140,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_cleanup($setup->{log_file}, $ex);
-    die($ex);
-  }
+  test_cleanup($setup, $ex) if $ex;
 
   eval {
     if (open(my $fh, "< $extlog_file")) {
@@ -9251,7 +9248,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_connect_policy_per_host {
@@ -9456,7 +9453,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_connect_policy_per_user {
@@ -9679,7 +9676,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_connect_policy_per_user_by_json {
@@ -9921,7 +9918,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_connect_policy_per_group_password_auth {
@@ -10145,7 +10142,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_ssh_connect_policy_per_group_publickey_auth {
@@ -10371,7 +10368,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 1;

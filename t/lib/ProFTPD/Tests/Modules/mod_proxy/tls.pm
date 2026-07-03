@@ -1394,7 +1394,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_tls_implicit_login {
@@ -1491,7 +1491,7 @@ sub proxy_reverse_backend_tls_implicit_login {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 # TODO: Note that this test is used for manually reviewing the generated logs;
@@ -2645,7 +2645,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_backend_tls_list_pasv {
@@ -3060,7 +3060,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_frontend_backend_tls_peruser_login_after_host {
@@ -3553,7 +3553,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_frontend_backend_tls_list_port {
@@ -3751,7 +3751,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_frontend_backend_tls_nlst_pasv_error_issue244 {
@@ -3943,7 +3943,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_frontend_backend_tls_nlst_port_error_issue244 {
@@ -4139,7 +4139,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_frontend_backend_tls_abort {
@@ -4317,7 +4317,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_frontend_tls_json_peruser {
@@ -5155,7 +5155,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_backend_tls_engine_match_client_ftps_explicit {
@@ -5308,7 +5308,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_backend_tls_engine_match_client_ftps_implicit {
@@ -5462,7 +5462,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_backend_tls_connect_policy_per_user {
@@ -6375,10 +6375,9 @@ EOC
 
   # Stop server
   server_stop($setup->{pid_file});
-
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_frontend_backend_tls_required_use_direct_data_transfers_pasv {
@@ -6569,10 +6568,9 @@ EOC
 
   # Stop server
   server_stop($setup->{pid_file});
-
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_proxy_protocol_v2_tlv_ssl {
@@ -6757,7 +6755,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_frontend_tls_noproxyauth_login {
@@ -7182,7 +7180,7 @@ sub proxy_forward_backend_tls_implicit_login {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_backend_tls_login_failed_unknown_ca {
@@ -7481,7 +7479,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_config_backend_tls_engine_match_client_ftps_explicit {
@@ -7631,7 +7629,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_config_backend_tls_engine_match_client_ftps_implicit {
@@ -7782,7 +7780,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_backend_tls_list_pasv {
@@ -8559,7 +8557,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub forward_frontend_backend_tls_tls_xfer_policy {
@@ -8795,7 +8793,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_frontend_plain_backend_tls_list_pasv_tls_xfer_policy_required {
@@ -9057,10 +9055,9 @@ EOC
 
   # Stop server
   server_stop($setup->{pid_file});
-
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_config_frontend_backend_tls_required_use_direct_data_transfers_pasv {
@@ -9226,10 +9223,9 @@ EOC
 
   # Stop server
   server_stop($setup->{pid_file});
-
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 1;
