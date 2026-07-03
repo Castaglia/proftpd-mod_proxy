@@ -79,13 +79,14 @@ int proxy_ftp_dirlist_init(pool *p, struct proxy_session *proxy_sess) {
   ctx->skip_total = TRUE;
 
   /* This is the maximum size of one line, per mod_ls.  Be aware, however, that
-   * we may be talking to non-ProFTPD servers, whose behaviors will be different.
+   * we may be talking to non-ProFTPD servers, whose behaviors will be
+   * different.
    */
   ctx->input_textsz = (PR_TUNABLE_PATH_MAX * 2) + 256;
-  ctx->input_ptr = ctx->input_text = palloc(ctx_pool, ctx->input_textsz);
+  ctx->input_ptr = ctx->input_text = pcalloc(ctx_pool, ctx->input_textsz);
 
   ctx->output_textsz = (pr_config_get_server_xfer_bufsz(PR_NETIO_IO_WR) * 64);
-  ctx->output_ptr = ctx->output_text = palloc(ctx_pool, ctx->output_textsz);
+  ctx->output_ptr = ctx->output_text = pcalloc(ctx_pool, ctx->output_textsz);
 
   proxy_sess->dirlist_ctx = (void *) ctx;
   return 0;
@@ -1406,7 +1407,7 @@ int proxy_ftp_dirlist_to_text(pool *p, char *buf, size_t buflen,
     /* XXX What to do if this will exceed capacity of output buffer? */
     /* TODO: Watch for output_linelen > (ctx->output_textsz - ctx->output_textlen),
      * and rejigger this function to handle the case of "no more input to
-     * accumulate, but have unprocess input".
+     * accumulate, but have unprocessed input".
      */
 
     sstrcat(ctx->output_text, output_line,
