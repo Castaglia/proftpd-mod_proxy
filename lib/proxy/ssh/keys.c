@@ -146,6 +146,9 @@ struct proxy_ssh_pkey_data {
 #define PROXY_SSH_OPENSSH_KDFNAME	"bcrypt"
 #define PROXY_SSH_OPENSSH_MAGIC		"openssh-key-v1"
 
+/* Impose a maximum size of OpenSSH private keys files. */
+#define PROXY_SSH_OPENSSH_KEY_MAX_SZ	(1024 * 64)
+
 /* Encryption cipher info. */
 struct openssh_cipher {
   const char *algo;
@@ -1090,7 +1093,7 @@ static int get_passphrase(struct proxy_ssh_pkey *k, const char *path) {
     RAND_add(pdata.buf, pdata.buflen, pdata.buflen * 0.25);
 #endif
 
-#ifdef HAVE_MLOCK
+#if defined(HAVE_MLOCK)
     PRIVS_ROOT
     if (mlock(k->client_pkey, k->pkeysz) < 0) {
       pr_log_debug(DEBUG1, MOD_PROXY_VERSION
@@ -1100,7 +1103,7 @@ static int get_passphrase(struct proxy_ssh_pkey *k, const char *path) {
       pr_log_debug(DEBUG1, MOD_PROXY_VERSION ": passphrase locked into memory");
     }
     PRIVS_RELINQUISH
-#endif
+#endif /* HAVE_MLOCK */
   }
 
   return 0;
@@ -1114,7 +1117,7 @@ static struct proxy_ssh_pkey *lookup_pkey(void) {
     /* If this pkey matches the current server_rec, mark it and move on. */
     if (k->server == main_server) {
 
-#ifdef HAVE_MLOCK
+#if defined(HAVE_MLOCK)
       /* mlock() the passphrase memory areas again; page locks are not
        * inherited across forks.
        */
@@ -1461,7 +1464,7 @@ static uint32_t read_pkey_from_data(pool *p, unsigned char *pkey_data,
     return 0;
 #endif /* !OPENSSL_NO_DSA */
 
-#ifdef PR_USE_OPENSSL_ECC
+#if defined(PR_USE_OPENSSL_ECC)
   } else if (strcmp(pkey_type, "ecdsa-sha2-nistp256") == 0 ||
              strcmp(pkey_type, "ecdsa-sha2-nistp384") == 0 ||
              strcmp(pkey_type, "ecdsa-sha2-nistp521") == 0) {
@@ -2120,7 +2123,7 @@ int proxy_ssh_keys_validate_ecdsa_params(const EC_GROUP *group,
 }
 #endif /* PR_USE_OPENSSL_ECC */
 
-#ifdef SFTP_DEBUG_KEYS
+#if defined(SFTP_DEBUG_KEYS)
 static void debug_rsa_key(pool *p, const char *label, RSA *rsa) {
   BIO *bio = NULL;
   char *data;
@@ -2139,7 +2142,7 @@ static void debug_rsa_key(pool *p, const char *label, RSA *rsa) {
 
   BIO_free(bio);
 }
-#endif
+#endif /* SFTP_DEBUG_KEYS */
 
 static int get_pkey_type(EVP_PKEY *pkey) {
   int pkey_type;
@@ -2164,10 +2167,10 @@ static int rsa_compare_keys(pool *p, EVP_PKEY *remote_pkey,
   local_rsa = EVP_PKEY_get1_RSA(local_pkey);
   remote_rsa = EVP_PKEY_get1_RSA(remote_pkey);
 
-#ifdef SFTP_DEBUG_KEYS
+#if defined(SFTP_DEBUG_KEYS)
   debug_rsa_key(p, "remote RSA key:", remote_rsa);
   debug_rsa_key(p, "local RSA key:", local_rsa);
-#endif
+#endif /* SFTP_DEBUG_KEYS */
 
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
     !defined(HAVE_LIBRESSL)
@@ -2406,7 +2409,7 @@ int proxy_ssh_keys_compare_keys(pool *p,
       }
 #endif /* !OPENSSL_NO_DSA */
 
-#ifdef PR_USE_OPENSSL_ECC
+#if defined(PR_USE_OPENSSL_ECC)
       case EVP_PKEY_EC: {
         if (ecdsa_compare_keys(p, remote_pkey, local_pkey) == 0) {
           res = TRUE;
@@ -2772,7 +2775,7 @@ static int handle_hostkey(pool *p, EVP_PKEY *pkey,
       break;
     }
 
-#ifdef PR_USE_OPENSSL_ECC
+#if defined(PR_USE_OPENSSL_ECC)
     case EVP_PKEY_EC: {
       EC_KEY *ec;
       int ec_nid;
@@ -3591,11 +3594,19 @@ static int read_openssh_private_key(pool *p, const char *path, int fd,
     return -1;
   }
 
-  tmp_pool = make_sub_pool(p);
-
   /* Read the entire file into memory. */
-  /* TODO: Impose maximum size limit for this treatment? */
+
   input_sz = st.st_size;
+  if (input_sz > PROXY_SSH_OPENSSH_KEY_MAX_SZ) {
+    (void) pr_log_debug(DEBUG0, MOD_PROXY_VERSION
+      ": unable to read '%s': file size %lu bytes exceeds maximum %lu bytes",
+      path, (unsigned long) st.st_size,
+      (unsigned long) PROXY_SSH_OPENSSH_KEY_MAX_SZ);
+    errno = E2BIG;
+    return -1;
+  }
+
+  tmp_pool = make_sub_pool(p);
   input_ptr = input_buf = palloc(tmp_pool, input_sz);
   input_len = 0;
 
@@ -4958,7 +4969,7 @@ const unsigned char *proxy_ssh_keys_sign_data(pool *p,
       break;
 #endif /* !OPENSSL_NO_DSA */
 
-#ifdef PR_USE_OPENSSL_ECC
+#if defined(PR_USE_OPENSSL_ECC)
     case PROXY_SSH_KEY_ECDSA_256:
       res = ecdsa_sign_data(p, data, datalen, siglen, NID_X9_62_prime256v1);
       break;
@@ -5030,7 +5041,7 @@ int proxy_ssh_keys_verify_pubkey_type(pool *p, unsigned char *pubkey_data,
       res = (get_pkey_type(pkey) == EVP_PKEY_DSA);
       break;
 
-#ifdef PR_USE_OPENSSL_ECC
+#if defined(PR_USE_OPENSSL_ECC)
     case PROXY_SSH_KEY_ECDSA_256:
     case PROXY_SSH_KEY_ECDSA_384:
     case PROXY_SSH_KEY_ECDSA_521:
@@ -5712,7 +5723,7 @@ int proxy_ssh_keys_verify_signed_data(pool *p, const char *pubkey_algo,
       sig_datalen);
 #endif /* !OPENSSL_NO_DSA */
 
-#ifdef PR_USE_OPENSSL_ECC
+#if defined(PR_USE_OPENSSL_ECC)
   } else if (strcmp(sig_type, "ecdsa-sha2-nistp256") == 0 ||
              strcmp(sig_type, "ecdsa-sha2-nistp384") == 0 ||
              strcmp(sig_type, "ecdsa-sha2-nistp521") == 0) {
