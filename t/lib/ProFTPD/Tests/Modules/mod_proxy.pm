@@ -1356,7 +1356,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_connect_failed_bad_dst_addr {
@@ -1458,7 +1458,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_connect_failed_non2xx {
@@ -1738,7 +1738,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_login {
@@ -2400,7 +2400,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_login_extra_pass {
@@ -2841,7 +2841,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_login_no_backend_proxy_protocol {
@@ -2954,7 +2954,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_feat {
@@ -3225,7 +3225,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_list_pasv {
@@ -3542,10 +3542,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if (defined($ex)) {
-    test_cleanup($setup->{log_file}, $ex);
-    die($ex);
-  }
+  test_cleanup($setup, $ex) if $ex;
 
   eval {
     if (open(my $fh, "< $setup->{log_file}")) {
@@ -3579,7 +3576,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_pasv_allowforeignaddress_allowed_by_class_issue223 {
@@ -3726,10 +3723,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if (defined($ex)) {
-    test_cleanup($setup->{log_file}, $ex);
-    die($ex);
-  }
+  test_cleanup($setup, $ex) if $ex;
 
   eval {
     if (open(my $fh, "< $setup->{log_file}")) {
@@ -3763,7 +3757,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_list_port {
@@ -4441,7 +4435,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_port_allowforeignaddress_allowed_by_class_issue223 {
@@ -4584,7 +4578,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_epsv {
@@ -5211,7 +5205,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_eprt_allowforeignaddress_allowed_by_class_issue223 {
@@ -5346,7 +5340,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_retr_pasv_ascii {
@@ -5507,7 +5501,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_retr_pasv_binary {
@@ -5668,7 +5662,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_retr_large_file {
@@ -5834,7 +5828,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_retr_empty_file {
@@ -5998,7 +5992,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_retr_abort {
@@ -6153,7 +6147,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_stor_pasv {
@@ -6296,7 +6290,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_stor_port {
@@ -6439,7 +6433,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_stor_large_file {
@@ -6586,7 +6580,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_stor_empty_file {
@@ -6728,7 +6722,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_stor_pasv_eperm {
@@ -6886,7 +6880,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_stor_port_eperm {
@@ -7044,7 +7038,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_stor_abort {
@@ -7181,7 +7175,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_rest_retr {
@@ -7352,7 +7346,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_rest_stor {
@@ -7525,7 +7519,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_stat {
@@ -7666,7 +7660,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_unknown_cmd {
@@ -10390,7 +10384,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_timeoutstalled_backend {
@@ -10555,7 +10549,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_datatransferpolicy_pasv_list_pasv {
@@ -13377,6 +13371,9 @@ EOC
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -13409,7 +13406,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_directorylistpolicy_list_unix {
@@ -13471,12 +13468,18 @@ sub proxy_reverse_config_directorylistpolicy_list_unix {
     die("Can't chdir to $cwd: $!");
   }
 
+  if ($< == 0) {
+    unless (chown($setup->{uid}, $setup->{gid}, $test_file, $sub_dir)) {
+      die("Can't set owner of $test_file to $setup->{uid}/$setup->{gid}: $!");
+    }
+  }
+
   my $config = {
     PidFile => $setup->{pid_file},
     ScoreboardFile => $setup->{scoreboard_file},
     SystemLog => $setup->{log_file},
     TraceLog => $setup->{log_file},
-    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:30 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.dirlist:20 proxy.ftp.msg:20',
+    Trace => 'DEFAULT:10 event:0 lock:0 scoreboard:0 signal:0 proxy:30 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:30 proxy.ftp.dirlist:30 proxy.ftp.msg:20 proxy.netio:30',
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
@@ -13562,6 +13565,7 @@ EOC
 
       my $buf;
       $conn->read($buf, 8192, 10);
+      sleep(0.25);
       eval { $conn->close() };
 
       if ($ENV{TEST_VERBOSE}) {
@@ -13620,6 +13624,9 @@ EOC
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -13652,7 +13659,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_directorylistpolicy_list_unix_use_slink {
@@ -13873,6 +13880,9 @@ EOC
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -13905,7 +13915,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_directorylistpolicy_list_unix_wide_dir {
@@ -14110,7 +14120,14 @@ EOC
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         next if $name =~ /^test_/;
+
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
 
         unless (defined($expected->{$name})) {
           $mismatch = $name;
@@ -14144,7 +14161,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_directorylistpolicy_list_windows {
@@ -14321,6 +14338,9 @@ EOC
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -14353,7 +14373,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_directorylistpolicy_list_backend_error {
@@ -14507,7 +14527,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_directorylistpolicy_list_opts_mlst {
@@ -14724,6 +14744,9 @@ EOC
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -14756,7 +14779,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_connect_policy_random {
@@ -17339,7 +17362,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_use_reverse_proxy_auth_login_extra_pass {
@@ -17778,10 +17801,9 @@ EOC
 
   # Stop server
   server_stop($setup->{pid_file});
-
   $self->assert_child_ok($pid);
 
-  test_cleanup($self->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_use_direct_data_transfers_port_failed {
@@ -17907,10 +17929,9 @@ EOC
 
   # Stop server
   server_stop($setup->{pid_file});
-
   $self->assert_child_ok($pid);
 
-  test_cleanup($self->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_use_direct_data_transfers_list_failed {
@@ -18036,10 +18057,9 @@ EOC
 
   # Stop server
   server_stop($setup->{pid_file});
-
   $self->assert_child_ok($pid);
 
-  test_cleanup($self->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_use_direct_data_transfers_pasv {
@@ -18158,10 +18178,9 @@ EOC
 
   # Stop server
   server_stop($setup->{pid_file});
-
   $self->assert_child_ok($pid);
 
-  test_cleanup($self->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_limit_list_deny_all {
@@ -21870,7 +21889,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_proxy_protocol_v2_ipv6 {
@@ -21981,7 +22000,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_proxy_protocol_v2_tlv_alpn {
@@ -22123,7 +22142,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_proxy_protocol_v2_tlv_authority {
@@ -22267,7 +22286,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_proxy_protocol_v2_tlv_unique_id {
@@ -22409,7 +22428,7 @@ EOC
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_reverse_config_reverseservers_json {
@@ -22853,7 +22872,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_connect_failed_timeout {
@@ -22975,7 +22994,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_noproxyauth_login {
@@ -23080,7 +23099,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_noproxyauth_login_after_host {
@@ -23379,7 +23398,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_noproxyauth_login_extra_pass {
@@ -23793,7 +23812,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_noproxyauth_login_failed_bad_dst_addr {
@@ -23915,7 +23934,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_noproxyauth_login_failed_proxy_dst_addr {
@@ -24036,7 +24055,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_noproxyauth_login_failed_non2xx {
@@ -24336,7 +24355,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_noproxyauth_login_failed_bad_sequence {
@@ -24456,7 +24475,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_noproxyauth_login_failed_bad_dst_passwd {
@@ -24756,7 +24775,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_noproxyauth_sni_login_backend_ftps {
@@ -24902,7 +24921,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_noproxyauth_sni_login_failed_no_tls {
@@ -25025,7 +25044,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_noproxyauth_sni_login_failed_no_tls_sni {
@@ -25168,7 +25187,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_noproxyauth_sni_login_failed_proxyforwardto_mismatch {
@@ -25309,7 +25328,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_login_feat_first {
@@ -26062,7 +26081,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_eprt_ipv6 {
@@ -27351,7 +27370,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_userwithproxyauth_login_failed_non2xx {
@@ -29106,7 +29125,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_proxyuserwithproxyauth_login_failed_bad_dst_addr {
@@ -29242,7 +29261,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_proxyuserwithproxyauth_login_failed_non2xx {
@@ -30793,10 +30812,9 @@ EOC
 
   # Stop server
   server_stop($setup->{pid_file});
-
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub proxy_forward_config_use_direct_data_transfers_pasv {
@@ -30916,10 +30934,9 @@ EOC
 
   # Stop server
   server_stop($setup->{pid_file});
-
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 1;
