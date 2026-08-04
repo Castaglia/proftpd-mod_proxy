@@ -56,7 +56,7 @@ jobs:
         if: ${{ matrix.container == 'ubuntu:22.04' }}
         run: |
           apt-get update -qq
-          apt-get install -y git
+          apt-get install -y git --no-install-recommends
           cd proftpd/contrib/mod_proxy
           if [[ -n $(git diff --check HEAD^) ]]; then
             echo "You must remove whitespace before submitting a pull request"
@@ -107,22 +107,22 @@ jobs:
         run: |
           apt-get update -qq
           # for builds
-          apt-get install -y clang gcc make
+          apt-get install -y --no-install-recommends clang gcc make
           # for unit tests
-          apt-get install -y check libsubunit-dev
+          apt-get install -y --no-install-recommends check libsubunit-dev
 
           # for Redis support 
-          apt-get install -y libhiredis-dev
+          apt-get install -y --no-install-recommends libhiredis-dev
           # for OpenSSL support
-          apt-get install -y libssl-dev
+          apt-get install -y --no-install-recommends libssl-dev
           # for SQLite support
-          apt-get install -y libsqlite3-dev sqlite3
+          apt-get install -y --no-install-recommends libsqlite3-dev sqlite3
 
           # for test code coverage
-          apt-get install -y lcov ruby
+          apt-get install -y --no-install-recommends lcov ruby
           gem install coveralls-lcov
           # for HTML validation
-          apt-get install -y tidy
+          apt-get install -y --no-install-recommends tidy
           # for debugging
           clang --version
           gcc --version
