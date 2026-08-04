@@ -68,19 +68,19 @@ jobs:
         run: |
           apt-get update -qq
           # for builds
-          apt-get install -y gcc git make tzdata
+          apt-get install -y --no-install-recommends gcc git make tzdata
 
           # for Redis support 
-          apt-get install -y libhiredis-dev
+          apt-get install -y --no-install-recommends libhiredis-dev
           # for OpenSSL support
-          apt-get install -y libssl-dev
+          apt-get install -y --no-install-recommends libssl-dev
           # for SQLite support
-          apt-get install -y libsqlite3-dev sqlite3
+          apt-get install -y --no-install-recommends libsqlite3-dev sqlite3
           # for Sodium support
-          apt-get install -y --force-yes libsodium-dev
+          apt-get install -y --force-yes --no-install-recommends libsodium-dev
 
           # for integration/regression tests
-          apt-get install -y \
+          apt-get install -y --no-install-recommends \
             libauthen-oath-perl \
             libcompress-raw-zlib-perl \
             libdata-dumper-simple-perl \
