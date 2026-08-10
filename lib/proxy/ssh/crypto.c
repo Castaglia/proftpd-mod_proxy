@@ -1415,8 +1415,16 @@ const char *proxy_ssh_crypto_get_errors(void) {
 
   datalen = BIO_get_mem_data(bio, &data);
   if (data != NULL) {
+    pool *error_pool = NULL;
+
     data[datalen] = '\0';
-    str = pstrdup(proxy_pool, data);
+
+    error_pool = session.pool;
+    if (error_pool == NULL) {
+      error_pool = proxy_pool;
+    }
+
+    str = pstrdup(error_pool, data);
   }
 
   if (bio != NULL) {
