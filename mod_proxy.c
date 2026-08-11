@@ -5289,6 +5289,20 @@ static void proxy_postparse_ev(const void *event_data, void *user_data) {
       "Failed reverse proxy initialization");
   }
 
+  /* Deal with initializing OpenSSL, before we initialize our SSH and TLS
+   * APIs, in the event that neither mod_sftp nor mod_tls are present.
+   */
+  if (pr_module_exists("mod_sftp.c") == FALSE &&
+      pr_module_exists("mod_tls.c") == FALSE) {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+    OPENSSL_config(NULL);
+#endif /* prior to OpenSSL-1.1.x */
+    ERR_load_crypto_strings();
+    OpenSSL_add_all_algorithms();
+    SSL_load_error_strings();
+    SSL_library_init();
+  }
+
   if (proxy_ssh_init(proxy_pool, proxy_tables_dir, 0) < 0) {
     pr_log_pri(PR_LOG_WARNING, MOD_PROXY_VERSION
       ": unable to initialize SSH support, failing to start up: %s",

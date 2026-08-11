@@ -2492,21 +2492,12 @@ int proxy_tls_init(pool *p, const char *tables_path, int flags) {
     return -1;
   }
 
-  if (pr_module_exists("mod_sftp.c") == FALSE &&
-      pr_module_exists("mod_tls.c") == FALSE) {
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
-    OPENSSL_config(NULL);
-#endif /* prior to OpenSSL-1.1.x */
-    SSL_load_error_strings();
-    SSL_library_init();
-    ERR_load_crypto_strings();
-    OpenSSL_add_all_algorithms();
-  }
-
+#if defined(PR_USE_OPENSSL)
   res = init_ssl_ctx();
   if (res < 0) {
     return -1;
   }
+#endif /* PR_USE_OPENSSL */
 
   tls_tables_path = pstrdup(proxy_pool, tables_path);
 
@@ -2522,10 +2513,12 @@ int proxy_tls_free(pool *p) {
     return -1;
   }
 
+#if defined(PR_USE_OPENSSL)
   if (ssl_ctx != NULL) {
     SSL_CTX_free(ssl_ctx);
     ssl_ctx = NULL;
   }
+#endif /* PR_USE_OPENSSL */
 
   if (tls_ds.dsh != NULL) {
     int res;

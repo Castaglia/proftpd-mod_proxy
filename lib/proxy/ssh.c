@@ -697,17 +697,6 @@ int proxy_ssh_init(pool *p, const char *tables_path, int flags) {
     return -1;
   }
 
-  if (pr_module_exists("mod_sftp.c") == FALSE &&
-      pr_module_exists("mod_tls.c") == FALSE) {
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
-    OPENSSL_config(NULL);
-#endif /* prior to OpenSSL-1.1.x */
-    SSL_load_error_strings();
-    SSL_library_init();
-    ERR_load_crypto_strings();
-    OpenSSL_add_all_algorithms();
-  }
-
   ssh_tables_path = pstrdup(proxy_pool, tables_path);
 
   /* Initialize SSH API */
