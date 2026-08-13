@@ -175,8 +175,8 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
     }
 
     pr_trace_msg(trace_channel, 19,
-      "received response text: '%.*s' (%lu bytes)", (int) buflen, buf,
-      (unsigned long) buflen);
+      "received response text: '%.*s' (%lu %s)", (int) buflen, buf,
+      (unsigned long) buflen, buflen != 1 ? "bytes" : "byte");
 
     if (buflen == 0 &&
         (flags & PROXY_FTP_CTRL_FL_IGNORE_BLANK_RESP)) {
@@ -206,8 +206,8 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
        */
       if (buflen < 4) {
         pr_trace_msg(trace_channel, 12,
-          "read %lu characters of response, needed at least %d",
-          (unsigned long) buflen, 4);
+          "read %lu %s of response, needed at least %d",
+          (unsigned long) buflen, buflen == 1 ? "bytes" : "byte", 4);
         errno = EINVAL;
         return NULL;
       }
@@ -273,8 +273,9 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
            */
           if (buflen < 3) {
             pr_trace_msg(trace_channel, 1,
-              "unexpectedly short (%lu bytes) multi-line response text; "
-              "minimum is 3 bytes", (unsigned long) buflen);
+              "unexpectedly short (%lu %s) multi-line response text; "
+              "minimum is 3 bytes", (unsigned long) buflen,
+              buflen != 1 ? "bytes" : "byte");
             errno = EINVAL;
             return NULL;
           }
