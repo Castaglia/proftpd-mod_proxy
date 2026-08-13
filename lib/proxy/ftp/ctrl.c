@@ -141,8 +141,8 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
   }
 
   while (TRUE) {
-    char c, *ptr;
-    int resp_code;
+    char c = 0, *ptr = NULL;
+    int resp_code = 0;
     size_t buflen;
 
     pr_signals_handle();
@@ -173,6 +173,10 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
       buf[buflen-1] = '\0';
       buflen--;
     }
+
+    pr_trace_msg(trace_channel, 19,
+      "received response text: '%.*s' (%lu bytes)", (int) buflen, buf,
+      (unsigned long) buflen);
 
     if (buflen == 0 &&
         (flags & PROXY_FTP_CTRL_FL_IGNORE_BLANK_RESP)) {
@@ -258,8 +262,19 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
           continue;
 
         } else {
-          /* Possible ending line of multi-line response. */
-          if (buflen < 4) {
+          /* Possible ending line of multi-line response.
+           *
+           * Ideally we'd enforce the RFC 959 requirement that the ending
+           * line of a multi-line response have at least 4 characters: the
+           * 3 digit response code, followed by a space character, optionally
+           * followed by more text.  Issue #328 demonstrates at least one
+           * server that ends its multi-line response with just the 3 digit
+           * response code; we'll allow this as well.
+           */
+          if (buflen < 3) {
+            pr_trace_msg(trace_channel, 1,
+              "unexpectedly short (%lu bytes) multi-line response text; "
+              "minimum is 3 bytes", (unsigned long) buflen);
             errno = EINVAL;
             return NULL;
           }
@@ -281,7 +296,8 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
             continue;
           }
 
-          if (buf[3] != ' ') {
+          if (buflen > 3 &&
+              buf[3] != ' ') {
             /* NOTE: We could/should be strict here, and require conformant
              * responses only.  For now, though, we'll proxy through the
              * backend's response to the frontend client, to let it decide
@@ -297,9 +313,15 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
       }
     }
 
-    ptr = &(buf[3]);
-    c = *ptr;
-    *ptr = '\0';
+    /* Be nice, and allow response lines of only 3 characters, for just the
+     * response code (Issue #328).
+     */
+    if (buflen > 3) {
+      ptr = &(buf[3]);
+      c = *ptr;
+      *ptr = '\0';
+    }
+
     resp_code = atoi(buf);
     if (resp_code < 100 ||
         resp_code >= 700) {
@@ -327,7 +349,7 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
     }
 
     if (resp->msg == NULL) {
-      if (buflen > 4) {
+      if (buflen > 3) {
         if (multi_line == TRUE) {
           *ptr = c;
           resp->msg = pstrdup(p, ptr);
@@ -344,12 +366,13 @@ pr_response_t *proxy_ftp_ctrl_recv_resp(pool *p, conn_t *ctrl_conn,
       /* If the character after the response code was a space, then this is
        * a single line response; we can be done now.
        */
-      if (c == ' ') {
+      if (buflen == 3 ||
+          c == ' ') {
         break;
       }
 
     } else {
-      if (buflen > 4) {
+      if (buflen > 3) {
         if (multi_line == TRUE) {
           *ptr = c;
 
