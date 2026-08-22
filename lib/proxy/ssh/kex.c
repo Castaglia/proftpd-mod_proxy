@@ -5167,7 +5167,7 @@ static int write_mlkem768_init(struct proxy_ssh_packet *pkt,
   uint32_t buflen, bufsz, len = 0;
   size_t key_len = 0;
 
-  /* In our MLKEM768 ECDH_INIT, we send our concatened mlkem768 public key,
+  /* In our MLKEM768 ECDH_INIT, we send our concatenated mlkem768 public key,
    * and our client x25519 public key.
    */
 
@@ -5616,7 +5616,7 @@ static int write_sntrup761_init(struct proxy_ssh_packet *pkt,
   unsigned char *buf, *ptr;
   uint32_t buflen, bufsz, len = 0;
 
-  /* In our sntrup761 ECDH_INIT, we send our concatened sntrup761 public key,
+  /* In our sntrup761 ECDH_INIT, we send our concatenated sntrup761 public key,
    * and our client x25519 public key.
    */
 

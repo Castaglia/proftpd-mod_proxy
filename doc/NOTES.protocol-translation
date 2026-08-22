@@ -93,9 +93,9 @@ FTP commands have no SFTP request equivalents.
     OPENDIR + READDIR + CLOSE
 
   MFF
-    FSETSTAT
+    SETSTAT
   MFMT
-    FSETSTAT
+    SETSTAT
 
   PWD
   XPWD

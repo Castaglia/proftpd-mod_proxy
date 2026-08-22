@@ -31,7 +31,7 @@ Reverse Proxy
   proxy connection?  Modifying of directory listing results as necessary
 
   How to map clients to origin servers?  By user name, by client IP, or...?
-  Re-use proxy USER/PASS with origin server, or override with shared/common
+  Reuse proxy USER/PASS with origin server, or override with shared/common
   origin server USER/PASS?  Round-robin, consistent hashing, load balance?
   *Do it based on USER: that's the one feature that mod_proxy can do (i.e.
    it's protocol-aware); the other implementations are TCP-specific, and

@@ -100,7 +100,7 @@ dnl Ideally we would link with libresolv using -lresolv.  However, it seems
 dnl that many Linux distributions shipped a broken version of libresolv.so
 dnl which did not export the necessary ns_initparse/ns_parserr symbols.  The
 dnl static version of libresolv shipped DOES provide those symbols (probably
-dnl for use by libc).  For these cases, we link againt the static library.
+dnl for use by libc).  For these cases, we link against the static library.
 
 ac_dns_libs=""
 AC_MSG_CHECKING([for resolver symbols in libc])
