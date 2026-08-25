@@ -22,6 +22,7 @@
  */
 
 #include "mod_proxy.h"
+#include "proxy/ssh.h"
 #include "proxy/ssh/crypto.h"
 #include "proxy/ssh/umac.h"
 
@@ -40,6 +41,8 @@
 # include <openssl/engine.h>
 static const char *crypto_engine = NULL;
 #endif
+
+static const char *trace_channel = "proxy.ssh.crypto";
 
 struct proxy_ssh_cipher {
   const char *name;
@@ -190,7 +193,92 @@ static struct proxy_ssh_digest digests[] = {
   { NULL, NULL, NULL, 0, FALSE, FALSE }
 };
 
-static const char *trace_channel = "proxy.ssh.crypto";
+/* Note that in this default list of key exchange algorithms, one of the
+ * REQUIRED algorithms is conspicuously absent:
+ *
+ *   diffie-hellman-group1-sha1
+ *
+ * This exchange has a weak hardcoded DH group, and will thus only be used
+ * if explicitly requested via ProxySFTPKeyExchanges, or if the AllowWeakDH
+ * SFTPOption is used.
+ */
+static const char *key_exchanges[] = {
+#if defined(HAVE_MLKEM768_OPENSSL) && defined(HAVE_SHA256_OPENSSL)
+  "mlkem768x25519-sha256",
+#endif /* HAVE_MLKEM768_OPENSSL and HAVE_SHA256_OPENSSL */
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+#if defined(HAVE_X25519_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+  "sntrup761x25519-sha512",
+  "sntrup761x25519-sha512@openssh.com",
+#endif /* HAVE_X25519_OPENSSL and HAVE_SHA512_OPENSSL */
+  "curve448-sha512",
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+#if defined(PR_USE_SODIUM) && defined(HAVE_SHA256_OPENSSL)
+  "curve25519-sha256",
+  "curve25519-sha256@libssh.org",
+#endif /* PR_USE_SODIUM and HAVE_SHA256_OPENSSL */
+#if defined(PR_USE_OPENSSL_ECC)
+  "ecdh-sha2-nistp521",
+  "ecdh-sha2-nistp384",
+  "ecdh-sha2-nistp256",
+#endif /* PR_USE_OPENSSL_ECC */
+
+#if (OPENSSL_VERSION_NUMBER > 0x000907000L && defined(OPENSSL_FIPS)) || \
+    (OPENSSL_VERSION_NUMBER > 0x000908000L)
+# if defined(HAVE_SHA512_OPENSSL)
+  "diffie-hellman-group18-sha512",
+  "diffie-hellman-group16-sha512",
+# endif /* HAVE_SHA512_OPENSSL */
+# if defined(HAVE_SHA256_OPENSSL)
+  "diffie-hellman-group14-sha256",
+  "diffie-hellman-group-exchange-sha256",
+# endif /* HAVE_SHA256_OPENSSL */
+#endif
+  "diffie-hellman-group-exchange-sha1",
+  "diffie-hellman-group14-sha1",
+
+#if 0
+/* We cannot currently support rsa2048-sha256, since it requires support
+ * for PKCS#1 v2.1 (RFC3447).  OpenSSL only supports PKCS#1 v2.0 (RFC2437)
+ * at present, which only allows EME-OAEP using SHA1.  v2.1 allows for
+ * using other message digests, e.g. SHA256, for EME-OAEP.
+ */
+#if ((OPENSSL_VERSION_NUMBER > 0x000907000L && defined(OPENSSL_FIPS)) || \
+     (OPENSSL_VERSION_NUMBER > 0x000908000L)) && \
+     defined(HAVE_SHA256_OPENSSL)
+  "rsa2048-sha256",
+#endif
+#endif
+
+  "rsa1024-sha1",
+  NULL,
+};
+
+static const char *hostkey_algos[] = {
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+  "ssh-ed448",
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+#if defined(PR_USE_SODIUM)
+  "ssh-ed25519",
+#endif /* PR_USE_SODIUM */
+#if defined(PR_USE_OPENSSL_ECC)
+  "ecdsa-sha2-nistp256",
+  "ecdsa-sha2-nistp384",
+  "ecdsa-sha2-nistp521",
+#endif /* PR_USE_OPENSSL_ECC */
+#if defined(HAVE_SHA512_OPENSSL)
+  "rsa-sha2-512",
+#endif /* HAVE_SHA512_OPENSSL */
+#if defined(HAVE_SHA256_OPENSSL)
+  "rsa-sha2-256",
+#endif /* HAVE_SHA256_OPENSSL */
+  "ssh-rsa",
+#if !defined(OPENSSL_NO_DSA)
+  "ssh-dss",
+#endif /* OPENSSL_NO_DSA */
+
+  NULL
+};
 
 #if OPENSSL_VERSION_NUMBER < 0x30000000L
 static void ctr_incr(unsigned char *ctr, size_t len) {
@@ -1387,6 +1475,55 @@ const char *proxy_ssh_crypto_get_kexinit_digest_list(pool *p) {
   }
 
   return res;
+}
+
+const char *proxy_ssh_crypto_get_kexinit_key_exchange_list(pool *p) {
+  char *res = "";
+  config_rec *c;
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxySFTPKeyExchanges",
+    FALSE);
+  if (c != NULL) {
+    res = pstrdup(p, c->argv[0]);
+
+  } else {
+    register unsigned int i;
+
+    for (i = 0; key_exchanges[i]; i++) {
+      res = pstrcat(p, res, *res ? "," : "", pstrdup(p, key_exchanges[i]),
+        NULL);
+    }
+
+    if (proxy_opts & PROXY_OPT_SSH_ALLOW_WEAK_DH) {
+      /* The hardcoded group for this exchange is rather weak in the face of
+       * the "Logjam" vulnerability (see https://weakdh.org).  Thus it is
+       * only appended to the end of the default exchanges if the AllowWeakDH
+       * SFTPOption is in effect.
+       */
+      res = pstrcat(p, res, ",", pstrdup(p, "diffie-hellman-group1-sha1"),
+        NULL);
+    }
+  }
+
+  return res;
+}
+
+const char *proxy_ssh_crypto_get_kexinit_hostkey_list(pool *p) {
+  register unsigned int i;
+  char *list = "";
+
+  /* Our list of supported hostkey algorithms depends on the hostkeys
+   * that have been configured.  Show a preference for RSA over DSA,
+   * and ECDSA over both RSA and DSA, and ED25519/ED448 over all.
+   *
+   * XXX Should this be configurable later?
+   */
+
+  for (i = 0; hostkey_algos[i]; i++) {
+    list = pstrcat(p, list, *list ? "," : "", hostkey_algos[i], NULL);
+  }
+
+  return list;
 }
 
 const char *proxy_ssh_crypto_get_errors(void) {
