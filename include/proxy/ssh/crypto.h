@@ -38,8 +38,11 @@ const EVP_CIPHER *proxy_ssh_crypto_get_cipher(const char *algo, size_t *key_len,
 const EVP_MD *proxy_ssh_crypto_get_digest(const char *algo, uint32_t *mac_len,
   int *free_digest);
 void proxy_ssh_crypto_free_digest(const EVP_MD *md);
+
 const char *proxy_ssh_crypto_get_kexinit_cipher_list(pool *p);
 const char *proxy_ssh_crypto_get_kexinit_digest_list(pool *p);
+const char *proxy_ssh_crypto_get_kexinit_key_exchange_list(pool *p);
+const char *proxy_ssh_crypto_get_kexinit_hostkey_list(pool *p);
 
 const char *proxy_ssh_crypto_get_errors(void);
 size_t proxy_ssh_crypto_get_size(size_t, size_t);
