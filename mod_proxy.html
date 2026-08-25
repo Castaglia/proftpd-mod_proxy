@@ -889,11 +889,11 @@ backend SSH servers.  The current list of supported cipher algorithms is, in
 the default order of preference:
 <ul>
   <li>chacha20-poly1305@openssh.com
+  <li>aes256-gcm@openssh.com
+  <li>aes128-gcm@openssh.com
   <li>aes256-ctr
   <li>aes192-ctr
   <li>aes128-ctr
-  <li>aes256-gcm@openssh.com
-  <li>aes128-gcm@openssh.com
   <li>aes256-cbc
   <li>aes192-cbc
   <li>aes128-cbc
@@ -955,18 +955,18 @@ The <code>ProxySFTPDigests</code> directive is used to specify the list of
 MAC digest algorithms that <code>mod_proxy</code> should use when connecting to
 backend SSH servers.  The current list of supported MAC algorithms is:
 <ul>
-  <li>hmac-sha2-256
-  <li>hmac-sha2-256-etm@openssh.com
-  <li>hmac-sha2-512
-  <li>hmac-sha2-512-etm@openssh.com
-  <li>hmac-sha1
-  <li>hmac-sha1-etm@openssh.com
-  <li>hmac-sha1-96
-  <li>hmac-sha1-96-etm@openssh.com
-  <li>umac-64@openssh.com
-  <li>umac-64-etm@openssh.com
-  <li>umac-128@openssh.com
   <li>umac-128-etm@openssh.com
+  <li>umac-64-etm@openssh.com
+  <li>hmac-sha2-512-etm@openssh.com
+  <li>hmac-sha2-256-etm@openssh.com
+  <li>hmac-sha1-etm@openssh.com
+  <li>hmac-sha1-96-etm@openssh.com
+  <li>umac-128@openssh.com
+  <li>umac-64@openssh.com
+  <li>hmac-sha2-512
+  <li>hmac-sha2-256
+  <li>hmac-sha1
+  <li>hmac-sha1-96
 </ul>
 By default, all of the above MAC algorithms are presented to the server,
 in the above order, during the key exchange.  <b>Note</b> that some algorithms
