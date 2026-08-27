@@ -40,6 +40,7 @@ const struct proxy_conn *proxy_conn_create(pool *p, const char *uri,
 const pr_netaddr_t *proxy_conn_get_addr(const struct proxy_conn *,
   array_header **);
 int proxy_conn_get_dns_ttl(const struct proxy_conn *pconn);
+const char *proxy_conn_get_scheme(const struct proxy_conn *pconn);
 const char *proxy_conn_get_host(const struct proxy_conn *pconn);
 const char *proxy_conn_get_hostport(const struct proxy_conn *pconn);
 int proxy_conn_get_port(const struct proxy_conn *pconn);

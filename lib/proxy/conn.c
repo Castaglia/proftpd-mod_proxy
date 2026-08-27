@@ -39,7 +39,7 @@ struct proxy_conn {
   pool *pconn_pool;
 
   const char *pconn_uri;
-  const char *pconn_proto;
+  const char *pconn_scheme;
   const char *pconn_host;
   const char *pconn_hostport;
   int pconn_port;
@@ -63,7 +63,7 @@ struct proxy_conn {
   array_header *pconn_addrs;
 };
 
-static const char *supported_protocols[] = {
+static const char *supported_schemes[] = {
   "ftp",
   "ftp+srv",
   "ftp+txt",
@@ -99,11 +99,11 @@ static uint8_t proxy_protocol_v2_sig[PROXY_PROTOCOL_V2_SIGLEN] = "\x0D\x0A\x0D\x
 
 static const char *trace_channel = "proxy.conn";
 
-static int supported_protocol(const char *proto) {
+static int supported_scheme(const char *scheme) {
   register unsigned int i;
 
-  for (i = 0; supported_protocols[i] != NULL; i++) {
-    if (strcmp(proto, supported_protocols[i]) == 0) {
+  for (i = 0; supported_schemes[i] != NULL; i++) {
+    if (strcmp(scheme, supported_schemes[i]) == 0) {
       return 0;
     }
   }
@@ -329,8 +329,8 @@ const struct proxy_conn *proxy_conn_create(pool *p, const char *uri,
     return NULL;
   }
 
-  if (supported_protocol(proto) < 0) {
-    pr_trace_msg(trace_channel, 4, "unsupported protocol '%s' in URI '%.100s'",
+  if (supported_scheme(proto) < 0) {
+    pr_trace_msg(trace_channel, 4, "unsupported scheme '%s' in URI '%.100s'",
       proto, uri);
     errno = EPERM;
     return NULL;
@@ -388,10 +388,10 @@ const struct proxy_conn *proxy_conn_create(pool *p, const char *uri,
    */
   ptr = strchr(proto, '+');
   if (ptr != NULL) {
-    pconn->pconn_proto = pstrndup(pconn_pool, proto, ptr - proto);
+    pconn->pconn_scheme = pstrndup(pconn_pool, proto, ptr - proto);
 
   } else {
-    pconn->pconn_proto = pstrdup(pconn_pool, proto);
+    pconn->pconn_scheme = pstrdup(pconn_pool, proto);
   }
 
   if (username != NULL) {
@@ -477,6 +477,15 @@ int proxy_conn_get_dns_ttl(const struct proxy_conn *pconn) {
   }
 
   return pconn->pconn_dns_ttl;
+}
+
+const char *proxy_conn_get_scheme(const struct proxy_conn *pconn) {
+  if (pconn == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  return pconn->pconn_scheme;
 }
 
 const char *proxy_conn_get_host(const struct proxy_conn *pconn) {

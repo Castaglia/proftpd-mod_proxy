@@ -760,12 +760,13 @@ static int reverse_tls_postopen(pool *p, struct proxy_session *proxy_sess,
 
 static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
     const void *connect_data) {
-  int backend_id = -1, uri_tls, use_tls, xerrno = 0;
+  int backend_id = -1, mismatched_schemes = FALSE, uri_tls, use_tls, xerrno = 0;
   conn_t *server_conn = NULL;
   pr_response_t *resp = NULL;
   unsigned int resp_nlines = 0;
   const struct proxy_conn *pconn;
   const pr_netaddr_t *dst_addr;
+  const char *dst_scheme;
   array_header *other_addrs = NULL;
   uint64_t connecting_ms, connected_ms;
   char port_text[32];
@@ -780,6 +781,11 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
   proxy_sess->dst_pconn = pconn;
   proxy_sess->other_addrs = other_addrs;
 
+  /* Make sure that the destination server scheme/protocol matches our
+   * current protocol.
+   */
+  dst_scheme = proxy_conn_get_scheme(pconn);
+
   /* Carefully handle FTP-isms here; we may be proxying SSH instead.
    *
    * NOTE: All of these FTP-specific cases should be refactored into the
@@ -790,6 +796,15 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
    */
 
   if (proxy_sess->use_ftp == TRUE) {
+    if (strcmp(dst_scheme, "ftp") != 0 &&
+        strcmp(dst_scheme, "ftps") != 0) {
+      pr_trace_msg(trace_channel, 3,
+        "mismatched schemes/protocols detected: frontend session uses '%s', "
+        "backend server URI '%.100s' uses '%s'", pr_session_get_protocol(0),
+        proxy_conn_get_uri(pconn), dst_scheme);
+      mismatched_schemes = TRUE;
+    }
+
     if (proxy_tls_using_tls() == PROXY_TLS_ENGINE_MATCH_CLIENT) {
       proxy_tls_match_client_tls();
     }
@@ -801,6 +816,30 @@ static int reverse_try_connect(pool *p, struct proxy_session *proxy_sess,
         (unsigned int) ntohs(pr_netaddr_get_port(dst_addr)));
       proxy_tls_set_tls(uri_tls);
     }
+
+  } else if (proxy_sess->use_ssh == TRUE) {
+    if (strcmp(dst_scheme, "sftp") != 0) {
+      pr_trace_msg(trace_channel, 3,
+        "mismatched schemes/protocols detected: frontend session uses '%s', "
+        "backend server URI '%.100s' uses '%s'", pr_session_get_protocol(0),
+        proxy_conn_get_uri(pconn), dst_scheme);
+      mismatched_schemes = TRUE;
+    }
+  }
+
+  if (mismatched_schemes == TRUE) {
+    if (reverse_connect_index_used(p, main_server->sid, backend_id, -1) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error updating database for backend server index %d: %s", backend_id,
+        strerror(errno));
+    }
+
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to translate between frontend session scheme/protocol '%s' and "
+      "backend scheme/protocol '%s', skipping URI '%.100s'",
+      pr_session_get_protocol(0), dst_scheme, proxy_conn_get_uri(pconn));
+    errno = EPERM;
+    return -1;
   }
 
   pr_gettimeofday_millis(&connecting_ms);

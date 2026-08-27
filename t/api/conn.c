@@ -122,6 +122,31 @@ START_TEST (conn_get_addr_test) {
 }
 END_TEST
 
+START_TEST (conn_get_scheme_test) {
+  const char *scheme, *url, *expected;
+  const struct proxy_conn *pconn;
+
+  scheme = proxy_conn_get_scheme(NULL);
+  ck_assert_msg(scheme == NULL, "Got scheme from null pconn unexpectedly");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  url = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, url, 0);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
+
+  scheme = proxy_conn_get_scheme(pconn);
+  ck_assert_msg(scheme != NULL, "Failed to get host from conn: %s",
+    strerror(errno));
+  expected = "ftp";
+  ck_assert_msg(strcmp(scheme, expected) == 0, "Expected scheme '%s', got '%s'",
+    expected, scheme);
+
+  proxy_conn_free(pconn);
+}
+END_TEST
+
 START_TEST (conn_get_host_test) {
   const char *host, *url, *expected;
   const struct proxy_conn *pconn;
@@ -839,6 +864,7 @@ Suite *tests_get_conn_suite(void) {
 
   tcase_add_test(testcase, conn_create_test);
   tcase_add_test(testcase, conn_get_addr_test);
+  tcase_add_test(testcase, conn_get_scheme_test);
   tcase_add_test(testcase, conn_get_host_test);
   tcase_add_test(testcase, conn_get_port_test);
   tcase_add_test(testcase, conn_get_hostport_test);
