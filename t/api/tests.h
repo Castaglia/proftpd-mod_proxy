@@ -53,11 +53,11 @@
 #include "proxy/ftp/sess.h"
 #include "proxy/ftp/xfer.h"
 
-#ifdef HAVE_CHECK_H
+#if defined(HAVE_CHECK_H)
 # include <check.h>
 #else
 # error "Missing Check installation; necessary for ProFTPD testsuite"
-#endif
+#endif /* HAVE_CHECK_H */
 
 int tests_rmpath(pool *p, const char *path);
 int tests_stubs_set_next_cmd(cmd_rec *cmd);

@@ -1493,7 +1493,7 @@ int proxy_ssh_cipher_write_data(struct proxy_ssh_packet *pkt,
 
   *buflen = len;
 
-#ifdef SFTP_DEBUG_PACKET
+#if defined(SFTP_DEBUG_PACKET)
 {
   unsigned int i;
 
@@ -1509,7 +1509,7 @@ int proxy_ssh_cipher_write_data(struct proxy_ssh_packet *pkt,
     i += 8;
   }
 }
-#endif
+#endif /* SFTP_DEBUG_PACKET */
 
   if (auth_len > 0) {
     unsigned char *tag_data = NULL;

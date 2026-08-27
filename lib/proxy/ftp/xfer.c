@@ -160,7 +160,7 @@ int proxy_ftp_xfer_prepare_active(int policy_id, cmd_rec *cmd,
   bind_family = pr_netaddr_get_family(bind_addr);
 
   if (bind_family == backend_family) {
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
     if (pr_netaddr_use_ipv6()) {
       /* Make sure that the family is NOT IPv6, even though the local and
        * remote families match.  The PORT command cannot be used for IPv6

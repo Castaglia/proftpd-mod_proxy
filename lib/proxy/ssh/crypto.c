@@ -605,7 +605,7 @@ static const EVP_CIPHER *get_des3_ctr_cipher(void) {
   EVP_CIPHER_meth_set_do_cipher(cipher, do_des3_ctr);
 
   flags = EVP_CIPH_CBC_MODE|EVP_CIPH_VARIABLE_LENGTH|EVP_CIPH_ALWAYS_CALL_INIT|EVP_CIPH_CUSTOM_IV;
-#ifdef OPENSSL_FIPS
+#if defined(OPENSSL_FIPS)
   flags |= EVP_CIPH_FLAG_FIPS;
 #endif /* OPENSSL_FIPS */
 
@@ -625,7 +625,7 @@ static const EVP_CIPHER *get_des3_ctr_cipher(void) {
   des3_ctr_cipher.do_cipher = do_des3_ctr;
 
   des3_ctr_cipher.flags = EVP_CIPH_CBC_MODE|EVP_CIPH_VARIABLE_LENGTH|EVP_CIPH_ALWAYS_CALL_INIT|EVP_CIPH_CUSTOM_IV;
-#ifdef OPENSSL_FIPS
+#if defined(OPENSSL_FIPS)
   des3_ctr_cipher.flags |= EVP_CIPH_FLAG_FIPS;
 #endif /* OPENSSL_FIPS */
 
@@ -753,7 +753,7 @@ static int do_aes_ctr(EVP_CIPHER_CTX *ctx, unsigned char *dst,
 static int get_aes_ctr_cipher_nid(int key_len) {
   int nid;
 
-#ifdef OPENSSL_FIPS
+#if defined(OPENSSL_FIPS)
   /* Set the NID depending on the key len. */
   switch (key_len) {
     case 16:
@@ -824,7 +824,7 @@ static const EVP_CIPHER *get_aes_ctr_cipher(int key_len) {
   EVP_CIPHER_meth_set_do_cipher(cipher, do_aes_ctr);
 
   flags = EVP_CIPH_CBC_MODE|EVP_CIPH_VARIABLE_LENGTH|EVP_CIPH_ALWAYS_CALL_INIT|EVP_CIPH_CUSTOM_IV;
-#ifdef OPENSSL_FIPS
+#if defined(OPENSSL_FIPS)
   flags |= EVP_CIPH_FLAG_FIPS;
 #endif /* OPENSSL_FIPS */
 
@@ -844,7 +844,7 @@ static const EVP_CIPHER *get_aes_ctr_cipher(int key_len) {
   aes_ctr_cipher.do_cipher = do_aes_ctr;
 
   aes_ctr_cipher.flags = EVP_CIPH_CBC_MODE|EVP_CIPH_VARIABLE_LENGTH|EVP_CIPH_ALWAYS_CALL_INIT|EVP_CIPH_CUSTOM_IV;
-# ifdef OPENSSL_FIPS
+# if defined(OPENSSL_FIPS)
   aes_ctr_cipher.flags |= EVP_CIPH_FLAG_FIPS;
 # endif /* OPENSSL_FIPS */
 
@@ -1248,7 +1248,7 @@ const char *proxy_ssh_crypto_get_kexinit_cipher_list(pool *p) {
 
       for (j = 0; ciphers[j].name; j++) {
         if (strcmp(c->argv[i], ciphers[j].name) == 0) {
-#ifdef OPENSSL_FIPS
+#if defined(OPENSSL_FIPS)
           if (FIPS_mode()) {
             /* If FIPS mode is enabled, check whether the cipher is allowed
              * for use.
@@ -1277,7 +1277,7 @@ const char *proxy_ssh_crypto_get_kexinit_cipher_list(pool *p) {
 #if defined(HAVE_EVP_AES_256_GCM_OPENSSL)
                   || strcmp(ciphers[j].name, "aes128-gcm@openssh.com") == 0 ||
                   strcmp(ciphers[j].name, "aes256-gcm@openssh.com") == 0
-#endif
+#endif /* HAVE_EVP_AES_256_GCM_OPENSSL */
                   ) {
                 res = pstrcat(p, res, *res ? "," : "",
                   pstrdup(p, ciphers[j].name), NULL);
@@ -1302,7 +1302,7 @@ const char *proxy_ssh_crypto_get_kexinit_cipher_list(pool *p) {
 
     for (i = 0; ciphers[i].name; i++) {
       if (ciphers[i].enabled) {
-#ifdef OPENSSL_FIPS
+#if defined(OPENSSL_FIPS)
           if (FIPS_mode()) {
             /* If FIPS mode is enabled, check whether the cipher is allowed
              * for use.
@@ -1377,7 +1377,7 @@ const char *proxy_ssh_crypto_get_kexinit_digest_list(pool *p) {
 
       for (j = 0; digests[j].name; j++) {
         if (strcmp(c->argv[i], digests[j].name) == 0) {
-#ifdef OPENSSL_FIPS
+#if defined(OPENSSL_FIPS)
           if (FIPS_mode()) {
             /* If FIPS mode is enabled, check whether the MAC is allowed
              * for use.
@@ -1426,7 +1426,7 @@ const char *proxy_ssh_crypto_get_kexinit_digest_list(pool *p) {
 
     for (i = 0; digests[i].name; i++) {
       if (digests[i].enabled) {
-#ifdef OPENSSL_FIPS
+#if defined(OPENSSL_FIPS)
           if (FIPS_mode()) {
             /* If FIPS mode is enabled, check whether the digest is allowed
              * for use.
@@ -1584,7 +1584,7 @@ const char *proxy_ssh_crypto_get_errors(void) {
  * sizes by rounding up.
  */
 size_t proxy_ssh_crypto_get_size(size_t first, size_t second) {
-#ifdef roundup
+#if defined(roundup)
   return roundup(first, second);
 #else
   return (((first + (second - 1)) / second) * second);

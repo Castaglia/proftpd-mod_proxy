@@ -358,13 +358,13 @@ int proxy_ssh_packet_conn_read(conn_t *conn, void *buf, size_t reqlen,
          */
         if (errno == ECONNRESET ||
             errno == ECONNABORTED ||
-#ifdef ETIMEDOUT
+#if defined(ETIMEDOUT)
             errno == ETIMEDOUT ||
 #endif /* ETIMEDOUT */
-#ifdef ENOTCONN
+#if defined(ENOTCONN)
             errno == ENOTCONN ||
 #endif /* ENOTCONN */
-#ifdef ESHUTDOWN
+#if defined(ESHUTDOWN)
             errno == ESHUTDOWN ||
 #endif /* ESHUTDOWNN */
             errno == EPIPE) {

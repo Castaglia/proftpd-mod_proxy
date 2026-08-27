@@ -23,7 +23,7 @@
 
 #include "mod_proxy.h"
 
-#ifdef HAVE_SYS_UIO_H
+#if defined(HAVE_SYS_UIO_H)
 # include <sys/uio.h>
 #endif /* HAVE_SYS_UIO_H */
 
