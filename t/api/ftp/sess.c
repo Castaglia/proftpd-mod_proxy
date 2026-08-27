@@ -98,7 +98,7 @@ START_TEST (send_auth_tls_test) {
 
   mark_point();
   res = proxy_ftp_sess_send_auth_tls(p, proxy_sess);
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   ck_assert_msg(res < 0, "Sent AUTH TLS unexpectedly");
   ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);

@@ -106,7 +106,7 @@ const char *proxy_ftp_msg_fmt_ext_addr(pool *p, const pr_netaddr_t *addr,
       family = 1;
       break;
 
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
     case AF_INET6:
       family = 2;
       break;
@@ -202,14 +202,14 @@ const pr_netaddr_t *proxy_ftp_msg_parse_addr(pool *p, const char *msg,
    */
   addrlen = 16;
 
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
   /* Allow extra room for any necessary "::ffff:" prefix, for IPv6 sessions. */
   addrlen += 7;
 #endif /* PR_USE_IPV6 */
 
   addr_buf = pcalloc(p, addrlen);
 
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
   if (pr_netaddr_use_ipv6()) {
     if (addr_family == AF_INET6) {
       snprintf(addr_buf, addrlen, "::ffff:%u.%u.%u.%u", h1, h2, h3, h4);
@@ -321,7 +321,7 @@ const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
           family = 1;
           break;
 
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
         case AF_INET6:
           if (pr_netaddr_use_ipv6()) {
             family = 2;
@@ -346,7 +346,7 @@ const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
       pr_trace_msg(trace_channel, 19, "parsed IPv4 address from '%s'", msg);
       break;
 
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
     case 2:
       pr_trace_msg(trace_channel, 19, "parsed IPv6 address from '%s'", msg);
       if (pr_netaddr_use_ipv6()) {

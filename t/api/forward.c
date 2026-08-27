@@ -447,7 +447,7 @@ END_TEST
 START_TEST (forward_handle_pass_noproxyauth_test) {
   int res, successful = FALSE, block_responses = FALSE;
   cmd_rec *cmd;
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   config_rec *c;
 #endif /* PR_USE_OPENSSL */
   struct proxy_session *proxy_sess;
@@ -501,7 +501,7 @@ START_TEST (forward_handle_pass_noproxyauth_test) {
       strerror(errno), errno);
   }
 
-#ifdef PR_USE_OPENSSL
+#if defined(PR_USE_OPENSSL)
   /* This time, try an FTPS-capable site. */
 
   session.notes = pr_table_alloc(p, 0);

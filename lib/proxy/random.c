@@ -30,7 +30,7 @@ static const char *trace_channel = "proxy.random";
  * seeded by the core proftpd code.
  */
 int proxy_random_init(void) {
-#ifdef HAVE_RANDOM
+#if defined(HAVE_RANDOM)
   struct timeval tv;
 
   gettimeofday(&tv, NULL);

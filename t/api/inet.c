@@ -190,7 +190,7 @@ START_TEST (inet_connect_ipv4_test) {
 END_TEST
 
 START_TEST (inet_connect_ipv6_test) {
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
   int res;
   conn_t *conn;
   const pr_netaddr_t *addr;

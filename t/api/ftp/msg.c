@@ -235,7 +235,7 @@ START_TEST (parse_addr_test) {
   ck_assert_msg(ntohs(pr_netaddr_get_port(res)) == 2121,
     "Expected 2121, got %u", ntohs(pr_netaddr_get_port(res)));
 
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
   msg = "(127,0,0,1,8,73)";
   res = proxy_ftp_msg_parse_addr(p, msg, AF_INET);
   ck_assert_msg(res != NULL, "Failed to parse message '%s': %s", msg,
@@ -421,7 +421,7 @@ START_TEST (parse_ext_addr_test) {
   ck_assert_msg(errno == EPERM, "Expected EPERM (%d), got %s (%d)", EPERM,
     strerror(errno), errno);
 
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
   addr = pr_netaddr_get_addr(p, "::1", NULL);
   ck_assert_msg(addr != NULL, "Failed to get address for ::1: %s",
     strerror(errno));

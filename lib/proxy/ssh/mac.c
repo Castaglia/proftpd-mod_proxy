@@ -411,7 +411,7 @@ static int get_mac(struct proxy_ssh_packet *pkt, struct proxy_ssh_mac *mac,
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "MAC from server differs from expected MAC using %s", mac->algo);
 
-#ifdef SFTP_DEBUG_PACKET
+#if defined(SFTP_DEBUG_PACKET)
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "client MAC (len %lu):", (unsigned long) pkt->mac_len);
       for (i = 0; i < mac_len;) {
@@ -438,7 +438,7 @@ static int get_mac(struct proxy_ssh_packet *pkt, struct proxy_ssh_mac *mac,
 #else
       /* Avoid compiler warning. */
       (void) i;
-#endif
+#endif /* SFTP_DEBUG_PACKET */
 
       errno = EINVAL;
       return -1;
@@ -446,7 +446,7 @@ static int get_mac(struct proxy_ssh_packet *pkt, struct proxy_ssh_mac *mac,
 
   } else if (flags & PROXY_SSH_MAC_FL_WRITE_MAC) {
     /* Debugging. */
-#ifdef SFTP_DEBUG_PACKET
+#if defined(SFTP_DEBUG_PACKET)
     if (pkt->mac_len > 0) {
       unsigned int i = 0;
 
@@ -463,7 +463,7 @@ static int get_mac(struct proxy_ssh_packet *pkt, struct proxy_ssh_mac *mac,
         i += 8;
       }
     }
-#endif
+#endif /* SFTP_DEBUG_PACKET */
   }
 
   pkt->mac_len = mac_len;

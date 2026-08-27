@@ -564,7 +564,7 @@ MODRET set_proxydatastore(cmd_rec *cmd) {
     ds_data = NULL;
     ds_datasz = 0;
 
-#ifdef PR_USE_REDIS
+#if defined(PR_USE_REDIS)
   } else if (strcasecmp(ds_name, "redis") == 0) {
     if (cmd->argc != 3) {
       CONF_ERROR(cmd, "missing required Redis key prefix");
@@ -701,7 +701,7 @@ MODRET set_proxyforwardmethod(cmd_rec *cmd) {
 
 /* usage: ProxyForwardTo [!]pattern [flags] */
 MODRET set_proxyforwardto(cmd_rec *cmd) {
-#ifdef PR_USE_REGEX
+#if defined(PR_USE_REGEX)
   config_rec *c;
   pr_regex_t *pre = NULL;
   int negated = FALSE, regex_flags = REG_EXTENDED|REG_NOSUB, res = 0;
@@ -765,7 +765,7 @@ MODRET set_proxyforwardto(cmd_rec *cmd) {
   CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "The ", param, " directive cannot be "
     "used on this system, as you do not have POSIX compliant regex support",
     NULL));
-#endif
+#endif /* PR_USE_REGEX */
 }
 
 /* usage: ProxyLog path|"none" */
@@ -1476,7 +1476,7 @@ static mode_t extract_mode(struct stat *st) {
 
   mode = st->st_mode;
   mode &= ~S_IFMT;
-#ifdef S_IFJOURNAL
+#if defined(S_IFJOURNAL)
   /* AIX uses this non-standard bit, which can cause issues. */
   mode &= ~S_IFJOURNAL;
 #endif /* S_IFJOURNAL */
@@ -3521,7 +3521,7 @@ MODRET proxy_eprt(cmd_rec *cmd, struct proxy_session *proxy_sess) {
       (char *) cmd->argv[1], strerror(xerrno));
 
     if (xerrno == EPROTOTYPE) {
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
       if (pr_netaddr_use_ipv6()) {
         pr_response_add_err(R_522,
           _("Network protocol not supported, use (1,2)"));
@@ -3892,7 +3892,7 @@ MODRET proxy_pasv(cmd_rec *cmd, struct proxy_session *proxy_sess) {
    */
 
   if (pr_netaddr_get_family(session.c->local_addr) == pr_netaddr_get_family(session.c->remote_addr)) {
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
     if (pr_netaddr_use_ipv6()) {
       /* Make sure that the family is NOT IPv6, even though the family of the
        * local and remote ends match.  The PASV command cannot be used for
@@ -4084,7 +4084,7 @@ MODRET proxy_port(cmd_rec *cmd, struct proxy_session *proxy_sess) {
   }
 
   if (allow_foreign_address == FALSE) {
-#ifdef PR_USE_IPV6
+#if defined(PR_USE_IPV6)
     if (pr_netaddr_use_ipv6()) {
       /* We can only compare the PORT-given address against the remote client
        * address if the remote client address is an IPv4-mapped IPv6 address.

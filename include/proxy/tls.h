@@ -42,7 +42,7 @@
 # endif /* PR_USE_OPENSSL_ENGINE */
 # include <openssl/ocsp.h>
 #endif
-#ifdef PR_USE_OPENSSL_ECC
+#if defined(PR_USE_OPENSSL_ECC)
 # include <openssl/ec.h>
 # include <openssl/ecdh.h>
 #endif /* PR_USE_OPENSSL_ECC */

@@ -41,7 +41,7 @@ static iconv_t encode_conv = (iconv_t) -1;
 
 static int utf8_convert(iconv_t conv, const char *inbuf, size_t *inbuflen,
     char *outbuf, size_t *outbuflen) {
-# ifdef HAVE_ICONV
+# if defined(HAVE_ICONV)
 
   /* Reset the state machine before each conversion. */
   (void) iconv(conv, NULL, NULL, NULL, NULL);

@@ -365,7 +365,7 @@ static int forward_connect(pool *p, struct proxy_session *proxy_sess,
 }
 
 static int forward_dst_filter(pool *p, const char *hostport) {
-#ifdef PR_USE_REGEX
+#if defined(PR_USE_REGEX)
   config_rec *c;
   pr_regex_t *pre;
   int negated = FALSE, res;
