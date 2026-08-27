@@ -555,7 +555,7 @@ static void ssh_ssh2_kex_completed_ev(const void *event_data, void *user_data) {
    * Note, though, that if the UseReverseProxyAuth ProxyOption was configured,
    * we may not have connected to the backend server yet, as the frontend
    * client might not have authenticated; we have only completed the frontend
-   * KEX at this point.  So how do we knkow if we need to connect to the
+   * KEX at this point.  So how do we know if we need to connect to the
    * backend server here?
    *
    *  ProxyOptions UseReverseProxyAuth
@@ -792,6 +792,7 @@ int proxy_ssh_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
 
   proxy_sess->use_ftp = FALSE;
   proxy_sess->use_ssh = TRUE;
+  pr_session_set_protocol("ssh2");
   pr_response_block(TRUE);
 
   c = find_config(main_server->conf, CONF_PARAM, "ServerIdent", FALSE);

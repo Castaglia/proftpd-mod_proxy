@@ -9702,7 +9702,7 @@ sub proxy_reverse_backend_ssh_connect_policy_per_user_by_json {
 
   my $user_path = File::Spec->rel2abs("$tmpdir/$setup->{user}-servers.json");
   if (open(my $fh, "> $user_path")) {
-    print $fh "[ \"ftp://127.0.0.1:$vhost_port2\" ]\n";
+    print $fh "[ \"sftp://127.0.0.1:$vhost_port2\" ]\n";
     unless (close($fh)) {
       die("Can't write $user_path: $!");
     }
