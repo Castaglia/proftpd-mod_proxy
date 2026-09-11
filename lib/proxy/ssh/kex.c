@@ -3204,7 +3204,7 @@ static struct proxy_ssh_packet *read_kex_packet(pool *p,
 
   allowed_types = make_array(p, 1, sizeof(char));
 
-  va_start(ap, ntypes);  
+  va_start(ap, ntypes);
 
   while (ntypes-- > 0) {
     *((char *) push_array(allowed_types)) = va_arg(ap, int);
@@ -4692,7 +4692,7 @@ static int read_curve25519_reply(struct proxy_ssh_packet *pkt,
 
     xerrno = errno;
     pr_memscrub(kex->client_curve25519_priv_key, CURVE25519_SIZE);
-  
+
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error handling server host key: %s", strerror(xerrno));
     errno = xerrno;
