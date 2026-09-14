@@ -34,7 +34,7 @@ jobs:
           - clang
           - gcc
         container:
-          - almalinux:8
+          - almalinux:10
           - alpine:3.18
           - ubuntu:22.04
 
@@ -85,7 +85,7 @@ jobs:
           openssl version -a
 
       - name: Install RPM packages
-        if: ${{ matrix.container == 'almalinux:8' }}
+        if: ${{ matrix.container == 'almalinux:10' }}
         run: |
           # Optimize DNF configuration
           tee -a /etc/dnf/dnf.conf <<EOD
@@ -96,8 +96,10 @@ jobs:
 
           # Need to add other repos for e.g. libsodium
           yum install -y dnf-plugins-core epel-release clang gcc make zlib-devel
+          crb enable
+
           # for unit tests
-          yum install -y check-devel https://cbs.centos.org/kojifiles/packages/subunit/1.4.0/1.el8/x86_64/subunit-1.4.0-1.el8.x86_64.rpm https://cbs.centos.org/kojifiles/packages/subunit/1.4.0/1.el8/x86_64/subunit-devel-1.4.0-1.el8.x86_64.rpm
+          yum install -y check-devel subunit subunit-devel
           # for Redis support
           yum install -y hiredis-devel
           # for OpenSSL support
