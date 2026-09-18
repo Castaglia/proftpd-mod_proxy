@@ -86,6 +86,8 @@ static int proxy_role = PROXY_ROLE_REVERSE;
 static const char *proxy_tables_dir = NULL;
 static int proxy_tls_xfer_prot_policy = PROXY_FTP_SESS_TLS_XFER_PROTECTION_POLICY_REQUIRED;
 
+static long timeout_linger = PR_TUNABLE_TIMEOUTLINGER;
+
 #if defined(HAVE_OSSL_PROVIDER_LOAD_OPENSSL)
 static OSSL_PROVIDER *legacy_provider = NULL;
 #endif /* HAVE_OSSL_PROVIDER_LOAD_OPENSSL */
@@ -206,7 +208,8 @@ MODRET proxy_abort(cmd_rec *cmd, struct proxy_session *proxy_sess,
     pr_trace_msg(trace_channel, 19, "received ABOR on frontend connection, "
       "closing backend data connection");
     proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
-    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    pr_inet_lingering_close(session.pool, proxy_sess->backend_data_conn,
+      timeout_linger);
     proxy_sess->backend_data_conn = NULL;
   }
 
@@ -3019,13 +3022,15 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
         strerror(xerrno));
 
       if (proxy_sess->frontend_data_conn != NULL) {
-        pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+        pr_inet_lingering_close(session.pool, proxy_sess->frontend_data_conn,
+          timeout_linger);
         proxy_sess->frontend_data_conn = session.d = NULL;
       }
 
       if (proxy_sess->backend_data_conn != NULL) {
         proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
-        pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+        pr_inet_lingering_close(session.pool, proxy_sess->backend_data_conn,
+          timeout_linger);
         proxy_sess->backend_data_conn = NULL;
       }
 
@@ -3148,11 +3153,13 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
             "connections");
 
           proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
-          pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+          pr_inet_lingering_close(session.pool, proxy_sess->backend_data_conn,
+            timeout_linger);
           proxy_sess->backend_data_conn = NULL;
 
           if (proxy_sess->frontend_data_conn != NULL) {
-            pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+            pr_inet_lingering_close(session.pool,
+              proxy_sess->frontend_data_conn, timeout_linger);
             proxy_sess->frontend_data_conn = session.d = NULL;
           }
 
@@ -3233,11 +3240,13 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
               "closing data connections");
 
             proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
-            pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+            pr_inet_lingering_close(session.pool, proxy_sess->backend_data_conn,
+              timeout_linger);
             proxy_sess->backend_data_conn = NULL;
 
             if (proxy_sess->frontend_data_conn != NULL) {
-              pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+              pr_inet_lingering_close(session.pool,
+                proxy_sess->frontend_data_conn, timeout_linger);
               proxy_sess->frontend_data_conn = session.d = NULL;
             }
 
@@ -3279,13 +3288,15 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
           strerror(xerrno));
 
         if (proxy_sess->frontend_data_conn != NULL) {
-          pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+          pr_inet_lingering_close(session.pool, proxy_sess->frontend_data_conn,
+            timeout_linger);
           proxy_sess->frontend_data_conn = session.d = NULL;
         }
 
         if (proxy_sess->backend_data_conn != NULL) {
           proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
-          pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+          pr_inet_lingering_close(session.pool, proxy_sess->backend_data_conn,
+            timeout_linger);
           proxy_sess->backend_data_conn = NULL;
         }
 
@@ -3319,7 +3330,8 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
           switch (xfer_direction) {
             case PR_NETIO_IO_RD:
               if (proxy_sess->frontend_data_conn != NULL) {
-                pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+                pr_inet_lingering_close(session.pool,
+                  proxy_sess->frontend_data_conn, timeout_linger);
                 proxy_sess->frontend_data_conn = session.d = NULL;
               }
               break;
@@ -3327,7 +3339,8 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
             case PR_NETIO_IO_WR:
               if (proxy_sess->backend_data_conn != NULL) {
                 proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
-                pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+                pr_inet_lingering_close(session.pool,
+                  proxy_sess->backend_data_conn, timeout_linger);
                 proxy_sess->backend_data_conn = NULL;
               }
               break;
@@ -4403,6 +4416,7 @@ MODRET proxy_user(cmd_rec *cmd, struct proxy_session *proxy_sess,
 MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
     int *block_responses) {
   int successful = FALSE, res = 0;
+  config_rec *c;
 
   /* It's possible that the client only sent a PASS command with no arguments,
    * effectively a blank/missing password.  Some other FTP servers may not
@@ -4540,6 +4554,12 @@ MODRET proxy_pass(cmd_rec *cmd, struct proxy_session *proxy_sess,
   } else {
     proxy_login_failed();
     return PR_ERROR(cmd);
+  }
+
+  /* Honor any explicitly configured TimeoutLinger (see Issue #335). */
+  c = find_config(main_server->conf, CONF_PARAM, "TimeoutLinger", FALSE);
+  if (c != NULL) {
+    timeout_linger = (long) *((int *) c->argv[0]);
   }
 
   return PR_HANDLED(cmd);
@@ -5048,7 +5068,8 @@ MODRET proxy_any(cmd_rec *cmd) {
           "closing frontend data connection");
 
         if (session.d != NULL) {
-          pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
+          pr_inet_lingering_close(session.pool, proxy_sess->frontend_data_conn,
+            timeout_linger);
           proxy_sess->frontend_data_conn = session.d = NULL;
         }
 
