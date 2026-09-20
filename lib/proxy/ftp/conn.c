@@ -139,6 +139,7 @@ conn_t *proxy_ftp_conn_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn,
 conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
     const pr_netaddr_t *remote_addr, int frontend_data) {
   conn_t *conn, *opened = NULL;
+  int bind_port = INPORT_ANY;
   int default_inet_family = 0, remote_family, res, reverse_dns, xerrno;
 
   if (p == NULL ||
@@ -154,7 +155,43 @@ conn_t *proxy_ftp_conn_connect(pool *p, const pr_netaddr_t *bind_addr,
     pr_netaddr_get_ipstr(remote_addr));
   default_inet_family = pr_inet_set_default_family(p, remote_family);
 
-  conn = pr_inet_create_conn(session.pool, -1, bind_addr, INPORT_ANY, TRUE);
+  if (proxy_opts & PROXY_OPT_USE_COMPLIANT_ACTIVE_XFERS) {
+    /* Default source port to which to bind for the active transfer, as
+     * per RFC 959, as is done in the ProFTPD core code.
+     *
+     * Note that this only needs to be done for frontend data transfers, as
+     * that is when we are acting as a server to the frontend client.  When
+     * we are connecting for a backend transfer, we are acting as a client,
+     * and thus the RFC 959 requirements do not apply.
+     */
+    if (frontend_data == TRUE) {
+      bind_port = session.c->local_port-1;
+
+      if (bind_port < 1024) {
+        /* We should need root privileges in order to bind to a privileged
+         * source port.  Right?
+         */
+        pr_trace_msg(trace_channel, 9,
+          "using privileged source port %d for frontend data connection",
+          bind_port);
+
+        if (session.disable_id_switching == TRUE) {
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "ProxyOption UseCompliantActiveTransfers in effect, will attempt "
+            "to use privileged source port %d, but currently privileges are "
+            "revoked; consider adding 'RootRevoke off' to configuration",
+            bind_port);
+        }
+      }
+    }
+  }
+
+#if PROFTPD_VERSION_NUMBER >= 0x0001030A01
+  conn = pr_inet_create_conn2(session.pool, -1, bind_addr, bind_port,
+    PR_INET_CREATE_CONN_FL_RETRY_BIND);
+#else
+  conn = pr_inet_create_conn(session.pool, -1, bind_addr, bind_port, TRUE);
+#endif /* ProFTPD 1.3.10rc1 and later */
   xerrno = errno;
 
   if (conn == NULL) {

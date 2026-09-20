@@ -227,6 +227,17 @@ my $TESTS = {
     test_class => [qw(forking reverse)],
   },
 
+  # NOTE: Make sure that, if using a Docker container, use of privileged
+  # ports by nonroot is disabled, by manually doing:
+  #
+  #  sysctl -w net.ipv4.ip_unprivileged_port_start=1024
+  #
+  # Otherwise this test might succeed, as nonroot, unexpectedly.
+  proxy_reverse_stor_port_peer_port_issue336 => {
+    order => ++$order,
+    test_class => [qw(bug forking reverse rootprivs)],
+  },
+
   proxy_reverse_rest_retr => {
     order => ++$order,
     test_class => [qw(forking reverse)],
@@ -7153,6 +7164,167 @@ EOC
       $self->assert_transfer_ok($resp_code, $resp_msg, 1);
 
       $client->quit();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup, $ex);
+}
+
+sub proxy_reverse_stor_port_peer_port_issue336 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $test_data = "Hello, Proxying World!\n";
+  my $test_file = File::Spec->rel2abs("$tmpdir/test.txt");
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+
+  # Deliberately use a privileged port
+  my $port = 1021;
+  my $timeout_idle = 10;
+
+  $proxy_config->{ProxyOptions} = 'UseCompliantActiveTransfers';
+
+  # NOTE: Make sure we use a non-root, unprivilged User/Group in the
+  # configuration, so that the proxy session process does not have permissions
+  # for using the compliant, privileged source port.
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'event:0 inet:20 lock:0 scoreboard:0 signal:0 response:20 proxy:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.ftp.xfer:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    Port => $port,
+    RootRevoke => 'off',
+
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($config_port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  RootLogin on
+  TimeoutIdle $timeout_idle
+
+  TransferLog none
+  WtmpLog off
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Allow server to start up
+      sleep(2);
+
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 1, 5);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      my $conn = $client->stor_raw($test_file);
+      unless ($conn) {
+        die("STOR failed: " . $client->response_code() . " " .
+          $client->response_msg());
+      }
+
+      my $remote_port = $conn->peerport();
+
+      my $buf = $test_data;
+      $conn->write($buf, length($buf), 30);
+      sleep(0.25);
+      eval { $conn->close() };
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      $client->quit();
+
+      $self->assert(-f $test_file,
+        test_msg("File $test_file does not exist as expected"));
+
+      my $expected = length($test_data);
+      my $size = -s $test_file;
+      $self->assert($expected == $size,
+        test_msg("Expected size $expected, got $size"));
+
+      my $expected = $port-1;
+      $self->assert($remote_port == $expected,
+        test_msg("Expected remote port $expected, got $remote_port"));
     };
     if ($@) {
       $ex = $@;

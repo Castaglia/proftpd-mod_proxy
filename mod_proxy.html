@@ -550,6 +550,24 @@ The currently implemented options are:
   </li>
 
   <p>
+  <li><code>UseCompliantActiveTransfers</code><br>
+    <p>
+    By default, <code>mod_proxy</code> will use a kernel-selected ephemeral
+    port as the source port for FTP data transfers.  However, some sites may
+    need/require that <code>mod_proxy</code> comply with the RFC 959
+    requirement that FTP servers use a source port of <code>L-1</code> (where
+    <code>L</code> is the port on which the FTP server listens for control
+    connections) for FTP transfers.  Use this option to configure
+    <code>mod_proxy</code> to use the required source port for FTP data
+    transfers when it is acting as an FTP server.
+
+    <p>
+    <b>Note</b> that you may also need to explicitly enable root privileges to
+    be retained, as they are revoked by default; see the <a href="http://www.proftpd.org/docs/modules/mod_auth.html#RootRevoke"><code>RootRevoke</code></a>
+    documentation.
+  </li>
+
+  <p>
   <li><code>UseDirectDataTransfers</code><br>
     <p>
     The <code>mod_proxy</code> module will, by default, proxy all data transfers

@@ -484,22 +484,29 @@ static void proxy_restrict_session(void) {
     }
   }
 
-  /* Make the proxy session process have the identity of the configured daemon
-   * User/Group.
-   */
-  PRIVS_REVOKE
+  if (!(proxy_opts & PROXY_OPT_USE_COMPLIANT_ACTIVE_XFERS)) {
+    /* Make the proxy session process have the identity of the configured daemon
+     * User/Group.
+     */
+    PRIVS_REVOKE
+    session.disable_id_switching = TRUE;
 
-  session.disable_id_switching = TRUE;
+  } else {
+    PRIVS_RELINQUISH
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "ProxyOptions UseCompliantActiveTransfers in effect, NOT revoking root "
+      "privileges automatically");
+  }
 
   if (proxy_chroot != NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "proxy session running as UID %lu, GID %lu, restricted to '%s'",
-      (unsigned long) getuid(), (unsigned long) getgid(), proxy_chroot);
+      (unsigned long) geteuid(), (unsigned long) getegid(), proxy_chroot);
 
   } else {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "proxy session running as UID %lu, GID %lu, located in '%s'",
-      (unsigned long) getuid(), (unsigned long) getgid(), getcwd(NULL, 0));
+      (unsigned long) geteuid(), (unsigned long) getegid(), getcwd(NULL, 0));
   }
 }
 
@@ -822,6 +829,9 @@ MODRET set_proxyoptions(cmd_rec *cmd) {
 
     } else if (strcmp(cmd->argv[i], "IgnoreForeignAddress") == 0) {
       opts |= PROXY_OPT_IGNORE_FOREIGN_ADDRESS;
+
+    } else if (strcmp(cmd->argv[i], "UseCompliantActiveTransfers") == 0) {
+      opts |= PROXY_OPT_USE_COMPLIANT_ACTIVE_XFERS;
 
     } else {
       CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, ": unknown ProxyOption '",
@@ -2737,9 +2747,18 @@ static int proxy_data_prepare_frontend_conn(struct proxy_session *proxy_sess,
     if (frontend_conn == NULL) {
       xerrno = errno;
 
-      pr_response_add_err(R_425, _("%s: %s"), (char *) cmd->argv[0],
-        strerror(xerrno));
-      pr_response_flush(&resp_err_list);
+      if (xerrno == EACCES) {
+        /* This usually happens when a privileged source port is used, as
+         * for ProxyOption UseCompliantActiveTransfers (Issue #336), and
+         * the process does not have privileges.
+         */
+        pr_response_add_err(R_425, _("Unable to build data connection: %s"),
+          strerror(xerrno));
+
+      } else {
+        pr_response_add_err(R_425, _("%s: %s"), (char *) cmd->argv[0],
+          strerror(xerrno));
+      }
 
       errno = xerrno;
       return -1;
@@ -2887,12 +2906,15 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
    */
   if (frontend_conn == NULL ||
       backend_conn == NULL) {
-    xerrno = EPERM;
-    pr_response_block(TRUE);
+    int resp_blocked;
 
+    xerrno = EPERM;
+
+    resp_blocked = pr_response_block(FALSE);
     pr_response_add_err(R_425, _("%s: %s"), (char *) cmd->argv[0],
       strerror(xerrno));
     pr_response_flush(&resp_err_list);
+    pr_response_block(resp_blocked);
 
     errno = xerrno;
     return PR_ERROR(cmd);
@@ -4926,7 +4948,7 @@ MODRET proxy_any(cmd_rec *cmd) {
           mr = proxy_directory_data(proxy_sess, cmd);
         }
 
-        pr_response_block(TRUE);
+        pr_response_block(FALSE);
         return mr;
 
       } else {
@@ -4971,7 +4993,7 @@ MODRET proxy_any(cmd_rec *cmd) {
           mr = proxy_data(proxy_sess, cmd);
         }
 
-        pr_response_block(TRUE);
+        pr_response_block(FALSE);
         return mr;
 
       } else {

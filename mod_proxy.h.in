@@ -29,9 +29,9 @@
 
 #include <signal.h>
 
-#if HAVE_SYS_MMAN_H
+#if defined(HAVE_SYS_MMAN_H)
 # include <sys/mman.h>
-#endif
+#endif /* HAVE_SYS_MMAN_H */
 
 /* Define if you have the <zlib.h> header.  */
 #undef HAVE_ZLIB_H
@@ -48,7 +48,7 @@
  */
 #if defined(LIBRESSL_VERSION_NUMBER)
 # define HAVE_LIBRESSL  1
-#endif
+#endif /* LIBRESSL_VERSION_NUMBER */
 
 /* Define if you have OpenSSL with crippled AES support. */
 #undef HAVE_AES_CRIPPLED_OPENSSL
@@ -95,7 +95,7 @@
 #undef HAVE_SQLITE3_H
 #if !defined(HAVE_SQLITE3_H)
 # error "SQLite library/headers required"
-#endif
+#endif /* HAVE_SQLITE3_H */
 
 /* Define if you have the random(3) function.  */
 #undef HAVE_RANDOM
@@ -132,6 +132,7 @@
 #define PROXY_OPT_USE_PROXY_PROTOCOL_V2_TLVS	0x0040
 #define PROXY_OPT_ALLOW_FOREIGN_ADDRESS		0x0080
 #define PROXY_OPT_IGNORE_FOREIGN_ADDRESS	0x0100
+#define PROXY_OPT_USE_COMPLIANT_ACTIVE_XFERS	0x0200
 
 /* mod_proxy datastores */
 #define PROXY_DATASTORE_SQLITE			1
