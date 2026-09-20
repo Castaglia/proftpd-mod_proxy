@@ -2497,6 +2497,9 @@ int proxy_tls_init(pool *p, const char *tables_path, int flags) {
   if (res < 0) {
     return -1;
   }
+#else
+  /* If we are not using OpenSSL, set the default engine value accordingly. */
+  tls_engine = PROXY_TLS_ENGINE_OFF;
 #endif /* PR_USE_OPENSSL */
 
   tls_tables_path = pstrdup(proxy_pool, tables_path);
@@ -4393,7 +4396,6 @@ int proxy_tls_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
   const char *enabled_proto_str = NULL;
   char *ca_file = NULL, *ca_path = NULL, *cert_file = NULL, *key_file = NULL,
     *crl_file = NULL, *crl_path = NULL;
-  unsigned char have_mod_tls;
 
   if (proxy_sess == NULL) {
     errno = EINVAL;
@@ -4404,24 +4406,9 @@ int proxy_tls_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
     return 0;
   }
 
-  have_mod_tls = pr_module_exists("mod_tls.c");
-
   c = find_config(main_server->conf, CONF_PARAM, "ProxyTLSEngine", FALSE);
   if (c != NULL) {
     tls_engine = *((int *) c->argv[0]);
-
-    if (tls_engine != FALSE &&
-        have_mod_tls == FALSE) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "mod_tls not present/loaded, overriding ProxyTLSEngine to "
-        "'off' automatically");
-      tls_engine = PROXY_TLS_ENGINE_OFF;
-    }
-
-  } else {
-    if (have_mod_tls == FALSE) {
-      tls_engine = PROXY_TLS_ENGINE_OFF;
-    }
   }
 
   if (tls_engine == PROXY_TLS_ENGINE_OFF) {
