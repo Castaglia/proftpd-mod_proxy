@@ -44,7 +44,11 @@ static unsigned long tls_opts = 0UL;
 
 static const char *tls_tables_path = NULL;
 static struct proxy_tls_datastore tls_ds;
+#if defined(PR_USE_OPENSSL)
 static int tls_engine = PROXY_TLS_ENGINE_AUTO;
+#else
+static int tls_engine = PROXY_TLS_ENGINE_OFF;
+#endif /* PR_USE_OPENSSL */
 static int tls_need_data_prot = TRUE;
 static int tls_verify_server = TRUE;
 
@@ -2497,9 +2501,6 @@ int proxy_tls_init(pool *p, const char *tables_path, int flags) {
   if (res < 0) {
     return -1;
   }
-#else
-  /* If we are not using OpenSSL, set the default engine value accordingly. */
-  tls_engine = PROXY_TLS_ENGINE_OFF;
 #endif /* PR_USE_OPENSSL */
 
   tls_tables_path = pstrdup(proxy_pool, tables_path);
