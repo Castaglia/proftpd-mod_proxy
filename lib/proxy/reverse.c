@@ -96,7 +96,7 @@ static int check_parent_dir_perms(pool *p, const char *path) {
   int res;
   char *dir_path, *ptr = NULL;
 
-  ptr = strrchr(path, '/');
+  ptr = strrchr((char *) path, '/');
   if (ptr != path) {
     dir_path = pstrndup(p, path, ptr - path);
 

@@ -53,7 +53,7 @@ static int parse_feat(pool *p, const char *feat, array_header **res) {
   vals = make_array(p, 1, sizeof(char *));
 
   /* No semicolons in this value?  No work to do...*/
-  ptr = strchr(feat, ';');
+  ptr = strchr((char *) feat, ';');
   if (ptr == NULL) {
     *((char **) push_array(vals)) = pstrdup(p, feat);
     *res = vals;

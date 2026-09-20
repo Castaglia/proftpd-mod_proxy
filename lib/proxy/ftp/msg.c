@@ -266,7 +266,7 @@ const pr_netaddr_t *proxy_ftp_msg_parse_ext_addr(pool *p, const char *msg,
     int decr = 0;
 
     /* First, find the opening '(' character. */
-    ptr = strchr(msg, '(');
+    ptr = strchr((char *) msg, '(');
     if (ptr == NULL) {
       pr_trace_msg(trace_channel, 12,
         "missing starting '(' character for extended address in '%s'", msg);

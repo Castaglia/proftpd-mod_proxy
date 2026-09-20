@@ -745,13 +745,13 @@ static int cert_match_wildcard(pool *p, const char *host_name,
   }
 
   /* If no '.', FALSE. */
-  ptr = strchr(cert_name, '.');
+  ptr = strchr((char *) cert_name, '.');
   if (ptr == NULL) {
     return FALSE;
   }
 
   /* If no '*', FALSE. */
-  ptr2 = strchr(cert_name, '*');
+  ptr2 = strchr((char *) cert_name, '*');
   if (ptr2 == NULL) {
     return FALSE;
   }

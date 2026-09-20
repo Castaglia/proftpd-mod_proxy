@@ -415,7 +415,7 @@ static int forward_cmd_parse_dst(pool *p, const char *arg, char **name,
   default_port = "21";
 
   /* First, look for the optional port. */
-  port_ptr = strrchr(arg, ':');
+  port_ptr = strrchr((char *) arg, ':');
   if (port_ptr == NULL) {
     port = default_port;
 
@@ -446,7 +446,7 @@ static int forward_cmd_parse_dst(pool *p, const char *arg, char **name,
   }
 
   /* Find the required '@' delimiter. */
-  host_ptr = strrchr(arg, '@');
+  host_ptr = strrchr((char *) arg, '@');
   if (host_ptr == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "missing required '@' delimiter in USER '%s', rejecting", arg);
@@ -501,7 +501,7 @@ static int forward_cmd_parse_sni(pool *p, const struct proxy_conn **pconn) {
     return -1;
   }
 
-  port_ptr = strrchr(sni, ':');
+  port_ptr = strrchr((char *) sni, ':');
   if (port_ptr == NULL) {
     hostport = pstrcat(p, sni, ":21", NULL);
 

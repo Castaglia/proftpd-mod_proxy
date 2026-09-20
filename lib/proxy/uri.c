@@ -45,7 +45,7 @@ static char *uri_parse_host(pool *p, const char *orig_uri,
    * in the URI.
    */
   if (uri[0] == '[') {
-    ptr = strchr(uri + 1, ']');
+    ptr = strchr((char *) uri + 1, ']');
     if (ptr == NULL) {
       /* If there is no ']', then it's a badly-formatted URI. */
       pr_trace_msg(trace_channel, 4,
@@ -73,7 +73,7 @@ static char *uri_parse_host(pool *p, const char *orig_uri,
     return host;
   }
 
-  ptr = strchr(uri + 1, ':');
+  ptr = strchr((char *) uri + 1, ':');
   if (ptr == NULL) {
     if (remaining != NULL) {
       *remaining = NULL;
@@ -121,7 +121,7 @@ static char *uri_parse_userinfo(pool *p, const char *orig_uri,
    * all of which have at least one occurrence of the '@' character.
    */
 
-  ptr = strchr(uri, '@');
+  ptr = strchr((char *) uri, '@');
   if (ptr == NULL) {
     /* No '@' character at all?  No user info, then. */
 
@@ -145,7 +145,7 @@ static char *uri_parse_userinfo(pool *p, const char *orig_uri,
    * but we currently cannot handle ':' characters within usernames.
    */
 
-  ptr2 = strrchr(uri, '@');
+  ptr2 = strrchr((char *) uri, '@');
   if (ptr2 != NULL) {
     if (ptr != ptr2) {
       /* Use the last found '@' as the delimiter. */
@@ -210,7 +210,7 @@ int proxy_uri_parse(pool *p, const char *uri, char **scheme, char **host,
   }
 
   /* First, look for a ':' */
-  ptr = strchr(uri, ':');
+  ptr = strchr((char *) uri, ':');
   if (ptr == NULL) {
     pr_trace_msg(trace_channel, 4, "missing colon in URI '%.100s'", uri);
     errno = EINVAL;
