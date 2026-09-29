@@ -1,0 +1,109 @@
+name: LibreSSL
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '*.html'
+      - '*.md'
+      - 't/etc/**'
+      - 't/lib/**'
+      - 't/modules/**'
+  pull_request:
+    branches:
+      - master
+    paths-ignore:
+      - '*.html'
+      - '*.md'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      # Let's try opting into use of Nodejs v24; see:
+      #  https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+      # GitHub runners still causing problems with NodeJS v20; see:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    strategy:
+      matrix:
+        container:
+          - alpine:3.18
+          - alpine:3.22
+          - alpine:3.24
+
+    container: ${{ matrix.container }}
+
+    steps:
+      - name: Checkout ProFTPD
+        uses: actions/checkout@v6
+        with:
+          repository: proftpd/proftpd
+          path: proftpd
+
+      - name: Checkout module source code
+        uses: actions/checkout@v6
+        with:
+          path: proftpd/contrib/mod_proxy
+
+      - name: Install Alpine 3.18 packages
+        if: ${{ matrix.container == 'alpine:3.18' }}
+        run: |
+          apk update
+          # for builds
+          apk add bash build-base compiler-rt gcc make zlib-dev
+
+          # for LibreSSL support
+          apk add libressl-dev libressl
+          # for SQLite support
+          apk add sqlite sqlite-dev
+
+          # for debugging
+          gcc --version
+
+      - name: Install Alpine 3.22 packages
+        if: ${{ matrix.container == 'alpine:3.22' }}
+        run: |
+          apk update
+          # for builds
+          apk add bash build-base compiler-rt gcc make zlib-dev
+
+          # for LibreSSL support
+          apk add libressl-dev libressl
+          # for SQLite support
+          apk add sqlite sqlite-dev
+
+          # for debugging
+          gcc --version
+
+      - name: Install Alpine 3.24 packages
+        if: ${{ matrix.container == 'alpine:3.24' }}
+        run: |
+          apk update
+          # for builds
+          apk add bash build-base compiler-rt gcc make zlib-dev
+
+          # for LibreSSL support
+          apk add libressl-dev libressl
+          # for SQLite support
+          apk add sqlite sqlite-dev
+
+          # for debugging
+          gcc --version
+
+      - name: Build and install with static modules
+        run: |
+          cd proftpd
+          ./configure --enable-devel=fortify --with-modules=mod_sftp:mod_tls:mod_proxy
+          make
+          make install
+
+      - name: Build and install with shared modules
+        run: |
+          cd proftpd
+          make clean
+          ./configure --enable-devel=fortify --enable-dso --with-shared=mod_sftp:mod_tls:mod_proxy
+          make
+          make install
