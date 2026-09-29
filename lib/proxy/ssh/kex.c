@@ -335,17 +335,17 @@ static const char *trace_channel = "proxy.ssh.kex";
 static int digest_data(struct proxy_ssh_kex *kex, unsigned char *buf,
     uint32_t len, uint32_t *hlen) {
 #if OPENSSL_VERSION_NUMBER < 0x10100000L || \
-    defined(HAVE_LIBRESSL)
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER < 0x3050000L)
   EVP_MD_CTX ctx;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
   EVP_MD_CTX *pctx;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000LL && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   pctx = EVP_MD_CTX_new();
 #else
   pctx = &ctx;
-#endif /* OpenSSL-1.1.0 and later */
+#endif /* OpenSSL-1.1.0/LibreSSL-3.5.0 and later */
 
   /* In OpenSSL 0.9.6, many of the EVP_Digest* functions returned void, not
    * int.  Without these ugly OpenSSL version preprocessor checks, the
@@ -356,10 +356,10 @@ static int digest_data(struct proxy_ssh_kex *kex, unsigned char *buf,
   if (EVP_DigestInit(pctx, kex->hash) != 1) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error initializing message digest: %s", proxy_ssh_crypto_get_errors());
-# if OPENSSL_VERSION_NUMBER >= 0x10100000LL && \
-     !defined(HAVE_LIBRESSL)
+# if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+     (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
     EVP_MD_CTX_free(pctx);
-# endif /* OpenSSL-1.1.0 and later */
+# endif /* OpenSSL-1.1.0/LibreSSL-3.5.0 and later */
     return -1;
   }
 #else
@@ -370,10 +370,10 @@ static int digest_data(struct proxy_ssh_kex *kex, unsigned char *buf,
   if (EVP_DigestUpdate(pctx, buf, len) != 1) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error updating message digest: %s", proxy_ssh_crypto_get_errors());
-# if OPENSSL_VERSION_NUMBER >= 0x10100000LL && \
-     !defined(HAVE_LIBRESSL)
+# if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+     (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
     EVP_MD_CTX_free(pctx);
-# endif /* OpenSSL-1.1.0 and later */
+# endif /* OpenSSL-1.1.0/LibreSSL-3.5.0 and later */
     return -1;
   }
 #else
@@ -384,20 +384,20 @@ static int digest_data(struct proxy_ssh_kex *kex, unsigned char *buf,
   if (EVP_DigestFinal(pctx, kex_digest_buf, hlen) != 1) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error finalizing message digest: %s", proxy_ssh_crypto_get_errors());
-# if OPENSSL_VERSION_NUMBER >= 0x10100000LL && \
-     !defined(HAVE_LIBRESSL)
+# if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+     (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
     EVP_MD_CTX_free(pctx);
-# endif /* OpenSSL-1.1.0 and later */
+# endif /* OpenSSL-1.1.0/LibreSSL-3.5.0 and later */
     return -1;
   }
 #else
   EVP_DigestFinal(pctx, kex_digest_buf, hlen);
 #endif
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000LL && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   EVP_MD_CTX_free(pctx);
-#endif /* OpenSSL-1.1.0 and later */
+#endif /* OpenSSL-1.1.0/LibreSSL-3.5.0 and later */
 
   return 0;
 }
@@ -438,12 +438,12 @@ static const unsigned char *calculate_h(pool *p, struct proxy_ssh_kex *kex,
   len += proxy_ssh_msg_write_data(&buf, &buflen, hostkey_data, hostkey_datalen,
     TRUE);
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   DH_get0_key(kex->dh, &dh_pub_key, NULL);
 #else
   dh_pub_key = kex->dh->pub_key;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
   /* Client's key */
   len += proxy_ssh_msg_write_mpint(&buf, &buflen, dh_pub_key);
@@ -586,23 +586,23 @@ static const unsigned char *calculate_gex_h(pool *p, struct proxy_ssh_kex *kex,
     len += proxy_ssh_msg_write_int(&buf, &buflen, kex->dh_gex_max);
   }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   DH_get0_pqg(kex->dh, &dh_p, NULL, &dh_g);
 #else
   dh_p = kex->dh->p;
   dh_g = kex->dh->g;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
   len += proxy_ssh_msg_write_mpint(&buf, &buflen, dh_p);
   len += proxy_ssh_msg_write_mpint(&buf, &buflen, dh_g);
 
   /* Client's key */
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   DH_get0_key(kex->dh, &dh_pub_key, NULL);
 #else
   dh_pub_key = kex->dh->pub_key;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
   len += proxy_ssh_msg_write_mpint(&buf, &buflen, dh_pub_key);
 
   /* Server's key */
@@ -637,13 +637,13 @@ static const unsigned char *calculate_kexrsa_h(pool *p,
    */
   rsa_keylen += proxy_ssh_msg_write_string(&rsa_data, &rsa_datalen, "ssh-rsa");
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   RSA_get0_key(kex->rsa, &rsa_n, &rsa_e, NULL);
 #else
   rsa_e = kex->rsa->e;
   rsa_n = kex->rsa->n;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
   rsa_keylen += proxy_ssh_msg_write_mpint(&rsa_data, &rsa_datalen, rsa_e);
   rsa_keylen += proxy_ssh_msg_write_mpint(&rsa_data, &rsa_datalen, rsa_n);
@@ -785,12 +785,12 @@ static int have_good_dh(DH *dh, const BIGNUM *pub_key) {
     return -1;
   }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   DH_get0_pqg(dh, &dh_p, NULL, NULL);
 #else
   dh_p = dh->p;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
   tmp = BN_new();
   if (!BN_sub(tmp, dh_p, BN_value_one()) ||
@@ -1042,13 +1042,13 @@ static int create_dh(struct proxy_ssh_kex *kex, int type) {
       return -1;
     }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
     DH_set0_pqg(dh, (BIGNUM *) dh_p, NULL, (BIGNUM *) dh_g);
 #else
     dh->p = dh_p;
     dh->g = dh_g;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
     dh_priv_key = BN_new();
 
@@ -1063,13 +1063,13 @@ static int create_dh(struct proxy_ssh_kex *kex, int type) {
     }
 
     dh_pub_key = BN_new();
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
     DH_set0_key(dh, (BIGNUM *) dh_pub_key, (BIGNUM *) dh_priv_key);
 #else
     dh->pub_key = dh_pub_key;
     dh->priv_key = dh_priv_key;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
     pr_trace_msg(trace_channel, 12, "generating DH key");
     if (DH_generate_key(dh) != 1) {
@@ -1079,12 +1079,12 @@ static int create_dh(struct proxy_ssh_kex *kex, int type) {
       return -1;
     }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
     DH_get0_key(dh, &dh_pub_key, NULL);
 #else
     dh_pub_key = dh->pub_key;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
     if (have_good_dh(dh, dh_pub_key) < 0) {
       DH_free(dh);
@@ -3326,12 +3326,12 @@ static int write_dh_init(struct proxy_ssh_packet *pkt,
   const BIGNUM *dh_pub_key;
 
   /* In our DH_INIT, send 'e', our client DH public key. */
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   DH_get0_key(kex->dh, &dh_pub_key, NULL);
 #else
   dh_pub_key = kex->dh->pub_key;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
   bufsz = buflen = 2048;
 
@@ -3611,13 +3611,13 @@ static int create_gex_dh(struct proxy_ssh_kex *kex, const BIGNUM *dh_p,
       return -1;
     }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
     DH_set0_pqg(dh, (BIGNUM *) dh_p, NULL, (BIGNUM *) dh_g);
 #else
     dh->p = dh_p;
     dh->g = dh_g;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
     dh_priv_key = BN_new();
 
@@ -3632,13 +3632,13 @@ static int create_gex_dh(struct proxy_ssh_kex *kex, const BIGNUM *dh_p,
     }
 
     dh_pub_key = BN_new();
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
     DH_set0_key(dh, (BIGNUM *) dh_pub_key, (BIGNUM *) dh_priv_key);
 #else
     dh->pub_key = dh_pub_key;
     dh->priv_key = dh_priv_key;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
     pr_trace_msg(trace_channel, 12, "generating DH key");
     if (DH_generate_key(dh) != 1) {
@@ -3648,12 +3648,12 @@ static int create_gex_dh(struct proxy_ssh_kex *kex, const BIGNUM *dh_p,
       return -1;
     }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
     DH_get0_key(dh, &dh_pub_key, NULL);
 #else
     dh_pub_key = dh->pub_key;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
     if (have_good_dh(dh, dh_pub_key) < 0) {
       DH_free(dh);
       continue;
@@ -3705,12 +3705,12 @@ static int write_dh_gex_init(struct proxy_ssh_packet *pkt,
   uint32_t buflen, bufsz, len = 0;
   const BIGNUM *dh_pub_key;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   DH_get0_key(kex->dh, &dh_pub_key, NULL);
 #else
   dh_pub_key = kex->dh->pub_key;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
   /* XXX Is this buffer large enough? Too large? */
   bufsz = buflen = 2048;
@@ -3941,12 +3941,15 @@ static int validate_ecdsa_params(const EC_GROUP *group, const EC_POINT *point) {
   int coord_nbits, ec_order_nbits;
   EC_POINT *subgroup_order = NULL;
 
+#if !defined(HAVE_LIBRESSL) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER < 0x4010000fL)
   if (EC_METHOD_get_field_type(EC_GROUP_method_of(group)) != NID_X9_62_prime_field) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "ECDSA group is not a prime field, rejecting");
     errno = EACCES;
     return -1;
   }
+#endif /* OpenSSL, or LibreSSL before 4.1.0 */
 
   /* A Q of infinity is unacceptable. */
   if (EC_POINT_is_at_infinity(group, point) != 0) {
@@ -4372,13 +4375,13 @@ static int read_kexrsa_pubkey(struct proxy_ssh_packet *pkt,
   proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &rsa_e);
   proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &rsa_n);
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   RSA_set0_key(kex->rsa, (BIGNUM *) rsa_n, (BIGNUM *) rsa_e, NULL);
 #else
   kex->rsa->e = rsa_e;
   kex->rsa->n = rsa_n;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
   return 0;
 }
