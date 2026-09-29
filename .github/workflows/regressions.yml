@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  regressions:
     runs-on: ubuntu-latest
 
     env:
@@ -37,14 +37,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-    strategy:
-      matrix:
-        compiler:
-          - gcc
-        container:
-          - ubuntu:22.04
-
-    container: ${{ matrix.container }}
+    container: ubuntu:22.04
 
     steps:
       - name: Checkout ProFTPD
