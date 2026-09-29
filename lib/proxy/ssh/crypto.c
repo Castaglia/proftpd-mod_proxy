@@ -106,10 +106,12 @@ static struct proxy_ssh_cipher ciphers[] = {
 
   { "aes128-cbc",	"aes-128-cbc",	0, 0,	EVP_aes_128_cbc, TRUE, TRUE },
 
-#if !defined(OPENSSL_NO_BF)
+#if !defined(OPENSSL_NO_BF) && \
+    (!defined(HAVE_LIBRESSL) || \
+     (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER < 0x3050000L))
 # if OPENSSL_VERSION_NUMBER < 0x30000000L
   { "blowfish-ctr",	NULL,		0, 0,	NULL,	FALSE, FALSE },
-# endif /* Prior to OpenSSL 3.x */
+# endif /* Prior to OpenSSL 3.x/LibreSSL-3.5.0 */
   { "blowfish-cbc",	"bf-cbc",	0, 0,	EVP_bf_cbc, FALSE, FALSE },
 #endif /* !OPENSSL_NO_BF */
 
@@ -122,10 +124,12 @@ static struct proxy_ssh_cipher ciphers[] = {
   { "arcfour128",	"rc4",		0, 1536, EVP_rc4, FALSE, FALSE },
 #endif /* !OPENSSL_NO_RC4 */
 
-#if !defined(OPENSSL_NO_DES)
+#if !defined(OPENSSL_NO_DES) && \
+    (!defined(HAVE_LIBRESSL) || \
+     (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER < 0x3050000L))
 # if OPENSSL_VERSION_NUMBER < 0x30000000L
   { "3des-ctr",		NULL,		0, 0,	NULL, TRUE, TRUE },
-# endif /* Prior to OpenSSL 3.x */
+# endif /* Prior to OpenSSL 3.x/LibreSSL-3.5.0 */
   { "3des-cbc",		"des-ede3-cbc",	0, 0,	EVP_des_ede3_cbc, TRUE, TRUE },
 #endif /* !OPENSSL_NO_DES */
 
@@ -156,8 +160,11 @@ static struct proxy_ssh_digest digests[] = {
    * proxy_ssh_crypto_get_digest(), as special cases.
    */
 #if OPENSSL_VERSION_NUMBER > 0x000907000L
+# if !defined(HAVE_LIBRESSL) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L && LIBRESSL_VERSION_NUMBER < 0x4000000fL)
   { "umac-128-etm@openssh.com", NULL,	NULL,		16,	TRUE, FALSE },
   { "umac-64-etm@openssh.com", NULL,	NULL,		8,	TRUE, FALSE },
+#endif /* OpenSSL-0.9.7 or later, LibreSSL-3.5.0 to 4.0.0 */
 # if defined(HAVE_SHA512_OPENSSL)
   { "hmac-sha2-512-etm@openssh.com", "sha512",	EVP_sha512,	0, TRUE, TRUE },
 # endif /* HAVE_SHA512_OPENSSL */
@@ -280,7 +287,9 @@ static const char *hostkey_algos[] = {
   NULL
 };
 
-#if OPENSSL_VERSION_NUMBER < 0x30000000L
+#if OPENSSL_VERSION_NUMBER < 0x30000000L && \
+    (!defined(HAVE_LIBRESSL) || \
+      (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER < 0x3050000L))
 static void ctr_incr(unsigned char *ctr, size_t len) {
   register int i;
 
@@ -298,6 +307,8 @@ static void ctr_incr(unsigned char *ctr, size_t len) {
 #endif /* Prior to OpenSSL 3.x */
 
 #if !defined(OPENSSL_NO_BF) && \
+    (!defined(HAVE_LIBRESSL) || \
+      (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER < 0x3050000L)) && \
     OPENSSL_VERSION_NUMBER < 0x30000000L
 /* Blowfish CTR mode implementation */
 
@@ -421,8 +432,8 @@ static int do_bf_ctr(EVP_CIPHER_CTX *ctx, unsigned char *dst,
 static const EVP_CIPHER *get_bf_ctr_cipher(void) {
   EVP_CIPHER *cipher;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   /* XXX TODO: At some point, we also need to call EVP_CIPHER_meth_free() on
    * this, to avoid a resource leak.
    */
@@ -449,14 +460,16 @@ static const EVP_CIPHER *get_bf_ctr_cipher(void) {
   bf_ctr_cipher.flags = EVP_CIPH_CBC_MODE|EVP_CIPH_VARIABLE_LENGTH|EVP_CIPH_ALWAYS_CALL_INIT|EVP_CIPH_CUSTOM_IV;
 
   cipher = &bf_ctr_cipher;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
   return cipher;
 }
 #endif /* !OPENSSL_NO_BF and OpenSSL prior to 3.x */
 
-#if !defined(OPENSSL_NO_DES) && \
-    OPENSSL_VERSION_NUMBER < 0x30000000L
+# if !defined(OPENSSL_NO_DES) && \
+     (!defined(HAVE_LIBRESSL) || \
+       (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER < 0x3050000L)) && \
+     OPENSSL_VERSION_NUMBER < 0x30000000L
 /* 3DES CTR mode implementation */
 
 struct des3_ctr_ex {
@@ -591,8 +604,8 @@ static int do_des3_ctr(EVP_CIPHER_CTX *ctx, unsigned char *dst,
 static const EVP_CIPHER *get_des3_ctr_cipher(void) {
   EVP_CIPHER *cipher;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+# if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+     (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   unsigned long flags;
 
   /* XXX TODO: At some point, we also need to call EVP_CIPHER_meth_free() on
@@ -605,9 +618,9 @@ static const EVP_CIPHER *get_des3_ctr_cipher(void) {
   EVP_CIPHER_meth_set_do_cipher(cipher, do_des3_ctr);
 
   flags = EVP_CIPH_CBC_MODE|EVP_CIPH_VARIABLE_LENGTH|EVP_CIPH_ALWAYS_CALL_INIT|EVP_CIPH_CUSTOM_IV;
-#if defined(OPENSSL_FIPS)
+#  if defined(OPENSSL_FIPS)
   flags |= EVP_CIPH_FLAG_FIPS;
-#endif /* OPENSSL_FIPS */
+#  endif /* OPENSSL_FIPS */
 
   EVP_CIPHER_meth_set_flags(cipher, flags);
 
@@ -625,12 +638,12 @@ static const EVP_CIPHER *get_des3_ctr_cipher(void) {
   des3_ctr_cipher.do_cipher = do_des3_ctr;
 
   des3_ctr_cipher.flags = EVP_CIPH_CBC_MODE|EVP_CIPH_VARIABLE_LENGTH|EVP_CIPH_ALWAYS_CALL_INIT|EVP_CIPH_CUSTOM_IV;
-#if defined(OPENSSL_FIPS)
+#  if defined(OPENSSL_FIPS)
   des3_ctr_cipher.flags |= EVP_CIPH_FLAG_FIPS;
-#endif /* OPENSSL_FIPS */
+#  endif /* OPENSSL_FIPS */
 
   cipher = &des3_ctr_cipher;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
   return cipher;
 }
@@ -638,7 +651,9 @@ static const EVP_CIPHER *get_des3_ctr_cipher(void) {
 
 #if !defined(HAVE_EVP_AES_128_CTR_OPENSSL) && \
     !defined(HAVE_EVP_AES_192_CTR_OPENSSL) && \
-    !defined(HAVE_EVP_AES_256_CTR_OPENSSL)
+    !defined(HAVE_EVP_AES_128_CTR_OPENSSL) && \
+    (!defined(HAVE_LIBRESSL) || \
+      (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER < 0x3050000L))
 
 /* AES CTR mode implementation */
 struct aes_ctr_ex {
@@ -862,12 +877,12 @@ static int update_umac64(EVP_MD_CTX *ctx, const void *data, size_t len) {
   int res;
   void *md_data;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   md_data = EVP_MD_CTX_md_data(ctx);
 #else
   md_data = ctx->md_data;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
   if (md_data == NULL) {
     struct umac_ctx *umac;
     void **ptr;
@@ -890,12 +905,12 @@ static int update_umac128(EVP_MD_CTX *ctx, const void *data, size_t len) {
   int res;
   void *md_data;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   md_data = EVP_MD_CTX_md_data(ctx);
 #else
   md_data = ctx->md_data;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
   if (md_data == NULL) {
     struct umac_ctx *umac;
@@ -920,12 +935,12 @@ static int final_umac64(EVP_MD_CTX *ctx, unsigned char *md) {
   int res;
   void *md_data;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   md_data = EVP_MD_CTX_md_data(ctx);
 #else
   md_data = ctx->md_data;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
   res = proxy_ssh_umac_final(md_data, md, nonce);
   return res;
@@ -936,12 +951,12 @@ static int final_umac128(EVP_MD_CTX *ctx, unsigned char *md) {
   int res;
   void *md_data;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   md_data = EVP_MD_CTX_md_data(ctx);
 #else
   md_data = ctx->md_data;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
   res = proxy_ssh_umac128_final(md_data, md, nonce);
   return res;
@@ -951,12 +966,12 @@ static int delete_umac64(EVP_MD_CTX *ctx) {
   struct umac_ctx *umac;
   void *md_data, **ptr;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   md_data = EVP_MD_CTX_md_data(ctx);
 #else
   md_data = ctx->md_data;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
   umac = md_data;
   proxy_ssh_umac_delete(umac);
@@ -971,12 +986,12 @@ static int delete_umac128(EVP_MD_CTX *ctx) {
   struct umac_ctx *umac;
   void *md_data, **ptr;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-    !defined(HAVE_LIBRESSL)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+    (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
   md_data = EVP_MD_CTX_md_data(ctx);
 #else
   md_data = ctx->md_data;
-#endif /* prior to OpenSSL-1.1.0 */
+#endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
   umac = md_data;
   proxy_ssh_umac128_delete(umac);
@@ -1004,8 +1019,8 @@ static const EVP_MD *get_umac64_digest(int *free_md) {
   }
 
 #else
-# if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-     !defined(HAVE_LIBRESSL)
+# if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+     (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L && LIBRESSL_VERSION_NUMBER < 0x4000000fL)
   /* XXX TODO: At some point, we also need to call EVP_MD_meth_free() on
    * this, to avoid a resource leak.
    */
@@ -1016,6 +1031,12 @@ static const EVP_MD *get_umac64_digest(int *free_md) {
   EVP_MD_meth_set_update(md, update_umac64);
   EVP_MD_meth_set_final(md, final_umac64);
   EVP_MD_meth_set_cleanup(md, delete_umac64);
+# elif (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x4000000fL)
+  /* LibreSSL-4.0.0 and later removed the necessary APIs for implementing a
+   * custom EVP_MD implementation for e.g. CRC32 support.
+   */
+  errno = ENOSYS;
+  return NULL;
 # else
   static EVP_MD umac64_digest;
 
@@ -1030,7 +1051,7 @@ static const EVP_MD *get_umac64_digest(int *free_md) {
   umac64_digest.block_size = 32;
 
   md = &umac64_digest;
-# endif /* prior to OpenSSL-1.1.0 */
+# endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 #endif /* OpenSSL before 4.x */
 
   return md;
@@ -1052,8 +1073,8 @@ static const EVP_MD *get_umac128_digest(int *free_md) {
   }
 
 #else
-# if OPENSSL_VERSION_NUMBER >= 0x10100000L && \
-     !defined(HAVE_LIBRESSL)
+# if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
+     (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L && LIBRESSL_VERSION_NUMBER < 0x4000000fL)
   /* XXX TODO: At some point, we also need to call EVP_MD_meth_free() on
    * this, to avoid a resource leak.
    */
@@ -1064,7 +1085,12 @@ static const EVP_MD *get_umac128_digest(int *free_md) {
   EVP_MD_meth_set_update(md, update_umac128);
   EVP_MD_meth_set_final(md, final_umac128);
   EVP_MD_meth_set_cleanup(md, delete_umac128);
-
+# elif (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x4000000fL)
+  /* LibreSSL-4.0.0 and later removed the necessary APIs for implementing a
+   * custom EVP_MD implementation for e.g. CRC32 support.
+   */
+  errno = ENOSYS;
+  return NULL;
 # else
   static EVP_MD umac128_digest;
 
@@ -1079,7 +1105,7 @@ static const EVP_MD *get_umac128_digest(int *free_md) {
   umac128_digest.block_size = 64;
 
   md = &umac128_digest;
-# endif /* prior to OpenSSL-1.1.0 */
+# endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 #endif /* OpenSSL before 4.x */
 
   return md;
@@ -1095,6 +1121,8 @@ const EVP_CIPHER *proxy_ssh_crypto_get_cipher(const char *name, size_t *key_len,
 
       if (strcmp(name, "blowfish-ctr") == 0) {
 #if !defined(OPENSSL_NO_BF) && \
+    (!defined(HAVE_LIBRESSL) || \
+      (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER < 0x3050000L)) && \
     OPENSSL_VERSION_NUMBER < 0x30000000L
         cipher = get_bf_ctr_cipher();
 #else
@@ -1107,6 +1135,8 @@ const EVP_CIPHER *proxy_ssh_crypto_get_cipher(const char *name, size_t *key_len,
 #if OPENSSL_VERSION_NUMBER > 0x000907000L
       } else if (strcmp(name, "3des-ctr") == 0) {
 # if !defined(OPENSSL_NO_DES) && \
+     (!defined(HAVE_LIBRESSL) || \
+       (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER < 0x3050000L)) && \
      OPENSSL_VERSION_NUMBER < 0x30000000L
         cipher = get_des3_ctr_cipher();
 # else
@@ -1177,8 +1207,7 @@ const EVP_CIPHER *proxy_ssh_crypto_get_cipher(const char *name, size_t *key_len,
 }
 
 void proxy_ssh_crypto_free_digest(const EVP_MD *md) {
-#if (OPENSSL_VERSION_NUMBER >= 0x30000000L && !defined(HAVE_LIBRESSL)) || \
-     (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3080000L)
+#if (OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL))
   EVP_MD_free((EVP_MD *) md);
 #else
   /* Avoid compiler warnings. */

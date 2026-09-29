@@ -674,7 +674,7 @@ int proxy_ssh_cipher_set_read_key(pool *p, const EVP_MD *md,
     defined(HAVE_LIBRESSL)
   EVP_CIPHER_CTX_init(pctx);
   if (hpctx != NULL) {
-    EVP_CIHPER_CTX_init(hpctx);
+    EVP_CIPHER_CTX_init(hpctx);
   }
 #else
   EVP_CIPHER_CTX_reset(pctx);
@@ -1216,7 +1216,7 @@ int proxy_ssh_cipher_set_write_key(pool *p, const EVP_MD *md,
     defined(HAVE_LIBRESSL)
   EVP_CIPHER_CTX_init(pctx);
   if (hpctx != NULL) {
-    EVP_CIPIHER_CTX_init(hpctx);
+    EVP_CIPHER_CTX_init(hpctx);
   }
 #else
   EVP_CIPHER_CTX_reset(pctx);
