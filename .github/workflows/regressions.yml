@@ -61,8 +61,10 @@ jobs:
         run: |
           apt-get update -qq
           # for builds
-          apt-get install -y --no-install-recommends gcc git make tzdata
+          apt-get install -y --no-install-recommends build-essential gcc git make tzdata
 
+          # for crypt(3) support
+          apt-get install -y --no-install-recommends libcrypt1
           # for Redis support 
           apt-get install -y --no-install-recommends libhiredis-dev
           # for OpenSSL support
