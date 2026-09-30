@@ -1737,7 +1737,7 @@ static int get_x25519_shared_key(unsigned char *shared_key,
 #if defined(HAVE_MLKEM768_OPENSSL) && defined(HAVE_SHA256_OPENSSL)
 static int create_mlkem768(struct proxy_ssh_kex *kex) {
   EVP_PKEY_CTX *pctx;
-  EVP_PKEY *pkey;
+  EVP_PKEY *pkey = NULL;
 
   pctx = EVP_PKEY_CTX_new_id(NID_ML_KEM_768, NULL);
   if (pctx == NULL) {
@@ -3414,10 +3414,12 @@ static int read_dh_reply(struct proxy_ssh_packet *pkt,
 
     DH_free(kex->dh);
     kex->dh = NULL;
+    pr_memscrub(buf2, res);
     return -1;
   }
 
   kex->k = k;
+  pr_memscrub(buf2, res);
 
   /* Calculate H */
   h = calculate_h(pkt->pool, kex, server_hostkey_data, server_hostkey_datalen,
@@ -3792,10 +3794,12 @@ static int read_dh_gex_reply(struct proxy_ssh_packet *pkt,
 
     DH_free(kex->dh);
     kex->dh = NULL;
+    pr_memscrub(buf2, res);
     return -1;
   }
 
   kex->k = k;
+  pr_memscrub(buf2, res);
 
   /* Calculate H */
   h = calculate_gex_h(pkt->pool, kex, server_hostkey_data,
@@ -5329,6 +5333,7 @@ static int read_mlkem768_reply(struct proxy_ssh_packet *pkt,
     kex->client_x25519_priv_key = NULL;
     EVP_PKEY_free(kex->client_mlkem768);
     kex->client_mlkem768 = NULL;
+    pr_memscrub(x25519_key, X25519_KEYLEN);
 
     return -1;
   }
@@ -5347,6 +5352,9 @@ static int read_mlkem768_reply(struct proxy_ssh_packet *pkt,
    */
   proxy_ssh_msg_write_data(&buf2, &buflen2, mlkem_key, mlkem_keylen, FALSE);
   proxy_ssh_msg_write_data(&buf2, &buflen2, x25519_key, X25519_KEYLEN, FALSE);
+
+  pr_memscrub(x25519_key, X25519_KEYLEN);
+  pr_memscrub(mlkem_key, mlkem_keylen);
 
   pctx = EVP_MD_CTX_new();
 
@@ -5723,6 +5731,7 @@ static int read_sntrup761_reply(struct proxy_ssh_packet *pkt,
     kex->client_sntrup761_priv_key = NULL;
     pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
     kex->client_x25519_priv_key = NULL;
+    pr_memscrub(x25519_key, X25519_KEYLEN);
 
     return -1;
   }
@@ -5741,6 +5750,9 @@ static int read_sntrup761_reply(struct proxy_ssh_packet *pkt,
    */
   proxy_ssh_msg_write_data(&buf2, &buflen2, sntrup_key, sntrup_keylen, FALSE);
   proxy_ssh_msg_write_data(&buf2, &buflen2, x25519_key, X25519_KEYLEN, FALSE);
+
+  pr_memscrub(x25519_key, X25519_KEYLEN);
+  pr_memscrub(sntrup_key, sntrup_keylen);
 
   pctx = EVP_MD_CTX_new();
 
