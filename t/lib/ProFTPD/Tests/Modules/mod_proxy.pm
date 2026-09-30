@@ -7322,7 +7322,7 @@ EOC
       $self->assert($expected == $size,
         test_msg("Expected size $expected, got $size"));
 
-      my $expected = $port-1;
+      $expected = $port-1;
       $self->assert($remote_port == $expected,
         test_msg("Expected remote port $expected, got $remote_port"));
     };
