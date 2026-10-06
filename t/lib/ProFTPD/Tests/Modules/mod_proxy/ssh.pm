@@ -5059,13 +5059,20 @@ EOC
         $SIG{ALRM} = sub { $auth_timed_out = 1; };
 
         alarm(1);
+        $ssh2->timeout(3);
         if ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
           alarm(0);
           die("Second login succeeded unexpectedly");
         }
 
+        my ($err_code, $err_name, $err_text) = $ssh2->error();
+        if ($err_text =~ /timed out/i) {
+          $auth_timed_out = 1;
+        }
+
         # Clear the pending alarm
         alarm(0);
+        $ssh2->timeout(0);
       };
 
       $self->assert($auth_timed_out,
