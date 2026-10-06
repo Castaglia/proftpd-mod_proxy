@@ -484,7 +484,7 @@ static array_header *reverse_db_pername_backends_by_json(pool *p,
       continue;
     }
 
-    if (per_user) {
+    if (per_user == TRUE) {
       if (strstr(uri, "%U") == NULL) {
         c = find_config_next(c, c->next, CONF_PARAM, "ProxyReverseServers",
           FALSE);
@@ -505,7 +505,7 @@ static array_header *reverse_db_pername_backends_by_json(pool *p,
       continue;
     }
 
-    if (per_user) {
+    if (per_user == TRUE) {
       path = sreplace(p, (char *) (uri + 5), "%U", name, NULL);
 
     } else {
@@ -556,9 +556,38 @@ static array_header *reverse_db_pername_backends_by_json(pool *p,
   return file_backends;
 }
 
+static int backend_conn_cmp(const void *a, const void *b) {
+  const struct proxy_conn *conn_a, *conn_b;
+
+  conn_a = *((const struct proxy_conn **) a);
+  conn_b = *((const struct proxy_conn **) b);
+
+  return strcmp(proxy_conn_get_uri(conn_a), proxy_conn_get_uri(conn_b));
+}
+
+static int backend_conn_index(array_header *backends,
+    const struct proxy_conn *backend) {
+  register unsigned int i;
+  int idx = -1;
+
+  for (i = 0; i < backends->nelts; i++) {
+    const struct proxy_conn *pconn;
+
+    pconn = ((struct proxy_conn **) backends->elts)[i];
+    if (strcmp(proxy_conn_get_uri(pconn), proxy_conn_get_uri(backend)) == 0) {
+      idx = i;
+      break;
+    }
+  }
+
+  return idx;
+}
+
 array_header *proxy_reverse_pername_backends(pool *p, const char *name,
     int per_user) {
-  array_header *file_backends, *sql_backends, *backends = NULL;
+  register unsigned int i;
+  unsigned int uses_dns_srv_count = 0;
+  array_header *file_backends, *sql_backends, *updated_backends, *backends = NULL;
 
   file_backends = reverse_db_pername_backends_by_json(p, name, per_user);
   if (file_backends != NULL) {
@@ -591,6 +620,79 @@ array_header *proxy_reverse_pername_backends(pool *p, const char *name,
     backends = default_backends;
   }
 
+  /* Now we scan through the list of discovered backends and resolve any
+   * that use DNS SRV.
+   */
+
+  updated_backends = make_array(p, 0, sizeof(struct proxy_conn *));
+
+  for (i = 0; i < backends->nelts; i++) {
+    const struct proxy_conn *pconn;
+    array_header *ip_conns;
+
+    pr_signals_handle();
+
+    pconn = ((struct proxy_conn **) backends->elts)[i];
+    if (proxy_conn_use_dns_srv(pconn) != TRUE) {
+      *((const struct proxy_conn **) push_array(updated_backends)) = pconn;
+      continue;
+    }
+
+    uses_dns_srv_count++;
+    ip_conns = proxy_conn_get_dns_srv_conns(p, pconn);
+    if (ip_conns != NULL) {
+      register unsigned int j;
+
+      /* Watch for possible duplicates. */
+      for (j = 0; j < ip_conns->nelts; j++) {
+        int idx;
+        const struct proxy_conn *ip_conn;
+
+        ip_conn = ((const struct proxy_conn **) ip_conns->elts)[j];
+        idx = backend_conn_index(updated_backends, ip_conn);
+        if (idx < 0) {
+          *((const struct proxy_conn **) push_array(updated_backends)) = ip_conn;
+
+        } else {
+          pr_trace_msg(trace_channel, 19,
+            "resolved duplicate DNS SRV URI '%s', ignoring",
+            proxy_conn_get_uri(ip_conn));
+        }
+      }
+
+    } else {
+      pr_trace_msg(trace_channel, 19,
+        "error resolving DNS SRV URI '%s': %s", proxy_conn_get_uri(pconn),
+        strerror(errno));
+    }
+  }
+
+  if (uses_dns_srv_count > 0) {
+    pr_trace_msg(trace_channel, 19,
+      "resolved %u DNS SRV URIs in %d backends resulting in %d updated "
+      "backends", uses_dns_srv_count, backends->nelts, updated_backends->nelts);
+
+    /* It is possible that all of the backend URIs (even default ones) used
+     * DNS SRV, and that all them failed DNS resolution for some reason.
+     * Watch for this.
+     */
+    if (updated_backends->nelts == 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "no usable %s servers found for %s '%s'",
+        per_user ? "PerUser" : "PerGroup", per_user ? "user" : "group", name);
+      errno = ENOENT;
+      return NULL;
+    }
+
+    backends = updated_backends;
+  }
+
+  /* Ordering of retrieved backends, especially if via SQL, may not be stable.
+   * To help ensure that a given name hashes/picks the same backend entry
+   * from a list, sort the backends by URI for a consistent ordering.
+   */
+  qsort(backends->elts, backends->nelts, sizeof(struct proxy_conn *),
+    backend_conn_cmp);
   return backends;
 }
 

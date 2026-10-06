@@ -496,6 +496,50 @@ START_TEST (conn_use_dns_srv_test) {
 }
 END_TEST
 
+START_TEST (conn_get_dns_srv_conns_test) {
+  array_header *res;
+  const char *url;
+  const struct proxy_conn *pconn;
+
+  mark_point();
+  res = proxy_conn_get_dns_srv_conns(NULL, NULL);
+  ck_assert_msg(res == NULL, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  res = proxy_conn_get_dns_srv_conns(p, NULL);
+  ck_assert_msg(res == NULL, "Failed to handle null pconn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  url = "ftp://127.0.0.1:21";
+  pconn = proxy_conn_create(p, url, 0);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
+
+  res = proxy_conn_get_dns_srv_conns(p, pconn);
+  ck_assert_msg(res == NULL, "Failed to handle non-DNS SRV conn");
+  ck_assert_msg(errno == EPERM, "Expected EPERM (%d), got '%s' (%d)", EPERM,
+    strerror(errno), errno);
+
+  proxy_conn_free(pconn);
+
+  mark_point();
+  url = "ftp+srv://127.0.0.1";
+  pconn = proxy_conn_create(p, url, 0);
+  ck_assert_msg(pconn != NULL,
+    "Failed to create pconn for URL '%s' as expected", url);
+
+  /* Honestly, success or failure here is not as important as ensuring that
+   * the function call returns something (vs crashing).  For now, anyway.
+   */
+  (void) proxy_conn_get_dns_srv_conns(p, pconn);
+
+  proxy_conn_free(pconn);
+}
+END_TEST
+
 START_TEST (conn_use_dns_txt_test) {
   int use_dns_txt;
   const char *url;
@@ -873,6 +917,7 @@ Suite *tests_get_conn_suite(void) {
   tcase_add_test(testcase, conn_get_password_test);
   tcase_add_test(testcase, conn_get_tls_test);
   tcase_add_test(testcase, conn_use_dns_srv_test);
+  tcase_add_test(testcase, conn_get_dns_srv_conns_test);
   tcase_add_test(testcase, conn_use_dns_txt_test);
   tcase_add_test(testcase, conn_get_dns_ttl_test);
   tcase_add_test(testcase, conn_get_server_conn_test);

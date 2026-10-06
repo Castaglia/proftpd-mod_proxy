@@ -37,8 +37,8 @@ const struct proxy_conn *proxy_conn_create(pool *p, const char *uri,
   unsigned int flags);
 #define PROXY_CONN_CREATE_FL_USE_DNS_TTL	0x0001
 
-const pr_netaddr_t *proxy_conn_get_addr(const struct proxy_conn *,
-  array_header **);
+const pr_netaddr_t *proxy_conn_get_addr(const struct proxy_conn *pconn,
+  array_header **addrs);
 int proxy_conn_get_dns_ttl(const struct proxy_conn *pconn);
 const char *proxy_conn_get_scheme(const struct proxy_conn *pconn);
 const char *proxy_conn_get_host(const struct proxy_conn *pconn);
@@ -51,6 +51,13 @@ const char *proxy_conn_get_username(const struct proxy_conn *pconn);
 const char *proxy_conn_get_password(const struct proxy_conn *pconn);
 int proxy_conn_get_tls(const struct proxy_conn *pconn);
 int proxy_conn_use_dns_srv(const struct proxy_conn *pconn);
+
+/* Resolve the URI of the given DNS SRV-using pconn, and return a list
+ * of individual pconns for the (possibly multiple) resolved addresses.
+ */
+array_header *proxy_conn_get_dns_srv_conns(pool *p,
+  const struct proxy_conn *pconn);
+
 int proxy_conn_use_dns_txt(const struct proxy_conn *pconn);
 int proxy_conn_send_proxy_v1(pool *p, conn_t *conn);
 int proxy_conn_send_proxy_v2(pool *p, conn_t *conn);
