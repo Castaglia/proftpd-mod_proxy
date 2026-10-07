@@ -11,6 +11,7 @@ use File::Path qw(mkpath);
 use File::Spec;
 use IO::Handle;
 use IO::Socket::INET;
+use Socket qw(:all);
 use Time::HiRes qw(gettimeofday tv_interval usleep);
 
 use ProFTPD::TestSuite::FTP;
@@ -225,6 +226,14 @@ my $TESTS = {
   proxy_reverse_stor_abort => {
     order => ++$order,
     test_class => [qw(forking reverse)],
+  },
+
+  # Unlike the above test case, where the ABOR command is proxied to the backend
+  # server, for Issue #342 we need to abruptly/rudely break the frontend
+  # data connection.
+  proxy_reverse_stor_rudely_closed_issue342 => {
+    order => ++$order,
+    test_class => [qw(bug forking reverse)],
   },
 
   # NOTE: Make sure that, if using a Docker container, use of privileged
@@ -7164,6 +7173,186 @@ EOC
       $self->assert_transfer_ok($resp_code, $resp_msg, 1);
 
       $client->quit();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, $timeout_idle + 2) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup, $ex);
+}
+
+sub proxy_reverse_stor_rudely_closed_issue342 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $test_datalen = (4 * 1024 * 1024);
+  my $test_file = File::Spec->rel2abs("$tmpdir/test.txt");
+  my $hidden_file = File::Spec->rel2abs("$tmpdir/.in.test.txt.");
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+
+  my $timeout_idle = 10;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'command:10 response:10 proxy:20 proxy.conn:20 proxy.inet:20 proxy.netio:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    SocketBindTight => 'on',
+    TimeoutIdle => $timeout_idle,
+    TimeoutLinger => 1,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  AllowOverwrite on
+  RootLogin on
+  TimeoutIdle $timeout_idle
+  TimeoutLinger 1
+  TransferLog none
+  WtmpLog off
+
+  HiddenStores on
+  DeleteAbortedStores on
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Allow server to start up
+      sleep(2);
+
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 3);
+      $client->login($setup->{user}, $setup->{passwd});
+      $client->type('binary');
+
+      my $conn = $client->stor_raw($test_file);
+      unless ($conn) {
+        die("STOR failed: " . $client->response_code() . " " .
+          $client->response_msg());
+      }
+
+      my $buf = 'R' x $test_datalen;
+      $conn->write($buf, 8192, 30);
+
+      # Allow for some time to flush the socket buffer to the server, so
+      # that it receives the bytes we wrote.
+      sleep(1);
+
+      # If we manually set a lingering timeout of 0 on the underlying
+      # client socket, then close it immediately after, it should
+      # trigger an ECONNRESET for the peer (mod_proxy), thus rudely closing
+      # our data transfer connection.
+      #
+      # This pack() function is for struct linger's fields:
+      #
+      #   struct linger {
+      #       int l_onoff;    /* linger active */
+      #       int l_linger;   /* how many seconds to linger for */
+      #   };
+
+      my $linger = pack('II', 1, 0);
+      setsockopt($conn, SOL_SOCKET, SO_LINGER, $linger);
+      close($conn);
+      sleep(0.5);
+
+      # We need to peek into the class internals a bit in order to read
+      # the expected response, since we are manually futzing directly with
+      # the underlying socket.
+      $client->{ftp}->response();
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+
+      my $expected = 426;
+      $self->assert($resp_code == $expected,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Transfer aborted. Data connection closed';
+      $self->assert($resp_msg eq $expected,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      sleep(1);
+      $client->quit();
+
+      $self->assert(!-f $hidden_file,
+        test_msg("HiddenStores file '$hidden_file' exists unexpectedly"));
+      $self->assert(!-f $test_file,
+        test_msg("Uploaded file '$test_file' exists unexpectedly"));
     };
     if ($@) {
       $ex = $@;

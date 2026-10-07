@@ -41,4 +41,10 @@ int proxy_inet_listen(pool *p, conn_t *conn, int backlog, int flags);
 conn_t *proxy_inet_openrw(pool *p, conn_t *conn, const pr_netaddr_t *addr,
   int strm_type, int fd, int rfd, int wfd, int resolve);
 
+/* Rudely/abruptly close this connection, in order to cause the peer to
+ * see an unexpectedly closed connection and error such as "Connection reset
+ * by peer".
+ */
+int proxy_inet_rudely_close(pool *p, conn_t *conn);
+
 #endif /* MOD_PROXY_INET_H */

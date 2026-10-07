@@ -343,6 +343,64 @@ START_TEST (inet_openrw_test) {
 }
 END_TEST
 
+START_TEST (inet_rudely_close_test) {
+  int res;
+  conn_t *conn = NULL;
+  pr_netio_stream_t *nstrm;
+
+  mark_point();
+  res = proxy_inet_rudely_close(NULL, NULL);
+  ck_assert_msg(res < 0, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  res = proxy_inet_rudely_close(p, NULL);
+  ck_assert_msg(res < 0, "Failed to handle null conn");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  conn = pr_inet_create_conn(p, -2, NULL, INPORT_ANY, FALSE);
+  ck_assert_msg(conn != NULL, "Failed to create conn: %s", strerror(errno));
+
+  res = proxy_inet_rudely_close(p, conn);
+  ck_assert_msg(res < 0, "Failed to handle missing outstrm");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+    strerror(errno), errno);
+
+  nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, -1, PR_NETIO_IO_WR);
+  ck_assert_msg(nstrm != NULL, "Failed to handle other stream type: %s",
+    strerror(errno));
+
+  conn->outstrm = nstrm;
+
+  mark_point();
+  res = proxy_inet_rudely_close(p, conn);
+  ck_assert_msg(res < 0, "Failed to handle bad fd");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got %s (%d)", EBADF,
+    strerror(errno), errno);
+
+  proxy_netio_close(nstrm);
+
+  nstrm = proxy_netio_open(p, PR_NETIO_STRM_OTHR, 77, PR_NETIO_IO_WR);
+  ck_assert_msg(nstrm != NULL, "Failed to handle other stream type: %s",
+    strerror(errno));
+
+  conn->outstrm = nstrm;
+
+  mark_point();
+  res = proxy_inet_rudely_close(p, conn);
+  ck_assert_msg(res < 0, "Failed to handle bad fd");
+  ck_assert_msg(errno == EBADF, "Expected EBADF (%d), got %s (%d)", EBADF,
+    strerror(errno), errno);
+
+  proxy_netio_close(nstrm);
+  conn->outstrm = NULL;
+
+  proxy_inet_close(p, conn);
+}
+END_TEST
+
 Suite *tests_get_inet_suite(void) {
   Suite *suite;
   TCase *testcase;
@@ -358,6 +416,7 @@ Suite *tests_get_inet_suite(void) {
   tcase_add_test(testcase, inet_connect_ipv6_test);
   tcase_add_test(testcase, inet_listen_test);
   tcase_add_test(testcase, inet_openrw_test);
+  tcase_add_test(testcase, inet_rudely_close_test);
 
   suite_add_tcase(suite, testcase);
   return suite;

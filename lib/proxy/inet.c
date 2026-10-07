@@ -26,6 +26,8 @@
 #include "proxy/netio.h"
 #include "proxy/inet.h"
 
+static const char *trace_channel = "proxy.inet";
+
 conn_t *proxy_inet_accept(pool *p, conn_t *data_conn, conn_t *ctrl_conn,
     int rfd, int wfd, int resolve) {
   int xerrno;
@@ -180,4 +182,67 @@ conn_t *proxy_inet_openrw(pool *p, conn_t *conn, const pr_netaddr_t *addr,
 
   errno = xerrno;
   return new_conn;
+}
+
+/* To break a connection rudely, we set SO_LINGER to zero, then immediately
+ * call close() on the socket fd.
+ */
+int proxy_inet_rudely_close(pool *p, conn_t *conn) {
+  struct linger linger;
+  int fd;
+
+  if (p == NULL ||
+      conn == NULL ||
+      conn->outstrm == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  linger.l_onoff = 1;
+  linger.l_linger = 0;
+
+  fd = PR_NETIO_FD(conn->outstrm);
+  if (setsockopt(fd, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger)) < 0) {
+    int xerrno = errno;
+
+    pr_trace_msg(trace_channel, 1, "error setting SO_LINGER=0 on fd %d: %s",
+      fd, strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  conn->outstrm->strm_flags |= PR_NETIO_SESS_ABORT;
+
+  /* Now we immediately close these streams, avoiding any proper shutdown
+   * (and close_notify for TLS connections).
+   */
+
+  if (conn->instrm != NULL) {
+    proxy_netio_close(conn->instrm);
+    conn->instrm = NULL;
+  }
+
+  /* We know that conn->outstrm is not null, per our parameter sanity checks
+   * above.
+   */
+  proxy_netio_close(conn->outstrm);
+  conn->outstrm = NULL;
+
+  if (conn->listen_fd != -1) {
+    (void) close(conn->listen_fd);
+    conn->listen_fd = -1;
+  }
+
+  if (conn->rfd != -1) {
+    (void) close(conn->rfd);
+    conn->rfd = -1;
+  }
+
+  if (conn->wfd != -1) {
+    (void) close(conn->wfd);
+    conn->wfd = -1;
+  }
+
+  return 0;
 }

@@ -2853,7 +2853,7 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
 }
 
 MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
-  int data_eof = FALSE, dst_xerrno = 0, res, xerrno;
+  int data_eof = FALSE, src_xerrno = 0, dst_xerrno = 0, res, xerrno;
   int xfer_direction, xfer_ok = TRUE;
   unsigned int resp_nlines = 0;
   pr_response_t *resp;
@@ -3140,7 +3140,8 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
       pr_buffer_t *pbuf = NULL;
 
       pr_trace_msg(trace_channel, 19,
-        "handling data connection during data transfer");
+        "handling source %s data connection during data transfer",
+        frontend_data ? "frontend" : "backend");
 
       pr_timer_reset(PR_TIMER_IDLE, ANY_MODULE);
 
@@ -3148,16 +3149,47 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
       if (pbuf == NULL) {
         xerrno = errno;
 
-        if (xerrno == EAGAIN) {
-          /* We have not yet received enough data from the backend to proceed;
+        if (xerrno == EAGAIN ||
+            xerrno == EINTR) {
+          /* We have not yet received enough data from the source to proceed;
            * loop around to wait for more data.
            */
           continue;
         }
 
+        /* This is where Issue #342 occurred.  For unexpected errors, we
+         * should propagate them to the backend, rather than just assuming
+         * an "expected" EOF.
+         */
+
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "error receiving from source data connection: %s",
-          strerror(xerrno));
+          "error receiving from source %s data connection: %s",
+          frontend_data ? "frontend" : "backend", strerror(xerrno));
+
+        xfer_ok = FALSE;
+        src_xerrno = xerrno;
+
+        /* Immediately do the rude closing of backend data connection here.
+         * That should then trigger a response on the backend control
+         * connection.
+         */
+        if (proxy_inet_rudely_close(session.pool,
+            proxy_sess->backend_data_conn) < 0) {
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "error aborting backend data connection: %s", strerror(errno));
+          pr_session_disconnect(&proxy_module,
+            PR_SESS_DISCONNECT_BY_APPLICATION,
+            "Backend data transfer abort failed");
+        }
+
+        proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+        proxy_sess->backend_data_conn = NULL;
+
+        if (proxy_sess->frontend_data_conn != NULL) {
+          pr_inet_lingering_close(session.pool,
+            proxy_sess->frontend_data_conn, timeout_linger);
+          proxy_sess->frontend_data_conn = session.d = NULL;
+        }
 
       } else {
         size_t nread;
@@ -3382,6 +3414,17 @@ MODRET proxy_data(struct proxy_session *proxy_sess, cmd_rec *cmd) {
               resp->num[0] == '5') {
             xfer_ok = FALSE;
           }
+        }
+
+        /* If the frontend data connection broke, we need to respond
+         * appropriately, even if the backend response indicates success here
+         * (Issue #342).
+         */
+        if (src_xerrno != 0 &&
+            resp->num[0] == '2') {
+          resp->num = R_426;
+          resp->msg = _("Transfer aborted. Data connection closed");
+          resp_nlines = 1;
         }
 
         res = proxy_ftp_ctrl_send_resp(cmd->tmp_pool,
