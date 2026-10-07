@@ -1720,7 +1720,7 @@ it via:
 <hr>
 <h3><a name="ProxyTLSProtocol">ProxyTLSProtocol</a></h3>
 <strong>Syntax:</strong> ProxyTLSProtocol <em>protocols</em><br>
-<strong>Default:</strong> ProxyTLSProtocol TLSv1 TLSv1.1 TLSv1.2<br>
+<strong>Default:</strong> ProxyTLSProtocol TLSv1 TLSv1.1 TLSv1.2 TLSv1.3<br>
 <strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
 <strong>Module:</strong> mod_proxy<br>
 <strong>Compatibility:</strong> 1.3.6rc2 and later
@@ -1754,6 +1754,10 @@ The allowed protocols are:
     <td>Use only TLSv1.2</td>
   </tr>
 
+  <tr>
+    <td><code>TLSv1.3</code></td>
+    <td>Use only TLSv1.3</td>
+  </tr>
 </table>
 
 <p>

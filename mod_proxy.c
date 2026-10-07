@@ -2138,6 +2138,9 @@ MODRET set_proxytlsprotocol(cmd_rec *cmd) {
       if (strcasecmp(cmd->argv[i], "SSLv23") == 0) {
         tls_protocol |= PROXY_TLS_PROTO_SSL_V3;
         tls_protocol |= PROXY_TLS_PROTO_TLS_V1;
+        tls_protocol |= PROXY_TLS_PROTO_TLS_V1_1;
+        tls_protocol |= PROXY_TLS_PROTO_TLS_V1_2;
+        tls_protocol |= PROXY_TLS_PROTO_TLS_V1_3;
 
       } else if (strcasecmp(cmd->argv[i], "SSLv3") == 0) {
         tls_protocol |= PROXY_TLS_PROTO_SSL_V3;

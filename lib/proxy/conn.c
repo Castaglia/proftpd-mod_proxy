@@ -85,7 +85,7 @@ static const char *supported_schemes[] = {
 #define PROXY_PROTOCOL_V2_FAMILY_INET6		0x20
 #define PROXY_PROTOCOL_V2_ADDRLEN_INET		(4 + 4 + 2 + 2)
 #define PROXY_PROTOCOL_V2_ADDRLEN_INET6		(16 + 16 + 2 + 2)
-static uint8_t proxy_protocol_v2_sig[PROXY_PROTOCOL_V2_SIGLEN] = "\x0D\x0A\x0D\x0A\x00\x0D\x0A\x51\x55\x49\x54\x0A";
+static uint8_t __attribute__ ((__nonstring__)) proxy_protocol_v2_sig[PROXY_PROTOCOL_V2_SIGLEN] = "\x0D\x0A\x0D\x0A\x00\x0D\x0A\x51\x55\x49\x54\x0A";
 
 #define PROXY_PROTOCOL_V2_TLV_ALPN		0x01
 #define PROXY_PROTOCOL_V2_TLV_AUTHORITY		0x02

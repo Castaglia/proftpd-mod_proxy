@@ -3115,7 +3115,9 @@ static struct tls_label tls_compression_labels[] = {
   { 0, NULL }
 };
 
-/* Extensions */
+/* Extension types.  These values come from:
+ *   https://www.iana.org/assignments/tls-extensiontype-values#tls-extensiontype-values-1
+ */
 static struct tls_label tls_extension_labels[] = {
   { 0, "server_name" },
   { 1, "max_fragment_length" },
@@ -3182,6 +3184,9 @@ static struct tls_label tls_sigalgo_labels[] = {
   { 0x0809, "rsa_pss_pss_sha256" },
   { 0x080A, "rsa_pss_pss_sha384" },
   { 0x080B, "rsa_pss_pss_sha512" },
+  { 0x0904, "mldsa44" },
+  { 0x0905, "mldsa65" },
+  { 0x0906, "mldsa87" },
 
   { 0, NULL }
 };
@@ -3929,6 +3934,12 @@ static void tls_tlsext_cb(SSL *ssl, int server, int type,
       break;
     }
 # endif /* TLSEXT_TYPE_psk_kex_modes */
+
+# ifdef TLSEXT_TYPE_key_share
+    case TLSEXT_TYPE_key_share:
+      extension_name = "key share";
+      break;
+# endif
 
 # if defined(TLSEXT_TYPE_renegotiate)
     case TLSEXT_TYPE_renegotiate:
