@@ -147,7 +147,10 @@ struct proxy_ssh_pkey_data {
 #define PROXY_SSH_OPENSSH_MAGIC		"openssh-key-v1"
 
 /* Impose a maximum size of OpenSSH private keys files. */
-#define PROXY_SSH_OPENSSH_KEY_MAX_SZ	(1024 * 64)
+#define PROXY_SSH_OPENSSH_KEY_MAX_SZ		(1024 * 64)
+
+/* And a limit on the maximum number of KDF rounds for OpenSSH private keys. */
+#define PROXY_SSH_OPENSSH_KEY_MAX_KDF_ROUNDS	(1024 * 32)
 
 /* Encryption cipher info. */
 struct openssh_cipher {
@@ -3128,6 +3131,15 @@ static int decrypt_openssh_data(pool *p, const char *path,
   pr_trace_msg(trace_channel, 9,
     "'%s' key %s KDF using %lu bytes of salt, %lu rounds", path,
     kdf_name, (unsigned long) salt_len, (unsigned long) rounds);
+
+  if (rounds > PROXY_SSH_OPENSSH_KEY_MAX_KDF_ROUNDS) {
+    pr_trace_msg(trace_channel, 3,
+      "'%s' key KDF rounds (%lu) exceeds maximum (%lu), rejecting",
+      path, (unsigned long) rounds,
+      (unsigned long) PROXY_SSH_OPENSSH_KEY_MAX_KDF_ROUNDS);
+    errno = EINVAL;
+    return -1;
+  }
 
   /* Compute the decryption key using the KDF and the passphrase.  Note that
    * we derive the key AND the IV using this approach at the same time.
