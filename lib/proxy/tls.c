@@ -4598,6 +4598,8 @@ int proxy_tls_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
       }
     }
 
+    X509_VERIFY_PARAM_free(verify_param);
+
   } else {
     /* Default to using locations set in the OpenSSL config file. */
     pr_trace_msg(trace_channel, 9,

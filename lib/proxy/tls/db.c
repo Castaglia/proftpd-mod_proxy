@@ -81,6 +81,8 @@ static int tls_db_add_sess(pool *p, void *dbh, const char *key,
             (unsigned long) datalen, diags_data);
         }
       }
+
+      BIO_free(diags_bio);
     }
   }
 
