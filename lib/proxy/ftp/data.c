@@ -125,7 +125,7 @@ int proxy_ftp_data_send(pool *p, conn_t *data_conn, pr_buffer_t *pbuf,
   buf = pbuf->buf;
   buflen = pbuf->current - pbuf->buf;
 
-  pr_trace_msg(trace_channel, 25, "writing %lu bytes of data to %s",
+  pr_trace_msg(trace_channel, 15, "writing %lu bytes of data to %s",
     (unsigned long) buflen,
     frontend_data ? "frontend client" : "backend server");
 

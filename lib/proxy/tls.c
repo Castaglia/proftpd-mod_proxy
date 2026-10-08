@@ -1730,6 +1730,28 @@ static int netio_close_cb(pr_netio_stream_t *nstrm) {
     if (nstrm->strm_type == PR_NETIO_STRM_DATA &&
         nstrm->strm_mode == PR_NETIO_IO_WR) {
       pr_table_remove(nstrm->notes, PROXY_TLS_NETIO_NOTE, NULL);
+
+      if (nstrm->strm_flags & PR_NETIO_SESS_ABORT) {
+        /* This data connection SSL may share its session with the live
+         * control connection.  Preserve that session while aborting TCP
+         * without sending any 'close_notify' alerts.
+         */
+        if (tls_ctrl_ssl != NULL &&
+            SSL_get_session(ssl) == SSL_get_session(tls_ctrl_ssl)) {
+          int shutdown_state;
+
+          shutdown_state = SSL_get_shutdown(ssl);
+          shutdown_state |= SSL_SENT_SHUTDOWN;
+          SSL_set_shutdown(ssl, shutdown_state);
+        }
+      }
+
+      /* Normally this flag is cleared by the NetIO shutdown callback.  But
+       * there are use cases where shutdown may not happen, so we clear it
+       * here as well.
+       */
+      proxy_sess_state &= ~PROXY_SESS_STATE_BACKEND_HAS_DATA_TLS;
+      SSL_free(ssl);
     }
   }
 
