@@ -589,6 +589,129 @@ int proxy_conn_use_dns_srv(const struct proxy_conn *pconn) {
   return pconn->pconn_use_dns_srv;
 }
 
+static const struct proxy_conn *create_ip_conn(pool *p,
+    const struct proxy_conn *src_conn, pr_netaddr_t *addr) {
+  int xerrno;
+  pool *tmp_pool = NULL;
+  struct proxy_conn *ip_conn;
+  const char *addr_ip, *uri, *scheme, *username = NULL, *password = NULL;
+  char hostport[512];
+
+  addr_ip = pr_netaddr_get_ipstr(addr);
+
+  memset(hostport, '\0', sizeof(hostport));
+
+  if (pr_netaddr_get_family(addr) == AF_INET) {
+    pr_snprintf(hostport, sizeof(hostport)-1, "%s:%u", addr_ip,
+      ntohs(pr_netaddr_get_port(addr)));
+
+  } else {
+    /* Assume the obtained IP address is an IPv6 address, and format the
+     * authority section accordingly.
+     */
+    pr_snprintf(hostport, sizeof(hostport)-1, "[%s]:%u", addr_ip,
+      ntohs(pr_netaddr_get_port(addr)));
+  }
+
+  scheme = proxy_conn_get_scheme(src_conn);
+  username = proxy_conn_get_username(src_conn);
+  password = proxy_conn_get_password(src_conn);
+
+  tmp_pool = make_sub_pool(p);
+
+  if (username != NULL &&
+      password != NULL) {
+    uri = pstrcat(tmp_pool, scheme, "://", username, ":", password, "@",
+      hostport, NULL);
+
+  } else {
+    uri = pstrcat(tmp_pool, scheme, "://", hostport, NULL);
+  }
+
+  pr_trace_msg(trace_channel, 19,
+    "creating IP-specific conn for URI '%s'", uri);
+  ip_conn = (struct proxy_conn *) proxy_conn_create(p, uri, 0);
+  xerrno = errno;
+
+  destroy_pool(tmp_pool);
+
+  if (ip_conn != NULL) {
+    /* Preserve the TLS usage of the original conn. */
+    ip_conn->pconn_tls = src_conn->pconn_tls;
+  }
+
+  errno = xerrno;
+  return ip_conn;
+}
+
+array_header *proxy_conn_get_dns_srv_conns(pool *p,
+    const struct proxy_conn *pconn) {
+  const struct proxy_conn *updated_conn;
+  struct proxy_conn *ip_conn;
+  const pr_netaddr_t *updated_addr;
+  array_header *addl_addrs = NULL, *ip_conns = NULL;
+
+  if (p == NULL ||
+      pconn == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  if (proxy_conn_use_dns_srv(pconn) != TRUE) {
+    errno = EPERM;
+    return NULL;
+  }
+
+  /* First, resolve the URL of the given pconn, to get the up-to-date list of
+   * addresses.
+   */
+  updated_conn = proxy_conn_create(p, proxy_conn_get_uri(pconn), 0);
+  if (updated_conn == NULL) {
+    return NULL;
+  }
+
+  updated_addr = proxy_conn_get_addr(updated_conn, &addl_addrs);
+  if (updated_addr == NULL) {
+    return NULL;
+  }
+
+  /* We want to return a list of pconn objects whose authority uses the
+   * resolved IP addresses, not the DNS name of the original URI.
+   */
+
+  ip_conn = create_ip_conn(p, updated_conn, updated_addr);
+  if (ip_conn == NULL) {
+    return NULL;
+  }
+
+  ip_conns = make_array(p, 1, sizeof(const struct proxy_conn *));
+  *((const struct proxy_conn **) push_array(ip_conns)) = ip_conn;
+
+  /* And do the same for any additional addresses as well. */
+  if (addl_addrs != NULL) {
+    register unsigned int i;
+
+    for (i = 0; i < addl_addrs->nelts; i++) {
+      const pr_netaddr_t *addr;
+
+      pr_signals_handle();
+
+      addr = ((pr_netaddr_t **) addl_addrs->elts)[i];
+      ip_conn = create_ip_conn(p, updated_conn, addr);
+      if (ip_conn != NULL) {
+        *((const struct proxy_conn **) push_array(ip_conns)) = ip_conn;
+
+      } else {
+        pr_trace_msg(trace_channel, 3,
+          "error creating IP-specific conn for address '%s': %s",
+          pr_netaddr_get_ipstr(addr), strerror(errno));
+      }
+    }
+  }
+
+  return ip_conns;
+}
+
 int proxy_conn_use_dns_txt(const struct proxy_conn *pconn) {
   if (pconn == NULL) {
     errno = EINVAL;
