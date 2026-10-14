@@ -408,7 +408,8 @@ int proxy_ssh_compress_init_write(int flags) {
       comp->stream_ready == FALSE) {
     int zres;
 
-    zres = deflateInit(stream, Z_DEFAULT_COMPRESSION);
+    zres = deflateInit2(stream, Z_BEST_SPEED, Z_DEFLATED, 15, 8,
+      Z_HUFFMAN_ONLY);
     if (zres != Z_OK) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "error preparing compression stream (%d)", zres);
