@@ -38,6 +38,7 @@
 #include "proxy/ssh/interop.h"
 #include "proxy/ssh/sntrup761.h"
 #include "proxy/ssh/misc.h"
+#include "proxy/ssh/auth.h"
 
 #include <openssl/bn.h>
 #include <openssl/dh.h>
@@ -2301,6 +2302,7 @@ static int setup_hostkey_algo(struct proxy_ssh_kex *kex, const char *algo) {
 #if defined(HAVE_SHA256_OPENSSL)
   if (strcmp(algo, "rsa-sha2-256") == 0) {
     kex->use_hostkey_type = PROXY_SSH_KEY_RSA_SHA256;
+    proxy_ssh_auth_use_rsa_sha2(TRUE);
     return 0;
   }
 #endif /* HAVE_SHA256_OPENSSL */
@@ -2308,6 +2310,7 @@ static int setup_hostkey_algo(struct proxy_ssh_kex *kex, const char *algo) {
 #if defined(HAVE_SHA512_OPENSSL)
   if (strcmp(algo, "rsa-sha2-512") == 0) {
     kex->use_hostkey_type = PROXY_SSH_KEY_RSA_SHA512;
+    proxy_ssh_auth_use_rsa_sha2(TRUE);
     return 0;
   }
 #endif /* HAVE_SHA512_OPENSSL */

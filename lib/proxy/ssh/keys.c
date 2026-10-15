@@ -4111,8 +4111,8 @@ int proxy_ssh_keys_get_hostkey(pool *p, const char *path) {
   return res;
 }
 
-static int get_rsa_hostkey_data(pool *p, const char *key_algo,
-    unsigned char **buf, unsigned char **ptr, uint32_t *buflen) {
+static int get_rsa_hostkey_data(pool *p, unsigned char **buf,
+    unsigned char **ptr, uint32_t *buflen) {
   RSA *rsa;
   const BIGNUM *rsa_n = NULL, *rsa_e = NULL;
 
@@ -4125,7 +4125,7 @@ static int get_rsa_hostkey_data(pool *p, const char *key_algo,
 
   /* XXX Is this buffer large enough?  Too large? */
   *ptr = *buf = palloc(p, *buflen);
-  proxy_ssh_msg_write_string(buf, buflen, key_algo);
+  proxy_ssh_msg_write_string(buf, buflen, "ssh-rsa");
 
 #if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
     (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
@@ -4335,16 +4335,7 @@ const unsigned char *proxy_ssh_keys_get_hostkey_data(pool *p,
     case PROXY_SSH_KEY_RSA:
     case PROXY_SSH_KEY_RSA_SHA256:
     case PROXY_SSH_KEY_RSA_SHA512: {
-      const char *key_algo = "ssh-rsa";
-
-      if (key_type == PROXY_SSH_KEY_RSA_SHA256) {
-        key_algo = "rsa-sha2-256";
-
-      } else if (key_type == PROXY_SSH_KEY_RSA_SHA256) {
-        key_algo = "rsa-sha2-256";
-      }
-
-      res = get_rsa_hostkey_data(p, key_algo, &buf, &ptr, &buflen);
+      res = get_rsa_hostkey_data(p, &buf, &ptr, &buflen);
       if (res < 0) {
         return NULL;
       }
@@ -4548,14 +4539,14 @@ static const unsigned char *get_rsa_signed_data(pool *p,
 }
 
 static const unsigned char *rsa_sign_data(pool *p, const unsigned char *data,
-    size_t datalen, size_t *siglen) {
+    size_t datalen, size_t *siglen, const char *sig_name, const EVP_MD *md) {
   if (rsa_hostkey->agent_path != NULL) {
     return agent_sign_data(p, rsa_hostkey->agent_path,
       rsa_hostkey->key_data, rsa_hostkey->key_datalen, data, datalen,
       siglen, 0);
   }
 
-  return get_rsa_signed_data(p, data, datalen, siglen, "ssh-rsa", EVP_sha1());
+  return get_rsa_signed_data(p, data, datalen, siglen, sig_name, md);
 }
 
 /* RFC 4253, Section 6.6, is quite specific about the length of a DSA
@@ -4985,8 +4976,22 @@ const unsigned char *proxy_ssh_keys_sign_data(pool *p,
 
   switch (key_type) {
     case PROXY_SSH_KEY_RSA:
-      res = rsa_sign_data(p, data, datalen, siglen);
+      res = rsa_sign_data(p, data, datalen, siglen, "ssh-rsa", EVP_sha1());
       break;
+
+#if defined(HAVE_SHA256_OPENSSL)
+    case PROXY_SSH_KEY_RSA_SHA256:
+      res = rsa_sign_data(p, data, datalen, siglen, "rsa-sha2-256",
+        EVP_sha256());
+      break;
+#endif /* HAVE_SHA256_OPENSSL */
+
+#if defined(HAVE_SHA512_OPENSSL)
+    case PROXY_SSH_KEY_RSA_SHA512:
+      res = rsa_sign_data(p, data, datalen, siglen, "rsa-sha2-512",
+        EVP_sha512());
+      break;
+#endif /* HAVE_SHA512_OPENSSL */
 
 #if !defined(OPENSSL_NO_DSA)
     case PROXY_SSH_KEY_DSA:

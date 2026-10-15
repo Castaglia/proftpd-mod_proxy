@@ -40,4 +40,9 @@ int proxy_ssh_auth_handle(struct proxy_ssh_packet *pkt,
 int proxy_ssh_auth_set_frontend_success_handle(pool *p, int (*cb)(pool *p,
   const char *user));
 
+/* Used to indicate whether RFC 8332 RSA SHA2 signatures are supported by
+ * the backend server.
+ */
+int proxy_ssh_auth_use_rsa_sha2(int val);
+
 #endif /* MOD_PROXY_SSH_AUTH_H */

@@ -40,6 +40,7 @@
 extern pr_response_t *resp_list, *resp_err_list;
 
 static pool *auth_pool = NULL;
+static int auth_use_rsa_sha2 = FALSE;
 
 static const char *trace_channel = "proxy.ssh.auth";
 
@@ -324,6 +325,17 @@ static int write_userauth_hostbased(struct proxy_ssh_packet *pkt,
     use_hostkey_type = PROXY_SSH_KEY_RSA;
     hostkey_algo = "ssh-rsa";
 
+#if defined(HAVE_SHA256_OPENSSL) || \
+    defined(HAVE_SHA512_OPENSSL)
+    if (auth_use_rsa_sha2 == TRUE) {
+# if defined(HAVE_SHA512_OPENSSL)
+      use_hostkey_type = PROXY_SSH_KEY_RSA_SHA512;
+# else
+      use_hostkey_type = PROXY_SSH_KEY_RSA_SHA256;
+# endif /* HAVE_SHA512_OPENSSL */
+    }
+#endif /* HAVE_SHA256_OPENSSL or HAVE_SHA512_OPENSSL */
+
   } else if (proxy_ssh_keys_have_hostkey(PROXY_SSH_KEY_DSA) == 0) {
     use_hostkey_type = PROXY_SSH_KEY_DSA;
     hostkey_algo = "ssh-dss";
@@ -350,6 +362,10 @@ static int write_userauth_hostbased(struct proxy_ssh_packet *pkt,
 
   signature = proxy_ssh_keys_sign_data(pkt->pool, use_hostkey_type,
     sig_data, sig_datalen, &signature_len);
+  if (signature == NULL) {
+    return -1;
+  }
+
   len += proxy_ssh_msg_write_data(&buf, &buflen, signature, signature_len,
     TRUE);
 
@@ -1292,4 +1308,19 @@ int proxy_ssh_auth_set_frontend_success_handle(pool *p,
   }
 
   return 0;
+}
+
+int proxy_ssh_auth_use_rsa_sha2(int val) {
+  int old_val;
+
+  if (val != TRUE &&
+      val != FALSE) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  old_val = auth_use_rsa_sha2;
+  auth_use_rsa_sha2 = val;
+
+  return old_val;
 }
