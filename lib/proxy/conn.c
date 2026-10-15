@@ -590,7 +590,7 @@ int proxy_conn_use_dns_srv(const struct proxy_conn *pconn) {
 }
 
 static const struct proxy_conn *create_ip_conn(pool *p,
-    const struct proxy_conn *src_conn, pr_netaddr_t *addr) {
+    const struct proxy_conn *src_conn, const pr_netaddr_t *addr) {
   int xerrno;
   pool *tmp_pool = NULL;
   struct proxy_conn *ip_conn;
@@ -646,8 +646,7 @@ static const struct proxy_conn *create_ip_conn(pool *p,
 
 array_header *proxy_conn_get_dns_srv_conns(pool *p,
     const struct proxy_conn *pconn) {
-  const struct proxy_conn *updated_conn;
-  struct proxy_conn *ip_conn;
+  const struct proxy_conn *ip_conn, *updated_conn;
   const pr_netaddr_t *updated_addr;
   array_header *addl_addrs = NULL, *ip_conns = NULL;
 
