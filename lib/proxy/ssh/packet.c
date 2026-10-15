@@ -33,14 +33,14 @@
 #include "proxy/ssh/auth.h"
 #include "proxy/ssh/service.h"
 
-#if HAVE_SYS_UIO_H
+#if defined(HAVE_SYS_UIO_H)
 # include <sys/uio.h>
-#endif
+#endif /* HAVE_SYS_UIO_H */
 
-#ifndef MAX
+#if !defined(MAX)
 # define MAX(x, y) (((x) > (y)) ? (x) : (y))
 # define MIN(x, y) (((x) < (y)) ? (x) : (y))
-#endif
+#endif /* MAX */
 
 extern pr_response_t *resp_list, *resp_err_list;
 
@@ -1903,6 +1903,30 @@ void proxy_ssh_packet_handle_ext_info(struct proxy_ssh_packet *pkt) {
     pr_trace_msg(trace_channel, 9,
       "server extension: %s (value %lu bytes)", ext_name,
       (unsigned long) ext_datalen);
+
+    if (strcmp(ext_name, "server-sig-algs") == 0) {
+      const char *text;
+      array_header *sig_algs;
+
+      pr_trace_msg(trace_channel, 11,
+        "server %s extension: %.*s", ext_name, (int) ext_datalen, ext_data);
+
+      text = pstrndup(pkt->pool, (char *) ext_data, ext_datalen);
+      sig_algs = pr_str_text_to_array(pkt->pool, text, ',');
+      if (sig_algs != NULL) {
+        register unsigned int j;
+
+        for (j = 0; j < sig_algs->nelts; j++) {
+          const char *sig_alg;
+
+          sig_alg = ((char **) sig_algs->elts)[j];
+          if (strcmp(sig_alg, "rsa-sha2-256") == 0 ||
+              strcmp(sig_alg, "rsa-sha2-512") == 0) {
+            proxy_ssh_auth_use_rsa_sha2(TRUE);
+          }
+        }
+      }
+    }
   }
 
   destroy_pool(pkt->pool);
