@@ -314,6 +314,13 @@ int proxy_ssh_agent_get_keys(pool *p, const char *agent_path,
 
     len = proxy_ssh_msg_read_int(p, &resp, &resplen, &key_datalen);
     len = proxy_ssh_msg_read_data(p, &resp, &resplen, key_datalen, &key_data);
+    if (len == 0) {
+      pr_trace_msg(trace_channel, 2,
+        "SSH agent at '%s' provided empty key for key #%u, skipping",
+        agent_path, (i + 1));
+      continue;
+    }
+
     len = proxy_ssh_msg_read_string(p, &resp, &resplen, &key_comment);
     if (key_comment != NULL) {
       pr_trace_msg(trace_channel, 9,

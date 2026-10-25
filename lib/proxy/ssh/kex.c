@@ -2779,7 +2779,7 @@ static int read_kexinit(struct proxy_ssh_packet *pkt,
   unsigned char *buf;
   unsigned char *cookie;
   char *list;
-  uint32_t buflen, reserved;
+  uint32_t buflen, reserved, len;
 
   buf = pkt->payload;
   buflen = pkt->payload_len;
@@ -2790,48 +2790,88 @@ static int read_kexinit(struct proxy_ssh_packet *pkt,
   memcpy(kex->server_kexinit_payload, pkt->payload, pkt->payload_len);
 
   /* Read the cookie, which is a mandated length of 16 bytes. */
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, 16, &cookie);
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, 16, &cookie);
+  if (len == 0) {
+    return -1;
+  }
 
-  proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  len = proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  if (len == 0) {
+    return -1;
+  }
   kex->server_names->kex_algo = list;
 
-  proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  len = proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  if (len == 0) {
+    return -1;
+  }
   kex->server_names->server_hostkey_algo = list;
 
-  proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  len = proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  if (len == 0) {
+    return -1;
+  }
   kex->server_names->c2s_encrypt_algo = list;
 
-  proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  len = proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  if (len == 0) {
+    return -1;
+  }
   kex->server_names->s2c_encrypt_algo = list;
 
-  proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  len = proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  if (len == 0) {
+    return -1;
+  }
   kex->server_names->c2s_mac_algo = list;
 
-  proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  len = proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  if (len == 0) {
+    return -1;
+  }
   kex->server_names->s2c_mac_algo = list;
 
-  proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  len = proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  if (len == 0) {
+    return -1;
+  }
   kex->server_names->c2s_comp_algo = list;
 
-  proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  len = proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  if (len == 0) {
+    return -1;
+  }
   kex->server_names->s2c_comp_algo = list;
 
   /* Client-to-server languages */
-  proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  len = proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  if (len == 0) {
+    return -1;
+  }
   kex->server_names->c2s_lang = list;
 
   /* Server-to-client languages */
-  proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  len = proxy_ssh_msg_read_string(kex->pool, &buf, &buflen, &list);
+  if (len == 0) {
+    return -1;
+  }
   kex->server_names->s2c_lang = list;
 
   /* Read the "first kex packet follows" byte */
-  proxy_ssh_msg_read_bool(pkt->pool, &buf, &buflen, &(kex->first_kex_follows));
+  len = proxy_ssh_msg_read_bool(pkt->pool, &buf, &buflen,
+    &(kex->first_kex_follows));
+  if (len == 0) {
+    return -1;
+  }
 
   pr_trace_msg(trace_channel, 3, "first kex packet follows = %s",
     kex->first_kex_follows ? "true" : "false");
 
   /* Reserved flags */
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &reserved);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &reserved);
+  if (len == 0) {
+    return -1;
+  }
 
   return 0;
 }
@@ -3356,7 +3396,7 @@ static int read_dh_reply(struct proxy_ssh_packet *pkt,
   unsigned char *buf, *buf2, *server_hostkey_data = NULL, *sig = NULL;
   uint32_t buflen, server_hostkey_datalen = 0, siglen = 0, hlen = 0;
   const BIGNUM *server_pub_key = NULL, *k = NULL;
-  size_t dh_len = 0;
+  size_t dh_len = 0, len;
   int res;
 
   buf = pkt->payload;
@@ -3364,9 +3404,29 @@ static int read_dh_reply(struct proxy_ssh_packet *pkt,
 
   /* See RFC 4253, Section 8 "Diffie-Hellman Key Exchange" */
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &server_hostkey_datalen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, server_hostkey_datalen,
-    &server_hostkey_data);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen,
+    &server_hostkey_datalen);
+  if (len == 0) {
+    int xerrno = errno;
+
+    DH_free(kex->dh);
+    kex->dh = NULL;
+
+    errno = xerrno;
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen,
+    server_hostkey_datalen, &server_hostkey_data);
+  if (len == 0) {
+    int xerrno = errno;
+
+    DH_free(kex->dh);
+    kex->dh = NULL;
+
+    errno = xerrno;
+    return -1;
+  }
 
   res = handle_server_hostkey(pkt->pool, kex->use_hostkey_type,
     server_hostkey_data, server_hostkey_datalen);
@@ -3383,7 +3443,16 @@ static int read_dh_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &server_pub_key);
+  len = proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &server_pub_key);
+  if (len == 0) {
+    int xerrno = errno;
+
+    DH_free(kex->dh);
+    kex->dh = NULL;
+
+    errno = xerrno;
+    return -1;
+  }
 
   if (have_good_dh(kex->dh, server_pub_key) < 0) {
     DH_free(kex->dh);
@@ -3436,8 +3505,25 @@ static int read_dh_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
+  if (len == 0) {
+    BN_clear_free((BIGNUM *) kex->k);
+    kex->k = NULL;
+    DH_free(kex->dh);
+    kex->dh = NULL;
+
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  if (len == 0) {
+    BN_clear_free((BIGNUM *) kex->k);
+    kex->k = NULL;
+    DH_free(kex->dh);
+    kex->dh = NULL;
+
+    return -1;
+  }
 
   /* Verify H */
   res = verify_h(pkt->pool, kex, server_hostkey_data, server_hostkey_datalen,
@@ -3736,7 +3822,7 @@ static int read_dh_gex_reply(struct proxy_ssh_packet *pkt,
   unsigned char *buf, *buf2, *server_hostkey_data = NULL, *sig = NULL;
   uint32_t buflen, server_hostkey_datalen = 0, siglen = 0, hlen = 0;
   const BIGNUM *server_pub_key = NULL, *k = NULL;
-  size_t dh_len = 0;
+  size_t dh_len = 0, len;
   int res;
 
   buf = pkt->payload;
@@ -3744,16 +3830,35 @@ static int read_dh_gex_reply(struct proxy_ssh_packet *pkt,
 
   /* See RFC 4419, Section 3 "Diffie-Hellman Group and Key Exchange" */
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &server_hostkey_datalen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, server_hostkey_datalen,
-    &server_hostkey_data);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen,
+    &server_hostkey_datalen);
+  if (len == 0) {
+    int xerrno = errno;
+
+    DH_free(kex->dh);
+    kex->dh = NULL;
+
+    errno = xerrno;
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen,
+    server_hostkey_datalen, &server_hostkey_data);
+  if (len == 0) {
+    int xerrno = errno;
+
+    DH_free(kex->dh);
+    kex->dh = NULL;
+
+    errno = xerrno;
+    return -1;
+  }
 
   res = handle_server_hostkey(pkt->pool, kex->use_hostkey_type,
     server_hostkey_data, server_hostkey_datalen);
   if (res < 0) {
-    int xerrno;
+    int xerrno = errno;
 
-    xerrno = errno;
     DH_free(kex->dh);
     kex->dh = NULL;
 
@@ -3763,7 +3868,16 @@ static int read_dh_gex_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &server_pub_key);
+  len = proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &server_pub_key);
+  if (len == 0) {
+    int xerrno = errno;
+
+    DH_free(kex->dh);
+    kex->dh = NULL;
+
+    errno = xerrno;
+    return -1;
+  }
 
   if (have_good_dh(kex->dh, server_pub_key) < 0) {
     DH_free(kex->dh);
@@ -3816,8 +3930,25 @@ static int read_dh_gex_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
+  if (len == 0) {
+    BN_clear_free((BIGNUM *) kex->k);
+    kex->k = NULL;
+    DH_free(kex->dh);
+    kex->dh = NULL;
+
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  if (len == 0) {
+    BN_clear_free((BIGNUM *) kex->k);
+    kex->k = NULL;
+    DH_free(kex->dh);
+    kex->dh = NULL;
+
+    return -1;
+  }
 
   /* Verify H */
   res = verify_h(pkt->pool, kex, server_hostkey_data, server_hostkey_datalen,
@@ -4140,7 +4271,7 @@ static int read_ecdh_reply(struct proxy_ssh_packet *pkt,
     struct proxy_ssh_kex *kex) {
   const unsigned char *h;
   unsigned char *buf, *buf2, *server_hostkey_data = NULL, *sig = NULL;
-  uint32_t buflen, server_hostkey_datalen = 0, siglen = 0, hlen = 0;
+  uint32_t buflen, server_hostkey_datalen = 0, siglen = 0, hlen = 0, len;
   const BIGNUM *k = NULL;
   const EC_GROUP *curve = NULL;
   EC_POINT *server_point = NULL;
@@ -4152,16 +4283,35 @@ static int read_ecdh_reply(struct proxy_ssh_packet *pkt,
 
   /* See RFC 5656, Section 4 "ECDH Key Exchange" */
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &server_hostkey_datalen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, server_hostkey_datalen,
-    &server_hostkey_data);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen,
+    &server_hostkey_datalen);
+  if (len == 0) {
+    int xerrno = errno;
+
+    EC_KEY_free(kex->ec);
+    kex->ec = NULL;
+
+    errno = xerrno;
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen,
+    server_hostkey_datalen, &server_hostkey_data);
+  if (len == 0) {
+    int xerrno = errno;
+
+    EC_KEY_free(kex->ec);
+    kex->ec = NULL;
+
+    errno = xerrno;
+    return -1;
+  }
 
   res = handle_server_hostkey(pkt->pool, kex->use_hostkey_type,
     server_hostkey_data, server_hostkey_datalen);
   if (res < 0) {
-    int xerrno;
+    int xerrno = errno;
 
-    xerrno = errno;
     EC_KEY_free(kex->ec);
     kex->ec = NULL;
 
@@ -4197,6 +4347,8 @@ static int read_ecdh_reply(struct proxy_ssh_packet *pkt,
   if (validate_ecdsa_params(curve, kex->server_point) < 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "invalid server ECDH public key (EC point): %s", strerror(errno));
+    EC_KEY_free(kex->ec);
+    kex->ec = NULL;
     EC_POINT_clear_free(kex->server_point);
     kex->server_point = NULL;
 
@@ -4213,6 +4365,11 @@ static int read_ecdh_reply(struct proxy_ssh_packet *pkt,
   if (res <= 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error computing ECDH shared secret: %s", proxy_ssh_crypto_get_errors());
+    EC_KEY_free(kex->ec);
+    kex->ec = NULL;
+    EC_POINT_clear_free(kex->server_point);
+    kex->server_point = NULL;
+
     pr_memscrub(buf2, ecdh_len);
     return -1;
   }
@@ -4221,6 +4378,11 @@ static int read_ecdh_reply(struct proxy_ssh_packet *pkt,
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "computed ECDH shared secret length (%d) does not match needed length "
       "(%lu), rejecting", res, (unsigned long) ecdh_len);
+    EC_KEY_free(kex->ec);
+    kex->ec = NULL;
+    EC_POINT_clear_free(kex->server_point);
+    kex->server_point = NULL;
+
     pr_memscrub(buf2, ecdh_len);
     return -1;
   }
@@ -4229,6 +4391,11 @@ static int read_ecdh_reply(struct proxy_ssh_packet *pkt,
   if (k == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error allocating new BIGNUM: %s", proxy_ssh_crypto_get_errors());
+    EC_KEY_free(kex->ec);
+    kex->ec = NULL;
+    EC_POINT_clear_free(kex->server_point);
+    kex->server_point = NULL;
+
     pr_memscrub(buf2, ecdh_len);
     return -1;
   }
@@ -4239,6 +4406,9 @@ static int read_ecdh_reply(struct proxy_ssh_packet *pkt,
       proxy_ssh_crypto_get_errors());
     EC_KEY_free(kex->ec);
     kex->ec = NULL;
+    EC_POINT_clear_free(kex->server_point);
+    kex->server_point = NULL;
+
     pr_memscrub(buf2, ecdh_len);
     return -1;
   }
@@ -4254,12 +4424,35 @@ static int read_ecdh_reply(struct proxy_ssh_packet *pkt,
     kex->k = NULL;
     EC_KEY_free(kex->ec);
     kex->ec = NULL;
+    EC_POINT_clear_free(kex->server_point);
+    kex->server_point = NULL;
 
     return -1;
   }
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
+  if (len == 0) {
+    BN_clear_free((BIGNUM *) kex->k);
+    kex->k = NULL;
+    EC_KEY_free(kex->ec);
+    kex->ec = NULL;
+    EC_POINT_clear_free(kex->server_point);
+    kex->server_point = NULL;
+
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  if (len == 0) {
+    BN_clear_free((BIGNUM *) kex->k);
+    kex->k = NULL;
+    EC_KEY_free(kex->ec);
+    kex->ec = NULL;
+    EC_POINT_clear_free(kex->server_point);
+    kex->server_point = NULL;
+
+    return -1;
+  }
 
   /* Verify H */
   res = verify_h(pkt->pool, kex, server_hostkey_data, server_hostkey_datalen,
@@ -4269,6 +4462,8 @@ static int read_ecdh_reply(struct proxy_ssh_packet *pkt,
     kex->k = NULL;
     EC_KEY_free(kex->ec);
     kex->ec = NULL;
+    EC_POINT_clear_free(kex->server_point);
+    kex->server_point = NULL;
 
     return -1;
   }
@@ -4327,7 +4522,7 @@ static int read_kexrsa_pubkey(struct proxy_ssh_packet *pkt,
     unsigned char **hostkey_data, uint32_t *hostkey_datalen) {
   char *key_type = NULL;
   unsigned char *buf, *server_hostkey_data = NULL, *rsa_pubkey_data = NULL;
-  uint32_t buflen, server_hostkey_datalen = 0, rsa_pubkey_datalen = 0;
+  uint32_t buflen, server_hostkey_datalen = 0, rsa_pubkey_datalen = 0, len;
   const BIGNUM *rsa_n = NULL, *rsa_e = NULL;
   int res;
 
@@ -4336,9 +4531,17 @@ static int read_kexrsa_pubkey(struct proxy_ssh_packet *pkt,
 
   /* See RFC 4432 "SSH RSA Key Exchange" */
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &server_hostkey_datalen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, server_hostkey_datalen,
-    &server_hostkey_data);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen,
+    &server_hostkey_datalen);
+  if (len == 0) {
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen,
+    server_hostkey_datalen, &server_hostkey_data);
+  if (len == 0) {
+    return -1;
+  }
 
   res = handle_server_hostkey(pkt->pool, kex->use_hostkey_type,
     server_hostkey_data, server_hostkey_datalen);
@@ -4355,9 +4558,16 @@ static int read_kexrsa_pubkey(struct proxy_ssh_packet *pkt,
   *hostkey_data = palloc(hostkey_pool, server_hostkey_datalen);
   memcpy(*hostkey_data, server_hostkey_data, server_hostkey_datalen);
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &rsa_pubkey_datalen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, rsa_pubkey_datalen,
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &rsa_pubkey_datalen);
+  if (len == 0) {
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, rsa_pubkey_datalen,
     &rsa_pubkey_data);
+  if (len == 0) {
+    return -1;
+  }
 
   kex->rsa = RSA_new();
   if (kex->rsa == NULL) {
@@ -4370,17 +4580,44 @@ static int read_kexrsa_pubkey(struct proxy_ssh_packet *pkt,
   buf = rsa_pubkey_data;
   buflen = rsa_pubkey_datalen;
 
-  proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &key_type);
+  len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &key_type);
+  if (len == 0) {
+    RSA_free(kex->rsa);
+    kex->rsa = NULL;
+    pr_memscrub(rsa_pubkey_data, rsa_pubkey_datalen);
+
+    return -1;
+  }
+
   if (key_type == NULL ||
       strcmp(key_type, "ssh-rsa") != 0) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "unsupported key type received: %s",
       key_type != NULL ? key_type : "(nil)");
+    RSA_free(kex->rsa);
+    kex->rsa = NULL;
+    pr_memscrub(rsa_pubkey_data, rsa_pubkey_datalen);
+
     return -1;
   }
 
-  proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &rsa_e);
-  proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &rsa_n);
+  len = proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &rsa_e);
+  if (len == 0) {
+    RSA_free(kex->rsa);
+    kex->rsa = NULL;
+    pr_memscrub(rsa_pubkey_data, rsa_pubkey_datalen);
+
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &rsa_n);
+  if (len == 0) {
+    RSA_free(kex->rsa);
+    kex->rsa = NULL;
+    pr_memscrub(rsa_pubkey_data, rsa_pubkey_datalen);
+
+    return -1;
+  }
 
 #if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
     (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
@@ -4554,14 +4791,27 @@ static int read_kexrsa_done(struct proxy_ssh_packet *pkt,
     uint32_t server_hostkey_datalen) {
   const unsigned char *h;
   unsigned char *buf, *sig = NULL;
-  uint32_t buflen, siglen = 0, hlen = 0;
+  uint32_t buflen, siglen = 0, hlen = 0, len;
   int res;
 
   buf = pkt->payload;
   buflen = pkt->payload_len;
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
+  if (len == 0) {
+    BN_clear_free((BIGNUM *) kex->k);
+    kex->k = NULL;
+
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  if (len == 0) {
+    BN_clear_free((BIGNUM *) kex->k);
+    kex->k = NULL;
+
+    return -1;
+  }
 
   /* Calculate H */
   h = calculate_kexrsa_h(pkt->pool, kex, server_hostkey_data,
@@ -4682,7 +4932,8 @@ static int read_curve25519_reply(struct proxy_ssh_packet *pkt,
   const unsigned char *h;
   unsigned char zero_curve25519[CURVE25519_SIZE];
   unsigned char *buf, *buf2, *server_hostkey_data = NULL, *sig = NULL;
-  uint32_t buflen, pub_keylen, server_hostkey_datalen = 0, siglen = 0, hlen = 0;
+  uint32_t buflen, pub_keylen, server_hostkey_datalen = 0, siglen = 0,
+    hlen = 0, len;
   const BIGNUM *k = NULL;
   int res;
 
@@ -4691,16 +4942,33 @@ static int read_curve25519_reply(struct proxy_ssh_packet *pkt,
 
   /* See RFC 5656, Section 4 "ECDH Key Exchange", modified by RFC 8731. */
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &server_hostkey_datalen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, server_hostkey_datalen,
-    &server_hostkey_data);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen,
+    &server_hostkey_datalen);
+  if (len == 0) {
+    int xerrno = errno;
+
+    pr_memscrub(kex->client_curve25519_priv_key, CURVE25519_SIZE);
+
+    errno = xerrno;
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen,
+    server_hostkey_datalen, &server_hostkey_data);
+  if (len == 0) {
+    int xerrno = errno;
+
+    pr_memscrub(kex->client_curve25519_priv_key, CURVE25519_SIZE);
+
+    errno = xerrno;
+    return -1;
+  }
 
   res = handle_server_hostkey(pkt->pool, kex->use_hostkey_type,
     server_hostkey_data, server_hostkey_datalen);
   if (res < 0) {
-    int xerrno;
+    int xerrno = errno;
 
-    xerrno = errno;
     pr_memscrub(kex->client_curve25519_priv_key, CURVE25519_SIZE);
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -4709,7 +4977,16 @@ static int read_curve25519_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &pub_keylen);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &pub_keylen);
+  if (len == 0) {
+    int xerrno = errno;
+
+    pr_memscrub(kex->client_curve25519_priv_key, CURVE25519_SIZE);
+
+    errno = xerrno;
+    return -1;
+  }
+
   if (pub_keylen != CURVE25519_SIZE) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "rejecting invalid length (%lu %s, wanted %d) of server Curve25519 key",
@@ -4719,9 +4996,10 @@ static int read_curve25519_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_data(kex->pool, &buf, &buflen, pub_keylen,
+  len = proxy_ssh_msg_read_data(kex->pool, &buf, &buflen, pub_keylen,
     &(kex->server_curve25519_pub_key));
-  if (kex->server_curve25519_pub_key == NULL) {
+  if (len == 0 ||
+      kex->server_curve25519_pub_key == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error reading ECDH_REPLY: %s", strerror(errno));
     pr_memscrub(kex->client_curve25519_priv_key, CURVE25519_SIZE);
@@ -4784,8 +5062,23 @@ static int read_curve25519_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
+  if (len == 0) {
+    BN_clear_free((BIGNUM *) kex->k);
+    kex->k = NULL;
+    pr_memscrub(kex->client_curve25519_priv_key, CURVE25519_SIZE);
+
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  if (len == 0) {
+    BN_clear_free((BIGNUM *) kex->k);
+    kex->k = NULL;
+    pr_memscrub(kex->client_curve25519_priv_key, CURVE25519_SIZE);
+
+    return -1;
+  }
 
   /* Verify H */
   res = verify_h(pkt->pool, kex, server_hostkey_data, server_hostkey_datalen,
@@ -4877,7 +5170,8 @@ static int read_curve448_reply(struct proxy_ssh_packet *pkt,
   const unsigned char *h;
   unsigned char zero_curve448[CURVE448_SIZE];
   unsigned char *buf, *buf2, *server_hostkey_data = NULL, *sig = NULL;
-  uint32_t buflen, pub_keylen, server_hostkey_datalen = 0, siglen = 0, hlen = 0;
+  uint32_t buflen, pub_keylen, server_hostkey_datalen = 0, siglen = 0,
+    hlen = 0, len;
   const BIGNUM *k = NULL;
   int res;
 
@@ -4886,16 +5180,27 @@ static int read_curve448_reply(struct proxy_ssh_packet *pkt,
 
   /* See RFC 5656, Section 4 "ECDH Key Exchange", modified by RFC 8731. */
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &server_hostkey_datalen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, server_hostkey_datalen,
-    &server_hostkey_data);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen,
+    &server_hostkey_datalen);
+  if (len == 0) {
+    pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
+
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen,
+    server_hostkey_datalen, &server_hostkey_data);
+  if (len == 0) {
+    pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
+
+    return -1;
+  }
 
   res = handle_server_hostkey(pkt->pool, kex->use_hostkey_type,
     server_hostkey_data, server_hostkey_datalen);
   if (res < 0) {
-    int xerrno;
+    int xerrno = errno;
 
-    xerrno = errno;
     pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
 
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -4904,8 +5209,9 @@ static int read_curve448_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &pub_keylen);
-  if (pub_keylen != CURVE448_SIZE) {
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &pub_keylen);
+  if (len == 0 ||
+      pub_keylen != CURVE448_SIZE) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "rejecting invalid length (%lu %s, wanted %d) of server Curve448 key",
       (unsigned long) pub_keylen, pub_keylen != 1 ? "bytes" : "byte",
@@ -4917,9 +5223,10 @@ static int read_curve448_reply(struct proxy_ssh_packet *pkt,
   /* Note that we use `kex->pool` here, since we are storing the key in the
    * `kex` structure.
    */
-  proxy_ssh_msg_read_data(kex->pool, &buf, &buflen, pub_keylen,
+  len = proxy_ssh_msg_read_data(kex->pool, &buf, &buflen, pub_keylen,
     &(kex->server_curve448_pub_key));
-  if (kex->server_curve448_pub_key == NULL) {
+  if (len == 0 ||
+      kex->server_curve448_pub_key == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error reading ECDH_REPLY: %s", strerror(errno));
     pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
@@ -4981,8 +5288,23 @@ static int read_curve448_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
+  if (len == 0) {
+    BN_clear_free((BIGNUM *) kex->k);
+    kex->k = NULL;
+    pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
+
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  if (len == 0) {
+    BN_clear_free((BIGNUM *) kex->k);
+    kex->k = NULL;
+    pr_memscrub(kex->client_curve448_priv_key, CURVE448_SIZE);
+
+    return -1;
+  }
 
   /* Verify H */
   res = verify_h(pkt->pool, kex, server_hostkey_data, server_hostkey_datalen,
@@ -5218,7 +5540,8 @@ static int read_mlkem768_reply(struct proxy_ssh_packet *pkt,
   unsigned char *x25519_key, *mlkem_key = NULL, *ciphertext = NULL;
   size_t mlkem_keylen = 0, expected_len = 0;
   unsigned char *buf2, *ptr2, *kdata = NULL;
-  uint32_t buflen2, bufsz2, ciphertext_len = 0, reply_len = 0, kdatalen = 0;
+  uint32_t buflen2, bufsz2, ciphertext_len = 0, reply_len = 0,
+    kdatalen = 0, len;
   int res;
 
   buf = pkt->payload;
@@ -5226,16 +5549,32 @@ static int read_mlkem768_reply(struct proxy_ssh_packet *pkt,
 
   /* See RFC 5656, Section 4 "ECDH Key Exchange", modified by RFC 8731. */
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &server_hostkey_datalen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, server_hostkey_datalen,
-    &server_hostkey_data);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen,
+    &server_hostkey_datalen);
+  if (len == 0) {
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
+
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen,
+    server_hostkey_datalen, &server_hostkey_data);
+  if (len == 0) {
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
+
+    return -1;
+  }
 
   res = handle_server_hostkey(pkt->pool, kex->use_hostkey_type,
     server_hostkey_data, server_hostkey_datalen);
   if (res < 0) {
-    int xerrno;
-
-    xerrno = errno;
+    int xerrno = errno;
 
     pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
     kex->client_x25519_priv_key = NULL;
@@ -5251,8 +5590,9 @@ static int read_mlkem768_reply(struct proxy_ssh_packet *pkt,
   ciphertext_len = OSSL_ML_KEM_768_CIPHERTEXT_BYTES;
   expected_len = ciphertext_len + X25519_KEYLEN;
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &reply_len);
-  if (reply_len != expected_len) {
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &reply_len);
+  if (len == 0 ||
+      reply_len != expected_len) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "rejecting invalid length (%lu %s, wanted %lu) of server reply bytes",
       (unsigned long) reply_len, reply_len != 1 ? "bytes" : "byte",
@@ -5265,9 +5605,10 @@ static int read_mlkem768_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, ciphertext_len,
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, ciphertext_len,
     &ciphertext);
-  if (ciphertext == NULL) {
+  if (len == 0 ||
+      ciphertext == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error reading ECDH_REPLY: %s", strerror(errno));
     pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
@@ -5281,9 +5622,10 @@ static int read_mlkem768_reply(struct proxy_ssh_packet *pkt,
   /* Note that we use `kex->pool` here, since we are storing the key in the
    * `kex` structure.
    */
-  proxy_ssh_msg_read_data(kex->pool, &buf, &buflen, X25519_KEYLEN,
+  len = proxy_ssh_msg_read_data(kex->pool, &buf, &buflen, X25519_KEYLEN,
     &(kex->server_x25519_pub_key));
-  if (kex->server_x25519_pub_key == NULL) {
+  if (len == 0 ||
+      kex->server_x25519_pub_key == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error reading ECDH_REPLY: %s", strerror(errno));
     pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
@@ -5428,8 +5770,31 @@ static int read_mlkem768_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
+  if (len == 0) {
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
+    pr_memscrub((char *) kex->kdata, kex->kdatalen);
+    kex->kdata = NULL;
+    kex->kdatalen = 0;
+
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  if (len == 0) {
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    EVP_PKEY_free(kex->client_mlkem768);
+    kex->client_mlkem768 = NULL;
+    pr_memscrub((char *) kex->kdata, kex->kdatalen);
+    kex->kdata = NULL;
+    kex->kdatalen = 0;
+
+    return -1;
+  }
 
   /* Verify H */
   res = verify_h(pkt->pool, kex, server_hostkey_data, server_hostkey_datalen,
@@ -5616,7 +5981,8 @@ static int read_sntrup761_reply(struct proxy_ssh_packet *pkt,
   unsigned char *x25519_key, *sntrup_key = NULL, *ciphertext = NULL;
   size_t sntrup_keylen = 0, expected_len = 0;
   unsigned char *buf2, *ptr2, *kdata = NULL;
-  uint32_t buflen2, bufsz2, ciphertext_len = 0, reply_len = 0, kdatalen = 0;
+  uint32_t buflen2, bufsz2, ciphertext_len = 0, reply_len = 0,
+    kdatalen = 0, len;
   int res;
 
   buf = pkt->payload;
@@ -5624,16 +5990,32 @@ static int read_sntrup761_reply(struct proxy_ssh_packet *pkt,
 
   /* See RFC 5656, Section 4 "ECDH Key Exchange", modified by RFC 8731. */
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &server_hostkey_datalen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, server_hostkey_datalen,
-    &server_hostkey_data);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen,
+    &server_hostkey_datalen);
+  if (len == 0) {
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+
+    return -1;
+  } 
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen,
+    server_hostkey_datalen, &server_hostkey_data);
+  if (len == 0) {
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+
+    return -1;
+  }
 
   res = handle_server_hostkey(pkt->pool, kex->use_hostkey_type,
     server_hostkey_data, server_hostkey_datalen);
   if (res < 0) {
-    int xerrno;
-
-    xerrno = errno;
+    int xerrno = errno;
 
     pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
     kex->client_sntrup761_priv_key = NULL;
@@ -5649,8 +6031,9 @@ static int read_sntrup761_reply(struct proxy_ssh_packet *pkt,
   ciphertext_len = sntrup761_CIPHERTEXTBYTES;
   expected_len = ciphertext_len + X25519_KEYLEN;
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &reply_len);
-  if (reply_len != expected_len) {
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &reply_len);
+  if (len == 0 ||
+      reply_len != expected_len) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "rejecting invalid length (%lu %s, wanted %lu) of server reply bytes",
       (unsigned long) reply_len, reply_len != 1 ? "bytes" : "byte",
@@ -5663,9 +6046,10 @@ static int read_sntrup761_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, ciphertext_len,
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, ciphertext_len,
     &ciphertext);
-  if (ciphertext == NULL) {
+  if (len == 0 ||
+      ciphertext == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error reading ECDH_REPLY: %s", strerror(errno));
     pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
@@ -5679,9 +6063,10 @@ static int read_sntrup761_reply(struct proxy_ssh_packet *pkt,
   /* Note that we use `kex->pool` here, since we are storing the key in the
    * `kex` structure.
    */
-  proxy_ssh_msg_read_data(kex->pool, &buf, &buflen, X25519_KEYLEN,
+  len = proxy_ssh_msg_read_data(kex->pool, &buf, &buflen, X25519_KEYLEN,
     &(kex->server_x25519_pub_key));
-  if (kex->server_x25519_pub_key == NULL) {
+  if (len == 0 ||
+      kex->server_x25519_pub_key == NULL) {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error reading ECDH_REPLY: %s", strerror(errno));
     pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
@@ -5826,8 +6211,31 @@ static int read_sntrup761_reply(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &siglen);
+  if (len == 0) { 
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    pr_memscrub((char *) kex->kdata, kex->kdatalen);
+    kex->kdata = NULL;
+    kex->kdatalen = 0;
+
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, siglen, &sig);
+  if (len == 0) {
+    pr_memscrub(kex->client_sntrup761_priv_key, sntrup761_SECRETKEYBYTES);
+    kex->client_sntrup761_priv_key = NULL;
+    pr_memscrub(kex->client_x25519_priv_key, X25519_KEYLEN);
+    kex->client_x25519_priv_key = NULL;
+    pr_memscrub((char *) kex->kdata, kex->kdatalen);
+    kex->kdata = NULL;
+    kex->kdatalen = 0;
+
+    return -1;
+  }
 
   /* Verify H */
   res = verify_h(pkt->pool, kex, server_hostkey_data, server_hostkey_datalen,

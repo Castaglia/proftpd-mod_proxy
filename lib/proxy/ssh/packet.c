@@ -475,6 +475,10 @@ static void handle_global_request_msg(struct proxy_ssh_packet *pkt,
   buflen -= sizeof(char);
 
   len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &request_name);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return;
+  }
 
   if (proxy_sess_state & PROXY_SESS_STATE_SSH_HAVE_KEX) {
     /* For most GLOBAL_REQUEST packets, once we have completed our kex,
@@ -493,6 +497,10 @@ static void handle_global_request_msg(struct proxy_ssh_packet *pkt,
   }
 
   len = proxy_ssh_msg_read_bool(pkt->pool, &buf, &buflen, &want_reply);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return;
+  }
 
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
     "server sent GLOBAL_REQUEST for '%s', %s", request_name,
@@ -1796,8 +1804,15 @@ void proxy_ssh_packet_handle_debug(struct proxy_ssh_packet *pkt) {
 
   len = proxy_ssh_msg_read_bool(pkt->pool, &pkt->payload, &pkt->payload_len,
     &always_display);
+  if (len == 0) {
+    return;
+  }
+
   len = proxy_ssh_msg_read_string(pkt->pool, &pkt->payload, &pkt->payload_len,
     &text);
+  if (len == 0) {
+    return;
+  }
 
   /* Ignore the language tag. */
   (void) proxy_ssh_msg_read_string(pkt->pool, &pkt->payload, &pkt->payload_len,
@@ -1833,6 +1848,11 @@ void proxy_ssh_packet_handle_disconnect(struct proxy_ssh_packet *pkt) {
 
   len = proxy_ssh_msg_read_int(pkt->pool, &pkt->payload, &pkt->payload_len,
     &reason_code);
+  if (len == 0) {
+    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_CLIENT_QUIT,
+      explain);
+  }
+
   reason_text = proxy_ssh_disconnect_get_text(reason_code);
   if (reason_text == NULL) {
     pr_trace_msg(trace_channel, 9,
@@ -1843,11 +1863,19 @@ void proxy_ssh_packet_handle_disconnect(struct proxy_ssh_packet *pkt) {
 
   len = proxy_ssh_msg_read_string(pkt->pool, &pkt->payload, &pkt->payload_len,
     &explain);
+  if (len == 0) {
+    pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_CLIENT_QUIT,
+      explain);
+  }
 
   /* Not all clients send a language tag. */
   if (pkt->payload_len > 0) {
     len = proxy_ssh_msg_read_string(pkt->pool, &pkt->payload,
       &pkt->payload_len, &lang);
+    if (len == 0) {
+      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_CLIENT_QUIT,
+        explain);
+    }
   }
 
   /* Sanity-check the message for control characters. */
@@ -1874,12 +1902,17 @@ void proxy_ssh_packet_handle_disconnect(struct proxy_ssh_packet *pkt) {
 void proxy_ssh_packet_handle_ext_info(struct proxy_ssh_packet *pkt) {
   register unsigned int i;
   unsigned char *buf;
-  uint32_t buflen, ext_count = 0;
+  uint32_t buflen, ext_count = 0, len;
 
   buf = pkt->payload;
   buflen = pkt->payload_len;
 
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &ext_count);
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &ext_count);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return;
+  }
+
   pr_trace_msg(trace_channel, 9, "server sent EXT_INFO with %lu %s",
     (unsigned long) ext_count, ext_count != 1 ? "extensions" : "extension");
 
@@ -1896,9 +1929,24 @@ void proxy_ssh_packet_handle_ext_info(struct proxy_ssh_packet *pkt) {
     char *ext_name = NULL;
     uint32_t ext_datalen = 0;
 
-    proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &ext_name);
-    proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &ext_datalen);
-    proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, ext_datalen, &ext_data);
+    len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &ext_name);
+    if (len == 0) {
+      destroy_pool(pkt->pool);
+      return;
+    }
+
+    len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &ext_datalen);
+    if (len == 0) {
+      destroy_pool(pkt->pool);
+      return;
+    }
+
+    len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, ext_datalen,
+      &ext_data);
+    if (len == 0) {
+      destroy_pool(pkt->pool);
+      return;
+    }
 
     pr_trace_msg(trace_channel, 9,
       "server extension: %s (value %lu bytes)", ext_name,
@@ -1939,6 +1987,11 @@ void proxy_ssh_packet_handle_ignore(struct proxy_ssh_packet *pkt) {
 
   len = proxy_ssh_msg_read_string(pkt->pool, &pkt->payload, &pkt->payload_len,
     &text);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return;
+  }
+
   text_len = strlen(text);
 
   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1953,6 +2006,10 @@ void proxy_ssh_packet_handle_unimplemented(struct proxy_ssh_packet *pkt) {
 
   len = proxy_ssh_msg_read_int(pkt->pool, &pkt->payload, &pkt->payload_len,
     &seqno);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return;
+  }
 
   pr_trace_msg(trace_channel, 7, "received SSH_MSG_UNIMPLEMENTED for "
     "packet #%lu", (unsigned long) seqno);
