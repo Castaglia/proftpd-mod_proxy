@@ -379,7 +379,7 @@ static int handle_userauth_hostbased(struct proxy_ssh_packet *pkt,
     const struct proxy_session *proxy_sess) {
   int res, xerrno, success = FALSE;
   unsigned char *buf;
-  uint32_t buflen;
+  uint32_t buflen, len;
   char *orig_user, *new_user = NULL, *user, *service;
   pool *tmp_pool;
 
@@ -400,7 +400,11 @@ static int handle_userauth_hostbased(struct proxy_ssh_packet *pkt,
   /* We only need to copy the user name, service name from the frontend packet;
    * we can ignore the rest.
    */
-  proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &orig_user);
+  len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &orig_user);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return -1;
+  }
 
   /* If mod_sftp has already authenticated the client (as for PerUser/PerGroup
    * connect policies), then we need not dispatch USER/PASS commands again.
@@ -413,7 +417,11 @@ static int handle_userauth_hostbased(struct proxy_ssh_packet *pkt,
     }
   }
 
-  proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &service);
+  len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &service);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return -1;
+  }
 
   tmp_pool = make_sub_pool(auth_pool);
   user = pstrdup(tmp_pool, new_user != NULL ? new_user : orig_user);
@@ -432,7 +440,7 @@ static int handle_userauth_hostbased(struct proxy_ssh_packet *pkt,
 
   if (proxy_ssh_keys_have_hostkey(PROXY_SSH_KEY_UNKNOWN) != 0) {
     unsigned char *ptr;
-    uint32_t bufsz, len = 0;
+    uint32_t bufsz;
     const char *methods;
 
     /* We have no configured hostkeys, thus cannot use "hostbased"
@@ -585,7 +593,7 @@ static int handle_userauth_kbdint(struct proxy_ssh_packet *pkt,
     const struct proxy_session *proxy_sess) {
   int res, xerrno, success = FALSE;
   unsigned char *buf;
-  uint32_t buflen;
+  uint32_t buflen, len;
   char *orig_user, *new_user = NULL;
 
   buf = pkt->payload;
@@ -595,7 +603,11 @@ static int handle_userauth_kbdint(struct proxy_ssh_packet *pkt,
   buf += sizeof(char);
   buflen -= sizeof(char);
 
-  proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &orig_user);
+  len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &orig_user);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return -1;
+  }
 
   res = dispatch_user_cmd(pkt->pool, orig_user, &new_user);
   if (res < 0) {
@@ -626,10 +638,29 @@ static int handle_userauth_kbdint(struct proxy_ssh_packet *pkt,
 
     /* The username changed; we need to write a new packet. */
 
-    proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &service);
-    proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &method);
-    proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &language);
-    proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &submethods);
+    len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &service);
+    if (len == 0) {
+      destroy_pool(pkt->pool);
+      return -1;
+    }
+
+    len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &method);
+    if (len == 0) {
+      destroy_pool(pkt->pool);
+      return -1;
+    }
+
+    len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &language);
+    if (len == 0) {
+      destroy_pool(pkt->pool);
+      return -1;
+    }
+
+    len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &submethods);
+    if (len == 0) {
+      destroy_pool(pkt->pool);
+      return -1;
+    }
 
     tmp_pool = make_sub_pool(auth_pool);
     user = pstrdup(tmp_pool, new_user);
@@ -770,7 +801,7 @@ static int handle_userauth_password(struct proxy_ssh_packet *pkt,
     const struct proxy_session *proxy_sess) {
   int res, xerrno, with_password, success = FALSE;
   unsigned char *buf;
-  uint32_t buflen;
+  uint32_t buflen, len;
   char *orig_user, *new_user = NULL;
 
   buf = pkt->payload;
@@ -780,7 +811,11 @@ static int handle_userauth_password(struct proxy_ssh_packet *pkt,
   buf += sizeof(char);
   buflen -= sizeof(char);
 
-  proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &orig_user);
+  len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &orig_user);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return -1;
+  }
 
   res = dispatch_user_cmd(pkt->pool, orig_user, &new_user);
   if (res < 0) {
@@ -811,10 +846,29 @@ static int handle_userauth_password(struct proxy_ssh_packet *pkt,
 
     /* The username changed; we need to write a new packet. */
 
-    proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &service);
-    proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &method);
-    proxy_ssh_msg_read_bool(pkt->pool, &buf, &buflen, &with_password);
-    proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &password);
+    len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &service);
+    if (len == 0) {
+      destroy_pool(pkt->pool);
+      return -1;
+    }
+
+    len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &method);
+    if (len == 0) {
+      destroy_pool(pkt->pool);
+      return -1;
+    }
+
+    len = proxy_ssh_msg_read_bool(pkt->pool, &buf, &buflen, &with_password);
+    if (len == 0) {
+      destroy_pool(pkt->pool);
+      return -1;
+    }
+
+    len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &password);
+    if (len == 0) {
+      destroy_pool(pkt->pool);
+      return -1;
+    }
 
     tmp_pool = make_sub_pool(auth_pool);
     user = pstrdup(tmp_pool, new_user);
@@ -957,7 +1011,7 @@ static int handle_userauth_publickey(struct proxy_ssh_packet *pkt,
     const struct proxy_session *proxy_sess) {
   int res, xerrno, success = FALSE, with_signature = FALSE;
   unsigned char *buf, *buf2, *publickey_blob;
-  uint32_t buflen, publickey_bloblen;
+  uint32_t buflen, publickey_bloblen, len;
   char *orig_user, *new_user = NULL, *user, *service, *method, *publickey_algo;
   pool *tmp_pool;
 
@@ -978,7 +1032,11 @@ static int handle_userauth_publickey(struct proxy_ssh_packet *pkt,
   buf += sizeof(char);
   buflen -= sizeof(char);
 
-  proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &orig_user);
+  len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &orig_user);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return -1;
+  }
 
   res = dispatch_user_cmd(pkt->pool, orig_user, &new_user);
   if (res < 0) {
@@ -986,13 +1044,42 @@ static int handle_userauth_publickey(struct proxy_ssh_packet *pkt,
     return -1;
   }
 
-  proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &service);
-  proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &method);
-  proxy_ssh_msg_read_bool(pkt->pool, &buf, &buflen, &with_signature);
-  proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &publickey_algo);
-  proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &publickey_bloblen);
-  proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, publickey_bloblen,
+  len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &service);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &method);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_bool(pkt->pool, &buf, &buflen, &with_signature);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &publickey_algo);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_int(pkt->pool, &buf, &buflen, &publickey_bloblen);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(pkt->pool, &buf, &buflen, publickey_bloblen,
     &publickey_blob);
+  if (len == 0) {
+    destroy_pool(pkt->pool);
+    return -1;
+  }
 
   tmp_pool = make_sub_pool(auth_pool);
   user = pstrdup(tmp_pool, new_user != NULL ? new_user : orig_user);
@@ -1014,7 +1101,7 @@ static int handle_userauth_publickey(struct proxy_ssh_packet *pkt,
 
   if (proxy_ssh_keys_have_hostkey(PROXY_SSH_KEY_UNKNOWN) != 0) {
     unsigned char *ptr;
-    uint32_t bufsz, len = 0;
+    uint32_t bufsz;
     const char *methods;
 
     /* We have no configured hostkeys, thus cannot use "hostbased"
@@ -1192,8 +1279,19 @@ int proxy_ssh_auth_handle(struct proxy_ssh_packet *pkt,
     uint32_t len;
 
     len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &user);
+    if (len == 0) {
+      return -1;
+    }
+
     len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &service);
+    if (len == 0) {
+      return -1;
+    }
+
     len = proxy_ssh_msg_read_string(pkt->pool, &buf, &buflen, &method);
+    if (len == 0) {
+      return -1;
+    }
 
     pr_trace_msg(trace_channel, 10,
       "auth requested for user '%s', service '%s', using method '%s'", user,

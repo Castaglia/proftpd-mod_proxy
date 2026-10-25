@@ -3110,6 +3110,14 @@ static int decrypt_openssh_data(pool *p, const char *path,
 
   (void) len;
 
+  if (encrypted_data == NULL ||
+      kdf_data == NULL) {
+    pr_trace_msg(trace_channel, 3,
+      "'%s' key is missing required data", path);
+    errno = EINVAL;
+    return -1;
+  }
+
   if (strcmp(kdf_name, "none") == 0) {
     *decrypted_data = encrypted_data;
     *decrypted_len = encrypted_len;
@@ -3125,8 +3133,19 @@ static int decrypt_openssh_data(pool *p, const char *path,
   }
 
   len = proxy_ssh_msg_read_int(p, &kdf_data, &kdf_len, &salt_len);
+  if (len == 0) {
+    return -1;
+  }
+
   len = proxy_ssh_msg_read_data(p, &kdf_data, &kdf_len, salt_len, &salt_data);
+  if (len == 0) {
+    return -1;
+  }
+
   len = proxy_ssh_msg_read_int(p, &kdf_data, &kdf_len, &rounds);
+  if (len == 0) {
+    return -1;
+  }
 
   pr_trace_msg(trace_channel, 9,
     "'%s' key %s KDF using %lu bytes of salt, %lu rounds", path,
@@ -3291,6 +3310,11 @@ static int deserialize_openssh_private_key(pool *p, const char *path,
   }
 
   len = proxy_ssh_msg_read_int(p, data, data_len, &public_keylen);
+  if (len == 0) {
+    errno = EINVAL;
+    return -1;
+  }
+
   len = proxy_ssh_msg_read_data(p, data, data_len, public_keylen,
     &public_key);
   if (public_key == NULL) {
@@ -3301,6 +3325,10 @@ static int deserialize_openssh_private_key(pool *p, const char *path,
   }
 
   len = proxy_ssh_msg_read_int(p, data, data_len, &secret_keylen);
+  if (len == 0) {
+    errno = EINVAL;
+    return -1;
+  }
 
   /* NOTE: PuTTY's puttygen adds the public key _again_, in the second half
    * of the secret key data, per comments in its
@@ -3320,7 +3348,8 @@ static int deserialize_openssh_private_key(pool *p, const char *path,
 
   len = proxy_ssh_msg_read_data(p, data, data_len, secret_keylen,
     &secret_key);
-  if (secret_key == NULL) {
+  if (len == 0 ||
+      secret_key == NULL) {
     pr_trace_msg(trace_channel, 2,
       "error reading %s key: invalid/supported key format", pkey_type);
     errno = EINVAL;
@@ -3373,8 +3402,19 @@ static int decrypt_openssh_private_key(pool *p, const char *path,
   decrypted_ptr = decrypted_data;
   decrypted_sz = decrypted_len;
 
-  proxy_ssh_msg_read_int(p, &decrypted_data, &decrypted_len, &(check_bytes[0]));
-  proxy_ssh_msg_read_int(p, &decrypted_data, &decrypted_len, &(check_bytes[1]));
+  len = proxy_ssh_msg_read_int(p, &decrypted_data, &decrypted_len,
+    &(check_bytes[0]));
+  if (len == 0) {
+    pr_memscrub(decrypted_ptr, decrypted_sz);
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_int(p, &decrypted_data, &decrypted_len,
+    &(check_bytes[1]));
+  if (len == 0) {
+    pr_memscrub(decrypted_ptr, decrypted_sz);
+    return -1;
+  }
 
   if (check_bytes[0] != check_bytes[1]) {
     pr_trace_msg(trace_channel, 6,
@@ -3399,6 +3439,11 @@ static int decrypt_openssh_private_key(pool *p, const char *path,
   }
 
   len = proxy_ssh_msg_read_string(p, &decrypted_data, &decrypted_len, &comment);
+  if (len == 0) {
+    pr_memscrub(decrypted_ptr, decrypted_sz);
+    return -1;
+  }
+
   if (comment != NULL) {
     pr_trace_msg(trace_channel, 9,
       "'%s' comment: '%s'", path, comment);
@@ -3411,7 +3456,8 @@ static int decrypt_openssh_private_key(pool *p, const char *path,
     pr_signals_handle();
 
     len = proxy_ssh_msg_read_byte(p, &decrypted_data, &decrypted_len, &padding);
-    if (padding != (i & 0xFF)) {
+    if (len == 0 ||
+        padding != (i & 0xFF)) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "'%s' key has invalid padding", path);
       pr_memscrub(decrypted_ptr, decrypted_sz);
@@ -3470,15 +3516,37 @@ static int unwrap_openssh_private_key(pool *p, const char *path,
   buflen = data_len;
 
   len = proxy_ssh_msg_read_string(p, &buf, &buflen, &cipher_name);
+  if (len == 0) {
+    return -1;
+  }
+
   len = proxy_ssh_msg_read_string(p, &buf, &buflen, &kdf_name);
+  if (len == 0) {
+    return -1;
+  }
+
   len = proxy_ssh_msg_read_int(p, &buf, &buflen, &kdf_len);
+  if (len == 0) {
+    return -1;
+  }
+
   len = proxy_ssh_msg_read_data(p, &buf, &buflen, kdf_len, &kdf_data);
+  if (len == 0) {
+    return -1;
+  }
+
   len = proxy_ssh_msg_read_int(p, &buf, &buflen, &key_count);
+  if (len == 0) {
+    return -1;
+  }
 
   /* Ignore the public key */
   (void) proxy_ssh_msg_read_string(p, &buf, &buflen, &tmp);
 
   len = proxy_ssh_msg_read_int(p, &buf, &buflen, &encrypted_len);
+  if (len == 0) {
+    return -1;
+  }
 
   pr_trace_msg(trace_channel, 9,
     "'%s' key cipher = '%s', KDF = '%s' (%lu bytes KDF data), "
@@ -3571,6 +3639,9 @@ static int unwrap_openssh_private_key(pool *p, const char *path,
 
   len = proxy_ssh_msg_read_data(p, &buf, &buflen, encrypted_len,
     &encrypted_data);
+  if (len == 0) {
+    return -1;
+  }
 
 #if 0
   if (cipher->auth_len > 0) {
