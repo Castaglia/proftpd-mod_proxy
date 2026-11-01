@@ -116,7 +116,7 @@ jobs:
         run: |
           apt-get update -qq
           # for builds
-          apt-get install -y --no-install-recommends clang gcc make
+          apt-get install -y --no-install-recommends build-essential clang gcc make
           # for unit tests
           apt-get install -y --no-install-recommends check libsubunit-dev
 
