@@ -76,7 +76,10 @@
 # define HAVE_BROKEN_CHACHA20	1
 #endif
 
-/* Define if you have OpenSSL with OSSL_PROVIDER_load support. */
+/* Define if you have OpenSSL with MLDSA44 support. */
+#undef HAVE_MLDSA44_OPENSSL
+
+/* Define if you have OpenSSL with MLKEM768 support. */
 #undef HAVE_MLKEM768_OPENSSL
 
 /* Define if you have OpenSSL with OSSL_PROVIDER_load support. */
@@ -163,7 +166,7 @@ extern size_t proxy_datastore_datasz;
 
 #ifndef PROXY_DEFAULT_RETRY_COUNT
 # define PROXY_DEFAULT_RETRY_COUNT		5 
-#endif
+#endif /* PROXY_DEFAULT_RETRY_COUNT */
 
 /* mod_proxy SSH roles */
 #define PROXY_SSH_ROLE_SERVER			1

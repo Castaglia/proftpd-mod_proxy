@@ -43,6 +43,15 @@
 # define CURVE448_SIZE          56
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 
+#if defined(HAVE_MLDSA44_OPENSSL) && \
+    defined(HAVE_X25519_OPENSSL) && \
+    defined(HAVE_SHA512_OPENSSL)
+# define MLDSA44_ED25519_SIZE		1344
+# define MLDSA44_PUBLIC_KEY_SIZE	1312
+# define MLDSA44_SIG_SIZE		2420
+# include <openssl/core_names.h>
+#endif /* HAVE_MLDSA44_OPENSSL, HAVE_X25519_OPENSSL, HAVE_SHA512_OPENSSL */
+
 extern xaset_t *server_list;
 
 /* Note: Should this size be made bigger, in light of larger hostkeys? */
@@ -95,6 +104,12 @@ static struct proxy_ssh_hostkey *ed25519_hostkey = NULL;
 #if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
 static struct proxy_ssh_hostkey *ed448_hostkey = NULL;
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+
+#if defined(HAVE_MLDSA44_OPENSSL) && \
+    defined(HAVE_X25519_OPENSSL) && \
+    defined(HAVE_SHA512_OPENSSL)
+static struct proxy_ssh_hostkey *mldsa44_ed25519_hostkey = NULL;
+#endif /* HAVE_MLDSA44_OPENSSL, HAVE_X25519_OPENSSL, HAVE_SHA512_OPENSSL */
 
 static const char *passphrase_provider = NULL;
 
@@ -176,6 +191,7 @@ static struct openssh_cipher ciphers[] = {
   { NULL,          0,  0, 0, 0, NULL, NULL }
 };
 
+static const char *get_key_type_desc(enum proxy_ssh_key_type_e key_type);
 #if defined(PR_USE_SODIUM)
 static int handle_ed25519_hostkey(pool *p, const unsigned char *key_data,
   uint32_t key_datalen, const char *file_path, const char *agent_path);
@@ -184,6 +200,14 @@ static int handle_ed25519_hostkey(pool *p, const unsigned char *key_data,
 static int handle_ed448_hostkey(pool *p, const unsigned char *key_data,
   uint32_t key_datalen, const char *file_path, const char *agent_path);
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+#if defined(HAVE_MLDSA44_OPENSSL) && \
+    defined(HAVE_X25519_OPENSSL) && \
+    defined(HAVE_SHA512_OPENSSL)
+static int handle_mldsa44_ed25519_hostkey(pool *p,
+  const unsigned char *key_data, uint32_t key_datalen, const char *file_path,
+  const char *agent_path);
+#endif /* HAVE_MLDSA44_OPENSSL, HAVE_X25519_OPENSSL, HAVE_SHA512_OPENSSL */
+
 static int read_openssh_private_key(pool *p, const char *path, int fd,
   const char *passphrase, enum proxy_ssh_key_type_e *key_type,
   EVP_PKEY **pkey, unsigned char **key, uint32_t *keylen);
@@ -1636,17 +1660,123 @@ static uint32_t read_pkey_from_data(pool *p, unsigned char *pkey_data,
 
 #if defined(PR_USE_SODIUM)
   } else if (strcmp(pkey_type, "ssh-ed25519") == 0) {
+    unsigned char *public_key = NULL;
+    uint32_t public_keylen = 0;
+
     if (key_type != NULL) {
       *key_type = PROXY_SSH_KEY_ED25519;
     }
+
+    res = proxy_ssh_msg_read_int(p, &pkey_data, &pkey_datalen, &public_keylen);
+    if (res == 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error reading %s key: invalid/unsupported key format", pkey_type);
+      return 0;
+    }
+    len += res;
+
+    if (public_keylen != crypto_sign_ed25519_PUBLICKEYBYTES) {
+      pr_trace_msg(trace_channel, 8,
+        "%s public key length (%lu bytes) does not match expected "
+        "length (%lu bytes)", get_key_type_desc(*key_type),
+        (unsigned long) public_keylen,
+        (unsigned long) crypto_sign_ed25519_PUBLICKEYBYTES);
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error reading %s key: invalid/unsupported key format", pkey_type);
+      return 0;
+    }
+
+    public_key = palloc(p, public_keylen);
+    res = proxy_ssh_msg_read_data(p, &pkey_data, &pkey_datalen, public_keylen,
+      &public_key);
+    if (res == 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error reading %s key: invalid/unsupported key format", pkey_type);
+      return 0;
+    }
+    len += res;
 #endif /* PR_USE_SODIUM */
 
 #if defined(HAVE_X448_OPENSSL)
   } else if (strcmp(pkey_type, "ssh-ed448") == 0) {
+    unsigned char *public_key = NULL;
+    uint32_t public_keylen = 0;
+
     if (key_type != NULL) {
       *key_type = PROXY_SSH_KEY_ED448;
     }
+
+    res = proxy_ssh_msg_read_int(p, &pkey_data, &pkey_datalen, &public_keylen);
+    if (res == 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error reading %s key: invalid/unsupported key format", pkey_type);
+      return 0;
+    }
+    len += res;
+
+    /* Verify here that the public key length is the expected 57 bytes,
+     * per RFC 8709, Section 4.
+     */
+    if (public_keylen != CURVE448_SIZE &&
+        public_keylen != (CURVE448_SIZE + 1)) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error reading %s key: invalid key length (%lu, expected 57)",
+        pkey_type, (unsigned long) public_keylen);
+      return 0;
+    }
+
+    public_key = palloc(p, public_keylen);
+    res = proxy_ssh_msg_read_data(p, &pkey_data, &pkey_datalen, public_keylen,
+      &public_key);
+    if (res == 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error reading %s key: invalid/unsupported key format", pkey_type);
+      return 0;
+    }
+    len += res;
 #endif /* HAVE_X448_OPENSSL */
+
+#if defined(HAVE_MLDSA44_OPENSSL) && \
+    defined(HAVE_X25519_OPENSSL) && \
+    defined(HAVE_SHA512_OPENSSL)
+  } else if (strcmp(pkey_type, "ssh-mldsa44-ed25519") == 0) {
+    unsigned char *public_key = NULL;
+    uint32_t public_keylen = 0;
+
+    if (key_type != NULL) {
+      *key_type = PROXY_SSH_KEY_MLDSA44_ED25519;
+    }
+
+    res = proxy_ssh_msg_read_int(p, &pkey_data, &pkey_datalen, &public_keylen);
+    if (res == 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error reading %s key: invalid/unsupported key format", pkey_type);
+      return 0;
+    }
+    len += res;
+
+    /* Verify here that the public key length is the expected 1344 bytes,
+     * per Draft: 1312 bytes of MLDSA public key data, and 32 bytes of
+     * Ed25519 public key data.
+     */
+    if (public_keylen != MLDSA44_ED25519_SIZE) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error reading %s key: invalid key length (%lu, expected %lu)",
+        pkey_type, (unsigned long) public_keylen,
+        (unsigned long) MLDSA44_ED25519_SIZE);
+      return 0;
+    }
+
+    public_key = palloc(p, public_keylen);
+    res = proxy_ssh_msg_read_data(p, &pkey_data, &pkey_datalen, public_keylen,
+      &public_key);
+    if (res == 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error reading %s key: invalid/unsupported key format", pkey_type);
+      return 0;
+    }
+    len += res;
+#endif /* HAVE_MLDSA44_OPENSSL, HAVE_X25519_OPENSSL, HAVE_SHA512_OPENSSL */
 
   } else {
     pr_trace_msg(trace_channel, 3, "unsupported public key algorithm '%s'",
@@ -1735,6 +1865,10 @@ static const char *get_key_type_desc(enum proxy_ssh_key_type_e key_type) {
 
     case PROXY_SSH_KEY_ED448:
       key_desc = "ED448";
+      break;
+
+    case PROXY_SSH_KEY_MLDSA44_ED25519:
+      key_desc = "MLDSA44-ED25519";
       break;
 
     default:
@@ -1919,6 +2053,10 @@ const char *proxy_ssh_keys_get_key_type_desc(enum proxy_ssh_key_type_e key_type)
 
     case PROXY_SSH_KEY_ED25519:
       key_desc = "ssh-ed25519";
+      break;
+
+    case PROXY_SSH_KEY_MLDSA44_ED25519:
+      key_desc = "ssh-mldsa44-ed25519";
       break;
 
     case PROXY_SSH_KEY_ED448:
@@ -2937,31 +3075,6 @@ static int handle_hostkey(pool *p, EVP_PKEY *pkey,
     }
 #endif /* PR_USE_OPENSSL_ECC */
 
-#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
-    case EVP_PKEY_ED448: {
-      unsigned char *privkey_data;
-      size_t privkey_datalen;
-
-      privkey_datalen = (CURVE448_SIZE * 2);
-      privkey_data = palloc(p, privkey_datalen);
-      if (EVP_PKEY_get_raw_private_key(pkey, privkey_data,
-          &privkey_datalen) != 1) {
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "error reading ED448 private key from '%s': %s", file_path,
-          proxy_ssh_crypto_get_errors());
-        EVP_PKEY_free(pkey);
-        return -1;
-      }
-
-      if (handle_ed448_hostkey(p, privkey_data, privkey_datalen,
-          file_path, NULL) < 0) {
-        EVP_PKEY_free(pkey);
-        return -1;
-      }
-      break;
-    }
-#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
-
     default:
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unknown private key type (%d), ignoring", get_pkey_type(pkey));
@@ -3037,6 +3150,19 @@ static int load_agent_hostkeys(pool *p, const char *path) {
         }
         break;
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+
+#if defined(HAVE_MLDSA44_OPENSSL) && \
+    defined(HAVE_X25519_OPENSSL) && \
+    defined(HAVE_SHA512_OPENSSL)
+      case PROXY_SSH_KEY_MLDSA44_ED25519:
+        if (handle_mldsa44_ed25519_hostkey(p, agent_key->key_data,
+            agent_key->key_datalen, NULL, path) == 0) {
+          pr_trace_msg(trace_channel, 4,
+            "using MLDSA44-Ed25519 hostkey from SSH agent at '%s'", path);
+          accepted_nkeys++;
+        }
+        break;
+#endif /* HAVE_MLDSA44_OPENSSL, HAVE_X25519_OPENSSL, HAVE_SHA512_OPENSSL */
 
       default:
         if (handle_hostkey(p, pkey, agent_key->key_data, agent_key->key_datalen,
@@ -3998,6 +4124,228 @@ static int handle_ed448_hostkey(pool *p, const unsigned char *key_data,
 }
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 
+#if defined(HAVE_MLDSA44_OPENSSL) && \
+    defined(HAVE_X25519_OPENSSL) && \
+    defined(HAVE_SHA512_OPENSSL)
+static int handle_mldsa44_ed25519_hostkey(pool *p,
+    const unsigned char *key_data, uint32_t key_datalen, const char *file_path,
+    const char *agent_path) {
+
+  if (mldsa44_ed25519_hostkey != NULL) {
+    /* If we have an existing MLDSA44-ED25519 hostkey, free it up. */
+
+    EVP_PKEY_free(mldsa44_ed25519_hostkey->pkey);
+    mldsa44_ed25519_hostkey->pkey = NULL;
+    mldsa44_ed25519_hostkey->key_data = NULL;
+    mldsa44_ed25519_hostkey->key_datalen = 0;
+
+    pr_memscrub(mldsa44_ed25519_hostkey->ed25519_secret_key,
+      mldsa44_ed25519_hostkey->ed25519_secret_keylen);
+    mldsa44_ed25519_hostkey->ed25519_secret_key = NULL;
+    mldsa44_ed25519_hostkey->ed25519_secret_keylen = 0;
+
+    pr_memscrub(mldsa44_ed25519_hostkey->ed25519_public_key,
+      mldsa44_ed25519_hostkey->ed25519_public_keylen);
+    mldsa44_ed25519_hostkey->ed25519_public_key = NULL;
+    mldsa44_ed25519_hostkey->ed25519_public_keylen = 0;
+
+    mldsa44_ed25519_hostkey->file_path = NULL;
+    mldsa44_ed25519_hostkey->agent_path = NULL;
+
+  } else {
+    mldsa44_ed25519_hostkey = pcalloc(p, sizeof(struct proxy_ssh_hostkey));
+  }
+
+  mldsa44_ed25519_hostkey->key_type = PROXY_SSH_KEY_MLDSA44_ED25519;
+
+  /* If the key data came from an SSH agent, then it is only the public key
+   * data; the private key data will obviously stay in the agent.
+   */
+
+  if (agent_path == NULL) {
+    EVP_PKEY_CTX *pkey_ctx;
+    OSSL_PARAM pkey_params[2];
+    EVP_PKEY *pkey = NULL;
+    unsigned char *public_key;
+    size_t public_keylen = 0;
+
+    /* As a hybrid composite key, we need to handle the secret key portions for
+     * both the MLDSA44 key, and the Ed25519 key.
+     *
+     * We expect the provided data to be 64 bytes in length: 32 bytes of
+     * MLDSA44 seed data, and 32 bytes of Ed25519 seed data.  With these, we
+     * should be able to compute the corresponding public keys.
+     */
+
+    if (key_datalen != 64) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to initialize MLDSA44-Ed25519 hostkey at '%s': "
+        "wrong number of bytes (%lu, expected 64)", file_path,
+        (unsigned long) key_datalen);
+      return -1;
+    }
+
+    /* MLDSA44 key.  Note that to obtain the public key bytes, we'll need
+     * to use the provided 32 byte seed to compute them.
+     *
+     * To use this 32 bytes seed to generate the MLDSA44 public key
+     * deterministically, we have to use EVP_PKEY_CTX_set_params(3) after
+     * calling EVP_PKEY_keygen_init(3).
+     */
+
+    pkey_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_ML_DSA_44, NULL);
+    if (pkey_ctx == NULL) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error allocating public key context: %s",
+        proxy_ssh_crypto_get_errors());
+      return -1;
+    }
+
+    if (EVP_PKEY_keygen_init(pkey_ctx) != 1) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error initializing public key context: %s",
+        proxy_ssh_crypto_get_errors());
+      EVP_PKEY_CTX_free(pkey_ctx);
+      return -1;
+    }
+
+    pkey_params[0] = OSSL_PARAM_construct_octet_string(
+      OSSL_PKEY_PARAM_ML_DSA_SEED, (unsigned char *) key_data, 32);
+    pkey_params[1] = OSSL_PARAM_construct_end();
+
+    if (EVP_PKEY_CTX_set_params(pkey_ctx, pkey_params) != 1) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error setting public key context parameters: %s",
+        proxy_ssh_crypto_get_errors());
+      EVP_PKEY_CTX_free(pkey_ctx);
+      return -1;
+    }
+
+    if (EVP_PKEY_generate(pkey_ctx, &pkey) != 1) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error using public key context to generate key: %s",
+        proxy_ssh_crypto_get_errors());
+      EVP_PKEY_CTX_free(pkey_ctx);
+      return -1;
+    }
+
+    EVP_PKEY_CTX_free(pkey_ctx);
+
+    mldsa44_ed25519_hostkey->pkey = pkey;
+    mldsa44_ed25519_hostkey->key_data = (unsigned char *) key_data;
+    mldsa44_ed25519_hostkey->key_datalen = 32;
+
+    mldsa44_ed25519_hostkey->ed25519_secret_key = (unsigned char *) key_data + 32;
+    mldsa44_ed25519_hostkey->ed25519_secret_keylen = 32;
+
+    /* Use the secret key to get the public key. */
+
+    pkey = EVP_PKEY_new_raw_private_key(EVP_PKEY_ED25519, NULL,
+      mldsa44_ed25519_hostkey->ed25519_secret_key,
+      mldsa44_ed25519_hostkey->ed25519_secret_keylen);
+    if (pkey == NULL) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error initializing Ed25519 private key: %s",
+        proxy_ssh_crypto_get_errors());
+      EVP_PKEY_free(mldsa44_ed25519_hostkey->pkey);
+      mldsa44_ed25519_hostkey->pkey = NULL;
+      return -1;
+    }
+
+    public_keylen = 128;
+    public_key = palloc(p, public_keylen);
+    if (EVP_PKEY_get_raw_public_key(pkey, public_key, &public_keylen) != 1) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error obtaining Ed25519 public key: %s",
+        proxy_ssh_crypto_get_errors());
+      EVP_PKEY_free(mldsa44_ed25519_hostkey->pkey);
+      mldsa44_ed25519_hostkey->pkey = NULL;
+      EVP_PKEY_free(pkey);
+      return -1;
+    }
+
+    EVP_PKEY_free(pkey);
+
+    mldsa44_ed25519_hostkey->ed25519_public_key = public_key;
+    mldsa44_ed25519_hostkey->ed25519_public_keylen = public_keylen;
+
+  } else {
+    EVP_PKEY *pkey = NULL;
+    char *pkey_type;
+    unsigned char *pkey_data, *public_key;
+    uint32_t pkey_datalen, public_keylen, res;
+
+    pkey_data = (unsigned char *) key_data;
+    pkey_datalen = key_datalen;
+
+    res = proxy_ssh_msg_read_string(p, &pkey_data, &pkey_datalen, &pkey_type);
+    if (res == 0) {
+      return -1;
+    }
+
+    if (strcmp(pkey_type, "ssh-mldsa44-ed25519") != 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "expected MLDSA44-Ed25519 key type from SSH agent key data, got '%s'",
+        pkey_type);
+      errno = EINVAL;
+      return -1;
+    }
+
+    res = proxy_ssh_msg_read_int(p, &pkey_data, &pkey_datalen, &public_keylen);
+    if (res == 0) {
+      return -1;
+    }
+
+    /* Verify here that the public key length is the expected 1344 bytes,
+     * per Draft: 1312 bytes of MLDSA public key data, and 32 bytes of
+     * Ed25519 public key data.
+     */
+    if (public_keylen != MLDSA44_ED25519_SIZE) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error reading %s key: invalid key length (%lu, expected %lu)",
+        pkey_type, (unsigned long) public_keylen,
+        (unsigned long) MLDSA44_ED25519_SIZE);
+      return -1;
+    }
+
+    public_key = palloc(p, public_keylen);
+    res = proxy_ssh_msg_read_data(p, &pkey_data, &pkey_datalen, public_keylen,
+      &public_key);
+    if (res == 0) {
+      return -1;
+    }
+
+    pkey = EVP_PKEY_new_raw_public_key(EVP_PKEY_ML_DSA_44, NULL,
+      public_key, MLDSA44_PUBLIC_KEY_SIZE);
+    if (pkey == NULL) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error initializing MLDSA44 public key: %s",
+        proxy_ssh_crypto_get_errors());
+      return -1;
+    }
+
+    mldsa44_ed25519_hostkey->pkey = pkey;
+
+    mldsa44_ed25519_hostkey->ed25519_public_key = public_key + MLDSA44_PUBLIC_KEY_SIZE;
+    mldsa44_ed25519_hostkey->ed25519_public_keylen = 32;
+  }
+
+  mldsa44_ed25519_hostkey->file_path = file_path;
+  mldsa44_ed25519_hostkey->agent_path = agent_path;
+
+  if (file_path != NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "using '%s' as MLDSA44-Ed22519 hostkey", file_path);
+
+  } else if (agent_path != NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "using MLDSA44-Ed25519 hostkey from SSH agent at '%s'", agent_path);
+  }
+
+  return 0;
+}
+#endif /* HAVE_MLDSA44_OPENSSL, HAVE_X25519_OPENSSL, HAVE_SHA512_OPENSSL */
+
 static int load_openssh_hostkey(pool *p, const char *path, int fd) {
   const char *passphrase = NULL;
   enum proxy_ssh_key_type_e key_type = PROXY_SSH_KEY_UNKNOWN;
@@ -4028,6 +4376,14 @@ static int load_openssh_hostkey(pool *p, const char *path, int fd) {
       res = handle_ed448_hostkey(p, key, keylen, path, NULL);
       break;
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+
+#if defined(HAVE_MLDSA44_OPENSSL) && \
+    defined(HAVE_X25519_OPENSSL) && \
+    defined(HAVE_SHA512_OPENSSL)
+    case PROXY_SSH_KEY_MLDSA44_ED25519:
+      res = handle_mldsa44_ed25519_hostkey(p, key, keylen, path, NULL);
+      break;
+#endif /* HAVE_MLDSA44_OPENSSL, HAVE_X25519_OPENSSL, HAVE_SHA512_OPENSSL */
 
     default:
       res = handle_hostkey(p, pkey, NULL, 0, path, NULL);
@@ -4302,6 +4658,39 @@ static int get_ed448_hostkey_data(pool *p, unsigned char **buf,
 }
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 
+#if defined(HAVE_MLDSA44_OPENSSL) && \
+    defined(HAVE_X25519_OPENSSL) && \
+    defined(HAVE_SHA512_OPENSSL)
+static int get_mldsa44_ed25519_hostkey_data(pool *p, unsigned char **buf,
+    unsigned char **ptr, uint32_t *buflen) {
+  unsigned char *mldsa44_public_key = NULL;
+  size_t mldsa44_public_keylen = 0;
+
+  /* XXX Is this buffer large enough?  Too large? */
+  *ptr = *buf = palloc(p, *buflen);
+
+  mldsa44_public_keylen = 1536;
+  mldsa44_public_key = palloc(p, mldsa44_public_keylen);
+
+  if (EVP_PKEY_get_raw_public_key(mldsa44_ed25519_hostkey->pkey,
+      mldsa44_public_key, &mldsa44_public_keylen) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error obtaining MLDSA44 public key: %s", proxy_ssh_crypto_get_errors());
+    return -1;
+  }
+
+  proxy_ssh_msg_write_string(buf, buflen, "ssh-mldsa44-ed25519");
+  proxy_ssh_msg_write_int(buf, buflen, 1344);
+  proxy_ssh_msg_write_data(buf, buflen, mldsa44_public_key,
+    mldsa44_public_keylen, FALSE);
+  proxy_ssh_msg_write_data(buf, buflen,
+    mldsa44_ed25519_hostkey->ed25519_public_key,
+    mldsa44_ed25519_hostkey->ed25519_public_keylen, FALSE);
+
+  return 0;
+}
+#endif /* HAVE_MLDSA44_OPENSSL, HAVE_X25519_OPENSSL, HAVE_SHA512_OPENSSL */
+
 int proxy_ssh_keys_have_hostkey(enum proxy_ssh_key_type_e key_type) {
   /* If the requested type is PROXY_SSH_KEY_UNKNOWN, the caller is asking
    * if we have any hostkeys configured at all, regardless of type.
@@ -4478,6 +4867,19 @@ const unsigned char *proxy_ssh_keys_get_hostkey_data(pool *p,
       break;
     }
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+
+#if defined(HAVE_MLDSA44_OPENSSL) && \
+    defined(HAVE_X25519_OPENSSL) && \
+    defined(HAVE_SHA512_OPENSSL)
+    case PROXY_SSH_KEY_MLDSA44_ED25519: {
+      res = get_mldsa44_ed25519_hostkey_data(p, &buf, &ptr, &buflen);
+      if (res < 0) {
+        return NULL;
+      }
+
+      break;
+    }
+#endif /* HAVE_MLDSA44_OPENSSL, HAVE_X25519_OPENSSL, HAVE_SHA512_OPENSSL */
 
     default:
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -5736,6 +6138,263 @@ static int ed25519_verify_signed_data(pool *p,
 }
 #endif /* PR_USE_SODIUM */
 
+#if defined(HAVE_MLDSA44_OPENSSL) && \
+    defined(HAVE_X25519_OPENSSL) && \
+    defined(HAVE_SHA512_OPENSSL)
+static int mldsa44_ed25519_verify_signed_data(pool *p,
+    unsigned char *pubkey_data, uint32_t pubkey_datalen,
+    unsigned char *signature, uint32_t signature_len,
+    unsigned char *sig_data, size_t sig_datalen) {
+  char *pkey_type;
+  uint32_t len, public_keylen, sig_len;
+  unsigned char hash[EVP_MAX_MD_SIZE], *buf, *ptr, *public_key, *sig;
+  unsigned int bufsz, buflen, hash_len = 0;
+  EVP_PKEY_CTX *pkey_ctx = NULL;
+  EVP_SIGNATURE *sig_algo = NULL;
+  EVP_PKEY *pkey = NULL;
+  OSSL_PARAM params[2];
+  EVP_MD_CTX *md_ctx;
+  const char *text = NULL;
+  size_t textlen = 0;
+
+  len = proxy_ssh_msg_read_string(p, &pubkey_data, &pubkey_datalen, &pkey_type);
+  if (len == 0) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (strcmp(pkey_type, "ssh-mldsa44-ed25519") != 0) {
+    pr_trace_msg(trace_channel, 17, "public key type '%s' does not match "
+      "expected key type 'ssh-mldsa44-ed25519'", pkey_type);
+    errno = EINVAL;
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_int(p, &pubkey_data, &pubkey_datalen,
+    &public_keylen);
+  if (len == 0) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (public_keylen != MLDSA44_ED25519_SIZE) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "invalid MLDSA44-Ed25519 public key length (%lu bytes), "
+      "expected %lu bytes", (unsigned long) public_keylen,
+      (unsigned long) MLDSA44_ED25519_SIZE);
+    errno = EINVAL;
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(p, &pubkey_data, &pubkey_datalen,
+    public_keylen, &public_key);
+  if (len == 0) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_int(p, &signature, &signature_len, &sig_len);
+  if (len == 0) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (sig_len != 2484) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "invalid MLDSA44-Ed25519 signature length (%lu bytes), "
+      "expected 2484 bytes", (unsigned long) sig_len);
+    errno = EINVAL;
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(p, &signature, &signature_len, sig_len, &sig);
+  if (len == 0) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (sig == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error verifying MLDSA44-Ed25519 signature: missing signature data");
+    errno = EINVAL;
+    return -1;
+  }
+
+  /* First we have to compute the SHA512 digest of the original data. */
+
+  md_ctx = EVP_MD_CTX_new();
+  if (md_ctx == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error allocating digest context: %s", proxy_ssh_crypto_get_errors());
+    return -1;
+  }
+
+  if (EVP_DigestInit_ex(md_ctx, EVP_sha512(), NULL) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing digest context: %s", proxy_ssh_crypto_get_errors());
+    EVP_MD_CTX_free(md_ctx);
+    return -1;
+  }
+
+  if (EVP_DigestUpdate(md_ctx, sig_data, sig_datalen) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error updating digest context: %s", proxy_ssh_crypto_get_errors());
+    EVP_MD_CTX_free(md_ctx);
+    return -1;
+  }
+
+  if (EVP_DigestFinal_ex(md_ctx, hash, &hash_len) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error finalizing digest context: %s", proxy_ssh_crypto_get_errors());
+    EVP_MD_CTX_free(md_ctx);
+    return -1;
+  }
+
+  EVP_MD_CTX_free(md_ctx);
+
+  /* Next, we construct data to be signed by our MLDSA44/Ed25519 keys:
+   *
+   *   "CompositeAlgorithmSignatures2025" (32 bytes) +
+   *   "COMPSIG-MLDSA44-Ed25519-SHA512"   (30 bytes) +
+   *   (ctx len)                          (1 byte)   +
+   *   ctx                                (currently zero) +
+   *   SHA512 hash                        (64 bytes)
+   *
+   * 256 bytes should do, for now.
+   */
+
+  bufsz = buflen = 256;
+  ptr = buf = palloc(p, buflen);
+
+  text = "CompositeAlgorithmSignatures2025";
+  textlen = strlen(text);
+  memcpy(buf, text, textlen);
+  buf += textlen;
+  buflen -= textlen;
+
+  text = "COMPSIG-MLDSA44-Ed25519-SHA512";
+  textlen = strlen(text);
+  memcpy(buf, text, textlen);
+  buf += textlen;
+  buflen -= textlen;
+
+  /* No context, for now. */
+  buf[0] = 0;
+  buf += 1;
+  buflen -= 1;
+
+  memcpy(buf, hash, hash_len);
+  buf += hash_len;
+  buflen -= hash_len;
+
+  /* First we deal with the MLDSA44 signature. */
+
+  pkey = EVP_PKEY_new_raw_public_key(EVP_PKEY_ML_DSA_44, NULL, public_key,
+    MLDSA44_PUBLIC_KEY_SIZE);
+  if (pkey == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing MLDSA44 public key: %s",
+      proxy_ssh_crypto_get_errors());
+    return -1;
+  }
+
+  pkey_ctx = EVP_PKEY_CTX_new_from_pkey(NULL, pkey, NULL);
+  if (pkey_ctx == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error obtaining MLDSA44 key context: %s", proxy_ssh_crypto_get_errors());
+    EVP_PKEY_free(pkey);
+    return -1;
+  }
+
+  sig_algo = EVP_SIGNATURE_fetch(NULL, "ML-DSA-44", NULL);
+  if (sig_algo == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error obtaining MLDSA44 signature algorithm: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pkey_ctx);
+    EVP_PKEY_free(pkey);
+    return -1;
+  }
+
+  /* We also provide the label to the MLDSA44 verification function. */
+  text = "COMPSIG-MLDSA44-Ed25519-SHA512";
+  textlen = strlen(text);
+
+  params[0] = OSSL_PARAM_construct_octet_string(
+    OSSL_SIGNATURE_PARAM_CONTEXT_STRING, (unsigned char *) text, textlen);
+  params[1] = OSSL_PARAM_construct_end();
+
+  if (EVP_PKEY_verify_message_init(pkey_ctx, sig_algo, params) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing MLDSA44 verification: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_CTX_free(pkey_ctx);
+    EVP_SIGNATURE_free(sig_algo);
+    EVP_PKEY_free(pkey);
+    return -1;
+  }
+
+  if (EVP_PKEY_verify(pkey_ctx, sig, MLDSA44_SIG_SIZE,
+      ptr, (bufsz - buflen)) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "invalid MLDSA44 signature (mismatched data)");
+    EVP_PKEY_CTX_free(pkey_ctx);
+    EVP_SIGNATURE_free(sig_algo);
+    EVP_PKEY_free(pkey);
+    errno = EINVAL;
+    return -1;
+  }
+
+  EVP_PKEY_CTX_free(pkey_ctx);
+  EVP_SIGNATURE_free(sig_algo);
+  EVP_PKEY_free(pkey);
+
+  /* And then we deal with the Ed25519 signature. */
+
+  pkey = EVP_PKEY_new_raw_public_key(EVP_PKEY_ED25519, NULL,
+    public_key + MLDSA44_PUBLIC_KEY_SIZE, 32);
+  if (pkey == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing Ed25519 public key: %s",
+      proxy_ssh_crypto_get_errors());
+    return -1;
+  }
+
+  md_ctx = EVP_MD_CTX_new();
+  if (md_ctx == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error allocating Ed25519 digest context: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_PKEY_free(pkey);
+    return -1;
+  }
+
+  if (EVP_DigestVerifyInit(md_ctx, NULL, NULL, NULL, pkey) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing Ed25519 verification: %s",
+      proxy_ssh_crypto_get_errors());
+    EVP_MD_CTX_free(md_ctx);
+    EVP_PKEY_free(pkey);
+    return -1;
+  }
+
+  if (EVP_DigestVerify(md_ctx, sig + MLDSA44_SIG_SIZE, 64,
+      ptr, (bufsz - buflen)) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "invalid Ed25519 signature (mismatched data)");
+    EVP_MD_CTX_free(md_ctx);
+    EVP_PKEY_free(pkey);
+    errno = EINVAL;
+    return -1;
+  }
+
+  EVP_MD_CTX_free(md_ctx);
+  EVP_PKEY_free(pkey);
+
+  return 0;
+}
+#endif /* HAVE_MLDSA44_OPENSSL, HAVE_X25519_OPENSSL, HAVE_SHA512_OPENSSL */
+
 int proxy_ssh_keys_verify_signed_data(pool *p, const char *pubkey_algo,
     unsigned char *pubkey_data, uint32_t pubkey_datalen,
     unsigned char *signature, uint32_t signature_len,
@@ -5841,9 +6500,33 @@ int proxy_ssh_keys_verify_signed_data(pool *p, const char *pubkey_algo,
 
 #if defined(PR_USE_SODIUM)
   } else if (strcmp(sig_type, "ssh-ed25519") == 0) {
+    if (strcmp(pubkey_algo, sig_type) != 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to verify signed data: signature type '%s' does not match "
+        "publickey algorithm '%s'", sig_type, pubkey_algo);
+      errno = EINVAL;
+      return -1;
+    }
+
     res = ed25519_verify_signed_data(p, pubkey_data, pubkey_datalen, signature,
       signature_len, sig_data, sig_datalen);
 #endif /* PR_USE_SODIUM */
+
+#if defined(HAVE_MLDSA44_OPENSSL) && \
+    defined(HAVE_X25519_OPENSSL) && \
+    defined(HAVE_SHA512_OPENSSL)
+  } else if (strcmp(sig_type, "ssh-mldsa44-ed25519") == 0) {
+    if (strcmp(pubkey_algo, sig_type) != 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to verify signed data: signature type '%s' does not match "
+        "publickey algorithm '%s'", sig_type, pubkey_algo);
+      errno = EINVAL;
+      return -1;
+    }
+
+    res = mldsa44_ed25519_verify_signed_data(p, pubkey_data, pubkey_datalen,
+      signature, signature_len, sig_data, sig_datalen);
+#endif /* HAVE_MLDSA44_OPENSSL, HAVE_X25519_OPENSSL, HAVE_SHA512_OPENSSL */
 
   } else {
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,

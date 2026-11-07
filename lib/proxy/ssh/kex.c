@@ -126,13 +126,14 @@ struct proxy_ssh_kex {
 
   /* Server-preferred hostkey type, based on algorithm:
    *
-   *  "ssh-dss"      --> PROXY_SSH_KEY_DSA
-   *  "ssh-rsa"      --> PROXY_SSH_KEY_RSA
-   *  "ecdsa-sha2-*" --> PROXY_SSH_KEY_ECDSA_*
-   *  "ssh-ed25519"  --> PROXY_SSH_KEY_ED25519
-   *  "ssh-ed448"    --> PROXY_SSH_KEY_ED448
-   *  "rsa-sha2-256" --> PROXY_SSH_KEY_RSA_SHA256
-   *  "rsa-sha2-512" --> PROXY_SSH_KEY_RSA_SHA512
+   *  "ssh-dss"              --> PROXY_SSH_KEY_DSA
+   *  "ssh-rsa"              --> PROXY_SSH_KEY_RSA
+   *  "ecdsa-sha2-*"         --> PROXY_SSH_KEY_ECDSA_*
+   *  "ssh-ed448"            --> PROXY_SSH_KEY_ED448
+   *  "ssh-ed25519"          --> PROXY_SSH_KEY_ED25519
+   *  "ssh-mldsa44-ed25519"  --> PROXY_SSH_KEY_MLDSA44_ED25519
+   *  "rsa-sha2-256"         --> PROXY_SSH_KEY_RSA_SHA256
+   *  "rsa-sha2-512"         --> PROXY_SSH_KEY_RSA_SHA512
    */
   enum proxy_ssh_key_type_e use_hostkey_type;
 
@@ -517,6 +518,14 @@ static int verify_h(pool *p, struct proxy_ssh_kex *kex,
       pubkey_algo = "ssh-ed448";
       break;
 #endif /* HAVE_X448_OPENSSL */
+
+#if defined(HAVE_MLDSA44_OPENSSL) && \
+    defined(HAVE_X25519_OPENSSL) && \
+    defined(HAVE_SHA512_OPENSSL)
+    case PROXY_SSH_KEY_MLDSA44_ED25519:
+      pubkey_algo = "ssh-mldsa44-ed25519";
+      break;
+#endif /* HAVE_MLDSA44_OPENSSL, HAVE_X25519_OPENSSL, HAVE_SHA512_OPENSSL */
 
     default:
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -2346,6 +2355,17 @@ static int setup_hostkey_algo(struct proxy_ssh_kex *kex, const char *algo) {
   }
 #endif /* HAVE_X448_OPENSSL */
 
+#if defined(HAVE_MLDSA44_OPENSSL) && \
+    defined(HAVE_X25519_OPENSSL) && \
+    defined(HAVE_SHA512_OPENSSL)
+  if (strcmp(algo, "ssh-mldsa44-ed25519") == 0) {
+    kex->use_hostkey_type = PROXY_SSH_KEY_MLDSA44_ED25519;
+    return 0;
+  }
+#endif /* HAVE_MLDSA44_OPENSSL, HAVE_X25519_OPENSSL, HAVE_SHA512_OPENSSL */
+
+  pr_trace_msg(trace_channel, 9,
+    "unsupported host key algorithm requested: %s", algo);
   errno = EINVAL;
   return -1;
 }
