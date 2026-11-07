@@ -262,6 +262,11 @@ static const char *key_exchanges[] = {
 };
 
 static const char *hostkey_algos[] = {
+#if defined(HAVE_MLDSA44_OPENSSL) && \
+    defined(HAVE_X25519_OPENSSL) && \
+    defined(HAVE_SHA512_OPENSSL)
+  "ssh-mldsa44-ed25519",
+#endif /* HAVE_MLDSA44_OPENSSL, HAVE_X25519_OPENSSL, HAVE_SHA512_OPENSSL */
 #if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
   "ssh-ed448",
 #endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */

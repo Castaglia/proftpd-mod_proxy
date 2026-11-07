@@ -148,6 +148,11 @@ my $TESTS = {
     test_class => [qw(feature_sodium forking mod_sftp reverse)],
   },
 
+  proxy_reverse_backend_ssh_hostkey_mldsa44_ed25519 => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp reverse)],
+  },
+
   proxy_reverse_backend_ssh_cipher_aes256_gcm => {
     order => ++$order,
     test_class => [qw(forking mod_sftp reverse)],
@@ -665,12 +670,13 @@ sub set_up {
   my $ecdsa384_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_ecdsa384_key");
   my $ecdsa521_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_ecdsa521_key");
   my $ed25519_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_openssh_ed25519_key");
+  my $mldsa44_ed25519_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_openssh_mldsa44_ed25519_key");
 
   my $passphrase_rsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/passphrase_host_rsa_key");
 
   unless (chmod(0400, $rsa_host_key, $openssh_rsa_host_key, $dsa_host_key,
       $ecdsa256_host_key, $ecdsa384_host_key, $ecdsa521_host_key,
-      $ed25519_host_key, $passphrase_rsa_host_key)) {
+      $ed25519_host_key, $mldsa44_ed25519_host_key, $passphrase_rsa_host_key)) {
     die("Can't set perms on mod_sftp hostkeys: $!");
   }
 }
@@ -1867,6 +1873,47 @@ sub proxy_reverse_backend_ssh_hostkey_ed25519 {
   my $kex_algo = 'diffie-hellman-group-exchange-sha1';
   my $proxy_sftp_opts = '';
   my $ssh_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_openssh_ed25519_key");
+
+  ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
+    $proxy_sftp_opts, $ssh_host_key);
+}
+
+sub proxy_reverse_backend_ssh_hostkey_mldsa44_ed25519 {
+  my $self = shift;
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-sha1';
+  my $kex_algo = 'diffie-hellman-group-exchange-sha1';
+  my $proxy_sftp_opts = '';
+  my $ssh_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_openssh_mldsa44_ed25519_key");
+
+  # NOTE: MLDSA support first appeared in OpenSSL 3.5.  So if we are using a
+  # version older than that, we need to skip this test.
+
+  my $openssl_version = get_openssl_version();
+  if ($ENV{TEST_VERBOSE}) {
+    print STDERR "# ProFTPD built using $openssl_version\n";
+  }
+
+  if ($openssl_version =~ /OpenSSL (\d+)\.(\d+)\..*?/) {
+    my $major_version = $1;
+    my $minor_version = $2;
+
+    if ($major_version < 3) {
+      print STDERR "# OpenSSL $major_version.x too old, skipping this test\n";
+      return;
+    }
+
+    if ($major_version == 3) {
+      if ($minor_version < 5) {
+        print STDERR "# OpenSSL $major_version.$minor_version too old, skipping this test\n";
+        return;
+      }
+    }
+
+  } else {
+    print STDERR "# Unable to determine OpenSSL version, skipping this test\n";
+    return;
+  }
 
   ssh_auth_with_algos($self, $cipher_algo, $digest_algo, $kex_algo,
     $proxy_sftp_opts, $ssh_host_key);
