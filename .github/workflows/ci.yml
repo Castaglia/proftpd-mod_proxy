@@ -37,6 +37,7 @@ jobs:
           - almalinux:10
           - alpine:3.18
           - ubuntu:22.04
+          - ubuntu:26.04
 
     container: ${{ matrix.container }}
 
@@ -111,8 +112,11 @@ jobs:
           gcc --version
           openssl version -a
 
-      - name: Install Ubuntu packages
+      - name: Install Ubuntu 22.04 packages
         if: ${{ matrix.container == 'ubuntu:22.04' }}
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          TZ: UTC
         run: |
           apt-get update -qq
           # for builds
@@ -124,6 +128,37 @@ jobs:
           apt-get install -y --no-install-recommends libhiredis-dev
           # for OpenSSL support
           apt-get install -y --no-install-recommends libssl-dev
+          # for SQLite support
+          apt-get install -y --no-install-recommends libsqlite3-dev sqlite3
+
+          # for test code coverage
+          apt-get install -y --no-install-recommends lcov ruby
+          gem install coveralls-lcov
+          # for HTML validation
+          apt-get install -y --no-install-recommends tidy
+          # for debugging
+          clang --version
+          gcc --version
+          openssl version -a
+
+      - name: Install Ubuntu 26.04 packages
+        if: ${{ matrix.container == 'ubuntu:26.04' }}
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          TZ: UTC
+        run: |
+          apt-get update -qq
+          # for builds
+          apt-get install -y --no-install-recommends build-essential clang gcc libclang-rt-dev libcrypt-dev libnsl-dev make
+          # for unit tests
+          apt-get install -y --no-install-recommends check libsubunit-dev
+
+          # for Redis support
+          apt-get install -y --no-install-recommends libhiredis-dev
+          # for OpenSSL support
+          apt-get install -y --no-install-recommends libssl-dev openssl
+          # for Sodium support
+          apt-get install -y --no-install-recommends libsodium-dev
           # for SQLite support
           apt-get install -y --no-install-recommends libsqlite3-dev sqlite3
 
@@ -218,7 +253,7 @@ jobs:
           CC: ${{ matrix.compiler }}
           CFLAGS: -fsanitize=address,undefined
           LDFLAGS: -fsanitize=address,undefined
-        if: ${{ matrix.compiler == 'clang' && matrix.container == 'ubuntu:22.04' }}
+        if: ${{ matrix.compiler == 'clang' && matrix.container == 'ubuntu:26.04' }}
         run: |
           cd proftpd
           make clean
