@@ -2654,7 +2654,7 @@ static int proxy_data_prepare_backend_conn(struct proxy_session *proxy_sess,
 }
 
 static int proxy_data_prepare_frontend_conn(struct proxy_session *proxy_sess,
-    cmd_rec *cmd, conn_t **frontend) {
+    cmd_rec *cmd, conn_t **frontend, int *added_err) {
   int xerrno;
   conn_t *frontend_conn = NULL;
 
@@ -2664,9 +2664,9 @@ static int proxy_data_prepare_frontend_conn(struct proxy_session *proxy_sess,
       "transfer for %s", (char *) cmd->argv[0]);
     frontend_conn = proxy_ftp_conn_accept(cmd->pool,
       proxy_sess->frontend_data_conn, proxy_sess->frontend_ctrl_conn, TRUE);
-    if (frontend_conn == NULL) {
-      xerrno = errno;
+    xerrno = errno;
 
+    if (frontend_conn == NULL) {
       if (proxy_sess->frontend_data_conn != NULL) {
         pr_inet_close(session.pool, proxy_sess->frontend_data_conn);
         proxy_sess->frontend_data_conn = session.d = NULL;
@@ -2674,7 +2674,7 @@ static int proxy_data_prepare_frontend_conn(struct proxy_session *proxy_sess,
 
       pr_response_add_err(R_425, _("%s: %s"), (char *) cmd->argv[0],
         strerror(xerrno));
-      pr_response_flush(&resp_err_list);
+      *added_err = TRUE;
 
       errno = xerrno;
       return -1;
@@ -2763,6 +2763,8 @@ static int proxy_data_prepare_frontend_conn(struct proxy_session *proxy_sess,
           strerror(xerrno));
       }
 
+      *added_err = TRUE;
+
       errno = xerrno;
       return -1;
     }
@@ -2817,7 +2819,7 @@ static int proxy_data_prepare_frontend_conn(struct proxy_session *proxy_sess,
 
 static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
     cmd_rec *cmd, conn_t **frontend, conn_t **backend) {
-  int res, xerrno = 0;
+  int added_err = FALSE, res, xerrno = 0;
 
   /* First we proxy the command to the backend server, which starts the
    * process.
@@ -2825,8 +2827,9 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
 
   res = proxy_ftp_ctrl_send_cmd(cmd->tmp_pool, proxy_sess->backend_ctrl_conn,
     cmd);
+  xerrno = errno;
+
   if (res < 0) {
-    xerrno = errno;
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
       "error sending %s to backend: %s", (char *) cmd->argv[0],
       strerror(xerrno));
@@ -2840,12 +2843,67 @@ static int proxy_data_prepare_conns(struct proxy_session *proxy_sess,
   }
 
   res = proxy_data_prepare_backend_conn(proxy_sess, cmd, backend);
+  xerrno = errno;
+
   if (res < 0) {
     return -1;
   }
 
-  res = proxy_data_prepare_frontend_conn(proxy_sess, cmd, frontend);
+  res = proxy_data_prepare_frontend_conn(proxy_sess, cmd, frontend,
+    &added_err);
+  xerrno = errno;
+
   if (res < 0) {
+    pr_response_t *resp;
+    unsigned int resp_nlines = 0;
+
+    /* We need to rudely tear down the backend connection now, to signal
+     * to the backend server that this was not a normal EOF/close.
+     */
+    res = proxy_inet_rudely_close(session.pool, proxy_sess->backend_data_conn);
+    if (res < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error aborting backend data connection: %s", strerror(errno));
+      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
+        "Backend data transfer abort failed");
+    }
+
+    /* Read the backend's response. */
+    resp = proxy_ftp_ctrl_recv_resp(cmd->tmp_pool,
+      proxy_sess->backend_ctrl_conn, &resp_nlines, 0);
+    if (resp == NULL) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error reading backend response: %s", strerror(errno));
+      pr_session_disconnect(&proxy_module, PR_SESS_DISCONNECT_BY_APPLICATION,
+        "Backend data transfer abort failed");
+    }
+
+    /* We don't really care what the backend response is, since we will not
+     * be sending it to the frontend.
+     */
+    pr_trace_msg(trace_channel, 7, "ignoring backend response: %s %s",
+      resp->num, resp->msg);
+
+    proxy_inet_close(session.pool, proxy_sess->backend_data_conn);
+    pr_inet_close(session.pool, proxy_sess->backend_data_conn);
+    proxy_sess->backend_data_conn = *backend = NULL;
+
+    if (proxy_sess->frontend_data_conn != NULL) {
+      pr_inet_lingering_close(session.pool, proxy_sess->frontend_data_conn,
+        timeout_linger);
+      proxy_sess->frontend_data_conn = session.d = NULL;
+    }
+
+    proxy_sess->frontend_sess_flags &= (SF_ALL^(SF_ABORT|SF_XFER|SF_PASSIVE|SF_ASCII_OVERRIDE));
+    proxy_sess->backend_sess_flags &= (SF_ALL^(SF_ABORT|SF_XFER|SF_PASSIVE|SF_ASCII_OVERRIDE));
+
+    if (added_err == FALSE) {
+      /* If no error response has been added yet, add one now. */
+      pr_response_add_err(R_425, _("%s: %s"), (char *) cmd->argv[0],
+        strerror(xerrno));
+    }
+
+    errno = xerrno;
     return -1;
   }
 
