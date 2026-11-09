@@ -111,6 +111,18 @@ my $TESTS = {
     test_class => [qw(bug forking mod_tls reverse)],
   },
 
+  # For Issue #352 we need to cause the frontend data connection setup to
+  # fail early.
+  proxy_reverse_frontend_tls_stor_setup_failed_issue352 => {
+    order => ++$order,
+    test_class => [qw(bug forking mod_tls reverse)],
+  },
+
+  proxy_reverse_frontend_tls_retr_setup_failed_issue352 => {
+    order => ++$order,
+    test_class => [qw(bug forking mod_tls reverse)],
+  },
+
   proxy_reverse_frontend_backend_tls_roundrobin_login_after_host => {
     order => ++$order,
     test_class => [qw(forking mod_tls reverse)],
@@ -3321,6 +3333,365 @@ EOC
         test_msg("HiddenStores file '$hidden_file' exists unexpectedly"));
       $self->assert(!-f $test_file,
         test_msg("Uploaded file '$test_file' exists unexpectedly"));
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, 30) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup, $ex);
+}
+
+sub proxy_reverse_frontend_tls_stor_setup_failed_issue352 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+
+  my $test_datalen = (4 * 1024 * 1024);
+  my $test_file = File::Spec->rel2abs("$tmpdir/test.txt");
+  my $hidden_file = File::Spec->rel2abs("$tmpdir/.in.test.txt.");
+
+  my $src_file = File::Spec->rel2abs("$tmpdir/src.dat");
+  if (open(my $fh, "> $src_file")) {
+    print $fh "Hello, World!\n";
+    unless (close($fh)) {
+      die("Can't write $src_file: $!");
+    }
+
+  } else {
+    die("Can't open $src_file: $!");
+  }
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'command:10 netio:20 response:10 proxy:20 proxy.inet:20 proxy.netio:20 proxy.tls:20 proxy.reverse:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.ftp.sess:20 tls:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    SocketBindTight => 'on',
+    TimeoutLinger => 1,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+
+      'mod_tls.c' => {
+        TLSEngine => 'on',
+        TLSLog => $setup->{log_file},
+        TLSRequired => 'on',
+        TLSRSACertificateFile => $cert_file,
+        TLSCACertificateFile => $ca_file,
+        TLSOptions => 'EnableDiags',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  AllowOverwrite on
+  WtmpLog off
+  TimeoutLinger 1
+  TransferLog none
+
+  HiddenStores on
+  DeleteAbortedStores on
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  require Net::FTPSSL;
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Give the server a chance to start up
+      sleep(2);
+
+      my $ssl_opts = {
+        Encryption => 'E',
+        Port => $port,
+        Croak => 0,
+      };
+
+      if ($ENV{TEST_VERBOSE}) {
+        $ssl_opts->{Debug} = 2;
+      }
+
+      my $client = Net::FTPSSL->new('127.0.0.1', %$ssl_opts);
+      unless ($client) {
+        die("Can't connect to FTPS server: " . IO::Socket::SSL::errstr());
+      }
+
+      unless ($client->login($setup->{user}, $setup->{passwd})) {
+        die("Can't login: " . $client->last_message());
+      }
+
+      unless ($client->binary()) {
+        die("Can't set transfer mode to binary: " . $client->last_message());
+      }
+
+      # Since we are requiring SSL session reuse for data transfers,
+      # and this client is not using SSL session resumption, I expect
+      # this data transfer to fail.
+      if ($client->put($src_file, 'test.txt')) {
+        die("STOR succeeded unexpectedly");
+      }
+
+      my $resp = $client->message();
+      my $expected = '425 .*?: Operation not permitted';
+      $self->assert(qr/$expected/, $resp,
+        test_msg("Expected response '$expected', got '$resp'"));
+
+      $client->quit();
+
+      $self->assert(!-f $hidden_file,
+        test_msg("HiddenStores file '$hidden_file' exists unexpectedly"));
+      $self->assert(!-f $test_file,
+        test_msg("Uploaded file '$test_file' exists unexpectedly"));
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh, 30) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup, $ex);
+}
+
+sub proxy_reverse_frontend_tls_retr_setup_failed_issue352 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $cert_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/server-cert.pem");
+  my $ca_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_tls/ca-cert.pem");
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+
+  my $test_file = File::Spec->rel2abs("$tmpdir/test.dat");
+  if (open(my $fh, "> $test_file")) {
+    print $fh 'AbCdEfGh' x 10240;
+    unless (close($fh)) {
+      die("Can't write $test_file: $!");
+    }
+
+  } else {
+    die("Can't open $test_file: $!");
+  }
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'command:10 netio:20 response:10 proxy:20 proxy.inet:20 proxy.netio:20 proxy.tls:20 proxy.reverse:20 proxy.ftp.conn:20 proxy.ftp.ctrl:20 proxy.ftp.data:20 proxy.ftp.msg:20 proxy.ftp.sess:20 tls:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    SocketBindTight => 'on',
+    TimeoutLinger => 1,
+
+    IfModules => {
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+
+      'mod_tls.c' => {
+        TLSEngine => 'on',
+        TLSLog => $setup->{log_file},
+        TLSRequired => 'on',
+        TLSRSACertificateFile => $cert_file,
+        TLSCACertificateFile => $ca_file,
+        TLSOptions => 'EnableDiags',
+      },
+    },
+
+    Limit => {
+      LOGIN => {
+        DenyUser => $setup->{user},
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  AllowOverwrite on
+  WtmpLog off
+  TimeoutLinger 1
+  TransferLog none
+
+  HiddenStores on
+  DeleteAbortedStores on
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  require Net::FTPSSL;
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Give the server a chance to start up
+      sleep(2);
+
+      my $ssl_opts = {
+        Encryption => 'E',
+        Port => $port,
+        Croak => 0,
+      };
+
+      if ($ENV{TEST_VERBOSE}) {
+        $ssl_opts->{Debug} = 2;
+      }
+
+      my $client = Net::FTPSSL->new('127.0.0.1', %$ssl_opts);
+      unless ($client) {
+        die("Can't connect to FTPS server: " . IO::Socket::SSL::errstr());
+      }
+
+      unless ($client->login($setup->{user}, $setup->{passwd})) {
+        die("Can't login: " . $client->last_message());
+      }
+
+      unless ($client->binary()) {
+        die("Can't set transfer mode to binary: " . $client->last_message());
+      }
+
+      # Since we are requiring SSL session reuse for data transfers,
+      # and this client is not using SSL session resumption, I expect
+      # this data transfer to fail.
+      if ($client->get('test.dat', '/dev/null')) {
+        die("RETR succeeded unexpectedly");
+      }
+
+      my $resp = $client->message();
+      my $expected = '425 .*?: Operation not permitted';
+      $self->assert(qr/$expected/, $resp,
+        test_msg("Expected response '$expected', got '$resp'"));
+
+      $client->quit();
     };
     if ($@) {
       $ex = $@;
