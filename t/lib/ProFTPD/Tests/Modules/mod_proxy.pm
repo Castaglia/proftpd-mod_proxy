@@ -10869,25 +10869,24 @@ EOC
 
       my $buf = "Hello, World!\n";
       $conn->write($buf, length($buf), 25);
+      sleep(0.25);
       eval { $conn->close() };
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+
+      my $expected = 426;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = 'Transfer aborted';
+      $self->assert(qr/$expected/, $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       eval { $client->noop() };
       unless ($@) {
         die("NOOP succeeded unexpectedly");
       }
-
-      my $resp_code = $client->response_code();
-      my $resp_msg = $client->response_msg();
-
-      # Perl's Net::Cmd module (depending on version!) uses a very non-standard
-      # 599 code to indicate that the connection is closed.  Other versions
-      # use the more standard 421 response code.
-      $self->assert($resp_code == 421 || $resp_code == 599,,
-        test_msg("Expected response code 421 or 599, got $resp_code"));
-
-      my $expected = 'Connection closed';
-      $self->assert(qr/$expected/, $resp_msg,
-        test_msg("Expected response message '$expected', got '$resp_msg'"));
     };
     if ($@) {
       $ex = $@;
