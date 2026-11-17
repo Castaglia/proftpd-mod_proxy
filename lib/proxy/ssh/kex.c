@@ -3785,15 +3785,22 @@ static int create_gex_dh(struct proxy_ssh_kex *kex, const BIGNUM *dh_p,
 static int read_dh_gex_group(struct proxy_ssh_packet *pkt,
     struct proxy_ssh_kex *kex) {
   unsigned char *buf = NULL;
-  uint32_t buflen = 0;
+  uint32_t buflen = 0, len;
   const BIGNUM *dh_p, *dh_g;
   int dh_nbits;
 
   buf = pkt->payload;
   buflen = pkt->payload_len;
 
-  proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &dh_p);
-  proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &dh_g);
+  len = proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &dh_p);
+  if (len == 0) {
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_mpint(pkt->pool, &buf, &buflen, &dh_g);
+  if (len == 0) {
+    return -1;
+  }
 
   dh_nbits = BN_num_bits(dh_p);
   if (kex->dh_gex_min > (uint32_t) dh_nbits ||
