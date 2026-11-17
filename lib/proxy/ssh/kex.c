@@ -3593,6 +3593,10 @@ static int handle_kex_dh(struct proxy_ssh_kex *kex, conn_t *conn) {
   pkt = read_kex_packet(kex_pool, kex, conn,
     PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL, 1,
     PROXY_SSH_MSG_KEX_DH_REPLY);
+  if (pkt == NULL) {
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
 
   res = read_dh_reply(pkt, kex);
   if (res < 0) {
@@ -4018,6 +4022,10 @@ static int handle_kex_dh_gex(struct proxy_ssh_kex *kex, conn_t *conn) {
   pkt = read_kex_packet(kex_pool, kex, conn,
     PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL, 1,
     PROXY_SSH_MSG_KEX_DH_GEX_GROUP);
+  if (pkt == NULL) {
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
 
   res = read_dh_gex_group(pkt, kex);
   if (res < 0) {
@@ -4050,6 +4058,10 @@ static int handle_kex_dh_gex(struct proxy_ssh_kex *kex, conn_t *conn) {
   pkt = read_kex_packet(kex_pool, kex, conn,
     PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL, 1,
     PROXY_SSH_MSG_KEX_DH_GEX_REPLY);
+  if (pkt == NULL) {
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
 
   res = read_dh_gex_reply(pkt, kex);
   if (res < 0) {
@@ -4524,6 +4536,10 @@ static int handle_kex_ecdh(struct proxy_ssh_kex *kex, conn_t *conn) {
   pkt = read_kex_packet(kex_pool, kex, conn,
     PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL, 1,
     PROXY_SSH_MSG_KEX_ECDH_REPLY);
+  if (pkt == NULL) {
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
 
   res = read_ecdh_reply(pkt, kex);
   if (res < 0) {
@@ -4877,6 +4893,10 @@ static int handle_kex_rsa(struct proxy_ssh_kex *kex, conn_t *conn) {
   pkt = read_kex_packet(kex_pool, kex, conn,
     PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL, 1,
     PROXY_SSH_MSG_KEXRSA_PUBKEY);
+  if (pkt == NULL) {
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
 
   res = read_kexrsa_pubkey(pkt, kex, tmp_pool, &server_hostkey_data,
     &server_hostkey_datalen);
@@ -4911,6 +4931,10 @@ static int handle_kex_rsa(struct proxy_ssh_kex *kex, conn_t *conn) {
   pkt = read_kex_packet(kex_pool, kex, conn,
     PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL, 1,
     PROXY_SSH_MSG_KEXRSA_DONE);
+  if (pkt == NULL) {
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
 
   res = read_kexrsa_done(pkt, kex, server_hostkey_data, server_hostkey_datalen);
   if (res < 0) {
@@ -5150,6 +5174,10 @@ static int handle_kex_curve25519(struct proxy_ssh_kex *kex, conn_t *conn) {
   pkt = read_kex_packet(kex_pool, kex, conn,
     PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL, 1,
     PROXY_SSH_MSG_KEX_ECDH_REPLY);
+  if (pkt == NULL) {
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
 
   res = read_curve25519_reply(pkt, kex);
   if (res < 0) {
@@ -5376,6 +5404,10 @@ static int handle_kex_curve448(struct proxy_ssh_kex *kex, conn_t *conn) {
   pkt = read_kex_packet(kex_pool, kex, conn,
     PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL, 1,
     PROXY_SSH_MSG_KEX_ECDH_REPLY);
+  if (pkt == NULL) {
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
 
   res = read_curve448_reply(pkt, kex);
   if (res < 0) {
@@ -5873,6 +5905,10 @@ static int handle_kex_mlkem768(struct proxy_ssh_kex *kex, conn_t *conn) {
   pkt = read_kex_packet(kex_pool, kex, conn,
     PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL, 1,
     PROXY_SSH_MSG_KEX_ECDH_REPLY);
+  if (pkt == NULL) {
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
 
   res = read_mlkem768_reply(pkt, kex);
   if (res < 0) {
@@ -6314,6 +6350,10 @@ static int handle_kex_sntrup761(struct proxy_ssh_kex *kex, conn_t *conn) {
   pkt = read_kex_packet(kex_pool, kex, conn,
     PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL, 1,
     PROXY_SSH_MSG_KEX_ECDH_REPLY);
+  if (pkt == NULL) {
+    PROXY_SSH_DISCONNECT_CONN(conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
 
   res = read_sntrup761_reply(pkt, kex);
   if (res < 0) {
@@ -6516,6 +6556,10 @@ int proxy_ssh_kex_handle(struct proxy_ssh_packet *pkt,
         PROXY_SSH_MSG_KEX_DH_INIT,
         PROXY_SSH_MSG_KEX_DH_GEX_INIT,
         PROXY_SSH_MSG_KEX_ECDH_INIT);
+      if (pkt == NULL) {
+        PROXY_SSH_DISCONNECT_CONN(proxy_sess->backend_ctrl_conn,
+          PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+      }
 
       pr_trace_msg(trace_channel, 3,
         "ignored %s (%d) guess message sent by server",
@@ -6599,6 +6643,10 @@ int proxy_ssh_kex_handle(struct proxy_ssh_packet *pkt,
 
   pkt = read_kex_packet(kex_pool, kex, proxy_sess->backend_ctrl_conn,
     PROXY_SSH_DISCONNECT_PROTOCOL_ERROR, NULL, 1, PROXY_SSH_MSG_NEWKEYS);
+  if (pkt == NULL) {
+    PROXY_SSH_DISCONNECT_CONN(proxy_sess->backend_ctrl_conn,
+      PROXY_SSH_DISCONNECT_KEY_EXCHANGE_FAILED, NULL);
+  }
 
   /* If we didn't send our NEWKEYS message earlier, do it now. */
   if (sent_newkeys == FALSE) {
