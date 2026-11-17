@@ -1293,10 +1293,12 @@ changed.
 
 <p>
 When <code>mod_proxy</code> connects to a backend SSH server for the very first
-time, its hostkey will be recorded.  The next time <code>mod_proxy</code>
-connects, the hostkey presented will be compared to the previously recorded
-hostkey.  When <code>ProxySFTPVerifyServer</code> is <em>on</em>, any hostkey
-mismatches will be logged.
+time (also known as "time of first use", or TOFU), its hostkey will be recorded.
+The next time <code>mod_proxy</code> connects, the hostkey presented will be
+compared to the previously recorded hostkey.  When
+<code>ProxySFTPVerifyServer</code> is <em>on</em>, any hostkey mismatches, or
+indeed any failure to be able to do the key comparison, will cause the
+connection to fail.
 
 <p>
 <hr>

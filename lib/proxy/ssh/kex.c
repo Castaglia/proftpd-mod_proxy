@@ -3160,10 +3160,22 @@ static int handle_server_hostkey(pool *p,
   stored_hostkey_data = (kex_ds->hostkey_get)(p, kex_ds->dsh, vhost_id,
     backend_uri, &stored_hostkey_algo, &stored_hostkey_datalen);
   if (stored_hostkey_data == NULL) {
-    if (errno != ENOENT) {
+    int xerrno = errno;
+
+    if (xerrno != ENOENT) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "error retrieving stored hostkey for vhost ID %u, URI '%s': %s",
-        vhost_id, backend_uri, strerror(errno));
+        vhost_id, backend_uri, strerror(xerrno));
+
+      if (kex_verify_hostkeys == TRUE) {
+        /* If we have been configured to be strict, and to verify backend
+         * server hostkeys, then a lookup error prevents us from doing so,
+         * and thus should be fatal.
+         */
+        errno = xerrno;
+        return -1;
+      }
+
       return 0;
     }
 
@@ -3225,28 +3237,30 @@ static int handle_server_hostkey(pool *p,
          * available.
          */
 
-        /* TODO: If we fail the KEX here, what recourse does the admin have?
-         * We currently are not providing a way to update/remove the offending
+        /* If we fail the KEX here, what recourse does the admin have? We
+         * currently are not providing a way to update/remove the offending
          * stored hostkey in the SQLite database.
          *
-         * For now, just loudly log the mismatch.
+         * To prevent abuse, though, we will loudly log the mismatch, but
+         * also fail the connection, to preserve integrity and trust.
          */
         (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "stored hostkey does not match current hostkey "
           "(vhost ID %u, URI '%s') and ProxySFTPVerifyServer is enabled",
           vhost_id, backend_uri);
+        errno = EPERM;
+        return -1;
+      }
 
-      } else {
-        /* Replace the stored hostkey. */
-        pr_trace_msg(trace_channel, 10, "stored hostkey does not match current "
-          "hostkey (vhost ID %u, URI '%s') and ProxySFTPVerifyServer is "
-          "disabled, updating stored hostkey", vhost_id, backend_uri);
-        if ((kex_ds->hostkey_update)(p, kex_ds->dsh, vhost_id, backend_uri,
-             hostkey_algo, hostkey_data, hostkey_datalen) < 0) {
-          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "error updating '%s' hostkey for vhost ID %u, URI '%s': %s",
-            hostkey_algo, vhost_id, backend_uri, strerror(errno));
-        }
+      /* Replace the stored hostkey. */
+      pr_trace_msg(trace_channel, 10, "stored hostkey does not match current "
+        "hostkey (vhost ID %u, URI '%s') and ProxySFTPVerifyServer is "
+        "disabled, updating stored hostkey", vhost_id, backend_uri);
+      if ((kex_ds->hostkey_update)(p, kex_ds->dsh, vhost_id, backend_uri,
+           hostkey_algo, hostkey_data, hostkey_datalen) < 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error updating '%s' hostkey for vhost ID %u, URI '%s': %s",
+          hostkey_algo, vhost_id, backend_uri, strerror(errno));
       }
     }
   }
