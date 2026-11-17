@@ -6925,17 +6925,10 @@ EOC
 
       my $ssh2 = Net::SSH2->new();
 
-      unless ($ssh2->connect('127.0.0.1', $port)) {
-        my ($err_code, $err_name, $err_str) = $ssh2->error();
-        die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
+      # Due to the server host key mismatch, we expect this to fail.
+      if ($ssh2->connect('127.0.0.1', $port)) {
+        die("Connecting to SSH server succeeded unexpectedly");
       }
-
-      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
-        my ($err_code, $err_name, $err_str) = $ssh2->error();
-        die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
-      }
-
-      $ssh2->disconnect();
     };
     if ($@) {
       $ex = $@;
