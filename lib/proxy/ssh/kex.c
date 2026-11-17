@@ -3728,10 +3728,10 @@ static int create_gex_dh(struct proxy_ssh_kex *kex, const BIGNUM *dh_p,
 
 #if (OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(HAVE_LIBRESSL)) || \
     (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER >= 0x3050000L)
-    DH_set0_pqg(dh, (BIGNUM *) dh_p, NULL, (BIGNUM *) dh_g);
+    DH_set0_pqg(dh, (BIGNUM *) BN_dup(dh_p), NULL, (BIGNUM *) BN_dup(dh_g));
 #else
-    dh->p = dh_p;
-    dh->g = dh_g;
+    dh->p = BN_dup(dh_p);
+    dh->g = BN_dup(dh_g);
 #endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
 
     dh_priv_key = BN_new();
