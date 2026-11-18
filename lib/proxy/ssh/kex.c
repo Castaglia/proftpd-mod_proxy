@@ -3303,7 +3303,6 @@ static struct proxy_ssh_packet *read_kex_packet(pool *p,
     if (res < 0) {
       int xerrno = errno;
 
-      destroy_kex(kex);
       destroy_pool(pkt->pool);
 
       errno = xerrno;
