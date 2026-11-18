@@ -39,7 +39,18 @@ enum proxy_ssh_key_type_e {
   PROXY_SSH_KEY_ECDSA_521,
   PROXY_SSH_KEY_ED25519,
   PROXY_SSH_KEY_MLDSA44_ED25519,
-  PROXY_SSH_KEY_ED448
+  PROXY_SSH_KEY_ED448,
+
+  /* Certificates */
+  PROXY_SSH_KEY_DSA_CERT,
+  PROXY_SSH_KEY_RSA_CERT,
+  PROXY_SSH_KEY_RSA_SHA256_CERT,
+  PROXY_SSH_KEY_RSA_SHA512_CERT,
+  PROXY_SSH_KEY_ECDSA_256_CERT,
+  PROXY_SSH_KEY_ECDSA_384_CERT,
+  PROXY_SSH_KEY_ECDSA_521_CERT,
+  PROXY_SSH_KEY_ED25519_CERT,
+  PROXY_SSH_KEY_ED448_CERT
 };
 
 /* Returns a string of colon-separated lowercase hex characters, representing
@@ -63,9 +74,10 @@ int proxy_ssh_keys_compare_keys(pool *p, unsigned char *remote_key_data,
   uint32_t remote_key_datalen, unsigned char *local_key_data,
   uint32_t local_key_datalen);
 int proxy_ssh_keys_have_hostkey(enum proxy_ssh_key_type_e);
-int proxy_ssh_keys_get_hostkey(pool *p, const char *);
+int proxy_ssh_keys_get_hostcert(pool *p, const char *path);
+int proxy_ssh_keys_get_hostkey(pool *p, const char *path);
 const unsigned char *proxy_ssh_keys_get_hostkey_data(pool *,
-  enum proxy_ssh_key_type_e, uint32_t *);
+  enum proxy_ssh_key_type_e, uint32_t *, void *);
 void proxy_ssh_keys_get_passphrases(void);
 int proxy_ssh_keys_set_passphrase_provider(const char *);
 const unsigned char *proxy_ssh_keys_sign_data(pool *, enum proxy_ssh_key_type_e,
@@ -73,11 +85,14 @@ const unsigned char *proxy_ssh_keys_sign_data(pool *, enum proxy_ssh_key_type_e,
 #if defined(PR_USE_OPENSSL_ECC)
 int proxy_ssh_keys_validate_ecdsa_params(const EC_GROUP *, const EC_POINT *);
 #endif /* PR_USE_OPENSSL_ECC */
+uint32_t proxy_ssh_keys_skip_pubkey_data(pool *p, unsigned char *pubkey_data,
+  uint32_t pubkey_datalen);
 int proxy_ssh_keys_verify_pubkey_type(pool *, unsigned char *, uint32_t,
   enum proxy_ssh_key_type_e);
 int proxy_ssh_keys_verify_signed_data(pool *p, const char *pubkey_algo,
   unsigned char *pubkey_data, uint32_t pubkey_datalen,
   unsigned char *signature, uint32_t signaturelen,
   unsigned char *sig_data, size_t sig_datalen);
+int proxy_ssh_keys_is_cert_type(enum proxy_ssh_key_type_e);
 
 #endif /* MOD_PROXY_SSH_KEYS_H */

@@ -141,6 +141,10 @@
 #define PROXY_DATASTORE_SQLITE			1
 #define PROXY_DATASTORE_REDIS			2
 
+/* mod_proxy SSH certificate option flags */
+#define PROXY_SSH_CERT_OPT_ALLOW_EMPTY_PRINCIPALS	0x000001
+#define PROXY_SSH_CERT_OPT_ALLOW_MATCH_PRINCIPALS	0x000002
+
 /* Miscellaneous */
 extern int proxy_logfd;
 extern module proxy_module;

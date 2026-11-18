@@ -26,6 +26,7 @@
 #include "proxy/ssh/msg.h"
 #include "proxy/ssh/packet.h"
 #include "proxy/ssh/crypto.h"
+#include "proxy/ssh/certs.h"
 #include "proxy/ssh/keys.h"
 #include "proxy/ssh/agent.h"
 #include "proxy/ssh/interop.h"
@@ -86,6 +87,9 @@ struct proxy_ssh_hostkey {
    * to that agent, e.g. for data signing requests.
    */
   const char *agent_path;
+
+  /* Associated host certificate, if present. */
+  struct proxy_ssh_cert *cert;
 };
 
 static struct proxy_ssh_hostkey *dsa_hostkey = NULL;
@@ -1253,9 +1257,31 @@ static uint32_t read_pkey_from_data(pool *p, unsigned char *pkey_data,
   }
   len += res;
 
-  if (strcmp(pkey_type, "ssh-rsa") == 0) {
+  if (strcmp(pkey_type, "ssh-rsa") == 0 ||
+      strcmp(pkey_type, "ssh-rsa-cert") == 0 ||
+      strcmp(pkey_type, "ssh-rsa-cert-v01@openssh.com") == 0) {
     RSA *rsa;
     const BIGNUM *rsa_e = NULL, *rsa_n = NULL, *rsa_d = NULL;
+
+    /* If we have an SSH RSA certificate, we need to read/skip past the
+     * nonce here.
+     */
+    if (strcmp(pkey_type, "ssh-rsa-cert") == 0 ||
+        strcmp(pkey_type, "ssh-rsa-cert-v01@openssh.com") == 0) {
+      res = proxy_ssh_certs_read_nonce(p, pkey_data, pkey_datalen, pkey_type,
+        NULL);
+      if (res == 0) {
+        pr_trace_msg(trace_channel, 19,
+          "error reading nonce from %s certificate", pkey_type);
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error reading %s key: invalid/unsupported key format", pkey_type);
+        return 0;
+      }
+
+      pkey_data += res;
+      pkey_datalen -= res;
+      len += res;
+    }
 
     *pkey = EVP_PKEY_new();
     if (*pkey == NULL) {
@@ -1388,13 +1414,38 @@ static uint32_t read_pkey_from_data(pool *p, unsigned char *pkey_data,
     }
 
     if (key_type != NULL) {
-      *key_type = PROXY_SSH_KEY_RSA;
+      if (strcmp(pkey_type, "ssh-rsa") == 0) {
+        *key_type = PROXY_SSH_KEY_RSA;
+
+      } else {
+        *key_type = PROXY_SSH_KEY_RSA_CERT;
+      }
     }
 
-  } else if (strcmp(pkey_type, "ssh-dss") == 0) {
+  } else if (strcmp(pkey_type, "ssh-dss") == 0 ||
+             strcmp(pkey_type, "ssh-dss-cert") == 0) {
 #if !defined(OPENSSL_NO_DSA)
     DSA *dsa;
     const BIGNUM *dsa_p, *dsa_q, *dsa_g, *dsa_pub_key, *dsa_priv_key = NULL;
+
+    /* If we have an SSH DSA certificate, we need to read/skip past the
+     * nonce here.
+     */
+    if (strcmp(pkey_type, "ssh-dss-cert") == 0) {
+      res = proxy_ssh_certs_read_nonce(p, pkey_data, pkey_datalen, pkey_type,
+        NULL);
+      if (res == 0) {
+        pr_trace_msg(trace_channel, 19,
+          "error reading nonce from %s certificate", pkey_type);
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error reading %s key: invalid/unsupported key format", pkey_type);
+        return 0;
+      }
+
+      pkey_data += res;
+      pkey_datalen -= res;
+      len += res;
+    }
 
     *pkey = EVP_PKEY_new();
     if (*pkey == NULL) {
@@ -1492,7 +1543,12 @@ static uint32_t read_pkey_from_data(pool *p, unsigned char *pkey_data,
     }
 
     if (key_type != NULL) {
-      *key_type = PROXY_SSH_KEY_DSA;
+      if (strcmp(pkey_type, "ssh-dss") == 0) {
+        *key_type = PROXY_SSH_KEY_DSA;
+
+      } else {
+        *key_type = PROXY_SSH_KEY_DSA_CERT;
+      }
     }
 #else
     (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
@@ -1504,13 +1560,43 @@ static uint32_t read_pkey_from_data(pool *p, unsigned char *pkey_data,
 #if defined(PR_USE_OPENSSL_ECC)
   } else if (strcmp(pkey_type, "ecdsa-sha2-nistp256") == 0 ||
              strcmp(pkey_type, "ecdsa-sha2-nistp384") == 0 ||
-             strcmp(pkey_type, "ecdsa-sha2-nistp521") == 0) {
+             strcmp(pkey_type, "ecdsa-sha2-nistp521") == 0 ||
+             strcmp(pkey_type, "ecdsa-sha2-nistp256-cert") == 0 ||
+             strcmp(pkey_type, "ecdsa-sha2-nistp384-cert") == 0 ||
+             strcmp(pkey_type, "ecdsa-sha2-nistp521-cert") == 0 ||
+             strcmp(pkey_type, "ecdsa-sha2-nistp256-cert-v01@openssh.com") == 0 ||
+             strcmp(pkey_type, "ecdsa-sha2-nistp384-cert-v01@openssh.com") == 0 ||
+             strcmp(pkey_type, "ecdsa-sha2-nistp521-cert-v01@openssh.com") == 0) {
     EC_KEY *ec;
     const char *curve_name;
     const EC_GROUP *curve;
     EC_POINT *point;
     int ec_nid;
     char *ptr = NULL;
+
+    /* If we have an SSH ECDSA certificate, we need to read/skip the nonce
+     * here.
+     */
+    if (strcmp(pkey_type, "ecdsa-sha2-nistp256-cert") == 0 ||
+        strcmp(pkey_type, "ecdsa-sha2-nistp384-cert") == 0 ||
+        strcmp(pkey_type, "ecdsa-sha2-nistp521-cert") == 0 ||
+        strcmp(pkey_type, "ecdsa-sha2-nistp256-cert-v01@openssh.com") == 0 ||
+        strcmp(pkey_type, "ecdsa-sha2-nistp384-cert-v01@openssh.com") == 0 ||
+        strcmp(pkey_type, "ecdsa-sha2-nistp521-cert-v01@openssh.com") == 0) {
+      res = proxy_ssh_certs_read_nonce(p, pkey_data, pkey_datalen, pkey_type,
+        NULL);
+      if (res == 0) {
+        pr_trace_msg(trace_channel, 19,
+          "error reading nonce from %s certificate", pkey_type);
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error reading %s key: invalid/unsupported key format", pkey_type);
+        return 0;
+      }
+
+      pkey_data += res;
+      pkey_datalen -= res;
+      len += res;
+    }
 
     res = proxy_ssh_msg_read_string(p, &pkey_data, &pkey_datalen, &ptr);
     if (res == 0) {
@@ -1526,32 +1612,68 @@ static uint32_t read_pkey_from_data(pool *p, unsigned char *pkey_data,
      * public key type (which, in the case of ECDSA keys, contains the
      * curve name), then it's definitely a mismatch.
      */
-    if (strncmp(pkey_type + 11, curve_name, 9) != 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "EC public key curve name '%s' does not match public key "
-        "algorithm '%s'", curve_name, pkey_type);
-      return 0;
-    }
 
     if (strcmp(curve_name, "nistp256") == 0) {
+      if (strcmp(pkey_type, "ecdsa-sha2-nistp256") != 0 &&
+          strcmp(pkey_type, "ecdsa-sha2-nistp256-cert") != 0 &&
+          strcmp(pkey_type, "ecdsa-sha2-nistp256-cert-v01@openssh.com") != 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "EC public key curve name '%s' does not match public key "
+          "algorithm '%s'", curve_name, pkey_type);
+        return 0;
+      }
+
       ec_nid = NID_X9_62_prime256v1;
 
       if (key_type != NULL) {
-        *key_type = PROXY_SSH_KEY_ECDSA_256;
+        if (strcmp(pkey_type, "ecdsa-sha2-nistp256") == 0) {
+          *key_type = PROXY_SSH_KEY_ECDSA_256;
+
+        } else {
+          *key_type = PROXY_SSH_KEY_ECDSA_256_CERT;
+        }
       }
 
     } else if (strcmp(curve_name, "nistp384") == 0) {
+      if (strcmp(pkey_type, "ecdsa-sha2-nistp384") != 0 &&
+          strcmp(pkey_type, "ecdsa-sha2-nistp384-cert") != 0 &&
+          strcmp(pkey_type, "ecdsa-sha2-nistp384-cert-v01@openssh.com") != 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "EC public key curve name '%s' does not match public key "
+          "algorithm '%s'", curve_name, pkey_type);
+        return 0;
+      }
+
       ec_nid = NID_secp384r1;
 
       if (key_type != NULL) {
-        *key_type = PROXY_SSH_KEY_ECDSA_384;
+        if (strcmp(pkey_type, "ecdsa-sha2-nistp384") == 0) {
+          *key_type = PROXY_SSH_KEY_ECDSA_384;
+
+        } else {
+          *key_type = PROXY_SSH_KEY_ECDSA_384_CERT;
+        }
       }
 
     } else if (strcmp(curve_name, "nistp521") == 0) {
+      if (strcmp(pkey_type, "ecdsa-sha2-nistp521") != 0 &&
+          strcmp(pkey_type, "ecdsa-sha2-nistp521-cert") != 0 &&
+          strcmp(pkey_type, "ecdsa-sha2-nistp521-cert-v01@openssh.com") != 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "EC public key curve name '%s' does not match public key "
+          "algorithm '%s'", curve_name, pkey_type);
+        return 0;
+      }
+
       ec_nid = NID_secp521r1;
 
       if (key_type != NULL) {
-        *key_type = PROXY_SSH_KEY_ECDSA_521;
+        if (strcmp(pkey_type, "ecdsa-sha2-nistp521") == 0) {
+          *key_type = PROXY_SSH_KEY_ECDSA_521;
+
+        } else {
+          *key_type = PROXY_SSH_KEY_ECDSA_521_CERT;
+        }
       }
 
     } else {
@@ -1659,12 +1781,39 @@ static uint32_t read_pkey_from_data(pool *p, unsigned char *pkey_data,
 #endif /* PR_USE_OPENSSL_ECC */
 
 #if defined(PR_USE_SODIUM)
-  } else if (strcmp(pkey_type, "ssh-ed25519") == 0) {
+  } else if (strcmp(pkey_type, "ssh-ed25519") == 0 ||
+             strcmp(pkey_type, "ssh-ed25519-cert") == 0 ||
+             strcmp(pkey_type, "ssh-ed25519-cert-v01@openssh.com") == 0) {
     unsigned char *public_key = NULL;
     uint32_t public_keylen = 0;
 
     if (key_type != NULL) {
-      *key_type = PROXY_SSH_KEY_ED25519;
+      if (strcmp(pkey_type, "ssh-ed25519") == 0) {
+        *key_type = PROXY_SSH_KEY_ED25519;
+
+      } else {
+        *key_type = PROXY_SSH_KEY_ED25519_CERT;
+      }
+    }
+
+    /* If we have an SSH ED25519 certificate, we need to read/skip the nonce
+     * here.
+     */
+    if (strcmp(pkey_type, "ssh-ed25519-cert") == 0 ||
+        strcmp(pkey_type, "ssh-ed25519-cert-v01@openssh.com") == 0) {
+      res = proxy_ssh_certs_read_nonce(p, pkey_data, pkey_datalen, pkey_type,
+        NULL);
+      if (res == 0) {
+        pr_trace_msg(trace_channel, 19,
+          "error reading nonce from %s certificate", pkey_type);
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error reading %s key: invalid/unsupported key format", pkey_type);
+        return 0;
+      }
+
+      pkey_data += res;
+      pkey_datalen -= res;
+      len += res;
     }
 
     res = proxy_ssh_msg_read_int(p, &pkey_data, &pkey_datalen, &public_keylen);
@@ -1697,13 +1846,38 @@ static uint32_t read_pkey_from_data(pool *p, unsigned char *pkey_data,
     len += res;
 #endif /* PR_USE_SODIUM */
 
-#if defined(HAVE_X448_OPENSSL)
-  } else if (strcmp(pkey_type, "ssh-ed448") == 0) {
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+  } else if (strcmp(pkey_type, "ssh-ed448") == 0 ||
+             strcmp(pkey_type, "ssh-ed448-cert") == 0) {
     unsigned char *public_key = NULL;
     uint32_t public_keylen = 0;
 
     if (key_type != NULL) {
-      *key_type = PROXY_SSH_KEY_ED448;
+      if (strcmp(pkey_type, "ssh-ed448") == 0) {
+        *key_type = PROXY_SSH_KEY_ED448;
+
+      } else {
+        *key_type = PROXY_SSH_KEY_ED448_CERT;
+      }
+    }
+
+    /* If we have an SSH ED448 certificate, we need to read/skip the nonce
+     * here.
+     */
+    if (strcmp(pkey_type, "ssh-ed448-cert") == 0) {
+      res = proxy_ssh_certs_read_nonce(p, pkey_data, pkey_datalen, pkey_type,
+        NULL);
+      if (res == 0) {
+        pr_trace_msg(trace_channel, 19,
+          "error reading nonce from %s certificate", pkey_type);
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error reading %s key: invalid/unsupported key format", pkey_type);
+        return 0;
+      }
+
+      pkey_data += res;
+      pkey_datalen -= res;
+      len += res;
     }
 
     res = proxy_ssh_msg_read_int(p, &pkey_data, &pkey_datalen, &public_keylen);
@@ -1734,7 +1908,7 @@ static uint32_t read_pkey_from_data(pool *p, unsigned char *pkey_data,
       return 0;
     }
     len += res;
-#endif /* HAVE_X448_OPENSSL */
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 
 #if defined(HAVE_MLDSA44_OPENSSL) && \
     defined(HAVE_X25519_OPENSSL) && \
@@ -1871,12 +2045,65 @@ static const char *get_key_type_desc(enum proxy_ssh_key_type_e key_type) {
       key_desc = "MLDSA44-ED25519";
       break;
 
+    /* Certificates */
+
+    case PROXY_SSH_KEY_DSA_CERT:
+      key_desc = "DSA-CERT";
+      break;
+
+    case PROXY_SSH_KEY_RSA_CERT:
+      key_desc = "RSA-CERT";
+      break;
+
+    case PROXY_SSH_KEY_ECDSA_256_CERT:
+      key_desc = "ECDSA256-CERT";
+      break;
+
+    case PROXY_SSH_KEY_ECDSA_384_CERT:
+      key_desc = "ECDSA384-CERT";
+      break;
+
+    case PROXY_SSH_KEY_ECDSA_521_CERT:
+      key_desc = "ECDSA521-CERT";
+      break;
+
+    case PROXY_SSH_KEY_ED25519_CERT:
+      key_desc = "ED25519-CERT";
+      break;
+
+    case PROXY_SSH_KEY_ED448_CERT:
+      key_desc = "ED448-CERT";
+      break;
+
     default:
       key_desc = "undefined";
       break;
   }
 
   return key_desc;
+}
+
+int proxy_ssh_keys_is_cert_type(enum proxy_ssh_key_type_e key_type) {
+  int res = FALSE;
+
+  switch (key_type) {
+    case PROXY_SSH_KEY_DSA_CERT:
+    case PROXY_SSH_KEY_RSA_CERT:
+    case PROXY_SSH_KEY_RSA_SHA256_CERT:
+    case PROXY_SSH_KEY_RSA_SHA512_CERT:
+    case PROXY_SSH_KEY_ECDSA_256_CERT:
+    case PROXY_SSH_KEY_ECDSA_384_CERT:
+    case PROXY_SSH_KEY_ECDSA_521_CERT:
+    case PROXY_SSH_KEY_ED25519_CERT:
+    case PROXY_SSH_KEY_ED448_CERT:
+      res = TRUE;
+      break;
+
+    default:
+      break;
+  }
+
+  return res;
 }
 
 #if defined(PR_USE_OPENSSL_ECC)
@@ -2496,6 +2723,53 @@ static int ed448_compare_keys(pool *p,
 }
 #endif /* HAVE_X448_OPENSSL */
 
+static enum proxy_ssh_key_type_e get_noncert_key_type(enum proxy_ssh_key_type_e key_type) {
+  enum proxy_ssh_key_type_e noncert_key_type = PROXY_SSH_KEY_UNKNOWN;
+
+  switch (key_type) {
+    case PROXY_SSH_KEY_DSA_CERT:
+      noncert_key_type = PROXY_SSH_KEY_DSA;
+      break;
+
+    case PROXY_SSH_KEY_RSA_CERT:
+      noncert_key_type = PROXY_SSH_KEY_RSA;
+      break;
+
+    case PROXY_SSH_KEY_RSA_SHA256_CERT:
+      noncert_key_type = PROXY_SSH_KEY_RSA_SHA256;
+      break;
+
+    case PROXY_SSH_KEY_RSA_SHA512_CERT:
+      noncert_key_type = PROXY_SSH_KEY_RSA_SHA512;
+      break;
+
+    case PROXY_SSH_KEY_ECDSA_256_CERT:
+      noncert_key_type = PROXY_SSH_KEY_ECDSA_256;
+      break;
+
+    case PROXY_SSH_KEY_ECDSA_384_CERT:
+      noncert_key_type = PROXY_SSH_KEY_ECDSA_384;
+      break;
+
+    case PROXY_SSH_KEY_ECDSA_521_CERT:
+      noncert_key_type = PROXY_SSH_KEY_ECDSA_521;
+      break;
+
+    case PROXY_SSH_KEY_ED25519_CERT:
+      noncert_key_type = PROXY_SSH_KEY_ED25519;
+      break;
+
+    case PROXY_SSH_KEY_ED448_CERT:
+      noncert_key_type = PROXY_SSH_KEY_ED448;
+      break;
+
+    default:
+      break;
+  }
+
+  return noncert_key_type;
+}
+
 /* Compare a "blob" of pubkey data sent by the server for authentication
  * with a local file pubkey (from an RFC4716 formatted file).  Returns -1 if
  * there was an error, TRUE if the keys are equals, and FALSE if not.
@@ -2533,6 +2807,81 @@ int proxy_ssh_keys_compare_keys(pool *p,
 
     errno = xerrno;
     return -1;
+  }
+
+  /* We could be being asked to compare certificate-provided keys against
+   * regular keys.  As long as the underlying key algorithm (e.g. RSA) is
+   * the same, such comparisons should be allowed.
+   */
+  if (proxy_ssh_keys_is_cert_type(remote_key_type)) {
+    enum proxy_ssh_key_type_e remote_raw_key_type;
+
+    remote_raw_key_type = get_noncert_key_type(remote_key_type);
+
+    /* Ed25519/Ed448 keys do not have corresponding EVP_PKEY objects,
+     * so their comparisons are done manually.  Which, in turn, means we
+     * need to ensure that their bytes have any cert-specific prefaced bytes,
+     * such as certificate algorithm name and nonce, removed.  After that,
+     * we need to re-add the non-cert key algorithm name prefix.
+     */
+    if (remote_key_type == PROXY_SSH_KEY_ED25519_CERT ||
+        remote_key_type == PROXY_SSH_KEY_ED448_CERT) {
+      char *key_algo = NULL, *pkey_type = NULL;
+      uint32_t header_len, nonce_len;
+
+      header_len = proxy_ssh_msg_read_string(p, &remote_pubkey_data,
+        &remote_pubkey_datalen, &pkey_type);
+      if (header_len == 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error parsing remote %s data for comparing: invalid/unsupported "
+          "format", get_key_type_desc(remote_key_type));
+        errno = EINVAL;
+        return -1;
+      }
+
+      nonce_len = proxy_ssh_certs_read_nonce(p, remote_pubkey_data,
+        remote_pubkey_datalen, pkey_type, NULL);
+      if (nonce_len == 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error parsing remote %s data for comparing: invalid/unsupported "
+          "format", get_key_type_desc(remote_key_type));
+        errno = EINVAL;
+        return -1;
+      }
+
+      remote_pubkey_data += nonce_len;
+      remote_pubkey_datalen -= nonce_len;
+
+      if (remote_key_type == PROXY_SSH_KEY_ED25519_CERT) {
+        key_algo = "ssh-ed25519";
+
+      } else if (remote_key_type == PROXY_SSH_KEY_ED448_CERT) {
+        key_algo = "ssh-ed448";
+      }
+      if (key_algo != NULL) {
+        unsigned char *ptr, *buf;
+        uint32_t bufsz, buflen;
+        size_t key_algolen = 0;
+
+        key_algolen = strlen(key_algo);
+
+        bufsz = buflen = 4 + key_algolen + remote_pubkey_datalen;
+        ptr = buf = palloc(p, bufsz);
+
+        proxy_ssh_msg_write_string(&buf, &buflen, key_algo);
+
+        /* The provided key data already has its 4-byte length prefix, hence
+         * why we do not need to provide it again.
+         */
+        proxy_ssh_msg_write_data(&buf, &buflen, remote_pubkey_data,
+          remote_pubkey_datalen, FALSE);
+
+        remote_pubkey_data = ptr;
+        remote_pubkey_datalen = bufsz;
+      }
+    }
+
+    remote_key_type = remote_raw_key_type;
   }
 
   if (remote_pkey != NULL &&
@@ -2751,6 +3100,153 @@ const char *proxy_ssh_keys_get_fingerprint(pool *p, unsigned char *key_data,
   fp[strlen(fp)-1] = '\0';
 
   return fp;
+}
+
+static int handle_hostcert(pool *p, struct proxy_ssh_cert *cert) {
+  int xerrno;
+  pool *tmp_pool;
+  EVP_PKEY *pkey = NULL;
+  uint32_t len;
+  struct proxy_ssh_hostkey *hostkey = NULL;
+  enum proxy_ssh_key_type_e pkey_type;
+
+  tmp_pool = make_sub_pool(p);
+
+  len = read_pkey_from_data(tmp_pool, cert->pubkey_data, cert->pubkey_datalen,
+    &pkey, &pkey_type, FALSE);
+  xerrno = errno;
+
+  if (len == 0) {
+    destroy_pool(tmp_pool);
+    errno = xerrno;
+    return -1;
+  }
+
+  switch (pkey_type) {
+    case PROXY_SSH_KEY_RSA_CERT:
+    case PROXY_SSH_KEY_RSA_SHA256_CERT:
+    case PROXY_SSH_KEY_RSA_SHA512_CERT:
+      hostkey = rsa_hostkey;
+      break;
+
+    case PROXY_SSH_KEY_DSA_CERT:
+      hostkey = dsa_hostkey;
+      break;
+
+#if defined(PR_USE_OPENSSL_ECC)
+    case PROXY_SSH_KEY_ECDSA_256_CERT:
+      hostkey = ecdsa256_hostkey;
+      break;
+
+    case PROXY_SSH_KEY_ECDSA_384_CERT:
+      hostkey = ecdsa384_hostkey;
+      break;
+
+    case PROXY_SSH_KEY_ECDSA_521_CERT:
+      hostkey = ecdsa521_hostkey;
+      break;
+#endif /* PR_USE_OPENSSL_ECC */
+
+#if defined(PR_USE_SODIUM)
+    case PROXY_SSH_KEY_ED25519_CERT:
+      hostkey = ed25519_hostkey;
+      break;
+#endif /* PR_USE_SODIUM */
+
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+    case PROXY_SSH_KEY_ED448_CERT:
+      hostkey = ed448_hostkey;
+      break;
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+
+    default:
+      break;
+  }
+
+  if (hostkey == NULL) {
+    destroy_pool(tmp_pool);
+    errno = ENOENT;
+    return -1;
+  }
+
+  switch (pkey_type) {
+    case PROXY_SSH_KEY_DSA_CERT:
+    case PROXY_SSH_KEY_ECDSA_256_CERT:
+    case PROXY_SSH_KEY_ECDSA_384_CERT:
+    case PROXY_SSH_KEY_ECDSA_521_CERT:
+    case PROXY_SSH_KEY_RSA_CERT:
+    case PROXY_SSH_KEY_RSA_SHA256_CERT:
+    case PROXY_SSH_KEY_RSA_SHA512_CERT:
+      if (EVP_PKEY_cmp(pkey, hostkey->pkey) == 1) {
+        hostkey->cert = cert;
+        pr_trace_msg(trace_channel, 17,
+          "matching HostKey found for %s certificate", cert->pubkey_algo);
+
+      } else {
+        pr_trace_msg(trace_channel, 11,
+          "no matching HostKey found for %s certificate", cert->pubkey_algo);
+      }
+      break;
+
+    case PROXY_SSH_KEY_ED25519_CERT: {
+      unsigned char *buf, *ptr;
+      uint32_t bufsz, buflen;
+
+      buflen = bufsz = 4 + 11 + 4 + hostkey->ed25519_public_keylen;
+      ptr = buf = palloc(tmp_pool, bufsz);
+
+      proxy_ssh_msg_write_string(&buf, &buflen, "ssh-ed25519");
+      proxy_ssh_msg_write_data(&buf, &buflen, hostkey->ed25519_public_key,
+        hostkey->ed25519_public_keylen, TRUE);
+
+      if (proxy_ssh_keys_compare_keys(tmp_pool, ptr, (bufsz - buflen),
+          cert->pubkey_data, cert->pubkey_datalen) == 0) {
+        hostkey->cert = cert;
+        pr_trace_msg(trace_channel, 17,
+          "matching HostKey found for %s certificate", cert->pubkey_algo);
+
+      } else {
+        pr_trace_msg(trace_channel, 11,
+          "no matching HostKey found for %s certificate", cert->pubkey_algo);
+      }
+      break;
+    }
+
+    case PROXY_SSH_KEY_ED448_CERT: {
+      unsigned char *buf, *ptr;
+      uint32_t bufsz, buflen;
+
+      buflen = bufsz = 4 + 9 + 4 + hostkey->ed448_public_keylen;
+      ptr = buf = palloc(tmp_pool, bufsz);
+
+      proxy_ssh_msg_write_string(&buf, &buflen, "ssh-ed448");
+      proxy_ssh_msg_write_data(&buf, &buflen, hostkey->ed448_public_key,
+        hostkey->ed448_public_keylen, TRUE);
+
+      if (proxy_ssh_keys_compare_keys(tmp_pool, ptr, (bufsz - buflen),
+          cert->pubkey_data, cert->pubkey_datalen) == 0) {
+        hostkey->cert = cert;
+        pr_trace_msg(trace_channel, 17,
+          "matching HostKey found for %s certificate", cert->pubkey_algo);
+
+      } else {
+        pr_trace_msg(trace_channel, 11,
+          "no matching HostKey found for %s certificate", cert->pubkey_algo);
+      }
+      break;
+    }
+
+    default:
+      /* Non-certificate types are ignored here; we shouldn't see them. */
+      break;
+  }
+
+  if (pkey != NULL) {
+    EVP_PKEY_free(pkey);
+  }
+
+  destroy_pool(tmp_pool);
+  return 0;
 }
 
 #if defined(PR_USE_OPENSSL_ECC)
@@ -3085,6 +3581,12 @@ static int handle_hostkey(pool *p, EVP_PKEY *pkey,
   return 0;
 }
 
+/* TODO: Implement this in the near future. */
+static int load_agent_hostcerts(pool *p, const char *path) {
+  errno = ENOSYS;
+  return -1;
+}
+
 static int load_agent_hostkeys(pool *p, const char *path) {
   register unsigned int i;
   int accepted_nkeys = 0, res;
@@ -3395,9 +3897,9 @@ static int deserialize_openssh_private_key(pool *p, const char *path,
     unsigned char **data, uint32_t *data_len,
     enum proxy_ssh_key_type_e *key_type, EVP_PKEY **pkey, unsigned char **key,
     uint32_t *keylen) {
-  uint32_t len = 0, public_keylen = 0, secret_keylen = 0;
+  uint32_t len = 0, secret_keylen = 0;
   const char *pkey_type;
-  unsigned char *public_key = NULL, *secret_key = NULL;
+  unsigned char *secret_key = NULL;
   int have_extra_public_key = FALSE;
 
   len = read_pkey_from_data(p, *data, *data_len, pkey, key_type, TRUE);
@@ -3435,21 +3937,6 @@ static int deserialize_openssh_private_key(pool *p, const char *path,
       *key = NULL;
       *keylen = 0;
       return 0;
-  }
-
-  len = proxy_ssh_msg_read_int(p, data, data_len, &public_keylen);
-  if (len == 0) {
-    errno = EINVAL;
-    return -1;
-  }
-
-  len = proxy_ssh_msg_read_data(p, data, data_len, public_keylen,
-    &public_key);
-  if (public_key == NULL) {
-    pr_trace_msg(trace_channel, 2,
-      "error reading %s key: invalid/supported key format", pkey_type);
-    errno = EINVAL;
-    return -1;
   }
 
   len = proxy_ssh_msg_read_int(p, data, data_len, &secret_keylen);
@@ -3603,7 +4090,7 @@ static int unwrap_openssh_private_key(pool *p, const char *path,
     enum proxy_ssh_key_type_e *key_type, EVP_PKEY **pkey, unsigned char **key,
     uint32_t *keylen) {
   char *cipher_name, *kdf_name, *tmp;
-  unsigned char *buf, *data = NULL, *kdf_data, *encrypted_data;
+  unsigned char *buf, *data = NULL, *kdf_data = NULL, *encrypted_data = NULL;
   size_t data_len = 0, magicsz;
   uint32_t buflen, kdf_len = 0, key_count = 0, encrypted_len = 0, len = 0;
   struct openssh_cipher *cipher = NULL;
@@ -3658,9 +4145,14 @@ static int unwrap_openssh_private_key(pool *p, const char *path,
     return -1;
   }
 
-  len = proxy_ssh_msg_read_data(p, &buf, &buflen, kdf_len, &kdf_data);
-  if (len == 0) {
-    return -1;
+  /* Note: kdf_data CAN legitimately be NULL here, as for keys which
+   * are not passphrase-encrypted (Issue #2411).
+   */
+  if (kdf_len > 0) {
+    len = proxy_ssh_msg_read_data(p, &buf, &buflen, kdf_len, &kdf_data);
+    if (len == 0) {
+      return -1;
+    }
   }
 
   len = proxy_ssh_msg_read_int(p, &buf, &buflen, &key_count);
@@ -4395,6 +4887,49 @@ static int load_openssh_hostkey(pool *p, const char *path, int fd) {
   return res;
 }
 
+static int load_file_hostcert(pool *p, const char *path) {
+  int flags, res, xerrno = 0;
+  unsigned char *cert_data = NULL;
+  uint32_t cert_datalen = 0;
+  struct proxy_ssh_cert *cert = NULL;
+
+  pr_signals_block();
+  PRIVS_ROOT
+
+  /* XXX Would we ever want to allow host certs to be read from FIFOs?  If
+   * so, we would need to include the O_NONBLOCK flag here.
+   */
+  res = proxy_ssh_certs_read_file(p, path, &cert_data, &cert_datalen);
+  xerrno = errno;
+
+  PRIVS_RELINQUISH
+  pr_signals_unblock();
+
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error reading '%s': %s", path, strerror(xerrno));
+    errno = xerrno;
+    return -1;
+  }
+
+  /* At this point in time, we do not have any CA keys to use for verifying
+   * the cert's signature; that's for the peer to do.
+   */
+  flags = PROXY_SSH_CERTS_PARSE_FL_IGNORE_SIGNATURE;
+  res = proxy_ssh_certs_parse_cert(p, cert_data, cert_datalen, &cert, flags);
+  xerrno = errno;
+  if (res < 0) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error parsing certificate in '%s': %s", path, strerror(xerrno));
+
+    errno = xerrno;
+    return -1;
+  }
+
+  /* Now we see if this cert matches any of the configured host keys. */
+  return handle_hostcert(p, cert);
+}
+
 static int load_file_hostkey(pool *p, const char *path) {
   int fd, xerrno = 0, openssh_format = FALSE, public_key_format = FALSE;
   pool *tmp_pool = NULL;
@@ -4404,7 +4939,7 @@ static int load_file_hostkey(pool *p, const char *path) {
   pr_signals_block();
   PRIVS_ROOT
 
-  /* XXX Would we ever want to allow client keys to be read from FIFOs?  If
+  /* XXX Would we ever want to allow host keys to be read from FIFOs?  If
    * so, we would need to include the O_NONBLOCK flag here.
    */
   fd = open(path, O_RDONLY, 0);
@@ -4516,6 +5051,31 @@ static int load_file_hostkey(pool *p, const char *path) {
   return handle_hostkey(p, pkey, NULL, 0, path, NULL);
 }
 
+int proxy_ssh_keys_get_hostcert(pool *p, const char *path) {
+  int res;
+
+  /* Check whether we are to load certs from a file on disk, or from an
+   * SSH agent.
+   */
+  if (strncmp(path, "agent:", 6) != 0) {
+    pr_trace_msg(trace_channel, 9, "loading host certificate from file '%s'",
+      path);
+    res = load_file_hostcert(p, path);
+
+  } else {
+    const char *agent_path;
+
+    /* Skip past the "agent:" prefix. */
+    agent_path = (path + 6);
+
+    pr_trace_msg(trace_channel, 9,
+      "loading host certificates from SSH agent at '%s'", agent_path);
+    res = load_agent_hostcerts(p, agent_path);
+  }
+
+  return res;
+}
+
 int proxy_ssh_keys_get_hostkey(pool *p, const char *path) {
   int res;
 
@@ -4523,7 +5083,7 @@ int proxy_ssh_keys_get_hostkey(pool *p, const char *path) {
    * SSH agent.
    */
   if (strncmp(path, "agent:", 6) != 0) {
-    pr_trace_msg(trace_channel, 9, "loading client key from file '%s'", path);
+    pr_trace_msg(trace_channel, 9, "loading host key from file '%s'", path);
     res = load_file_hostkey(p, path);
 
   } else {
@@ -4532,7 +5092,7 @@ int proxy_ssh_keys_get_hostkey(pool *p, const char *path) {
     /* Skip past the "agent:" prefix. */
     agent_path = (path + 6);
 
-    pr_trace_msg(trace_channel, 9, "loading client keys from SSH agent at '%s'",
+    pr_trace_msg(trace_channel, 9, "loading host keys from SSH agent at '%s'",
       agent_path);
     res = load_agent_hostkeys(p, agent_path);
   }
@@ -4541,7 +5101,7 @@ int proxy_ssh_keys_get_hostkey(pool *p, const char *path) {
 }
 
 static int get_rsa_hostkey_data(pool *p, unsigned char **buf,
-    unsigned char **ptr, uint32_t *buflen) {
+    unsigned char **ptr, uint32_t *buflen, struct proxy_ssh_cert **cert) {
   RSA *rsa;
   const BIGNUM *rsa_n = NULL, *rsa_e = NULL;
 
@@ -4567,12 +5127,17 @@ static int get_rsa_hostkey_data(pool *p, unsigned char **buf,
   proxy_ssh_msg_write_mpint(buf, buflen, rsa_n);
 
   RSA_free(rsa);
+
+  if (rsa_hostkey->cert != NULL) {
+    *cert = rsa_hostkey->cert;
+  }
+
   return 0;
 }
 
 #if !defined(OPENSSL_NO_DSA)
 static int get_dsa_hostkey_data(pool *p, unsigned char **buf,
-    unsigned char **ptr, uint32_t *buflen) {
+    unsigned char **ptr, uint32_t *buflen, struct proxy_ssh_cert **cert) {
   DSA *dsa;
   const BIGNUM *dsa_p = NULL, *dsa_q = NULL, *dsa_g = NULL, *dsa_pub_key = NULL;
 
@@ -4603,6 +5168,11 @@ static int get_dsa_hostkey_data(pool *p, unsigned char **buf,
   proxy_ssh_msg_write_mpint(buf, buflen, dsa_pub_key);
 
   DSA_free(dsa);
+
+  if (dsa_hostkey->cert != NULL) {
+    *cert = dsa_hostkey->cert;
+  }
+
   return 0;
 }
 #endif /* !OPENSSL_NO_DSA */
@@ -4610,7 +5180,8 @@ static int get_dsa_hostkey_data(pool *p, unsigned char **buf,
 #if defined(PR_USE_OPENSSL_ECC)
 static int get_ecdsa_hostkey_data(pool *p,
     struct proxy_ssh_hostkey *hostkey, const char *algo, const char *curve,
-    unsigned char **buf, unsigned char **ptr, uint32_t *buflen) {
+    unsigned char **buf, unsigned char **ptr, uint32_t *buflen,
+    struct proxy_ssh_cert **cert) {
   EC_KEY *ec;
 
   ec = EVP_PKEY_get1_EC_KEY(hostkey->pkey);
@@ -4628,13 +5199,18 @@ static int get_ecdsa_hostkey_data(pool *p,
     EC_KEY_get0_public_key(ec));
 
   EC_KEY_free(ec);
+
+  if (hostkey->cert != NULL) {
+    *cert = hostkey->cert;
+  }
+
   return 0;
 }
 #endif /* PR_USE_OPENSSL_ECC */
 
 #if defined(PR_USE_SODIUM)
 static int get_ed25519_hostkey_data(pool *p, unsigned char **buf,
-    unsigned char **ptr, uint32_t *buflen) {
+    unsigned char **ptr, uint32_t *buflen, struct proxy_ssh_cert **cert) {
 
   /* XXX Is this buffer large enough?  Too large? */
   *ptr = *buf = palloc(p, *buflen);
@@ -4642,19 +5218,27 @@ static int get_ed25519_hostkey_data(pool *p, unsigned char **buf,
   proxy_ssh_msg_write_data(buf, buflen, ed25519_hostkey->ed25519_public_key,
     ed25519_hostkey->ed25519_public_keylen, TRUE);
 
+  if (ed25519_hostkey->cert != NULL) {
+    *cert = ed25519_hostkey->cert;
+  }
+
   return 0;
 }
 #endif /* PR_USE_SODIUM */
 
 #if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
 static int get_ed448_hostkey_data(pool *p, unsigned char **buf,
-    unsigned char **ptr, uint32_t *buflen) {
+    unsigned char **ptr, uint32_t *buflen, struct proxy_ssh_cert **cert) {
 
   /* XXX Is this buffer large enough?  Too large? */
   *ptr = *buf = palloc(p, *buflen);
   proxy_ssh_msg_write_string(buf, buflen, "ssh-ed448");
   proxy_ssh_msg_write_data(buf, buflen, ed448_hostkey->ed448_public_key,
     ed448_hostkey->ed448_public_keylen, TRUE);
+
+  if (ed448_hostkey->cert != NULL) {
+    *cert = ed448_hostkey->cert;
+  }
 
   return 0;
 }
@@ -4788,7 +5372,7 @@ int proxy_ssh_keys_have_hostkey(enum proxy_ssh_key_type_e key_type) {
 }
 
 const unsigned char *proxy_ssh_keys_get_hostkey_data(pool *p,
-    enum proxy_ssh_key_type_e key_type, uint32_t *datalen) {
+    enum proxy_ssh_key_type_e key_type, uint32_t *datalen, void *cert) {
   unsigned char *buf = NULL, *ptr = NULL;
   uint32_t buflen = PROXY_SSH_DEFAULT_HOSTKEY_SZ;
   int res;
@@ -4797,7 +5381,8 @@ const unsigned char *proxy_ssh_keys_get_hostkey_data(pool *p,
     case PROXY_SSH_KEY_RSA:
     case PROXY_SSH_KEY_RSA_SHA256:
     case PROXY_SSH_KEY_RSA_SHA512: {
-      res = get_rsa_hostkey_data(p, &buf, &ptr, &buflen);
+      res = get_rsa_hostkey_data(p, &buf, &ptr, &buflen,
+        (struct proxy_ssh_cert **) cert);
       if (res < 0) {
         return NULL;
       }
@@ -4807,7 +5392,8 @@ const unsigned char *proxy_ssh_keys_get_hostkey_data(pool *p,
 
 #if !defined(OPENSSL_NO_DSA)
     case PROXY_SSH_KEY_DSA: {
-      res = get_dsa_hostkey_data(p, &buf, &ptr, &buflen);
+      res = get_dsa_hostkey_data(p, &buf, &ptr, &buflen,
+        (struct proxy_ssh_cert **) cert);
       if (res < 0) {
         return NULL;
       }
@@ -4819,7 +5405,8 @@ const unsigned char *proxy_ssh_keys_get_hostkey_data(pool *p,
 #if defined(PR_USE_OPENSSL_ECC)
     case PROXY_SSH_KEY_ECDSA_256: {
       res = get_ecdsa_hostkey_data(p, ecdsa256_hostkey,
-        "ecdsa-sha2-nistp256", "nistp256", &buf, &ptr, &buflen);
+        "ecdsa-sha2-nistp256", "nistp256", &buf, &ptr, &buflen,
+        (struct proxy_ssh_cert **) cert);
       if (res < 0) {
         return NULL;
       }
@@ -4829,7 +5416,8 @@ const unsigned char *proxy_ssh_keys_get_hostkey_data(pool *p,
 
     case PROXY_SSH_KEY_ECDSA_384: {
       res = get_ecdsa_hostkey_data(p, ecdsa384_hostkey,
-        "ecdsa-sha2-nistp384", "nistp384", &buf, &ptr, &buflen);
+        "ecdsa-sha2-nistp384", "nistp384", &buf, &ptr, &buflen,
+        (struct proxy_ssh_cert **) cert);
       if (res < 0) {
         return NULL;
       }
@@ -4839,7 +5427,8 @@ const unsigned char *proxy_ssh_keys_get_hostkey_data(pool *p,
 
     case PROXY_SSH_KEY_ECDSA_521: {
       res = get_ecdsa_hostkey_data(p, ecdsa521_hostkey,
-        "ecdsa-sha2-nistp521", "nistp521", &buf, &ptr, &buflen);
+        "ecdsa-sha2-nistp521", "nistp521", &buf, &ptr, &buflen,
+        (struct proxy_ssh_cert **) cert);
       if (res < 0) {
         return NULL;
       }
@@ -4850,7 +5439,8 @@ const unsigned char *proxy_ssh_keys_get_hostkey_data(pool *p,
 
 #if defined(PR_USE_SODIUM)
     case PROXY_SSH_KEY_ED25519: {
-      res = get_ed25519_hostkey_data(p, &buf, &ptr, &buflen);
+      res = get_ed25519_hostkey_data(p, &buf, &ptr, &buflen,
+        (struct proxy_ssh_cert **) cert);
       if (res < 0) {
         return NULL;
       }
@@ -4861,7 +5451,8 @@ const unsigned char *proxy_ssh_keys_get_hostkey_data(pool *p,
 
 #if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
     case PROXY_SSH_KEY_ED448: {
-      res = get_ed448_hostkey_data(p, &buf, &ptr, &buflen);
+      res = get_ed448_hostkey_data(p, &buf, &ptr, &buflen,
+        (struct proxy_ssh_cert **) cert);
       if (res < 0) {
         return NULL;
       }
@@ -5518,6 +6109,29 @@ const unsigned char *proxy_ssh_keys_sign_data(pool *p,
   }
 
   return res;
+}
+
+uint32_t proxy_ssh_keys_skip_pubkey_data(pool *p, unsigned char *pubkey_data,
+    uint32_t pubkey_datalen) {
+  EVP_PKEY *pkey = NULL;
+  uint32_t len;
+
+  if (pubkey_data == NULL ||
+      pubkey_datalen == 0) {
+    errno = EINVAL;
+    return 0;
+  }
+
+  len = read_pkey_from_data(p, pubkey_data, pubkey_datalen, &pkey, NULL, FALSE);
+  if (len == 0) {
+    return 0;
+  }
+
+  if (pkey != NULL) {
+    EVP_PKEY_free(pkey);
+  }
+
+  return len;
 }
 
 int proxy_ssh_keys_verify_pubkey_type(pool *p, unsigned char *pubkey_data,

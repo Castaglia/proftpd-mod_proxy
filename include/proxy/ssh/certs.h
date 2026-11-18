@@ -1,0 +1,83 @@
+/*
+ * ProFTPD - mod_proxy SSH certs API
+ * Copyright (c) 2026 TJ Saunders
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
+ *
+ * As a special exemption, TJ Saunders and other respective copyright holders
+ * give permission to link this program with OpenSSL, and distribute the
+ * resulting executable, without including the source code for OpenSSL in the
+ * source distribution.
+ */
+
+#ifndef MOD_PROXY_SSH_CERTS_H
+#define MOD_PROXY_SSH_CERTS_H
+
+#include "mod_proxy.h"
+#include "proxy/ssh/keys.h"
+
+/* Per ... */
+#define PROXY_SSH_CERT_TYPE_USER		1
+#define PROXY_SSH_CERT_TYPE_HOST		2
+
+struct proxy_ssh_cert {
+  pool *cert_pool;
+
+  /* Raw certificate bytes */
+  unsigned char *cert_data;
+  uint32_t cert_datalen;
+
+  const char *cert_algo;
+  uint32_t cert_role;
+  uint64_t serialno;
+  const char *cert_id;
+  unsigned char *nonce;
+  uint32_t nonce_len;
+  uint64_t valid_before_ts, valid_after_ts;
+  array_header *principals;
+  pr_table_t *critical_options;
+  pr_table_t *extensions;
+
+  /* Signed key */
+  const char *pubkey_algo;
+  unsigned char *pubkey_data;
+  uint32_t pubkey_datalen;
+
+  /* Signature key */
+  const char *signature_pubkey_algo;
+  unsigned char *signature_pubkey_data;
+  uint32_t signature_pubkey_datalen;
+};
+
+int proxy_ssh_certs_certificate_algo_isvalid(const char *algo,
+  enum proxy_ssh_key_type_e *pubkey_type);
+int proxy_ssh_certs_read_file(pool *p, const char *path,
+  unsigned char **cert_data, uint32_t *cert_datalen);
+uint32_t proxy_ssh_certs_read_nonce(pool *p, unsigned char *cert_data,
+  uint32_t cert_datalen, const char *cert_algo, unsigned char **nonce);
+int proxy_ssh_certs_parse_cert(pool *p, unsigned char *cert_data,
+  uint32_t cert_datalen, struct proxy_ssh_cert **cert, int flags);
+
+/* This flag is used when parsing a certificate whose signing CA key may
+ * not yet be known.
+ */
+#define PROXY_SSH_CERTS_PARSE_FL_IGNORE_SIGNATURE	0x001
+
+/* Perform basic certificate validation, checking expiry, supported
+ * options/extensions, signature validation, etc.
+ */
+int proxy_ssh_certs_validate_cert(pool *p, struct proxy_ssh_cert *cert,
+  unsigned long cert_opts);
+
+#endif /* MOD_PROXY_SSH_CERTS_H */

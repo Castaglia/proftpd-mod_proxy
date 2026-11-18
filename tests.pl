@@ -87,6 +87,11 @@ if (scalar(@ARGV) > 0) {
       test_class => [qw(mod_proxy mod_sftp)],
     },
 
+    't/modules/mod_proxy/ssh/certs.t' => {
+      order => ++$order,
+      test_class => [qw(mod_proxy mod_sftp)],
+    },
+
     't/modules/mod_proxy/tls.t' => {
       order => ++$order,
       test_class => [qw(mod_proxy mod_tls)],

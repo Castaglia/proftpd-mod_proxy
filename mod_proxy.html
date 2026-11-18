@@ -64,6 +64,7 @@ servers.
   <li><a href="#ProxySFTPCiphers">ProxySFTPCiphers</a>
   <li><a href="#ProxySFTPCompression">ProxySFTPCompression</a>
   <li><a href="#ProxySFTPDigests">ProxySFTPDigests</a>
+  <li><a href="#ProxySFTPHostCertificate">ProxySFTPHostCertificate</a>
   <li><a href="#ProxySFTPHostKey">ProxySFTPHostKey</a>
   <li><a href="#ProxySFTPKeyExchanges">ProxySFTPKeyExchanges</a>
   <li><a href="#ProxySFTPOptions">ProxySFTPOptions</a>
@@ -1011,6 +1012,51 @@ configure it via <code>ProxySFTPDigests</code>.
 <p>
 In general, there is no need to use this directive unless only one specific
 MAC algorithm must be used.
+
+<p>
+<hr>
+<h3><a name="ProxySFTPHostCertificate">ProxySFTPHostCertificate</a></h3>
+<strong>Syntax:</strong> ProxySFTPHostCertificate <em>file</em>|agent:<em>/path</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.10rc5 and later
+
+<p>
+The <code>ProxySFTPHostCertificate</code> directive configures the path to an
+SSH host certificate file.  The <code>mod_proxy</code> module uses the
+certificates thus configured for &quot;hostbased&quot; user authentication to
+backend SSH servers.
+
+<p>
+<b>Note</b> that the corresponding <em>private key</em> for the configured
+certificate <b>must</b> also be configured via <code>ProxySFTPHostKey</code>.
+Certificates whose matching private key cannot be found will be ignored.
+
+<p>
+You can use either an RSA certificate, a DSA certificate, a ECDSA certificate,
+or an Ed25519 certificate.  Example:
+<pre>
+  &lt;IfModule mod_proxy.c&gt;
+    ProxyEngine on
+    ..
+    ProxySFTPHostCertificate /etc/ssh_host_rsa_key-cert.pub
+    ProxySFTPHostKey /etc/ssh_host_rsa_key
+  &lt;/IfModule&gt;
+</pre>
+
+<p>
+The <code>ProxySFTPHostCertificate</code> directive can also be used to load
+host certificates from an SSH agent such as OpenSSH's <code>ssh-agent</code>.
+For example:
+<pre>
+  # Load all of the certificates from the ssh-agent configured for proxy use
+  ProxySFTPHostCertificate agent:%{env:SSH_AUTH_SOCK}
+</pre>
+Using an SSH agent for storing host certificates allows for configurations where
+the host certificates are not stored on files on the server system, <i>e.g.</i>
+the certificate private keys can be loaded into the SSH agent from a
+PKCS#11 token.
 
 <p>
 <hr>

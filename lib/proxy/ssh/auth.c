@@ -33,6 +33,7 @@
 #include "proxy/ssh/mac.h"
 #include "proxy/ssh/compress.h"
 #include "proxy/ssh/session.h"
+#include "proxy/ssh/certs.h"
 #include "proxy/ssh/keys.h"
 #include "proxy/ssh/utf8.h"
 
@@ -273,13 +274,14 @@ static int write_userauth_hostbased(struct proxy_ssh_packet *pkt,
   size_t signature_len, sig_datalen;
   const char *hostkey_algo = NULL, *hostname;
   enum proxy_ssh_key_type_e use_hostkey_type = PROXY_SSH_KEY_UNKNOWN;
+  struct proxy_ssh_cert *hostkey_cert = NULL;
 
   /* XXX Is this buffer large enough? Too large? */
   bufsz = buflen = 8192;
   ptr = buf = palloc(pkt->pool, bufsz);
 
-  /* Retrieve our hostkey.  We probe for our available hostkeys in preference
-   * order:
+  /* Retrieve our host cert/key.  We probe for our available host certs/keys
+   * in preference order:
    *
    *  Ed25519
    *  ECDSA521
@@ -342,14 +344,21 @@ static int write_userauth_hostbased(struct proxy_ssh_packet *pkt,
   }
 
   hostkey_data = proxy_ssh_keys_get_hostkey_data(pkt->pool,
-    use_hostkey_type, &hostkey_datalen);
+    use_hostkey_type, &hostkey_datalen, &hostkey_cert);
   if (hostkey_data == NULL) {
     return -1;
   }
 
-  len += proxy_ssh_msg_write_string(&buf, &buflen, hostkey_algo);
-  len += proxy_ssh_msg_write_data(&buf, &buflen, hostkey_data, hostkey_datalen,
-    TRUE);
+  if (hostkey_cert != NULL) {
+    len += proxy_ssh_msg_write_string(&buf, &buflen, hostkey_cert->cert_algo);
+    len += proxy_ssh_msg_write_data(&buf, &buflen, hostkey_cert->cert_data,
+      hostkey_cert->cert_datalen, TRUE);
+
+  } else {
+    len += proxy_ssh_msg_write_string(&buf, &buflen, hostkey_algo);
+    len += proxy_ssh_msg_write_data(&buf, &buflen, hostkey_data,
+      hostkey_datalen, TRUE);
+  }
 
   hostname = pr_netaddr_get_localaddr_str(pkt->pool);
   len += proxy_ssh_msg_write_string(&buf, &buflen, hostname);

@@ -51,6 +51,7 @@ MODULE_OBJS=mod_proxy.o \
   lib/proxy/ssh/disconnect.o \
   lib/proxy/ssh/interop.o \
   lib/proxy/ssh/kex.o \
+  lib/proxy/ssh/certs.o \
   lib/proxy/ssh/keys.o \
   lib/proxy/ssh/mac.o \
   lib/proxy/ssh/misc.o \
@@ -103,6 +104,7 @@ SHARED_MODULE_OBJS=mod_proxy.lo \
   lib/proxy/ssh/disconnect.lo \
   lib/proxy/ssh/interop.lo \
   lib/proxy/ssh/kex.lo \
+  lib/proxy/ssh/certs.lo \
   lib/proxy/ssh/keys.lo \
   lib/proxy/ssh/mac.lo \
   lib/proxy/ssh/misc.lo \
