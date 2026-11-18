@@ -47,8 +47,9 @@
 #include "proxy/ssh/ssh2.h"
 #include "proxy/ssh/auth.h"
 #include "proxy/ssh/crypto.h"
-#include "proxy/tls/pkcs11.h"
+#include "proxy/ssh/certs.h"
 #include "proxy/ssh/provider.h"
+#include "proxy/tls/pkcs11.h"
 
 #if defined(HAVE_OSSL_PROVIDER_LOAD_OPENSSL)
 # include <openssl/provider.h>
@@ -1133,6 +1134,68 @@ MODRET set_proxysftpdigests(cmd_rec *cmd) {
   for (i = 1; i < cmd->argc; i++) {
     c->argv[i-1] = pstrdup(c->pool, cmd->argv[i]);
   }
+
+  return PR_HANDLED(cmd);
+}
+
+/* usage: ProxySFTPHostCertificate path|"agent:/..." */
+MODRET set_proxysftphostcertificate(cmd_rec *cmd) {
+  config_rec *c;
+  const char *path = NULL;
+
+  CHECK_ARGS(cmd, 1);
+  CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
+
+  path = cmd->argv[1];
+
+  if (strncmp(cmd->argv[1], "agent:", 6) != 0) {
+    int flags, res, xerrno;
+    unsigned char *cert_data = NULL;
+    uint32_t cert_datalen = 0;
+    struct proxy_ssh_cert *cert = NULL;
+
+    path = cmd->argv[1];
+    if (*path != '/') {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "must be an absolute path: ",
+        path, NULL));
+    }
+
+    /* Certificates are considered public information, so there are no
+     * concerns about permissions/accessibility of a certificate file to
+     * other system users.
+     */
+
+    PRIVS_ROOT
+    res = proxy_ssh_certs_read_file(cmd->tmp_pool, path, &cert_data,
+      &cert_datalen);
+    xerrno = errno;
+    PRIVS_RELINQUISH
+
+    if (res < 0) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to read '", path,
+        "': ", strerror(xerrno), NULL));
+    }
+
+    /* Parse the provided file as a certificate, and ensure that it has
+     * the proper certificate type.
+     */
+    flags = PROXY_SSH_CERTS_PARSE_FL_IGNORE_SIGNATURE;
+
+    res = proxy_ssh_certs_parse_cert(cmd->tmp_pool, cert_data,
+      (uint32_t) cert_datalen, &cert, flags);
+    if (res < 0) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to parse '", path,
+        "' as an SSH certificate: ", strerror(xerrno), NULL));
+    }
+
+    if (cert->cert_role != PROXY_SSH_CERT_TYPE_HOST) {
+      CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "unable to use '", path,
+        "' as SSH certificate for host authentication: wrong role", NULL));
+    }
+  }
+
+  c = add_config_param_str(cmd->argv[0], 1, NULL);
+  c->argv[0] = pstrdup(c->pool, path);
 
   return PR_HANDLED(cmd);
 }
@@ -5964,6 +6027,7 @@ static conftable proxy_conftab[] = {
   { "ProxySFTPCiphers",		set_proxysftpciphers,		NULL },
   { "ProxySFTPCompression",	set_proxysftpcompression,	NULL },
   { "ProxySFTPDigests",		set_proxysftpdigests,		NULL },
+  { "ProxySFTPHostCertificate",	set_proxysftphostcertificate,	NULL },
   { "ProxySFTPHostKey",		set_proxysftphostkey,		NULL },
   { "ProxySFTPKeyExchanges",	set_proxysftpkeyexchanges,	NULL },
   { "ProxySFTPOptions",		set_proxysftpoptions,		NULL },

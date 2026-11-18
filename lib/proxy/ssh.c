@@ -846,6 +846,26 @@ int proxy_ssh_sess_init(pool *p, struct proxy_session *proxy_sess, int flags) {
     c = find_config_next(c, c->next, CONF_PARAM, "ProxySFTPHostKey", FALSE);
   }
 
+  /* Now that we have any host keys loaded, we can look for any accompanying/
+   * associated SSH certificates for those keys.
+   */
+  c = find_config(main_server->conf, CONF_PARAM, "ProxySFTPHostCertificate",
+    FALSE);
+  while (c != NULL) {
+    const char *path;
+
+    pr_signals_handle();
+
+    path = c->argv[0];
+    if (proxy_ssh_keys_get_hostcert(p, path) < 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error loading host certificate '%s', skipping cert", path);
+    }
+
+    c = find_config_next(c, c->next, CONF_PARAM, "ProxySFTPHostCertificate",
+      FALSE);
+  }
+
   c = find_config(main_server->conf, CONF_PARAM, "ProxySFTPVerifyServer",
     FALSE);
   if (c != NULL) {

@@ -73,6 +73,8 @@ jobs:
           apt-get install -y --no-install-recommends libsqlite3-dev sqlite3
           # for Sodium support
           apt-get install -y --force-yes --no-install-recommends libsodium-dev
+          # for command-line tests
+          apt-get install -y --force-yes --no-install-recommends curl openssh-client
 
           # for integration/regression tests
           apt-get install -y --no-install-recommends \
