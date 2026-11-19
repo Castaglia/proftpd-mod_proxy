@@ -144,15 +144,17 @@ int proxy_ssh_certs_read_file(pool *p, const char *path,
     return -1;
   }
 
+  textlen = st.st_size;
+
   /* If this file is larger than the maximum amount of data we expect to
    * see, signed, for a certificate (with generous headroom), it is too large.
    */
-  if (st.st_size > (PROXY_SSH_CERT_MAX_SIGN_DATA_SIZE * 2)) {
+  if (textlen > (PROXY_SSH_CERT_MAX_SIGN_DATA_SIZE * 2)) {
     xerrno = E2BIG;
 
     pr_trace_msg(trace_channel, 6,
       "certificate path '%s' file size (%lu) exceeds maximum (%lu)", path,
-      (unsigned long) st.st_size,
+      (unsigned long) textlen,
       (unsigned long) (PROXY_SSH_CERT_MAX_SIGN_DATA_SIZE * 2));
 
     (void) close(fd);
@@ -160,7 +162,6 @@ int proxy_ssh_certs_read_file(pool *p, const char *path,
     return -1;
   }
 
-  textlen = st.st_size;
   text = palloc(p, textlen);
 
   res = read(fd, text, textlen);
