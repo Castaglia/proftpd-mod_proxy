@@ -1389,16 +1389,6 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
       return -1;
     }
 
-    if (pkt->payload_len == 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "payload length too short (%lu), below mininum payload length (%lu) "
-        "(packet len %lu, padding len %u)", (unsigned long) pkt->payload_len,
-        (unsigned long) 1, (unsigned long) pkt->packet_len,
-        (unsigned int) pkt->padding_len);
-      read_packet_discard(conn);
-      return -1;
-    }
-
     /* XXX I'm not so sure about this check; we SHOULD have a maximum
      * payload check, but using the max packet length check for the payload
      * length seems awkward.
@@ -1415,6 +1405,16 @@ int proxy_ssh_packet_read(conn_t *conn, struct proxy_ssh_packet *pkt) {
 
     /* Sanity checks passed; move on to the reading the packet payload. */
     if (proxy_ssh_compress_read_data(pkt) < 0) {
+      return -1;
+    }
+
+    if (pkt->payload_len == 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "payload length too short (%lu), below mininum payload length (%lu) "
+        "(packet len %lu, padding len %u)", (unsigned long) pkt->payload_len,
+        (unsigned long) 1, (unsigned long) pkt->packet_len,
+        (unsigned int) pkt->padding_len);
+      read_packet_discard(conn);
       return -1;
     }
 
