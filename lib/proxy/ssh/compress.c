@@ -333,7 +333,9 @@ int proxy_ssh_compress_read_data(struct proxy_ssh_packet *pkt) {
       pkt->payload = palloc(pkt->pool, payload_len);
     }
 
-    memcpy(pkt->payload, payload, payload_len);
+    if (payload_len > 0) {
+      memcpy(pkt->payload, payload, payload_len);
+    }
     pkt->payload_len = payload_len;
 
     pr_trace_msg(trace_channel, 20,
