@@ -24,6 +24,7 @@
 #include "mod_proxy.h"
 #include "proxy/ssh.h"
 #include "proxy/ssh/crypto.h"
+#include "proxy/ssh/provider.h"
 #include "proxy/ssh/umac.h"
 
 #include <openssl/aes.h>
@@ -1010,11 +1011,15 @@ static int delete_umac128(EVP_MD_CTX *ctx) {
 
 static const EVP_MD *get_umac64_digest(int *free_md) {
   EVP_MD *md = NULL;
+#if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL)
+  OSSL_LIB_CTX *proxy_libctx = NULL;
+#endif /* OpenSSL 4.x and later */
 
   *free_md = FALSE;
 
 #if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL)
-  md = EVP_MD_fetch(NULL, "umac64", NULL);
+  proxy_libctx = proxy_ssh_provider_get_libctx();
+  md = EVP_MD_fetch(proxy_libctx, "umac64", "provider=umac");
   if (md == NULL) {
     pr_trace_msg(trace_channel, 4, "error fetching 'umac64' EVP_MD: %s",
       proxy_ssh_crypto_get_errors());
@@ -1064,11 +1069,15 @@ static const EVP_MD *get_umac64_digest(int *free_md) {
 
 static const EVP_MD *get_umac128_digest(int *free_md) {
   EVP_MD *md;
+#if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL)
+  OSSL_LIB_CTX *proxy_libctx = NULL;
+#endif /* OpenSSL 4.x and later */
 
   *free_md = FALSE;
 
 #if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL)
-  md = EVP_MD_fetch(NULL, "umac128", NULL);
+  proxy_libctx = proxy_ssh_provider_get_libctx();
+  md = EVP_MD_fetch(proxy_libctx, "umac128", "provider=umac");
   if (md == NULL) {
     pr_trace_msg(trace_channel, 4, "error fetching 'umac64' EVP_MD: %s",
       proxy_ssh_crypto_get_errors());

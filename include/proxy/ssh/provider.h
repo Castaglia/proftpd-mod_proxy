@@ -26,6 +26,11 @@
 
 #include "mod_proxy.h"
 
+/* Obtain the module-specific "library context" with which our custom
+ * UMAC providers are registered.
+ */
+void *proxy_ssh_provider_get_libctx(void);
+
 int proxy_ssh_provider_init(void);
 void proxy_ssh_provider_free(void);
 

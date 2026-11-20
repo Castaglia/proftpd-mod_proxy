@@ -26,22 +26,14 @@
 #include "proxy/ssh/umac.h"
 #include "proxy/ssh/provider.h"
 
-/* The mod_sftp module in ProFTPD 1.3.10rc2 also registers a 'umac' provider
- * with OpenSSL; see Issue #2120.
- *
- * So we only need our copy of that provider if using an older version of
- * ProFTPD.  Otherwise, we can reuse the algorithms provided by mod_sftp's
- * provider.
- */
-
-#if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL) && \
-    PROFTPD_VERSION_NUMBER < 0x0001030A02
+#if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL)
 # include <openssl/core.h>
 # include <openssl/core_dispatch.h>
 # include <openssl/core_names.h>
 # include <openssl/params.h>
 # include <openssl/provider.h>
 
+static OSSL_LIB_CTX *proxy_libctx = NULL;
 static OSSL_PROVIDER *umac_provider = NULL;
 
 static const char *trace_channel = "proxy.ssh.provider";
@@ -121,9 +113,9 @@ static int umac64_md_final(void *vctx, unsigned char *out, size_t *out_len,
   unsigned char nonce[8];
 
   ctx = vctx;
-
   *out_len = outsz;
 
+  memset(nonce, 0, sizeof(nonce));
   if (outsz != 0) {
     res = proxy_ssh_umac_final(ctx, out, nonce);
   }
@@ -131,7 +123,7 @@ static int umac64_md_final(void *vctx, unsigned char *out, size_t *out_len,
   return res;
 }
 
-static int umac64_get_params(void *provctx, OSSL_PARAM params[]) {
+static int umac64_get_params(OSSL_PARAM params[]) {
   OSSL_PARAM *p;
   int ok = 1;
 
@@ -204,9 +196,9 @@ static int umac128_md_final(void *vctx, unsigned char *out, size_t *out_len,
   unsigned char nonce[8];
 
   ctx = vctx;
-
   *out_len = outsz;
 
+  memset(nonce, 0, sizeof(nonce));
   if (outsz != 0) {
     res = proxy_ssh_umac128_final(ctx, out, nonce);
   }
@@ -214,7 +206,7 @@ static int umac128_md_final(void *vctx, unsigned char *out, size_t *out_len,
   return res;
 }
 
-static int umac128_get_params(void *provctx, OSSL_PARAM params[]) {
+static int umac128_get_params(OSSL_PARAM params[]) {
   OSSL_PARAM *p;
   int ok = 1;
 
@@ -254,8 +246,8 @@ static const OSSL_DISPATCH umac128_functions[] = {
 };
 
 static const OSSL_ALGORITHM umac_digests[] = {
-  { "umac64", NULL, umac64_functions },
-  { "umac128", NULL, umac128_functions },
+  { "umac64", "provider=umac", umac64_functions },
+  { "umac128", "provider=umac", umac128_functions },
 
   { NULL, NULL, NULL }
 };
@@ -284,12 +276,27 @@ static int umac_provider_init(const OSSL_CORE_HANDLE *core,
 
   return 1;
 }
-#endif /* OpenSSL 4.x and later, ProFTPD before 1.3.10rc2 */
+#endif /* OpenSSL 4.x and later */
+
+void *proxy_ssh_provider_get_libctx(void) {
+#if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL)
+  if (proxy_libctx != NULL) {
+    return proxy_libctx;
+  }
+#endif /* OpenSSL 4.x and later */
+
+  return NULL;
+}
 
 int proxy_ssh_provider_init(void) {
-#if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL) && \
-    PROFTPD_VERSION_NUMBER < 0x0001030A02
-  if (OSSL_PROVIDER_add_builtin(NULL, "umac", umac_provider_init) != 1) {
+#if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL)
+  /* Allocate a custom library context for our providers, so that no one else
+   * uses our providers.
+   */
+  proxy_libctx = OSSL_LIB_CTX_new();
+
+  if (OSSL_PROVIDER_add_builtin(proxy_libctx, "umac",
+      umac_provider_init) != 1) {
     pr_log_debug(DEBUG1, MOD_PROXY_VERSION
       ": error registering 'umac' OpenSSL provider: %s",
       proxy_ssh_crypto_get_errors());
@@ -299,7 +306,7 @@ int proxy_ssh_provider_init(void) {
   }
 
   /* Load our custom OpenSSL algorithm provider. */
-  umac_provider = OSSL_PROVIDER_load(NULL, "umac");
+  umac_provider = OSSL_PROVIDER_load(proxy_libctx, "umac");
   if (umac_provider == NULL) {
     pr_log_pri(PR_LOG_NOTICE, MOD_PROXY_VERSION
       ": error loading 'umac' OpenSSL provider: %s",
@@ -308,17 +315,21 @@ int proxy_ssh_provider_init(void) {
   } else {
     pr_trace_msg(trace_channel, 9, "%s", "loaded 'umac' OpenSSL provider");
   }
-#endif /* OpenSSL 4.x and later, ProFTPD before 1.3.10rc2 */
+#endif /* OpenSSL 4.x and later */
 
   return 0;
 }
 
 void proxy_ssh_provider_free(void) {
-#if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL) && \
-    PROFTPD_VERSION_NUMBER < 0x0001030A02
+#if OPENSSL_VERSION_NUMBER >= 0x40000000L && !defined(HAVE_LIBRESSL)
   if (umac_provider != NULL) {
     OSSL_PROVIDER_unload(umac_provider);
     umac_provider = NULL;
   }
-#endif /* OpenSSL 4.x and later, ProFTPD before 1.3.10rc2 */
+
+  if (proxy_libctx != NULL) {
+    OSSL_LIB_CTX_free(proxy_libctx);
+    proxy_libctx = NULL;
+  }
+#endif /* OpenSSL 4.x and later */
 }
