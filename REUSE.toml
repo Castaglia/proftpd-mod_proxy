@@ -27,7 +27,7 @@ path = [
   "!lib/proxy/ssh/poly1305.c",
   "!lib/proxy/ssh/sntrup761.c",
 ] 
-SPDX-FileCopyrightText = "2026 TJ Saunders"
+SPDX-FileCopyrightText = "2012-2026 TJ Saunders"
 SPDX-License-Identifier = "GPL-2.0-only WITH vsftpd-openssl-exception"
 
 # Other licenses
@@ -49,4 +49,3 @@ path = [
 ]
 SPDX-FileCopyrightText = "1991 Free Software Foundation"
 SPDX-License-Identifier = "GPL-2.0-or-later"
-
