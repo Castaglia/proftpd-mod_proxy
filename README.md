@@ -5,6 +5,7 @@ Status
 ------
 [![GitHub Actions CI Status](https://github.com/Castaglia/proftpd-mod_proxy/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Castaglia/proftpd-mod_proxy/actions/workflows/ci.yml)
 [![CodeQL Analysis](https://github.com/Castaglia/proftpd-mod_proxy/actions/workflows/codeql.yml/badge.svg)](https://github.com/Castaglia/proftpd-mod_proxy/actions/workflows/codeql.yml)
+[![SPDX Compliance](https://github.com/Castaglia/proftpd-mod_proxy/actions/workflows/spdx.yml/badge.svg)](https://github.com/Castaglia/proftpd-mod_proxy/actions/workflows/spdx.yml)
 [![License](https://img.shields.io/badge/license-GPL-brightgreen.svg)](https://img.shields.io/badge/license-GPL-brightgreen.svg)
 
 
