@@ -1,0 +1,52 @@
+version = 1
+
+# ProFTPD Project licensing
+[[annotations]]
+path = [
+  ".clang-tidy",
+  ".codeql.yml",
+  ".gitattributes",
+  ".github/**",
+  ".gitignore",
+  "Makefile.in",
+  "README.md",
+  "cacerts.pem",
+  "configure.in",
+  "configure",
+  "doc/**",
+  "include/**",
+  "lib/**",
+  "mod_proxy.*",
+  "t/**",
+  "tests.pl",
+
+  # Exceptions; see below
+  "!include/proxy/ssh/poly1305.h",
+  "!include/proxy/ssh/sntrup761.h",
+  "!lib/proxy/ssh/bcrypt.c",
+  "!lib/proxy/ssh/poly1305.c",
+  "!lib/proxy/ssh/sntrup761.c",
+] 
+SPDX-FileCopyrightText = "2026 TJ Saunders"
+SPDX-License-Identifier = "GPL-2.0-only WITH vsftpd-openssl-exception"
+
+# Other licenses
+[[annotations]]
+path = [
+  "include/proxy/ssh/poly1305.h",
+  "include/proxy/ssh/sntrup761.h",
+  "lib/proxy/ssh/poly1305.c",
+  "lib/proxy/ssh/sntrup761.c",
+]
+SPDX-FileCopyrightText = "NONE"
+SPDX-License-Identifier = "Unlicense"
+
+[[annotations]]
+path = [
+  "**/config.guess",
+  "**/config.sub",
+  "**/install-sh",
+]
+SPDX-FileCopyrightText = "1991 Free Software Foundation"
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
