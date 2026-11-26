@@ -2055,6 +2055,14 @@ static const char *get_key_type_desc(enum proxy_ssh_key_type_e key_type) {
       key_desc = "RSA-CERT";
       break;
 
+    case PROXY_SSH_KEY_RSA_SHA256_CERT:
+      key_desc = "RSA-SHA256-CERT";
+      break;
+
+    case PROXY_SSH_KEY_RSA_SHA512_CERT:
+      key_desc = "RSA-SHA512-CERT";
+      break;
+
     case PROXY_SSH_KEY_ECDSA_256_CERT:
       key_desc = "ECDSA256-CERT";
       break;
@@ -2242,6 +2250,10 @@ enum proxy_ssh_key_type_e proxy_ssh_keys_get_key_type(const char *algo) {
   return key_type;
 }
 
+/* Note that this function returns the SSH RFC algorithm names, which are
+ * not the same descriptive-only names as provided by the internal
+ * get_key_type_desc() function.
+ */
 const char *proxy_ssh_keys_get_key_type_desc(enum proxy_ssh_key_type_e key_type) {
   const char *key_desc = NULL;
 
@@ -2254,32 +2266,64 @@ const char *proxy_ssh_keys_get_key_type_desc(enum proxy_ssh_key_type_e key_type)
       key_desc = "ssh-dss";
       break;
 
+    case PROXY_SSH_KEY_DSA_CERT:
+      key_desc = "ssh-dss-cert";
+      break;
+
     case PROXY_SSH_KEY_RSA:
       key_desc = "ssh-rsa";
+      break;
+
+    case PROXY_SSH_KEY_RSA_CERT:
+      key_desc = "ssh-rsa-cert";
       break;
 
     case PROXY_SSH_KEY_RSA_SHA256:
       key_desc = "rsa-sha2-256";
       break;
 
+    case PROXY_SSH_KEY_RSA_SHA256_CERT:
+      key_desc = "rsa-sha2-256-cert";
+      break;
+
     case PROXY_SSH_KEY_RSA_SHA512:
       key_desc = "rsa-sha2-512";
+      break;
+
+    case PROXY_SSH_KEY_RSA_SHA512_CERT:
+      key_desc = "rsa-sha2-512-cert";
       break;
 
     case PROXY_SSH_KEY_ECDSA_256:
       key_desc = "ecdsa-sha2-nistp256";
       break;
 
+    case PROXY_SSH_KEY_ECDSA_256_CERT:
+      key_desc = "ecdsa-sha2-nistp256-cert";
+      break;
+
     case PROXY_SSH_KEY_ECDSA_384:
       key_desc = "ecdsa-sha2-nistp384";
+      break;
+
+    case PROXY_SSH_KEY_ECDSA_384_CERT:
+      key_desc = "ecdsa-sha2-nistp384-cert";
       break;
 
     case PROXY_SSH_KEY_ECDSA_521:
       key_desc = "ecdsa-sha2-nistp521";
       break;
 
+    case PROXY_SSH_KEY_ECDSA_521_CERT:
+      key_desc = "ecdsa-sha2-nistp521-cert";
+      break;
+
     case PROXY_SSH_KEY_ED25519:
       key_desc = "ssh-ed25519";
+      break;
+
+    case PROXY_SSH_KEY_ED25519_CERT:
+      key_desc = "ssh-ed25519-cert";
       break;
 
     case PROXY_SSH_KEY_MLDSA44_ED25519:
@@ -2288,6 +2332,10 @@ const char *proxy_ssh_keys_get_key_type_desc(enum proxy_ssh_key_type_e key_type)
 
     case PROXY_SSH_KEY_ED448:
       key_desc = "ssh-ed448";
+      break;
+
+    case PROXY_SSH_KEY_ED448_CERT:
+      key_desc = "ssh-ed448-cert";
       break;
 
     default:
@@ -2705,7 +2753,7 @@ static int ed25519_compare_keys(pool *p,
 }
 #endif /* PR_USE_SODIUM */
 
-#if defined(HAVE_X448_OPENSSL)
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
 static int ed448_compare_keys(pool *p,
     unsigned char *remote_pubkey_data, uint32_t remote_pubkey_datalen,
     unsigned char *local_pubkey_data, uint32_t local_pubkey_datalen) {
@@ -2721,7 +2769,7 @@ static int ed448_compare_keys(pool *p,
 
   return res;
 }
-#endif /* HAVE_X448_OPENSSL */
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 
 static enum proxy_ssh_key_type_e get_noncert_key_type(enum proxy_ssh_key_type_e key_type) {
   enum proxy_ssh_key_type_e noncert_key_type = PROXY_SSH_KEY_UNKNOWN;
@@ -2858,6 +2906,7 @@ int proxy_ssh_keys_compare_keys(pool *p,
       } else if (remote_key_type == PROXY_SSH_KEY_ED448_CERT) {
         key_algo = "ssh-ed448";
       }
+
       if (key_algo != NULL) {
         unsigned char *ptr, *buf;
         uint32_t bufsz, buflen;
@@ -2947,7 +2996,7 @@ int proxy_ssh_keys_compare_keys(pool *p,
 
   } else if (remote_key_type == PROXY_SSH_KEY_ED448 &&
              remote_key_type == local_key_type) {
-#if defined(HAVE_X448_OPENSSL)
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
     if (ed448_compare_keys(p, remote_pubkey_data, remote_pubkey_datalen,
         local_pubkey_data, local_pubkey_datalen) == 0) {
       res = TRUE;
@@ -2955,7 +3004,7 @@ int proxy_ssh_keys_compare_keys(pool *p,
     } else {
       res = FALSE;
     }
-#endif /* HAVE_X448_OPENSSL */
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 
   } else {
     if (pr_trace_get_level(trace_channel) >= 17) {
@@ -4914,8 +4963,11 @@ static int load_file_hostcert(pool *p, const char *path) {
 
   /* At this point in time, we do not have any CA keys to use for verifying
    * the cert's signature; that's for the peer to do.
+   *
+   * But we DO want to keep the parsed certificates bytes around, for use
+   * later.
    */
-  flags = PROXY_SSH_CERTS_PARSE_FL_IGNORE_SIGNATURE;
+  flags = PROXY_SSH_CERTS_PARSE_FL_IGNORE_SIGNATURE|PROXY_SSH_CERTS_PARSE_FL_RETAIN_CERT_DATA;
   res = proxy_ssh_certs_parse_cert(p, cert_data, cert_datalen, &cert, flags);
   xerrno = errno;
   if (res < 0) {
@@ -6655,12 +6707,35 @@ static int ed25519_verify_signed_data(pool *p,
     return -1;
   }
 
-  if (strcmp(pkey_type, "ssh-ed25519") != 0) {
+  if (strcmp(pkey_type, "ssh-ed25519") != 0 &&
+      strcmp(pkey_type, "ssh-ed25519-cert") != 0 &&
+      strcmp(pkey_type, "ssh-ed25519-cert-v01@openssh.com") != 0) {
     pr_trace_msg(trace_channel, 17,
-      "public key type '%s' does not match expected key type 'ssh-ed25519'",
+      "public key type '%s' does not match expected key types "
+      "'ssh-ed25519', 'ssh-ed25519-cert', 'ssh-ed25519-cert-v01@openssh.com'",
       pkey_type);
     errno = EINVAL;
     return -1;
+  }
+
+  /* If we have an SSH ED25519 certificate, we need to read/skip the nonce
+   * here.
+   */
+  if (strcmp(pkey_type, "ssh-ed25519-cert") == 0 ||
+      strcmp(pkey_type, "ssh-ed25519-cert-v01@openssh.com") == 0) {
+    len = proxy_ssh_certs_read_nonce(p, pubkey_data, pubkey_datalen, pkey_type,
+      NULL);
+    if (len == 0) {
+      pr_trace_msg(trace_channel, 19,
+        "error reading nonce from %s certificate", pkey_type);
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error reading %s key: invalid/unsupported key format", pkey_type);
+      errno = EINVAL;
+      return -1;
+    }
+
+    pubkey_datalen -= len;
+    pubkey_data += len;
   }
 
   len = proxy_ssh_msg_read_int(p, &pubkey_data, &pubkey_datalen,
@@ -6753,6 +6828,106 @@ static int ed25519_verify_signed_data(pool *p,
   return res;
 }
 #endif /* PR_USE_SODIUM */
+
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+static int ed448_verify_signed_data(pool *p,
+    unsigned char *pubkey_data, uint32_t pubkey_datalen,
+    unsigned char *signature, uint32_t signature_len,
+    unsigned char *sig_data, size_t sig_datalen) {
+  char *pkey_type;
+  uint32_t len, public_keylen, sig_len;
+  unsigned char *public_key, *sig;
+  EVP_MD_CTX *md_ctx = NULL;
+  EVP_PKEY *pkey = NULL;
+
+  len = proxy_ssh_msg_read_string(p, &pubkey_data, &pubkey_datalen, &pkey_type);
+  if (len == 0) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (strcmp(pkey_type, "ssh-ed448") != 0) {
+    pr_trace_msg(trace_channel, 17,
+      "public key type '%s' does not match expected key type 'ssh-ed448'",
+      pkey_type);
+    errno = EINVAL;
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_int(p, &pubkey_data, &pubkey_datalen,
+    &public_keylen);
+  if (len == 0) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (public_keylen != CURVE448_SIZE &&
+      public_keylen != (CURVE448_SIZE + 1)) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "invalid Ed448 public key length (%lu bytes), expected %lu bytes",
+      (unsigned long) public_keylen, (unsigned long) CURVE448_SIZE);
+    errno = EINVAL;
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(p, &pubkey_data, &pubkey_datalen,
+    public_keylen, &public_key);
+  if (len == 0) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_int(p, &signature, &signature_len, &sig_len);
+  if (len == 0) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  len = proxy_ssh_msg_read_data(p, &signature, &signature_len, sig_len, &sig);
+  if (len == 0) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  if (sig == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error verifying Ed448 signature: missing signature data");
+    errno = EINVAL;
+    return -1;
+  }
+
+  pkey = EVP_PKEY_new_raw_public_key(EVP_PKEY_ED448, NULL, public_key,
+    public_keylen);
+  if (pkey == NULL) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing Ed448 public key: %s", proxy_ssh_crypto_get_errors());
+    return -1;
+  }
+
+  md_ctx = EVP_MD_CTX_new();
+  if (EVP_DigestVerifyInit(md_ctx, NULL, NULL, NULL, pkey) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "error initializing Ed448 verification: %s",
+       proxy_ssh_crypto_get_errors());
+    EVP_MD_CTX_free(md_ctx);
+    EVP_PKEY_free(pkey);
+    return -1;
+  }
+
+  if (EVP_DigestVerify(md_ctx, sig, sig_len, sig_data, sig_datalen) != 1) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "invalid Ed448 signature (mismatched data)");
+    EVP_MD_CTX_free(md_ctx);
+    EVP_PKEY_free(pkey);
+    errno = EINVAL;
+    return -1;
+  }
+
+  EVP_MD_CTX_free(md_ctx);
+  EVP_PKEY_free(pkey);
+  return 0;
+}
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 
 #if defined(HAVE_MLDSA44_OPENSSL) && \
     defined(HAVE_X25519_OPENSSL) && \
@@ -7062,7 +7237,9 @@ int proxy_ssh_keys_verify_signed_data(pool *p, const char *pubkey_algo,
   }
 
   if (strcmp(sig_type, "ssh-rsa") == 0) {
-    if (strcmp(pubkey_algo, sig_type) != 0) {
+    if (strcmp(pubkey_algo, sig_type) != 0 &&
+        strcmp(pubkey_algo, "ssh-rsa-cert") != 0 &&
+        strcmp(pubkey_algo, "ssh-rsa-cert-v01@openssh.com") != 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unable to verify signed data: signature type '%s' does not match "
         "publickey algorithm '%s'", sig_type, pubkey_algo);
@@ -7075,19 +7252,46 @@ int proxy_ssh_keys_verify_signed_data(pool *p, const char *pubkey_algo,
 
 #if defined(HAVE_SHA256_OPENSSL)
   } else if (strcmp(sig_type, "rsa-sha2-256") == 0) {
+    if (strcmp(pubkey_algo, sig_type) != 0 &&
+        strcmp(pubkey_algo, "ssh-rsa") != 0 &&
+        strcmp(pubkey_algo, "ssh-rsa-cert") != 0 &&
+        strcmp(pubkey_algo, "ssh-rsa-cert-v01@openssh.com") != 0 &&
+        strcmp(pubkey_algo, "rsa-sha2-256-cert") != 0 &&
+        strcmp(pubkey_algo, "rsa-sha2-256-cert-v01@openssh.com") != 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to verify signed data: signature type '%s' does not match "
+        "publickey algorithm '%s'", sig_type, pubkey_algo);
+      errno = EINVAL;
+      return -1;
+    }
+
     res = rsa_sha256_verify_signed_data(p, pkey, signature, signature_len,
       sig_data, sig_datalen);
 #endif /* HAVE_SHA256_OPENSSL */
 
 #if defined(HAVE_SHA512_OPENSSL)
   } else if (strcmp(sig_type, "rsa-sha2-512") == 0) {
+    if (strcmp(pubkey_algo, sig_type) != 0 &&
+        strcmp(pubkey_algo, "ssh-rsa") != 0 &&
+        strcmp(pubkey_algo, "ssh-rsa-cert") != 0 &&
+        strcmp(pubkey_algo, "ssh-rsa-cert-v01@openssh.com") != 0 &&
+        strcmp(pubkey_algo, "rsa-sha2-512-cert") != 0 &&
+        strcmp(pubkey_algo, "rsa-sha2-512-cert-v01@openssh.com") != 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to verify signed data: signature type '%s' does not match "
+        "publickey algorithm '%s'", sig_type, pubkey_algo);
+      errno = EINVAL;
+      return -1;
+    }
+
     res = rsa_sha512_verify_signed_data(p, pkey, signature, signature_len,
       sig_data, sig_datalen);
 #endif /* HAVE_SHA512_OPENSSL */
 
 #if !defined(OPENSSL_NO_DSA)
   } else if (strcmp(sig_type, "ssh-dss") == 0) {
-    if (strcmp(pubkey_algo, sig_type) != 0) {
+    if (strcmp(pubkey_algo, sig_type) != 0 &&
+        strcmp(pubkey_algo, "ssh-dss-cert") != 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unable to verify signed data: signature type '%s' does not match "
         "publickey algorithm '%s'", sig_type, pubkey_algo);
@@ -7103,7 +7307,13 @@ int proxy_ssh_keys_verify_signed_data(pool *p, const char *pubkey_algo,
   } else if (strcmp(sig_type, "ecdsa-sha2-nistp256") == 0 ||
              strcmp(sig_type, "ecdsa-sha2-nistp384") == 0 ||
              strcmp(sig_type, "ecdsa-sha2-nistp521") == 0) {
-    if (strcmp(pubkey_algo, sig_type) != 0) {
+    if (strcmp(pubkey_algo, sig_type) != 0 &&
+        strcmp(pubkey_algo, "ecdsa-sha2-nistp256-cert") != 0 &&
+        strcmp(pubkey_algo, "ecdsa-sha2-nistp384-cert") != 0 &&
+        strcmp(pubkey_algo, "ecdsa-sha2-nistp521-cert") != 0 &&
+        strcmp(pubkey_algo, "ecdsa-sha2-nistp256-cert-v01@openssh.com") != 0 &&
+        strcmp(pubkey_algo, "ecdsa-sha2-nistp384-cert-v01@openssh.com") != 0 &&
+        strcmp(pubkey_algo, "ecdsa-sha2-nistp521-cert-v01@openssh.com") != 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unable to verify signed data: public key algorithm '%s' does not "
         "match signature algorithm '%s'", pubkey_algo, sig_type);
@@ -7116,7 +7326,9 @@ int proxy_ssh_keys_verify_signed_data(pool *p, const char *pubkey_algo,
 
 #if defined(PR_USE_SODIUM)
   } else if (strcmp(sig_type, "ssh-ed25519") == 0) {
-    if (strcmp(pubkey_algo, sig_type) != 0) {
+    if (strcmp(pubkey_algo, sig_type) != 0 &&
+        strcmp(pubkey_algo, "ssh-ed25519-cert") != 0 &&
+        strcmp(pubkey_algo, "ssh-ed25519-cert-v01@openssh.com") != 0) {
       (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
         "unable to verify signed data: signature type '%s' does not match "
         "publickey algorithm '%s'", sig_type, pubkey_algo);
@@ -7127,6 +7339,21 @@ int proxy_ssh_keys_verify_signed_data(pool *p, const char *pubkey_algo,
     res = ed25519_verify_signed_data(p, pubkey_data, pubkey_datalen, signature,
       signature_len, sig_data, sig_datalen);
 #endif /* PR_USE_SODIUM */
+
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+  } else if (strcmp(sig_type, "ssh-ed448") == 0) {
+    if (strcmp(pubkey_algo, sig_type) != 0 &&
+        strcmp(pubkey_algo, "ssh-ed448-cert") != 0) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unable to verify signed data: signature type '%s' does not match "
+        "publickey algorithm '%s'", sig_type, pubkey_algo);
+      errno = EINVAL;
+      return -1;
+    }
+
+    res = ed448_verify_signed_data(p, pubkey_data, pubkey_datalen, signature,
+      signature_len, sig_data, sig_datalen);
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
 
 #if defined(HAVE_MLDSA44_OPENSSL) && \
     defined(HAVE_X25519_OPENSSL) && \

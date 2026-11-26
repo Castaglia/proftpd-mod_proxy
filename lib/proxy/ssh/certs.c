@@ -1061,13 +1061,15 @@ int proxy_ssh_certs_parse_cert(pool *p, unsigned char *cert_data,
     }
   }
 
-  /* At this point, we know that the provided data comprise a well-formed
-   * certificate.  Keep a copy of that data associated with this cert, for
-   * writing out to servers.
-   */
-  res->cert_datalen = buflen;
-  res->cert_data = palloc(res->cert_pool, res->cert_datalen);
-  memcpy(res->cert_data, buf, res->cert_datalen);
+  if (flags & PROXY_SSH_CERTS_PARSE_FL_RETAIN_CERT_DATA) {
+    /* At this point, we know that the provided data comprise a well-formed
+     * certificate.  Keep a copy of that data associated with this cert, for
+     * writing out to servers.
+     */
+    res->cert_datalen = buflen;
+    res->cert_data = palloc(res->cert_pool, res->cert_datalen);
+    memcpy(res->cert_data, buf, res->cert_datalen);
+  }
 
   /* Obtain the signed public key's algorithm name, for use later in e.g.
    * matching the public key to its associated private key.

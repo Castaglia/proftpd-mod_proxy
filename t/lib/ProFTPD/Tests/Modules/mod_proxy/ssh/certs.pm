@@ -176,6 +176,53 @@ my $TESTS = {
     test_class => [qw(forking mod_proxy mod_sftp reverse)],
   },
 
+  # Host certificates
+  proxy_reverse_backend_ssh_host_cert_rsa_ca_rsa_cert => {
+    order => ++$order,
+    test_class => [qw(forking mod_proxy mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_host_cert_rsa_ca_ecdsa256_cert => {
+    order => ++$order,
+    test_class => [qw(forking mod_proxy mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_host_cert_rsa_ca_ecdsa384_cert => {
+    order => ++$order,
+    test_class => [qw(forking mod_proxy mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_host_cert_rsa_ca_ecdsa521_cert => {
+    order => ++$order,
+    test_class => [qw(forking mod_proxy mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_host_cert_rsa_ca_ed25519_cert => {
+    order => ++$order,
+    test_class => [qw(forking mod_proxy mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_host_cert_certificate_options_allow_empty_principals => {
+    order => ++$order,
+    test_class => [qw(forking mod_proxy mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_host_cert_certificate_options_allow_match_principals => {
+    order => ++$order,
+    test_class => [qw(forking mod_proxy mod_sftp reverse)],
+  },
+
+  # Revoked keys
+  proxy_reverse_backend_ssh_host_cert_revoked_rsa_key => {
+    order => ++$order,
+    test_class => [qw(forking mod_proxy mod_sftp reverse)],
+  },
+
+  proxy_reverse_backend_ssh_host_cert_revoked_rsa_ca_key => {
+    order => ++$order,
+    test_class => [qw(forking mod_proxy mod_sftp reverse)],
+  },
+
 };
 
 sub new {
@@ -418,6 +465,230 @@ EOC
   # Restore permissions
   unless (chmod(0644, $cert_privkey)) {
     die("Can't set perms on $cert_privkey: $!");
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  eval {
+    if (open(my $fh, "< $setup->{log_file}")) {
+      my $ok = 0;
+
+      while (my $line = <$fh>) {
+        chomp($line);
+
+        if ($ENV{TEST_VERBOSE}) {
+          print STDERR "# $line\n";
+        }
+
+        if ($line =~ /Accepted .*? host certificate ID/) {
+          $ok = 1;
+          last;
+        }
+      }
+
+      close($fh);
+      $self->assert($ok, test_msg("Did not see expected SFTPLog message"));
+
+    } else {
+      die("Can't read $setup->{log_file}: $!");
+    }
+  };
+  if ($@) {
+    $ex = $@ unless $ex;
+  }
+
+  if ($failure_expected == 1) {
+    # If we have an exception/failure already, clear it, as it is expected.
+    if ($ex) {
+      $ex = undef;
+
+    # Otherwise, the lack of an exception/failure, when we expect one, is
+    # itself a problem.
+    } else {
+      $ex = 'Test succeeded unexpectedly' unless $ex;
+    }
+  }
+
+  test_cleanup($setup, $ex);
+}
+
+sub proxy_reverse_backend_ssh_hostkeys {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'proxy');
+
+  my $host_cert = shift;
+  my $host_key = shift;
+
+  my $rfc4716_ca_keys = shift;
+  my $addl_proxy_directives = shift;
+  my $failure_expected = shift;
+  $failure_expected = 0 unless defined($failure_expected);
+
+  unless (chmod(0400, $host_key)) {
+    die("Can't set perms on $host_key: $!");
+  }
+
+  my $authorized_ca_keys = File::Spec->rel2abs("$tmpdir/authorized_ca_keys");
+  unless (copy($rfc4716_ca_keys, $authorized_ca_keys)) {
+    die("Can't copy $rfc4716_ca_keys to $authorized_ca_keys: $!");
+  }
+
+  my $rsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_rsa_key");
+
+  my $vhost_port = ProFTPD::TestSuite::Utils::get_high_numbered_port();
+  $vhost_port += 12;
+
+  my $cipher_algo = 'aes256-ctr';
+  my $digest_algo = 'hmac-sha1';
+  my $kex_algo = 'diffie-hellman-group14-sha1';
+
+  my $proxy_config = get_reverse_proxy_config($tmpdir, $setup->{log_file},
+    $vhost_port);
+  $proxy_config->{ProxySFTPAuthorizedHostCAKeys} = "file:$authorized_ca_keys";
+  $proxy_config->{ProxySFTPCiphers} = $cipher_algo;
+  $proxy_config->{ProxySFTPDigests} = $digest_algo;
+  $proxy_config->{ProxySFTPKeyExchanges} = $kex_algo;
+  $proxy_config->{ProxySFTPVerifyServer} = 'on';
+
+  if (defined($addl_proxy_directives)) {
+    foreach my $name (keys(%$addl_proxy_directives)) {
+      my $val = $addl_proxy_directives->{$name};
+      $proxy_config->{$name} = $val;
+    }
+  }
+
+  my $sftp_config = [
+    'SFTPEngine on',
+    "SFTPLog $setup->{log_file}",
+    "SFTPHostCertificate $host_cert",
+    "SFTPHostKey $host_key",
+    "SFTPCiphers $cipher_algo",
+    "SFTPDigests $digest_algo",
+    "SFTPKeyExchanges $kex_algo",
+  ];
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'proxy:20 proxy.reverse:20 proxy.ssh:20 proxy.ssh.auth:20 proxy.ssh.certs:20 proxy.ssh.keys:20 proxy.ssh.packet:20 proxy.ssh.kex:20 proxy.ssh.rfc4716:20 ssh2:30 sftp:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    SocketBindTight => 'on',
+
+    IfModules => {
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+
+      'mod_proxy.c' => $proxy_config,
+
+      'mod_sftp.c' => [
+        'SFTPEngine on',
+        "SFTPLog $setup->{log_file}",
+        "SFTPHostKey $rsa_host_key",
+      ],
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  if (open(my $fh, ">> $setup->{config_file}")) {
+    print $fh <<EOC;
+<VirtualHost 127.0.0.1>
+  Port $vhost_port
+  ServerName "Real Server"
+
+  AuthUserFile $setup->{auth_user_file}
+  AuthGroupFile $setup->{auth_group_file}
+  AuthOrder mod_auth_file.c
+
+  AllowOverride off
+  WtmpLog off
+  TransferLog none
+
+  <IfModule mod_sftp.c>
+EOC
+
+    foreach my $item (@$sftp_config) {
+      print $fh "    $item\n";
+    }
+
+    print $fh <<EOC;
+  </IfModule>
+</VirtualHost>
+EOC
+    unless (close($fh)) {
+      die("Can't write $setup->{config_file}: $!");
+    }
+
+  } else {
+    die("Can't open $setup->{config_file}: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  require Net::SSH2;
+  my $ex;
+
+  # Ignore SIGPIPE
+  local $SIG{PIPE} = sub { };
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Give the server a chance to start up
+      sleep(1);
+
+      my $ssh2 = Net::SSH2->new();
+      unless ($ssh2->connect('127.0.0.1', $port)) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      $ssh2->disconnect();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Restore permissions
+  unless (chmod(0644, $host_key)) {
+    die("Can't set perms on $host_key: $!");
   }
 
   # Stop server
@@ -841,6 +1112,134 @@ sub proxy_reverse_backend_ssh_hostbased_auth_revoked_ed25519_key {
   # of a revoked key.
   proxy_reverse_backend_ssh_hostbased_auth($self, $rsa_ca_keys, $eddsa_cert,
     $eddsa_priv_key, $addl_configs, 1);
+}
+
+sub proxy_reverse_backend_ssh_host_cert_rsa_ca_rsa_cert {
+  my $self = shift;
+
+  my $host_cert = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/host_rsa_ca_rsa_cert.pub");
+  my $host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/test_rsa_key");
+  my $rsa_ca_keys = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/authorized_host_rsa_ca_keys");
+
+  proxy_reverse_backend_ssh_hostkeys($self, $host_cert, $host_key,
+    $rsa_ca_keys);
+}
+
+sub proxy_reverse_backend_ssh_host_cert_rsa_ca_ecdsa256_cert {
+  my $self = shift;
+
+  my $host_cert = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/host_rsa_ca_ecdsa256_cert.pub");
+  my $host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/test_ecdsa256_key");
+  my $rsa_ca_keys = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/authorized_host_rsa_ca_keys");
+
+  proxy_reverse_backend_ssh_hostkeys($self, $host_cert, $host_key,
+    $rsa_ca_keys);
+}
+
+sub proxy_reverse_backend_ssh_host_cert_rsa_ca_ecdsa384_cert {
+  my $self = shift;
+
+  my $host_cert = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/host_rsa_ca_ecdsa384_cert.pub");
+  my $host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/test_ecdsa384_key");
+  my $rsa_ca_keys = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/authorized_host_rsa_ca_keys");
+
+  proxy_reverse_backend_ssh_hostkeys($self, $host_cert, $host_key,
+    $rsa_ca_keys);
+}
+
+sub proxy_reverse_backend_ssh_host_cert_rsa_ca_ecdsa521_cert {
+  my $self = shift;
+
+  my $host_cert = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/host_rsa_ca_ecdsa521_cert.pub");
+  my $host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/test_ecdsa521_key");
+  my $rsa_ca_keys = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/authorized_host_rsa_ca_keys");
+
+  proxy_reverse_backend_ssh_hostkeys($self, $host_cert, $host_key,
+    $rsa_ca_keys);
+}
+
+sub proxy_reverse_backend_ssh_host_cert_rsa_ca_ed25519_cert {
+  my $self = shift;
+
+  my $host_cert = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/host_rsa_ca_ed25519_cert.pub");
+  my $host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/test_openssh_ed25519_key");
+  my $rsa_ca_keys = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/authorized_host_rsa_ca_keys");
+
+  proxy_reverse_backend_ssh_hostkeys($self, $host_cert, $host_key,
+    $rsa_ca_keys);
+}
+
+sub proxy_reverse_backend_ssh_host_cert_certificate_options_allow_empty_principals {
+  my $self = shift;
+
+  my $host_cert = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/host_rsa_ca_rsa_cert_empty_principals.pub");
+  my $host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/test_rsa_key");
+  my $rsa_ca_keys = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/authorized_host_rsa_ca_keys");
+
+  my $addl_proxy_directives = {
+    ProxySFTPCertificateOptions => 'AllowEmptyPrincipals',
+  };
+
+  proxy_reverse_backend_ssh_hostkeys($self, $host_cert, $host_key,
+    $rsa_ca_keys, $addl_proxy_directives);
+}
+
+sub proxy_reverse_backend_ssh_host_cert_certificate_options_allow_match_principals {
+  my $self = shift;
+
+  my $host_cert = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/host_rsa_ca_rsa_cert_match_principals.pub");
+  my $host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/test_rsa_key");
+  my $rsa_ca_keys = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/authorized_host_rsa_ca_keys");
+
+  my $addl_proxy_directives = {
+    ProxySFTPCertificateOptions => 'AllowMatchPrincipals',
+  };
+
+  proxy_reverse_backend_ssh_hostkeys($self, $host_cert, $host_key,
+    $rsa_ca_keys, $addl_proxy_directives);
+}
+
+sub proxy_reverse_backend_ssh_host_cert_revoked_rsa_key {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $host_cert = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/host_rsa_ca_rsa_cert.pub");
+  my $host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/test_rsa_key");
+  my $rsa_pub_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/authorized_rsa_keys");
+  my $rsa_ca_keys = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/authorized_host_rsa_ca_keys");
+
+  my $revoked_keys = File::Spec->rel2abs("$tmpdir/revoked_keys");
+  unless (copy($rsa_pub_key, $revoked_keys)) {
+    die("Can't copy $rsa_pub_key to $revoked_keys: $!");
+  }
+
+  my $addl_proxy_configs = {
+    ProxySFTPRevokedKeys => "file:$revoked_keys",
+  };
+
+  proxy_reverse_backend_ssh_hostkeys($self, $host_cert, $host_key,
+    $rsa_ca_keys, $addl_proxy_configs, 1);
+}
+
+sub proxy_reverse_backend_ssh_host_cert_revoked_rsa_ca_key {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $host_cert = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/host_rsa_ca_rsa_cert.pub");
+  my $host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/test_rsa_key");
+  my $rsa_ca_keys = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/certs/authorized_host_rsa_ca_keys");
+
+  my $revoked_keys = File::Spec->rel2abs("$tmpdir/revoked_keys");
+  unless (copy($rsa_ca_keys, $revoked_keys)) {
+    die("Can't copy $rsa_ca_keys to $revoked_keys: $!");
+  }
+
+  my $addl_proxy_configs = {
+    ProxySFTPRevokedKeys => "file:$revoked_keys",
+  };
+
+  proxy_reverse_backend_ssh_hostkeys($self, $host_cert, $host_key,
+    $rsa_ca_keys, $addl_proxy_configs, 1);
 }
 
 1;

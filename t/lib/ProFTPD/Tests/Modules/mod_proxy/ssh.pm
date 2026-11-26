@@ -6967,7 +6967,7 @@ EOC
           $have_existing = 1;
         }
 
-        if ($line =~ /stored hostkey does not match current hostkey .*? ProxySFTPVerifyServer is enabled/) {
+        if ($line =~ /trusted stored hostkey no longer matches current hostkey .*? ProxySFTPVerifyServer is enabled/) {
           $hostkey_mismatch = 1;
           last;
         }

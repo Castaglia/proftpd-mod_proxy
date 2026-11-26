@@ -74,6 +74,11 @@ int proxy_ssh_certs_parse_cert(pool *p, unsigned char *cert_data,
  */
 #define PROXY_SSH_CERTS_PARSE_FL_IGNORE_SIGNATURE	0x001
 
+/* This flag indicates whether we should keep a copy of the certificate data
+ * with the parsed certificate structure.
+ */
+#define PROXY_SSH_CERTS_PARSE_FL_RETAIN_CERT_DATA	0x002
+
 /* Perform basic certificate validation, checking expiry, supported
  * options/extensions, signature validation, etc.
  */
