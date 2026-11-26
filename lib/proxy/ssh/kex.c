@@ -3293,7 +3293,8 @@ static int handle_server_hostkey(pool *p,
           const char *revoked_fp;
 
           revoked_fp = proxy_ssh_keys_get_fingerprint(p, hostkey_data,
-            hostkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256);
+            hostkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256,
+            PROXY_SSH_KEYS_FP_FMT_BASE64);
 
           (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
             "public key %s has been revoked by '%s'", revoked_fp, revoked_keys);
@@ -3366,7 +3367,8 @@ static int handle_server_hostkey(pool *p,
           const char *revoked_fp;
 
           revoked_fp = proxy_ssh_keys_get_fingerprint(p, hostkey_data,
-            hostkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256);
+            hostkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256,
+            PROXY_SSH_KEYS_FP_FMT_BASE64);
 
           (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
             "public key %s has been revoked by '%s'", revoked_fp, revoked_keys);
@@ -3475,7 +3477,8 @@ static int handle_server_hostkey(pool *p,
 
                   revoked_fp = proxy_ssh_keys_get_fingerprint(p,
                     cert->pubkey_data, cert->pubkey_datalen,
-                    PROXY_SSH_KEYS_FP_DIGEST_SHA256);
+                    PROXY_SSH_KEYS_FP_DIGEST_SHA256,
+                    PROXY_SSH_KEYS_FP_FMT_BASE64);
 
                   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                     "public key %s has been revoked by '%s'", revoked_fp,
@@ -3494,7 +3497,8 @@ static int handle_server_hostkey(pool *p,
 
                   revoked_fp = proxy_ssh_keys_get_fingerprint(p,
                     cert->signature_pubkey_data, cert->signature_pubkey_datalen,
-                    PROXY_SSH_KEYS_FP_DIGEST_SHA256);
+                    PROXY_SSH_KEYS_FP_DIGEST_SHA256,
+                    PROXY_SSH_KEYS_FP_FMT_BASE64);
 
                   (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
                     "public CA key %s has been revoked by '%s'", revoked_fp,
@@ -3519,7 +3523,8 @@ static int handle_server_hostkey(pool *p,
         const char *ca_fp;
 
         ca_fp = proxy_ssh_keys_get_fingerprint(p, cert->signature_pubkey_data,
-          cert->signature_pubkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256);
+          cert->signature_pubkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256,
+          PROXY_SSH_KEYS_FP_FMT_BASE64);
         pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
           "Accepted %s host certificate ID '%s' (serial number %lu) signed by "
           "%s CA %s via %s", cert->cert_algo, cert->cert_id,

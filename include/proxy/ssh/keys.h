@@ -61,10 +61,14 @@ enum proxy_ssh_key_type_e {
  * supported.
  */
 const char *proxy_ssh_keys_get_fingerprint(pool *, unsigned char *, uint32_t,
-  int);
+  int, int);
 #define PROXY_SSH_KEYS_FP_DIGEST_MD5		1
 #define PROXY_SSH_KEYS_FP_DIGEST_SHA1		2
 #define PROXY_SSH_KEYS_FP_DIGEST_SHA256		3
+
+#define PROXY_SSH_KEYS_FP_FMT_BASE64		1
+#define PROXY_SSH_KEYS_FP_FMT_HEX		2
+#define PROXY_SSH_KEYS_FP_FMT_HEX_COLONS	3
 
 enum proxy_ssh_key_type_e proxy_ssh_keys_get_key_type(const char *algo);
 const char *proxy_ssh_keys_get_key_type_desc(enum proxy_ssh_key_type_e);

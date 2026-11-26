@@ -3032,14 +3032,14 @@ int proxy_ssh_keys_compare_keys(pool *p,
 }
 
 const char *proxy_ssh_keys_get_fingerprint(pool *p, unsigned char *key_data,
-    uint32_t key_datalen, int digest_algo) {
+    uint32_t key_datalen, int digest_algo, int encoding_fmt) {
 #if OPENSSL_VERSION_NUMBER < 0x10100000L || \
     (defined(HAVE_LIBRESSL) && LIBRESSL_VERSION_NUMBER < 0x3050000L)
   EVP_MD_CTX ctx;
 #endif /* prior to OpenSSL-1.1.0/LibreSSL-3.5.0 */
   EVP_MD_CTX *pctx;
   const EVP_MD *digest;
-  char *digest_name = "none", *fp;
+  char *digest_name = "none", *fp = NULL;
   unsigned char *fp_data;
   unsigned int fp_datalen = 0;
   register unsigned int i;
@@ -3136,17 +3136,52 @@ const char *proxy_ssh_keys_get_fingerprint(pool *p, unsigned char *key_data,
   EVP_MD_CTX_free(pctx);
 #endif /* OpenSSL-1.1.0/LibreSSL-3.5.0 and later */
 
-  /* Now encode that digest in fp_data as hex characters. */
-  fp = "";
+  switch (encoding_fmt) {
+    case PROXY_SSH_KEYS_FP_FMT_BASE64: {
+      char *ptr;
 
-  for (i = 0; i < fp_datalen; i++) {
-    char c[4];
+      /* According to RATS, the output buffer for EVP_EncodeBlock() needs to be
+       * 4/3 the size of the input buffer (which is usually EVP_MAX_MD_SIZE).
+       */
+      fp = pcalloc(p, (2 * fp_datalen) + 1);
+      EVP_EncodeBlock((unsigned char *) fp, fp_data, (int) fp_datalen);
 
-    memset(c, '\0', sizeof(c));
-    pr_snprintf(c, sizeof(c), "%02x:", fp_data[i]);
-    fp = pstrcat(p, fp, &c, NULL);
+      /* Deliberately trim off any trailing '=' charaacters, assuming they
+       * are padding bytes.
+       */
+      ptr = strchr(fp, '=');
+      if (ptr != NULL) {
+        *ptr = '\0';
+      }
+
+      break;
+    }
+
+    case PROXY_SSH_KEYS_FP_FMT_HEX:
+      fp = pr_str_bin2hex(p, fp_data, fp_datalen, PR_STR_FL_HEX_USE_LC);
+      break;
+
+    case PROXY_SSH_KEYS_FP_FMT_HEX_COLONS: {
+      /* Now encode that digest in fp_data as hex characters. */
+      fp = "";
+
+      for (i = 0; i < fp_datalen; i++) {
+        char c[4];
+
+        memset(c, '\0', sizeof(c));
+        pr_snprintf(c, sizeof(c), "%02x:", fp_data[i]);
+        fp = pstrcat(p, fp, &c, NULL);
+      }
+      fp[strlen(fp)-1] = '\0';
+      break;
+    }
+
+    default:
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "unsupported key fingerprint encoding format (%d)", encoding_fmt);
+      errno = EACCES;
+      return NULL;
   }
-  fp[strlen(fp)-1] = '\0';
 
   return fp;
 }
