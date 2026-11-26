@@ -32,6 +32,7 @@
 #include "proxy/ssh/mac.h"
 #include "proxy/ssh/compress.h"
 #include "proxy/ssh/kex.h"
+#include "proxy/ssh/certs.h"
 #include "proxy/ssh/keys.h"
 #include "proxy/ssh/crypto.h"
 #include "proxy/ssh/disconnect.h"
@@ -39,6 +40,7 @@
 #include "proxy/ssh/sntrup761.h"
 #include "proxy/ssh/misc.h"
 #include "proxy/ssh/auth.h"
+#include "proxy/ssh/rfc4716.h"
 
 #include <openssl/bn.h>
 #include <openssl/dh.h>
@@ -477,19 +479,35 @@ static int verify_h(pool *p, struct proxy_ssh_kex *kex,
       pubkey_algo = "ssh-dss";
       break;
 
+    case PROXY_SSH_KEY_DSA_CERT:
+      pubkey_algo = "ssh-dss-cert";
+      break;
+
     case PROXY_SSH_KEY_RSA:
       pubkey_algo = "ssh-rsa";
+      break;
+
+    case PROXY_SSH_KEY_RSA_CERT:
+      pubkey_algo = "ssh-rsa-cert";
       break;
 
 #if defined(HAVE_SHA256_OPENSSL)
     case PROXY_SSH_KEY_RSA_SHA256:
       pubkey_algo = "rsa-sha2-256";
       break;
+
+    case PROXY_SSH_KEY_RSA_SHA256_CERT:
+      pubkey_algo = "rsa-sha2-256-cert";
+      break;
 #endif /* HAVE_SHA256_OPENSSL */
 
 #if defined(HAVE_SHA512_OPENSSL)
     case PROXY_SSH_KEY_RSA_SHA512:
       pubkey_algo = "rsa-sha2-512";
+      break;
+
+    case PROXY_SSH_KEY_RSA_SHA512_CERT:
+      pubkey_algo = "rsa-sha2-512-cert";
       break;
 #endif /* HAVE_SHA512_OPENSSL */
 
@@ -498,12 +516,24 @@ static int verify_h(pool *p, struct proxy_ssh_kex *kex,
       pubkey_algo = "ecdsa-sha2-nistp256";
       break;
 
+    case PROXY_SSH_KEY_ECDSA_256_CERT:
+      pubkey_algo = "ecdsa-sha2-nistp256-cert";
+      break;
+
     case PROXY_SSH_KEY_ECDSA_384:
       pubkey_algo = "ecdsa-sha2-nistp384";
       break;
 
+    case PROXY_SSH_KEY_ECDSA_384_CERT:
+      pubkey_algo = "ecdsa-sha2-nistp384-cert";
+      break;
+
     case PROXY_SSH_KEY_ECDSA_521:
       pubkey_algo = "ecdsa-sha2-nistp521";
+      break;
+
+    case PROXY_SSH_KEY_ECDSA_521_CERT:
+      pubkey_algo = "ecdsa-sha2-nistp521-cert";
       break;
 #endif /* PR_USE_OPENSSL_ECC */
 
@@ -511,11 +541,19 @@ static int verify_h(pool *p, struct proxy_ssh_kex *kex,
     case PROXY_SSH_KEY_ED25519:
       pubkey_algo = "ssh-ed25519";
       break;
+
+    case PROXY_SSH_KEY_ED25519_CERT:
+      pubkey_algo = "ssh-ed25519-cert";
+      break;
 #endif /* PR_USE_SODIUM */
 
 #if defined(HAVE_X448_OPENSSL)
     case PROXY_SSH_KEY_ED448:
       pubkey_algo = "ssh-ed448";
+      break;
+
+    case PROXY_SSH_KEY_ED448_CERT:
+      pubkey_algo = "ssh-ed448-cert";
       break;
 #endif /* HAVE_X448_OPENSSL */
 
@@ -2303,14 +2341,32 @@ static int setup_hostkey_algo(struct proxy_ssh_kex *kex, const char *algo) {
     return 0;
   }
 
+  if (strcmp(algo, "ssh-dss-cert") == 0) {
+    kex->use_hostkey_type = PROXY_SSH_KEY_DSA_CERT;
+    return 0;
+  }
+
   if (strcmp(algo, "ssh-rsa") == 0) {
     kex->use_hostkey_type = PROXY_SSH_KEY_RSA;
+    return 0;
+  }
+
+  if (strcmp(algo, "ssh-rsa-cert") == 0 ||
+      strcmp(algo, "ssh-rsa-cert-v01@openssh.com") == 0) {
+    kex->use_hostkey_type = PROXY_SSH_KEY_RSA_CERT;
     return 0;
   }
 
 #if defined(HAVE_SHA256_OPENSSL)
   if (strcmp(algo, "rsa-sha2-256") == 0) {
     kex->use_hostkey_type = PROXY_SSH_KEY_RSA_SHA256;
+    proxy_ssh_auth_use_rsa_sha2(TRUE);
+    return 0;
+  }
+
+  if (strcmp(algo, "rsa-sha2-256-cert") == 0 ||
+      strcmp(algo, "rsa-sha2-256-cert-v01@openssh.com") == 0) {
+    kex->use_hostkey_type = PROXY_SSH_KEY_RSA_SHA256_CERT;
     proxy_ssh_auth_use_rsa_sha2(TRUE);
     return 0;
   }
@@ -2322,6 +2378,13 @@ static int setup_hostkey_algo(struct proxy_ssh_kex *kex, const char *algo) {
     proxy_ssh_auth_use_rsa_sha2(TRUE);
     return 0;
   }
+
+  if (strcmp(algo, "rsa-sha2-512-cert") == 0 ||
+      strcmp(algo, "rsa-sha2-512-cert-v01@openssh.com") == 0) {
+    kex->use_hostkey_type = PROXY_SSH_KEY_RSA_SHA512_CERT;
+    proxy_ssh_auth_use_rsa_sha2(TRUE);
+    return 0;
+  }
 #endif /* HAVE_SHA512_OPENSSL */
 
 #if defined(PR_USE_OPENSSL_ECC)
@@ -2330,13 +2393,31 @@ static int setup_hostkey_algo(struct proxy_ssh_kex *kex, const char *algo) {
     return 0;
   }
 
+  if (strcmp(algo, "ecdsa-sha2-nistp256-cert") == 0 ||
+      strcmp(algo, "ecdsa-sha2-nistp256-cert-v01@openssh.com") == 0) {
+    kex->use_hostkey_type = PROXY_SSH_KEY_ECDSA_256_CERT;
+    return 0;
+  }
+
   if (strcmp(algo, "ecdsa-sha2-nistp384") == 0) {
     kex->use_hostkey_type = PROXY_SSH_KEY_ECDSA_384;
     return 0;
   }
 
+  if (strcmp(algo, "ecdsa-sha2-nistp384-cert") == 0 ||
+      strcmp(algo, "ecdsa-sha2-nistp384-cert-v01@openssh.com") == 0) {
+    kex->use_hostkey_type = PROXY_SSH_KEY_ECDSA_384_CERT;
+    return 0;
+  }
+
   if (strcmp(algo, "ecdsa-sha2-nistp521") == 0) {
     kex->use_hostkey_type = PROXY_SSH_KEY_ECDSA_521;
+    return 0;
+  }
+
+  if (strcmp(algo, "ecdsa-sha2-nistp521-cert") == 0 ||
+      strcmp(algo, "ecdsa-sha2-nistp521-cert-v01@openssh.com") == 0) {
+    kex->use_hostkey_type = PROXY_SSH_KEY_ECDSA_521_CERT;
     return 0;
   }
 #endif /* PR_USE_OPENSSL_ECC */
@@ -2346,11 +2427,22 @@ static int setup_hostkey_algo(struct proxy_ssh_kex *kex, const char *algo) {
     kex->use_hostkey_type = PROXY_SSH_KEY_ED25519;
     return 0;
   }
+
+  if (strcmp(algo, "ssh-ed25519-cert") == 0 ||
+      strcmp(algo, "ssh-ed25519-cert-v01@openssh.com") == 0) {
+    kex->use_hostkey_type = PROXY_SSH_KEY_ED25519_CERT;
+    return 0;
+  }
 #endif /* PR_USE_SODIUM */
 
 #if defined(HAVE_X448_OPENSSL)
   if (strcmp(algo, "ssh-ed448") == 0) {
     kex->use_hostkey_type = PROXY_SSH_KEY_ED448;
+    return 0;
+  }
+
+  if (strcmp(algo, "ssh-ed448-cert") == 0) {
+    kex->use_hostkey_type = PROXY_SSH_KEY_ED448_CERT;
     return 0;
   }
 #endif /* HAVE_X448_OPENSSL */
@@ -3141,9 +3233,10 @@ static int handle_server_hostkey(pool *p,
     uint32_t hostkey_datalen) {
   unsigned int vhost_id;
   const struct proxy_session *proxy_sess;
-  const char *backend_uri, *hostkey_algo, *stored_hostkey_algo = NULL;
-  const unsigned char *stored_hostkey_data = NULL;
-  uint32_t stored_hostkey_datalen = 0;
+  const char *backend_uri, *hostkey_algo;
+  config_rec *c = NULL;
+  char *revoked_keys = NULL;
+  int verified = FALSE;
 
   proxy_sess = pr_table_get(session.notes, "mod_proxy.proxy-session", NULL);
   if (proxy_sess == NULL) {
@@ -3157,111 +3250,286 @@ static int handle_server_hostkey(pool *p,
 
   hostkey_algo = proxy_ssh_keys_get_key_type_desc(hostkey_type);
 
-  stored_hostkey_data = (kex_ds->hostkey_get)(p, kex_ds->dsh, vhost_id,
-    backend_uri, &stored_hostkey_algo, &stored_hostkey_datalen);
-  if (stored_hostkey_data == NULL) {
-    int xerrno = errno;
+  c = find_config(main_server->conf, CONF_PARAM, "ProxySFTPRevokedKeys", FALSE);
+  if (c != NULL) {
+    revoked_keys = c->argv[0];
+  }
 
-    if (xerrno != ENOENT) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error retrieving stored hostkey for vhost ID %u, URI '%s': %s",
-        vhost_id, backend_uri, strerror(xerrno));
+  if (proxy_ssh_keys_is_cert_type(hostkey_type) == FALSE) {
+    const unsigned char *stored_hostkey_data = NULL;
+    uint32_t stored_hostkey_datalen = 0;
+    const char *stored_hostkey_algo = NULL;
 
-      if (kex_verify_hostkeys == TRUE) {
-        /* If we have been configured to be strict, and to verify backend
-         * server hostkeys, then a lookup error prevents us from doing so,
-         * and thus should be fatal.
-         */
-        errno = xerrno;
-        return -1;
+    /* We ASSUME that the provided host key is valid, until proven
+     * otherwise.
+     */
+    verified = TRUE;
+
+    stored_hostkey_data = (kex_ds->hostkey_get)(p, kex_ds->dsh, vhost_id,
+      backend_uri, &stored_hostkey_algo, &stored_hostkey_datalen);
+    if (stored_hostkey_data == NULL) {
+      int xerrno = errno;
+
+      if (xerrno != ENOENT) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error retrieving stored hostkey for vhost ID %u, URI '%s': %s",
+          vhost_id, backend_uri, strerror(xerrno));
+
+        if (kex_verify_hostkeys == TRUE) {
+          /* If we have been configured to be strict, and to verify backend
+           * server hostkeys, then a lookup error prevents us from doing so,
+           * and thus should be fatal.
+           */
+          errno = xerrno;
+          return -1;
+        }
+
+        return 0;
       }
 
-      return 0;
-    }
+      if (revoked_keys != NULL) {
+        if (proxy_ssh_rfc4716_is_revoked_key(proxy_sess, p, revoked_keys,
+            hostkey_data, hostkey_datalen) == TRUE) {
+          const char *revoked_fp;
 
-    pr_trace_msg(trace_channel, 18,
-      "no existing hostkey stored for vhost ID %u, URI '%s', "
-      "storing '%s' hostkey (%lu bytes)", vhost_id, backend_uri, hostkey_algo,
-      (unsigned long) hostkey_datalen);
+          revoked_fp = proxy_ssh_keys_get_fingerprint(p, hostkey_data,
+            hostkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256);
 
-    if ((kex_ds->hostkey_add)(p, kex_ds->dsh, vhost_id, backend_uri,
-        hostkey_algo, hostkey_data, hostkey_datalen) < 0) {
-      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-        "error adding '%s' hostkey for vhost ID %u, URI '%s': %s",
-        hostkey_algo, vhost_id, backend_uri, strerror(errno));
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "public key %s has been revoked by '%s'", revoked_fp, revoked_keys);
+
+          errno = EACCES;
+          verified = FALSE;
+        }
+      }
+
+      if (verified == TRUE) {
+        pr_trace_msg(trace_channel, 18,
+          "no existing hostkey stored for vhost ID %u, URI '%s', "
+          "storing '%s' hostkey (%lu bytes)", vhost_id, backend_uri,
+          hostkey_algo, (unsigned long) hostkey_datalen);
+
+        if ((kex_ds->hostkey_add)(p, kex_ds->dsh, vhost_id, backend_uri,
+            hostkey_algo, hostkey_data, hostkey_datalen) < 0) {
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "error adding '%s' hostkey for vhost ID %u, URI '%s': %s",
+            hostkey_algo, vhost_id, backend_uri, strerror(errno));
+
+        } else {
+          pr_trace_msg(trace_channel, 18,
+            "stored key verified hostkey for vhost ID %u, URI '%s'",
+            vhost_id, backend_uri);
+        }
+
+        /* Default TOFU behavior means we consider the newly added hostkey as
+         * verified.
+         */
+      }
+
+    } else {
+      pr_trace_msg(trace_channel, 12,
+        "found stored '%s' hostkey (%lu bytes) for vhost ID %u, URI '%s'",
+        stored_hostkey_algo, (unsigned long) stored_hostkey_datalen, vhost_id,
+        backend_uri);
+
+      if (strcmp(hostkey_algo, stored_hostkey_algo) != 0) {
+        pr_trace_msg(trace_channel, 1,
+          "stored hostkey for vhost ID %u, URI '%s' uses different algorithm: "
+          "'%s' (stored), '%s' (current)", vhost_id, backend_uri,
+          stored_hostkey_algo, hostkey_algo);
+        verified = FALSE;
+      }
+
+      if (verified == TRUE &&
+          hostkey_datalen != stored_hostkey_datalen) {
+        pr_trace_msg(trace_channel, 1,
+          "stored hostkey for vhost ID %u, URI '%s' has different length: "
+          "%lu bytes (stored), %lu bytes (current)", vhost_id, backend_uri,
+          (unsigned long) stored_hostkey_datalen,
+          (unsigned long) hostkey_datalen);
+        verified = FALSE;
+      }
+
+      if (verified == TRUE &&
+          memcmp(hostkey_data, stored_hostkey_data, hostkey_datalen) != 0) {
+        pr_trace_msg(trace_channel, 1,
+          "stored hostkey for vhost ID %u, URI '%s' does not match current key",
+          vhost_id, backend_uri);
+        verified = FALSE;
+      }
+
+      /* Has this key been revoked for any reason? */
+      if (verified == TRUE &&
+          revoked_keys != NULL) {
+        if (proxy_ssh_rfc4716_is_revoked_key(proxy_sess, p, revoked_keys,
+            hostkey_data, hostkey_datalen) == TRUE) {
+          const char *revoked_fp;
+
+          revoked_fp = proxy_ssh_keys_get_fingerprint(p, hostkey_data,
+            hostkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256);
+
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "public key %s has been revoked by '%s'", revoked_fp, revoked_keys);
+
+          errno = EACCES;
+          verified = FALSE;
+        }
+      }
+
+      if (verified == TRUE) {
+        pr_trace_msg(trace_channel, 18,
+          "stored hostkey matches current hostkey for vhost ID %u, URI '%s'",
+          vhost_id, backend_uri);
+
+      } else {
+        if (kex_verify_hostkeys == TRUE) {
+          /* TODO: This is where we would implement functionality similar to
+           * OpenSSH's UpdateHostKeys, via hostkey rotation extensions, where
+           * available.
+           */
+
+          /* If we fail the KEX here, what recourse does the admin have? We
+           * currently are not providing a way to update/remove the offending
+           * stored hostkey in the SQLite database.
+           *
+           * To prevent abuse, though, we will loudly log the mismatch, but
+           * also fail the connection, to preserve integrity and trust.
+           */
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "trusted stored hostkey no longer matches current hostkey "
+            "(vhost ID %u, URI '%s') and ProxySFTPVerifyServer is enabled",
+            vhost_id, backend_uri);
+          errno = EPERM;
+          return -1;
+        }
+
+        /* Replace the stored hostkey. */
+        pr_trace_msg(trace_channel, 10, "stored hostkey does not match current "
+          "hostkey (vhost ID %u, URI '%s') and ProxySFTPVerifyServer is "
+          "disabled, updating stored hostkey", vhost_id, backend_uri);
+        if ((kex_ds->hostkey_update)(p, kex_ds->dsh, vhost_id, backend_uri,
+             hostkey_algo, hostkey_data, hostkey_datalen) < 0) {
+          /* XXX What else to do here? */
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "error updating '%s' hostkey for vhost ID %u, URI '%s': %s",
+            hostkey_algo, vhost_id, backend_uri, strerror(errno));
+        }
+
+        verified = TRUE;
+      }
     }
 
   } else {
-    int verified = TRUE;
+    int res;
+    struct proxy_ssh_cert *cert = NULL;
+    unsigned long cert_opts = 0UL;
+    const char *authorized_ca_keys = NULL;
 
-    pr_trace_msg(trace_channel, 12,
-      "found stored '%s' hostkey (%lu bytes) for vhost ID %u, URI '%s'",
-      stored_hostkey_algo, (unsigned long) stored_hostkey_datalen, vhost_id,
-      backend_uri);
+    c = find_config(main_server->conf, CONF_PARAM,
+      "ProxySFTPCertificateOptions", FALSE);
+    if (c != NULL) {
+      unsigned long opts;
 
-    if (strcmp(hostkey_algo, stored_hostkey_algo) != 0) {
-      pr_trace_msg(trace_channel, 1,
-        "stored hostkey for vhost ID %u, URI '%s' uses different algorithm: "
-        "'%s' (stored), '%s' (current)", vhost_id, backend_uri,
-        stored_hostkey_algo, hostkey_algo);
-      verified = FALSE;
+      opts = *((unsigned long *) c->argv[0]);
+      cert_opts |= opts;
     }
 
-    if (verified == TRUE &&
-        hostkey_datalen != stored_hostkey_datalen) {
-      pr_trace_msg(trace_channel, 1,
-        "stored hostkey for vhost ID %u, URI '%s' has different length: "
-        "%lu bytes (stored), %lu bytes (current)", vhost_id, backend_uri,
-        (unsigned long) stored_hostkey_datalen,
-        (unsigned long) hostkey_datalen);
-      verified = FALSE;
-    }
+    /* We ASSUME that the provided host cert is invalid, until proven
+     * otherwise.
+     */
+    verified = FALSE;
 
-    if (verified == TRUE &&
-        memcmp(hostkey_data, stored_hostkey_data, hostkey_datalen) != 0) {
-      pr_trace_msg(trace_channel, 1,
-        "stored hostkey for vhost ID %u, URI '%s' does not match current key",
-        vhost_id, backend_uri);
-      verified = FALSE;
-    }
+    res = proxy_ssh_certs_parse_cert(p, hostkey_data, hostkey_datalen,
+      &cert, 0);
+    if (res == 0) {
+      res = proxy_ssh_certs_validate_cert(p, cert, cert_opts);
+      if (res == 0) {
+        if (cert->cert_role == PROXY_SSH_CERT_TYPE_HOST) {
+          if (kex_verify_hostkeys == TRUE) {
+            c = find_config(main_server->conf, CONF_PARAM,
+              "ProxySFTPAuthorizedHostCAKeys", FALSE);
+            if (c != NULL) {
+              authorized_ca_keys = c->argv[0];
 
-    if (verified == TRUE) {
-      pr_trace_msg(trace_channel, 18,
-        "stored hostkey matches current hostkey for vhost ID %u, URI '%s'",
-        vhost_id, backend_uri);
+              if (proxy_ssh_rfc4716_verify_host_cert(proxy_sess, p,
+                  authorized_ca_keys, cert, cert_opts) == 0) {
+                verified = TRUE;
+              }
 
-    } else {
-      if (kex_verify_hostkeys == TRUE) {
-        /* TODO: This is where we would implement functionality similar to
-         * OpenSSH's UpdateHostKeys, via hostkey rotation extensions, where
-         * available.
-         */
+            } else {
+              pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                "unable to verify '%s' host certificate provided by "
+                "vhost ID %u, URI '%s': No authorized CA keys provided",
+                hostkey_algo, vhost_id, backend_uri);
+            }
 
-        /* If we fail the KEX here, what recourse does the admin have? We
-         * currently are not providing a way to update/remove the offending
-         * stored hostkey in the SQLite database.
-         *
-         * To prevent abuse, though, we will loudly log the mismatch, but
-         * also fail the connection, to preserve integrity and trust.
-         */
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "stored hostkey does not match current hostkey "
-          "(vhost ID %u, URI '%s') and ProxySFTPVerifyServer is enabled",
-          vhost_id, backend_uri);
-        errno = EPERM;
-        return -1;
+            /* Have the signed public key, or the CA signing key, been revoked
+             * for any reason?
+             */
+            if (revoked_keys != NULL) {
+              if (verified == TRUE) {
+                if (proxy_ssh_rfc4716_is_revoked_key(proxy_sess, p,
+                    revoked_keys, cert->pubkey_data,
+                    cert->pubkey_datalen) == TRUE) {
+                  const char *revoked_fp;
+
+                  revoked_fp = proxy_ssh_keys_get_fingerprint(p,
+                    cert->pubkey_data, cert->pubkey_datalen,
+                    PROXY_SSH_KEYS_FP_DIGEST_SHA256);
+
+                  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                    "public key %s has been revoked by '%s'", revoked_fp,
+                    revoked_keys);
+
+                  errno = EACCES;
+                  verified = FALSE;
+                }
+              }
+
+              if (verified == TRUE) {
+                if (proxy_ssh_rfc4716_is_revoked_key(proxy_sess, p,
+                    revoked_keys, cert->signature_pubkey_data,
+                    cert->signature_pubkey_datalen) == TRUE) {
+                  const char *revoked_fp;
+
+                  revoked_fp = proxy_ssh_keys_get_fingerprint(p,
+                    cert->signature_pubkey_data, cert->signature_pubkey_datalen,
+                    PROXY_SSH_KEYS_FP_DIGEST_SHA256);
+
+                  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+                    "public CA key %s has been revoked by '%s'", revoked_fp,
+                    revoked_keys);
+
+                  errno = EACCES;
+                  verified = FALSE;
+                }
+              }
+            }
+          }
+
+        } else {
+          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+            "unable to use non-host '%s' certificate provided by "
+            "vhost ID %u, URI '%s': Not a host certificate", hostkey_algo,
+            vhost_id, backend_uri);
+        }
       }
 
-      /* Replace the stored hostkey. */
-      pr_trace_msg(trace_channel, 10, "stored hostkey does not match current "
-        "hostkey (vhost ID %u, URI '%s') and ProxySFTPVerifyServer is "
-        "disabled, updating stored hostkey", vhost_id, backend_uri);
-      if ((kex_ds->hostkey_update)(p, kex_ds->dsh, vhost_id, backend_uri,
-           hostkey_algo, hostkey_data, hostkey_datalen) < 0) {
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "error updating '%s' hostkey for vhost ID %u, URI '%s': %s",
-          hostkey_algo, vhost_id, backend_uri, strerror(errno));
+      if (verified == TRUE) {
+        const char *ca_fp;
+
+        ca_fp = proxy_ssh_keys_get_fingerprint(p, cert->signature_pubkey_data,
+          cert->signature_pubkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256);
+        pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "Accepted %s host certificate ID '%s' (serial number %lu) signed by "
+          "%s CA %s via %s", cert->cert_algo, cert->cert_id,
+          (unsigned long) cert->serialno, cert->signature_pubkey_algo, ca_fp,
+          authorized_ca_keys);
       }
+    }
+
+    if (verified == FALSE) {
+      return -1;
     }
   }
 

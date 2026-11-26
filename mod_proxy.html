@@ -61,6 +61,8 @@ servers.
   <li><a href="#ProxyReverseServers">ProxyReverseServers</a>
   <li><a href="#ProxyRetryCount">ProxyRetryCount</a>
   <li><a href="#ProxyRole">ProxyRole</a>
+  <li><a href="#ProxySFTPAuthorizedHostCAKeys">ProxySFTPAuthorizedHostCAKeys</a>
+  <li><a href="#ProxySFTPCertificateOptions">ProxySFTPCertificateOptions</a>
   <li><a href="#ProxySFTPCiphers">ProxySFTPCiphers</a>
   <li><a href="#ProxySFTPCompression">ProxySFTPCompression</a>
   <li><a href="#ProxySFTPDigests">ProxySFTPDigests</a>
@@ -69,6 +71,7 @@ servers.
   <li><a href="#ProxySFTPKeyExchanges">ProxySFTPKeyExchanges</a>
   <li><a href="#ProxySFTPOptions">ProxySFTPOptions</a>
   <li><a href="#ProxySFTPPassPhraseProvider">ProxySFTPPassPhraseProvider</a>
+  <li><a href="#ProxySFTPRevokedKeys">ProxySFTPRevokedKeys</a>
   <li><a href="#ProxySFTPServerAlive">ProxySFTPServerAlive</a>
   <li><a href="#ProxySFTPServerMatch">ProxySFTPServerMatch</a>
   <li><a href="#ProxySFTPVerifyServer">ProxySFTPVerifyServer</a>
@@ -894,6 +897,82 @@ connections to <code>mod_proxy</code> will fail.
 
 <p>
 <hr>
+<h3><a name="ProxySFTPAuthorizedHostCAKeys">ProxySFTPAuthorizedHostCAKeys</a></h3>
+<strong>Syntax:</strong> ProxySFTPAuthorizedHostCAKeys <em>path1 ...</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.8rc3 and later
+
+<p>
+The <code>ProxySFTPAuthorizedHostCAKeys</code> directive configures the file
+that <code>mod_proxy</code> will use during the authentication/verification
+of SSH host certificates.  The configured file may contain several trusted
+public CA keys in RFC4716 format, in no particular order.
+
+<p>
+<b>Note</b> that a <code>ProxySFTPAuthorizedHostCAKeys</code> directive is
+required for <code>mod_proxy</code> to verify SSH hosts which want to use
+host certificates.
+
+<p>
+<b>Note:</b> In order to use OpenSSH public CA keys in a
+<code>ProxySFTPAuthorizedHostCAKeys</code> file, you <b>must</b> convert them
+to the RFC4716 format (see the <a href="#UsageRFC4716Format">Usage</a> section).
+This is done using OpenSSH's <code>ssh-keygen</code> tool:
+<pre>
+  $ ssh-keygen -e -f /path/to/file
+</pre>
+The output from this command can then be added to the
+<code>ProxySFTPAuthorizedHostCAKeys</code> file.
+
+<p>
+<hr>
+<h3><a name="ProxySFTPCertificateOptions">ProxySFTPCertificateOptions</a></h3>
+<strong>Syntax:</strong> ProxySFTPCertificateOptions <em>opt1 ...</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_sftp<br>
+<strong>Compatibility:</strong> 1.3.10rc5 and later
+
+<p>
+The <code>ProxySFTPCertificateOptions</code> directive is used to configure
+various optional SSH certificate handling behavior of <code>mod_proxy</code>.
+
+<p>
+For example:
+<pre>
+  ProxySFTPCertificateOptions AllowMatchPrincipals
+</pre>
+
+<p>
+The currently implemented options are:
+<ul>
+  <li><code>AllowEmptyPrincipals</code><br>
+    <p>
+    By default, <code>mod_proxy</code> will <b>not</b> treat an empty
+    principals list as a "wildcard" match for any/all host IP/DNS addresses,
+    when an SSH certificate is used for authenticating a backend SSH server.
+    Pre-Draft SSH certificates, based on the early OpenSSH spec, <i>did</i>
+    allow for this behavior.  Use this option to enable the pre-Draft
+    "wildcard" behavior for SSH certificates with empty principals.
+
+    <p>
+    Note that this option is ignored for hostbased authentication.
+  </li>
+
+  <p>
+  <li><code>AllowMatchPrincipals</code><br>
+    <p>
+    The <code>mod_proxy</code> module does not treat the <code>?</code> or
+    <code>*</code> characters in SSH certificate principals as special
+    characters by default.  To enable the handling of these as <em>match</em>
+    characters, use this option.
+  </li>
+</ul>
+
+<p>
+<hr>
 <h3><a name="ProxySFTPCiphers">ProxySFTPCiphers</a></h3>
 <strong>Syntax:</strong> ProxySFTPCiphers <em>algo1 ...</em><br>
 <strong>Default:</strong> None<br>
@@ -1272,6 +1351,40 @@ Example:
 <pre>
   ProxySFTPPassPhraseProvider /etc/ftpd/proxy/get-ssh-passphrase
 </pre>
+
+<p>
+<hr>
+<h3><a name="ProxySFTPRevokedKeys">ProxySFTPRevokedKeys</a></h3>
+<strong>Syntax:</strong> ProxySFTPRevokedKeys <em>store1 ...</em><br>
+<strong>Default:</strong> <em>None</em><br>
+<strong>Context:</strong> server config, <code>&lt;VirtualHost&gt;</code>, <code>&lt;Global&gt;</code><br>
+<strong>Module:</strong> mod_proxy<br>
+<strong>Compatibility:</strong> 1.3.10rc7 and later
+
+<p>
+The <code>ProxySFTPRevokedKeys</code> directive configures the file that
+<code>mod_proxy</code> will use during the handling of SSH host certificates.
+The configured file may contain several public keys in RFC4716 format, in no
+particular order.  Any key appearing in this list, whether used as an SSH
+certificate key or as a regular key, is considered to be <b>revoked</b>, and
+authentication attempts using the key will be rejected.
+
+<p>
+Example:
+<pre>
+  ProxySFTPRevokedKeys file:/etc/proxy/ssh_revoked_keys
+</pre>
+
+<p>
+<b>Note:</b> In order to use OpenSSH public keys in a
+<code>ProxySFTPRevokedKeys</code> file, you <b>must</b> convert them to the
+RFC4716 format (see the <a href="#UsageRFC4716Format">Usage</a> section).
+This is done using OpenSSH's <code>ssh-keygen</code> tool:
+<pre>
+  $ ssh-keygen -e -f ~/.ssh/id_rsa.pub -m RFC4716
+</pre>
+The output from this command can then be added to the
+<code>ProxySFTPRevokedKeys</code> file.
 
 <p>
 <hr>
@@ -2361,6 +2474,7 @@ purposes, the module also uses <a href="http://www.proftpd.org/docs/howto/Tracin
   <li>proxy.ssh.agent
   <li>proxy.ssh.auth
   <li>proxy.ssh.bcrypt
+  <li>proxy.ssh.certs
   <li>proxy.ssh.cipher
   <li>proxy.ssh.compress
   <li>proxy.ssh.crypto
@@ -2371,6 +2485,7 @@ purposes, the module also uses <a href="http://www.proftpd.org/docs/howto/Tracin
   <li>proxy.ssh.keys
   <li>proxy.ssh.msg
   <li>proxy.ssh.packet
+  <li>proxy.ssh.rfc4716
   <li>proxy.ssh.service
   <li>proxy.ssh.utf8
   <li>proxy.tls

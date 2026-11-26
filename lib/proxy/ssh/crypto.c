@@ -263,6 +263,32 @@ static const char *key_exchanges[] = {
 };
 
 static const char *hostkey_algos[] = {
+#if defined(HAVE_X448_OPENSSL) && defined(HAVE_SHA512_OPENSSL)
+  "ssh-ed448-cert",
+#if defined(PR_USE_SODIUM)
+  "ssh-ed25519-cert",
+  "ssh-ed25519-cert-v01@openssh.com",
+#endif /* PR_USE_SODIUM */
+#if defined(PR_USE_OPENSSL_ECC)
+  "ecdsa-sha2-nistp256-cert",
+  "ecdsa-sha2-nistp256-cert-v01@openssh.com",
+  "ecdsa-sha2-nistp384-cert",
+  "ecdsa-sha2-nistp384-cert-v01@openssh.com",
+  "ecdsa-sha2-nistp521-cert",
+  "ecdsa-sha2-nistp521-cert-v01@openssh.com",
+#endif /* PR_USE_OPENSSL_ECC */
+#endif /* HAVE_X448_OPENSSL and HAVE_SHA512_OPENSSL */
+#if defined(HAVE_SHA512_OPENSSL)
+  "rsa-sha2-512-cert",
+  "rsa-sha2-512-cert-v01@openssh.com",
+#endif /* HAVE_SHA512_OPENSSL */
+#if defined(HAVE_SHA256_OPENSSL)
+  "rsa-sha2-256-cert",
+  "rsa-sha2-256-cert-v01@openssh.com",
+#endif /* HAVE_SHA256_OPENSSL */
+  "ssh-rsa-cert",
+  "ssh-rsa-cert-v01@openssh.com",
+  "ssh-dss-cert",
 #if defined(HAVE_MLDSA44_OPENSSL) && \
     defined(HAVE_X25519_OPENSSL) && \
     defined(HAVE_SHA512_OPENSSL)
