@@ -3228,12 +3228,126 @@ static int write_newkeys_reply(struct proxy_ssh_packet *pkt) {
   return 0;
 }
 
+static int handle_server_hostcert(const struct proxy_session *proxy_sess,
+    pool *p, enum proxy_ssh_key_type_e hostkey_type, unsigned char *cert_data,
+    uint32_t cert_datalen, const char *backend_uri, unsigned int vhost_id,
+    const char *revoked_keys) {
+  int res;
+  config_rec *c;
+  struct proxy_ssh_cert *cert = NULL;
+  unsigned long cert_opts = 0UL;
+  const char *hostkey_algo, *authorized_ca_keys = NULL, *ca_fp = NULL;
+
+  hostkey_algo = proxy_ssh_keys_get_key_type_desc(hostkey_type);
+
+  c = find_config(main_server->conf, CONF_PARAM, "ProxySFTPCertificateOptions",
+    FALSE);
+  if (c != NULL) {
+    unsigned long opts;
+
+    opts = *((unsigned long *) c->argv[0]);
+    cert_opts |= opts;
+  }
+
+  res = proxy_ssh_certs_parse_cert(p, cert_data, cert_datalen, &cert, 0);
+  if (res < 0) {
+    return -1;
+  }
+
+  res = proxy_ssh_certs_validate_cert(p, cert, cert_opts);
+  if (res < 0) {
+    return -1;
+  }
+
+  if (cert->cert_role != PROXY_SSH_CERT_TYPE_HOST) {
+    (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to use non-host '%s' certificate provided by "
+      "vhost ID %u, URI '%s': Not a host certificate", hostkey_algo,
+      vhost_id, backend_uri);
+    errno = EPERM;
+    return -1;
+  }
+
+  if (kex_verify_hostkeys == FALSE) {
+    return 0;
+  }
+
+  c = find_config(main_server->conf, CONF_PARAM,
+    "ProxySFTPAuthorizedHostCAKeys", FALSE);
+  if (c != NULL) {
+    authorized_ca_keys = c->argv[0];
+  }
+
+  if (authorized_ca_keys == NULL) {
+    pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+      "unable to verify '%s' host certificate provided by vhost ID %u, "
+      "URI '%s': No authorized CA keys provided", hostkey_algo, vhost_id,
+      backend_uri);
+    errno = EPERM;
+    return -1;
+  }
+
+  if (proxy_ssh_rfc4716_verify_host_cert(proxy_sess, p, authorized_ca_keys,
+      cert, cert_opts) < 0) {
+    errno = EACCES;
+    return -1;
+  }
+
+  /* Have the signed public key, or the CA signing key, been revoked for any
+   * reason?
+   */
+  if (revoked_keys != NULL) {
+    if (proxy_ssh_rfc4716_is_revoked_key(proxy_sess, p, revoked_keys,
+        cert->pubkey_data, cert->pubkey_datalen) == TRUE) {
+      const char *revoked_fp;
+
+      revoked_fp = proxy_ssh_keys_get_fingerprint(p, cert->pubkey_data,
+        cert->pubkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256,
+        PROXY_SSH_KEYS_FP_FMT_BASE64);
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "public key %s has been revoked by '%s'", revoked_fp, revoked_keys);
+
+      errno = EACCES;
+      return -1;
+    }
+
+    if (proxy_ssh_rfc4716_is_revoked_key(proxy_sess, p, revoked_keys,
+        cert->signature_pubkey_data, cert->signature_pubkey_datalen) == TRUE) {
+      const char *revoked_fp;
+
+      revoked_fp = proxy_ssh_keys_get_fingerprint(p,
+        cert->signature_pubkey_data, cert->signature_pubkey_datalen,
+        PROXY_SSH_KEYS_FP_DIGEST_SHA256, PROXY_SSH_KEYS_FP_FMT_BASE64);
+
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "public CA key %s has been revoked by '%s'", revoked_fp, revoked_keys);
+
+      errno = EACCES;
+      return -1;
+    }
+  }
+
+  ca_fp = proxy_ssh_keys_get_fingerprint(p, cert->signature_pubkey_data,
+    cert->signature_pubkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256,
+    PROXY_SSH_KEYS_FP_FMT_BASE64);
+  pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+    "Accepted %s host certificate ID '%s' (serial number %lu) signed by %s CA "
+    "%s via %s", cert->cert_algo, cert->cert_id,
+    (unsigned long) cert->serialno, cert->signature_pubkey_algo, ca_fp,
+    authorized_ca_keys);
+
+  return 0;
+}
+
 static int handle_server_hostkey(pool *p,
     enum proxy_ssh_key_type_e hostkey_type, unsigned char *hostkey_data,
     uint32_t hostkey_datalen) {
   unsigned int vhost_id;
   const struct proxy_session *proxy_sess;
-  const char *backend_uri, *hostkey_algo;
+  const char *backend_uri, *hostkey_algo, *stored_hostkey_algo;
+  const unsigned char *stored_hostkey_data = NULL;
+  uint32_t stored_hostkey_datalen = 0;
   config_rec *c = NULL;
   char *revoked_keys = NULL;
   int verified = FALSE;
@@ -3255,287 +3369,174 @@ static int handle_server_hostkey(pool *p,
     revoked_keys = c->argv[0];
   }
 
-  if (proxy_ssh_keys_is_cert_type(hostkey_type) == FALSE) {
-    const unsigned char *stored_hostkey_data = NULL;
-    uint32_t stored_hostkey_datalen = 0;
-    const char *stored_hostkey_algo = NULL;
+  if (proxy_ssh_keys_is_cert_type(hostkey_type) == TRUE) {
+    return handle_server_hostcert(proxy_sess, p, hostkey_type, hostkey_data,
+      hostkey_datalen, backend_uri, vhost_id, revoked_keys);
+  }
 
-    /* We ASSUME that the provided host key is valid, until proven
-     * otherwise.
-     */
-    verified = TRUE;
+  /* We ASSUME that the provided host key is valid, until proven
+   * otherwise.
+   */
+  verified = TRUE;
 
-    stored_hostkey_data = (kex_ds->hostkey_get)(p, kex_ds->dsh, vhost_id,
-      backend_uri, &stored_hostkey_algo, &stored_hostkey_datalen);
-    if (stored_hostkey_data == NULL) {
-      int xerrno = errno;
+  stored_hostkey_data = (kex_ds->hostkey_get)(p, kex_ds->dsh, vhost_id,
+    backend_uri, &stored_hostkey_algo, &stored_hostkey_datalen);
+  if (stored_hostkey_data == NULL) {
+    int xerrno = errno;
 
-      if (xerrno != ENOENT) {
-        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "error retrieving stored hostkey for vhost ID %u, URI '%s': %s",
-          vhost_id, backend_uri, strerror(xerrno));
+    if (xerrno != ENOENT) {
+      (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+        "error retrieving stored hostkey for vhost ID %u, URI '%s': %s",
+        vhost_id, backend_uri, strerror(xerrno));
 
-        if (kex_verify_hostkeys == TRUE) {
-          /* If we have been configured to be strict, and to verify backend
-           * server hostkeys, then a lookup error prevents us from doing so,
-           * and thus should be fatal.
-           */
-          errno = xerrno;
-          return -1;
-        }
-
-        return 0;
-      }
-
-      if (revoked_keys != NULL) {
-        if (proxy_ssh_rfc4716_is_revoked_key(proxy_sess, p, revoked_keys,
-            hostkey_data, hostkey_datalen) == TRUE) {
-          const char *revoked_fp;
-
-          revoked_fp = proxy_ssh_keys_get_fingerprint(p, hostkey_data,
-            hostkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256,
-            PROXY_SSH_KEYS_FP_FMT_BASE64);
-
-          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "public key %s has been revoked by '%s'", revoked_fp, revoked_keys);
-
-          errno = EACCES;
-          verified = FALSE;
-        }
-      }
-
-      if (verified == TRUE) {
-        pr_trace_msg(trace_channel, 18,
-          "no existing hostkey stored for vhost ID %u, URI '%s', "
-          "storing '%s' hostkey (%lu bytes)", vhost_id, backend_uri,
-          hostkey_algo, (unsigned long) hostkey_datalen);
-
-        if ((kex_ds->hostkey_add)(p, kex_ds->dsh, vhost_id, backend_uri,
-            hostkey_algo, hostkey_data, hostkey_datalen) < 0) {
-          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "error adding '%s' hostkey for vhost ID %u, URI '%s': %s",
-            hostkey_algo, vhost_id, backend_uri, strerror(errno));
-
-        } else {
-          pr_trace_msg(trace_channel, 18,
-            "stored key verified hostkey for vhost ID %u, URI '%s'",
-            vhost_id, backend_uri);
-        }
-
-        /* Default TOFU behavior means we consider the newly added hostkey as
-         * verified.
+      if (kex_verify_hostkeys == TRUE) {
+        /* If we have been configured to be strict, and to verify backend
+         * server hostkeys, then a lookup error prevents us from doing so,
+         * and thus should be fatal.
          */
+        errno = xerrno;
+        return -1;
       }
 
-    } else {
-      pr_trace_msg(trace_channel, 12,
-        "found stored '%s' hostkey (%lu bytes) for vhost ID %u, URI '%s'",
-        stored_hostkey_algo, (unsigned long) stored_hostkey_datalen, vhost_id,
-        backend_uri);
+      return 0;
+    }
 
-      if (strcmp(hostkey_algo, stored_hostkey_algo) != 0) {
-        pr_trace_msg(trace_channel, 1,
-          "stored hostkey for vhost ID %u, URI '%s' uses different algorithm: "
-          "'%s' (stored), '%s' (current)", vhost_id, backend_uri,
-          stored_hostkey_algo, hostkey_algo);
+    if (revoked_keys != NULL) {
+      if (proxy_ssh_rfc4716_is_revoked_key(proxy_sess, p, revoked_keys,
+          hostkey_data, hostkey_datalen) == TRUE) {
+        const char *revoked_fp;
+
+        revoked_fp = proxy_ssh_keys_get_fingerprint(p, hostkey_data,
+          hostkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256,
+          PROXY_SSH_KEYS_FP_FMT_BASE64);
+
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "public key %s has been revoked by '%s'", revoked_fp, revoked_keys);
+
+        errno = EACCES;
         verified = FALSE;
       }
+    }
 
-      if (verified == TRUE &&
-          hostkey_datalen != stored_hostkey_datalen) {
-        pr_trace_msg(trace_channel, 1,
-          "stored hostkey for vhost ID %u, URI '%s' has different length: "
-          "%lu bytes (stored), %lu bytes (current)", vhost_id, backend_uri,
-          (unsigned long) stored_hostkey_datalen,
-          (unsigned long) hostkey_datalen);
-        verified = FALSE;
-      }
+    if (verified == TRUE) {
+      pr_trace_msg(trace_channel, 18,
+        "no existing hostkey stored for vhost ID %u, URI '%s', "
+        "storing '%s' hostkey (%lu bytes)", vhost_id, backend_uri,
+        hostkey_algo, (unsigned long) hostkey_datalen);
 
-      if (verified == TRUE &&
-          memcmp(hostkey_data, stored_hostkey_data, hostkey_datalen) != 0) {
-        pr_trace_msg(trace_channel, 1,
-          "stored hostkey for vhost ID %u, URI '%s' does not match current key",
-          vhost_id, backend_uri);
-        verified = FALSE;
-      }
-
-      /* Has this key been revoked for any reason? */
-      if (verified == TRUE &&
-          revoked_keys != NULL) {
-        if (proxy_ssh_rfc4716_is_revoked_key(proxy_sess, p, revoked_keys,
-            hostkey_data, hostkey_datalen) == TRUE) {
-          const char *revoked_fp;
-
-          revoked_fp = proxy_ssh_keys_get_fingerprint(p, hostkey_data,
-            hostkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256,
-            PROXY_SSH_KEYS_FP_FMT_BASE64);
-
-          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "public key %s has been revoked by '%s'", revoked_fp, revoked_keys);
-
-          errno = EACCES;
-          verified = FALSE;
-        }
-      }
-
-      if (verified == TRUE) {
-        pr_trace_msg(trace_channel, 18,
-          "stored hostkey matches current hostkey for vhost ID %u, URI '%s'",
-          vhost_id, backend_uri);
+      if ((kex_ds->hostkey_add)(p, kex_ds->dsh, vhost_id, backend_uri,
+          hostkey_algo, hostkey_data, hostkey_datalen) < 0) {
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error adding '%s' hostkey for vhost ID %u, URI '%s': %s",
+          hostkey_algo, vhost_id, backend_uri, strerror(errno));
 
       } else {
-        if (kex_verify_hostkeys == TRUE) {
-          /* TODO: This is where we would implement functionality similar to
-           * OpenSSH's UpdateHostKeys, via hostkey rotation extensions, where
-           * available.
-           */
-
-          /* If we fail the KEX here, what recourse does the admin have? We
-           * currently are not providing a way to update/remove the offending
-           * stored hostkey in the SQLite database.
-           *
-           * To prevent abuse, though, we will loudly log the mismatch, but
-           * also fail the connection, to preserve integrity and trust.
-           */
-          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "trusted stored hostkey no longer matches current hostkey "
-            "(vhost ID %u, URI '%s') and ProxySFTPVerifyServer is enabled",
-            vhost_id, backend_uri);
-          errno = EPERM;
-          return -1;
-        }
-
-        /* Replace the stored hostkey. */
-        pr_trace_msg(trace_channel, 10, "stored hostkey does not match current "
-          "hostkey (vhost ID %u, URI '%s') and ProxySFTPVerifyServer is "
-          "disabled, updating stored hostkey", vhost_id, backend_uri);
-        if ((kex_ds->hostkey_update)(p, kex_ds->dsh, vhost_id, backend_uri,
-             hostkey_algo, hostkey_data, hostkey_datalen) < 0) {
-          /* XXX What else to do here? */
-          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "error updating '%s' hostkey for vhost ID %u, URI '%s': %s",
-            hostkey_algo, vhost_id, backend_uri, strerror(errno));
-        }
-
-        verified = TRUE;
+        pr_trace_msg(trace_channel, 18,
+          "stored key verified hostkey for vhost ID %u, URI '%s'",
+          vhost_id, backend_uri);
       }
+
+      /* Default TOFU behavior means we consider the newly added hostkey as
+       * verified.
+       */
     }
 
   } else {
-    int res;
-    struct proxy_ssh_cert *cert = NULL;
-    unsigned long cert_opts = 0UL;
-    const char *authorized_ca_keys = NULL;
+    pr_trace_msg(trace_channel, 12,
+      "found stored '%s' hostkey (%lu bytes) for vhost ID %u, URI '%s'",
+      stored_hostkey_algo, (unsigned long) stored_hostkey_datalen, vhost_id,
+      backend_uri);
 
-    c = find_config(main_server->conf, CONF_PARAM,
-      "ProxySFTPCertificateOptions", FALSE);
-    if (c != NULL) {
-      unsigned long opts;
-
-      opts = *((unsigned long *) c->argv[0]);
-      cert_opts |= opts;
+    if (strcmp(hostkey_algo, stored_hostkey_algo) != 0) {
+      pr_trace_msg(trace_channel, 1,
+        "stored hostkey for vhost ID %u, URI '%s' uses different algorithm: "
+        "'%s' (stored), '%s' (current)", vhost_id, backend_uri,
+        stored_hostkey_algo, hostkey_algo);
+      verified = FALSE;
     }
 
-    /* We ASSUME that the provided host cert is invalid, until proven
-     * otherwise.
-     */
-    verified = FALSE;
+    if (verified == TRUE &&
+        hostkey_datalen != stored_hostkey_datalen) {
+      pr_trace_msg(trace_channel, 1,
+        "stored hostkey for vhost ID %u, URI '%s' has different length: "
+        "%lu bytes (stored), %lu bytes (current)", vhost_id, backend_uri,
+        (unsigned long) stored_hostkey_datalen,
+        (unsigned long) hostkey_datalen);
+      verified = FALSE;
+    }
 
-    res = proxy_ssh_certs_parse_cert(p, hostkey_data, hostkey_datalen,
-      &cert, 0);
-    if (res == 0) {
-      res = proxy_ssh_certs_validate_cert(p, cert, cert_opts);
-      if (res == 0) {
-        if (cert->cert_role == PROXY_SSH_CERT_TYPE_HOST) {
-          if (kex_verify_hostkeys == TRUE) {
-            c = find_config(main_server->conf, CONF_PARAM,
-              "ProxySFTPAuthorizedHostCAKeys", FALSE);
-            if (c != NULL) {
-              authorized_ca_keys = c->argv[0];
+    if (verified == TRUE &&
+        memcmp(hostkey_data, stored_hostkey_data, hostkey_datalen) != 0) {
+      pr_trace_msg(trace_channel, 1,
+        "stored hostkey for vhost ID %u, URI '%s' does not match current key",
+        vhost_id, backend_uri);
+      verified = FALSE;
+    }
 
-              if (proxy_ssh_rfc4716_verify_host_cert(proxy_sess, p,
-                  authorized_ca_keys, cert, cert_opts) == 0) {
-                verified = TRUE;
-              }
+    /* Has this key been revoked for any reason? */
+    if (verified == TRUE &&
+        revoked_keys != NULL) {
+      if (proxy_ssh_rfc4716_is_revoked_key(proxy_sess, p, revoked_keys,
+          hostkey_data, hostkey_datalen) == TRUE) {
+        const char *revoked_fp;
 
-            } else {
-              pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-                "unable to verify '%s' host certificate provided by "
-                "vhost ID %u, URI '%s': No authorized CA keys provided",
-                hostkey_algo, vhost_id, backend_uri);
-            }
-
-            /* Have the signed public key, or the CA signing key, been revoked
-             * for any reason?
-             */
-            if (revoked_keys != NULL) {
-              if (verified == TRUE) {
-                if (proxy_ssh_rfc4716_is_revoked_key(proxy_sess, p,
-                    revoked_keys, cert->pubkey_data,
-                    cert->pubkey_datalen) == TRUE) {
-                  const char *revoked_fp;
-
-                  revoked_fp = proxy_ssh_keys_get_fingerprint(p,
-                    cert->pubkey_data, cert->pubkey_datalen,
-                    PROXY_SSH_KEYS_FP_DIGEST_SHA256,
-                    PROXY_SSH_KEYS_FP_FMT_BASE64);
-
-                  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-                    "public key %s has been revoked by '%s'", revoked_fp,
-                    revoked_keys);
-
-                  errno = EACCES;
-                  verified = FALSE;
-                }
-              }
-
-              if (verified == TRUE) {
-                if (proxy_ssh_rfc4716_is_revoked_key(proxy_sess, p,
-                    revoked_keys, cert->signature_pubkey_data,
-                    cert->signature_pubkey_datalen) == TRUE) {
-                  const char *revoked_fp;
-
-                  revoked_fp = proxy_ssh_keys_get_fingerprint(p,
-                    cert->signature_pubkey_data, cert->signature_pubkey_datalen,
-                    PROXY_SSH_KEYS_FP_DIGEST_SHA256,
-                    PROXY_SSH_KEYS_FP_FMT_BASE64);
-
-                  (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-                    "public CA key %s has been revoked by '%s'", revoked_fp,
-                    revoked_keys);
-
-                  errno = EACCES;
-                  verified = FALSE;
-                }
-              }
-            }
-          }
-
-        } else {
-          (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-            "unable to use non-host '%s' certificate provided by "
-            "vhost ID %u, URI '%s': Not a host certificate", hostkey_algo,
-            vhost_id, backend_uri);
-        }
-      }
-
-      if (verified == TRUE) {
-        const char *ca_fp;
-
-        ca_fp = proxy_ssh_keys_get_fingerprint(p, cert->signature_pubkey_data,
-          cert->signature_pubkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256,
+        revoked_fp = proxy_ssh_keys_get_fingerprint(p, hostkey_data,
+          hostkey_datalen, PROXY_SSH_KEYS_FP_DIGEST_SHA256,
           PROXY_SSH_KEYS_FP_FMT_BASE64);
-        pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
-          "Accepted %s host certificate ID '%s' (serial number %lu) signed by "
-          "%s CA %s via %s", cert->cert_algo, cert->cert_id,
-          (unsigned long) cert->serialno, cert->signature_pubkey_algo, ca_fp,
-          authorized_ca_keys);
+
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "public key %s has been revoked by '%s'", revoked_fp, revoked_keys);
+
+        errno = EACCES;
+        verified = FALSE;
       }
     }
 
-    if (verified == FALSE) {
-      return -1;
+    if (verified == TRUE) {
+      pr_trace_msg(trace_channel, 18,
+        "stored hostkey matches current hostkey for vhost ID %u, URI '%s'",
+        vhost_id, backend_uri);
+
+    } else {
+      if (kex_verify_hostkeys == TRUE) {
+        /* TODO: This is where we would implement functionality similar to
+         * OpenSSH's UpdateHostKeys, via hostkey rotation extensions, where
+         * available.
+         */
+
+        /* If we fail the KEX here, what recourse does the admin have? We
+         * currently are not providing a way to update/remove the offending
+         * stored hostkey in the SQLite database.
+         *
+         * To prevent abuse, though, we will loudly log the mismatch, but
+         * also fail the connection, to preserve integrity and trust.
+         */
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "trusted stored hostkey no longer matches current hostkey "
+          "(vhost ID %u, URI '%s') and ProxySFTPVerifyServer is enabled",
+          vhost_id, backend_uri);
+        errno = EPERM;
+        return -1;
+      }
+
+      /* Replace the stored hostkey. */
+      pr_trace_msg(trace_channel, 10, "stored hostkey does not match current "
+        "hostkey (vhost ID %u, URI '%s') and ProxySFTPVerifyServer is "
+        "disabled, updating stored hostkey", vhost_id, backend_uri);
+      if ((kex_ds->hostkey_update)(p, kex_ds->dsh, vhost_id, backend_uri,
+           hostkey_algo, hostkey_data, hostkey_datalen) < 0) {
+        /* XXX What else to do here? */
+        (void) pr_log_writefile(proxy_logfd, MOD_PROXY_VERSION,
+          "error updating '%s' hostkey for vhost ID %u, URI '%s': %s",
+          hostkey_algo, vhost_id, backend_uri, strerror(errno));
+      }
+
+      verified = TRUE;
     }
+  }
+
+  if (verified == FALSE) {
+    return -1;
   }
 
   return 0;
